@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
         bm::Session session(dir.filePath("node"), true);
         session.unlockVault();
         require(session.mailboxOpen(), "open temporary mailbox");
-        require(session.messages().size() == 1000, "synthetic mailbox loaded");
+        require(session.messages().size() == 500, "bounded synthetic mailbox loaded");
         const auto original = session.messages();
         auto before = residentBytes();
         // Consumers can retain implicitly shared snapshots. An unchanged refresh must

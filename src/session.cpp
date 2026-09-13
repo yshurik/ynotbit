@@ -464,7 +464,7 @@ void Session::refresh() {
     QMap<QString, OutboxItem> outgoing;
     for (const auto &item : mailbox_.outbox())
         outgoing.insert(item.id, item);
-    for (const auto &m : mailbox_.messageSummaries(2000)) {
+    for (const auto &m : mailbox_.messageSummaries(500)) {
         const auto out = outgoing.value(m.hash);
         QVariantMap row{
             {"hash", m.hash},
