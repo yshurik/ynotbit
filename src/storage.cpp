@@ -374,9 +374,10 @@ QVector<Message> Mailbox::messages() const {
             {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
     return list;
 }
-QVector<Message> Mailbox::messageSummaries() const {
+QVector<Message> Mailbox::messageSummaries(int limit) const {
     Statement s(db_, "SELECT hash,sender,recipient,subject,substr(body,1,240),folder,received "
-                     "FROM messages ORDER BY received DESC,rowid DESC");
+                     "FROM messages ORDER BY received DESC,rowid DESC LIMIT ?");
+    s.number(1, std::clamp(limit, 1, 10000));
     QVector<Message> list;
     while (s.row())
         list.push_back(
