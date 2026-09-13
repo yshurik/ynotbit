@@ -1,111 +1,112 @@
 # ynotbit — why not bit?
 
 A compact desktop Bitmessage client based on [notbit](https://github.com/bpeel/notbit),
-by [yshurik](https://github.com/yshurik). Development version: **0.2.0-dev**.
+by [yshurik](https://github.com/yshurik). **Development version: 0.2.0.**
 
-The sending workflow is under active implementation. The current GUI still only
-saves drafts; the encrypted outbox and expanded wire codecs are foundational work,
-not a claim of working end-to-end delivery.
+ynotbit keeps identity keys in a password-protected vault and correspondence in a
+separate encrypted mailbox document. Its keyless relay continues collecting
+network objects while the vault is locked. Unlocking inspects retained objects
+and saves matching letters to the mailbox.
 
-A native Qt Quick desktop client foundation based on notbit. This first build
-implements encrypted vault/mailbox documents, a keyless background relay, and
-local incoming-message inspection. It is not yet a complete messaging client.
+## Using the app
 
-## Implemented
+1. Create or open a `.bmvault` file. Create an identity, import `keys.dat`, or join
+   a chan using its shared phrase and expected address.
+2. Create or open a `.bmmail` document in Documents or another writable folder.
+3. Choose **Write a letter**, select the sender, enter a recipient BM-address,
+   and write. Changes automatically save in the encrypted mailbox.
+4. Choose **Send letter**. Existing drafts have an **Edit / Send** control.
+5. Follow progress in **Outbox**. Key lookup and proof of work can take time;
+   recipient acknowledgment is asynchronous and is not a read receipt.
+6. Lock the vault when finished. Preparation pauses, the mailbox closes, and
+   the relay continues handling already submitted encrypted network objects.
 
-- Create/open portable `.bmvault` files. Argon2id (64 MiB, 3 passes) derives a
-  wrapping key; XChaCha20-Poly1305 protects identities and random mailbox keys.
-- Create/open `.bmmail` SQLCipher databases after unlocking their vault. Messages,
-  subjects, addresses, drafts and scan state stay in the encrypted database.
-- Password rotation, combined vault/mailbox backup, random identities, compatible
-  deterministic chans (versions 3 and 4), and notbit/PyBitmessage `keys.dat` import.
-- A separate process runs a notbit relay without constructing a keyring or IPC
-  mail interface. No vault password, identity key or mailbox key goes to it.
-- Lock closes the mailbox and releases guarded key allocations while the relay
-  continues running. Unlock scans cached objects in bounded batches, verifies
-  ECIES authentication, the sender signature and recipient binding, and stores
-  matching direct/chan messages. Imported identities invalidate scan checkpoints.
-- Per-cache checkpoints support moving mailbox files between machines. Replays
-  deduplicate by inventory hash. Network expiry is separate from local retention.
-- Local retention currently defaults to 512 MiB of indexed objects and 90 days.
-  Pruning is visible in the status area. These limits are constants in this build.
-- Qt desktop UI with a locked landing screen, mailbox reader, identities/chans,
-  encrypted drafts, node status and cache activity.
+**File → Back up mailbox and vault** saves both documents. Keep both: a mailbox
+alone cannot recover its encryption key. Changing a password does not invalidate
+old vault copies or backups. Import preserves the original plaintext `keys.dat`.
 
-## Not implemented yet
+## Available in this development version
 
-- Sending, outgoing proof-of-work scheduling, recipient public-key retrieval and
-  publication, acknowledgments, retries, and a persistent outbox. The compose UI
-  explicitly saves drafts only. New identities do not yet publish their public
-  keys, so arbitrary peers cannot reliably start correspondence with them.
-- Broadcast subscriptions and broadcast decoding. Chans are shared-key identities,
-  a distinct feature; their members cannot be individually authenticated when
-  sending with the shared chan identity.
-- Native Windows relay support and single-EXE packaging. The current relay uses
-  Unix APIs; a Windows GUI-only compile is not a functioning Windows client.
-- Linux AppImage production/validation, signed/notarized macOS distribution,
-  exhaustive interoperability testing, search, and attachment support.
-- A security audit. Lock zeros guarded application key allocations and closes
-  data access, but Qt/OS copies of displayed plaintext are not guaranteed erased
-  from every memory buffer, swap file, crash dump or screenshot.
+- Portable vault: Argon2id (64 MiB, 3 passes) and XChaCha20-Poly1305; guarded key
+  allocations; password changes; identity labels; deterministic v3/v4 chans.
+- SQLCipher mailbox: drafts, message bodies, addresses, public keys, delivery
+  records, acknowledgment tokens, subscriptions, and checkpoints remain encrypted.
+  Existing v1 mailbox documents migrate transactionally without losing drafts.
+- Sending with public recipient keys; v2/v3/v4 public-key lookup and responses;
+  cancellable background proof of work; persistent outbox and delivery history.
+- Direct-message decryption and sender verification; acknowledgments; bounded
+  automatic expiry retries; manual retry and cancellation; reply using the
+  authenticated sender key. Cancellation cannot recall objects already relayed.
+- Broadcast publishing/subscriptions (v4/v5 objects), shared chans, folder search,
+  read state, archive, trash/restore, and explicit permanent deletion.
+- A separate notbit relay receives no vault or mailbox keys. Its bounded local
+  queue accepts network objects, validates proof of work, and records acceptance,
+  rejection, and offers to connected peers. Receipt state survives restarts.
+- Peer count, offline mode, node restart, additional peer and SOCKS5 proxy settings,
+  configurable network-cache retention, recent document paths, and combined backup.
 
-## Use the macOS build
+Delivery distinguishes **queued → requesting key → preparing receipt → proof of
+work → waiting for peers → awaiting acknowledgment → acknowledged**. Broadcasts
+and chan messages can finish as **published**, without a recipient receipt.
+An offer to peers is not proof that every peer or the final recipient received it.
 
-The supplied `ynotbit.app` is an Apple Silicon development build requiring
-macOS 15.6 or newer. Its runtime frameworks and libcrypto are bundled. It is
-ad-hoc signed, not Developer ID signed or notarized.
+## Build and test
 
-1. Open the app and create a vault with a strong password.
-2. Use **Identity** to create an identity, import an existing `keys.dat`, or join
-   a chan. For existing chans, enter their expected address to verify the phrase.
-3. Create or open a mailbox document in Documents or another writable folder.
-4. Lock the vault. The node stays running; unlocking resumes mailbox inspection.
-5. Use **File → Back up mailbox and vault** to preserve both documents.
-
-The original `keys.dat` is not deleted or modified during import. Store that
-plaintext source appropriately. A mailbox alone cannot recover its encryption
-key. Password changes do not revoke old copies of the vault or old backups.
-
-The node lives in Qt's platform application-data directory, under `node`.
-`--data-dir /absolute/path` overrides its location. `--portable` uses
-`./notbit-data/node` relative to the launch working directory. User documents
-remain at the paths chosen in the file dialogs. The relay ends when the app exits.
-`--offline` prevents network startup and is useful for inspecting local data.
-
-## Build from source (macOS / Linux)
-
-Requirements: CMake 3.22+, a C++20 compiler, Qt 6.8+ Core/Gui/Quick/QuickControls2/
-Widgets, OpenSSL, libsodium, SQLCipher, pkg-config. Autoconf, Automake, make and Tcl
-are needed to build dependencies. Python 3 runs the loopback integration test.
-
-Dependencies can be installed by your package manager or built into a local
-prefix with `scripts/build-dependencies.sh WORK_DIRECTORY INSTALL_PREFIX`.
-The script checks the exact source commit IDs before building.
+Requirements: CMake 3.22+, C++20, Qt 6.8+ (Core, Gui, Quick, QuickControls2,
+Widgets, Network, Test), OpenSSL, libsodium, SQLCipher, pkg-config, Ninja.
+Python 3 runs the loopback relay tests. Autoconf, Automake, make and Tcl are
+needed when building the pinned storage dependencies from source.
 
 ```sh
+scripts/build-dependencies.sh /absolute/scratch /absolute/deps
 export PKG_CONFIG_PATH=/absolute/deps/lib/pkgconfig
 cmake -S . -B build -G Ninja \
   -DCMAKE_PREFIX_PATH=/absolute/Qt/6.8.3/macos \
   -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j4
+cmake --build build --parallel 4
 ctest --test-dir build --output-on-failure
 ```
 
-On Linux, point `CMAKE_PREFIX_PATH` at your Qt installation (usually `gcc_64` for
-Qt's binary SDK). Linux builds and packaging have not been verified here.
+On Linux, use your Qt installation's `gcc_64` directory. The executable target
+is `ynotbit`; macOS produces `ynotbit.app`. Tests use temporary documents and
+loopback peers, never public-network messages. The independent wire fixtures can
+be regenerated with `tests/generate_wire_fixtures.py` using Python cryptography
+50.0.1; the normal test suite does not need that package.
 
-To deploy on macOS, copy the built `.app`, then run Qt's `macdeployqt` with
-`-qmldir=/absolute/path/to/ui`. Deployment must be retested from a relocated
-bundle. Tests operate on temporary files and loopback peers; they do not send
-messages to the public Bitmessage network.
+## Documents, network data, and portability
 
-## Code map
+Vault and mailbox documents live wherever you choose. The node/cache directory
+uses Qt's application-data location. Its internal application identifier remains
+`NotbitDesktop/Notbit Desktop` for compatibility with the earlier alpha's cache.
+`--data-dir /absolute/path` overrides the node folder. `--portable` uses
+`./notbit-data/node` relative to the launch directory. `--offline` starts without
+network connections. The relay stops when the application exits.
 
-- `src/storage.*`: guarded secrets, authenticated vault, SQLCipher mailbox.
-- `src/protocol.*`: notbit codec adapter, identities/chans, verified message decode.
-- `src/cache.*`, `src/scanner.*`: node object index, retention and mailbox scans.
-- `src/session.*`, `ui/Main.qml`: desktop state and interface.
-- `third_party/notbit`: attributed upstream C sources with focused relay changes.
-- `tests`: persistence, tampering, lock lifecycle, real loopback relay, GUI startup.
+Default network retention is 512 MiB / 90 days; change it under **Network**.
+Local retention can outlive protocol expiry, allowing later unlocked inspection.
+Discarding a retained object can prevent later recovery; already saved mailbox
+letters are unaffected. Proof of work uses one background CPU thread.
 
-See `docs/design.md`, `docs/implementation-plan.md` and `THIRD_PARTY.md`.
+## Current boundaries
+
+This remains development software. Local tests cover document migration,
+malformed objects, protocol fixtures, real proof of work, controller delivery,
+lock/reopen, desktop actions, and real loopback relay publication. This is not
+an independent security audit or a public-network interoperability certification.
+Lock releases guarded keys and closes access; Qt/OS copies of displayed plaintext
+are not guaranteed erased from all memory, swap, crash dumps or screenshots.
+
+The packaged macOS build targets **Apple Silicon, macOS 15.6+** and bundles its
+runtime dependencies. It is ad-hoc signed, not Developer ID signed or notarized.
+Native Windows relay support and single-EXE packaging remain unfinished. Linux
+AppImage generation is not yet validated. Attachment UI, configurable CPU
+parallelism, and large-mailbox paging are not implemented.
+
+A Linux CI workflow template is in `docs/ci/build.yml`. It is not active: the
+GitHub login used to create this repository lacks the `workflow` scope required
+to publish `.github/workflows` files.
+
+See [verification](docs/verification.md), [architecture](docs/design.md),
+[implementation plan](docs/superpowers/plans/2026-09-13-complete-messaging.md),
+and [third-party attribution](THIRD_PARTY.md). Original ynotbit code is MIT
+licensed; vendored components retain their own licenses.

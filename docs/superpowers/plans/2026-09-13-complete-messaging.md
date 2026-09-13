@@ -21,13 +21,13 @@ publication from acknowledgment and from reading. Never claim a platform package
 works without building/testing it.
 
 Tasks:
-- [ ] Wire codecs: public-only recipient encryption, pubkeys versions2–4,
+- [x] Wire codecs: public-only recipient encryption, pubkeys versions2–4,
   authenticated ack frames, broadcast v4/v5, adversarial parsing tests.
-- [ ] Encrypted persistence: migrate v1, edit/upsert drafts, outbox rows and event
+- [x] Encrypted persistence: migrate v1, edit/upsert drafts, outbox rows and event
   history, recipient public keys, subscriptions, archive/trash/restore and search.
-- [ ] Relay publication: bounded file-based ciphertext-only command queue, atomically
+- [x] Relay publication: bounded file-based ciphertext-only command queue, atomically
   recorded acceptance/rejection, connected-peer status, restart-safe reannouncements.
-- [ ] Delivery controller: key discovery/request/response, ack POW then message POW,
+- [x] Delivery controller: key discovery/request/response, ack POW then message POW,
   durable recovery/retries/cancel, incoming ack responses, publication status,
   broadcast subscriptions and outgoing broadcasts, reply and self-send cases.
 - [ ] Desktop flows: edit/send existing draft, sender selector, Outbox/Sent,
@@ -43,3 +43,14 @@ Tasks:
 A task completes only when its externally observable behavior is tested. Review
 wire/persistence/security boundaries and the final integrated change; fix important
 findings before delivery. Keep progress in work/implementation-v02/ledger.md.
+
+## 2026-09-13 status
+
+Repository published as https://github.com/yshurik/ynotbit; executable/bundle/UI
+renamed ynotbit. Desktop sending, draft editing/autosave, reply, folder actions,
+subscriptions, peer/proxy/retention settings, and node restart are implemented.
+Proof of work currently uses one CPU thread. Nine local suites pass; full
+controller delivery and real relay transport are tested separately. Native
+Windows relay and Linux AppImage validation remain open, as do CPU parallelism
+and a single test combining two controllers with two actual network relays.
+CI template is preserved in docs/ci because the GitHub token lacks workflow scope.

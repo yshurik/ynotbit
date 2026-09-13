@@ -1,5 +1,7 @@
 """Exercise the real, keyless relay over loopback; never contact public peers."""
 import hashlib
+import json
+import uuid
 import pathlib
 import socket
 import struct
@@ -63,7 +65,7 @@ with tempfile.TemporaryDirectory() as temporary:
         address=struct.pack(">Q",1)+b"\0"*10+b"\xff\xff\x7f\0\0\x01"+struct.pack(">H",port)
         agent=b"/relay-test:/"
         version=struct.pack(">IQQ",3,1,int(time.time()))+address+address+struct.pack(">Q",123456)+bytes([len(agent)])+agent+b"\x01\x01"
-        peer.sendall(frame("version",version)+frame("verack"))
+        peer.sendall(frame("verack")+frame("version",version) if len(sys.argv)>2 else frame("version",version))
         peer.sendall(frame("inv",b"\x01"+object_hash))
         while True:
             command,data=receive(peer)
@@ -73,9 +75,41 @@ with tempfile.TemporaryDirectory() as temporary:
         peer.sendall(frame("object",payload))
         saved=root/"objects"/object_hash.hex();wait_file(saved)
         assert saved.read_bytes()==payload
+        # Submit a local object through the actual ciphertext bridge and fetch it as a peer.
+        # Reusing a valid inventory object also exercises crash/idempotent replay handling.
+        job=str(uuid.uuid4())
+        spool=root/"publish"/(job+".object")
+        spool.parent.mkdir(exist_ok=True)
+        spool.write_bytes(payload)
+        receipt=root/"receipts"/(job+".json")
+        wait_file(receipt)
+        result=json.loads(receipt.read_text())
+        if len(sys.argv)==2:
+            assert result["state"]=="accepted",result
+            assert spool.exists(),"No peer yet: keep ciphertext queued"
+            peer.sendall(frame("verack"))
+            deadline=time.monotonic()+8
+            while result["state"]!="offered" and time.monotonic()<deadline:
+                time.sleep(.05)
+                result=json.loads(receipt.read_text())
+        assert result["state"]=="offered",result
+        assert result["hash"]==object_hash.hex(),result
+        peer.sendall(frame("getdata",b"\x01"+object_hash))
+        while True:
+            command,data=receive(peer)
+            if command==b"object":
+                assert data==payload
+                break
+        # Invalid local objects get a visible rejection, never a false success.
+        rejected=str(uuid.uuid4())
+        (root/"publish"/(rejected+".object")).write_bytes(b"invalid")
+        rejected_receipt=root/"receipts"/(rejected+".json")
+        wait_file(rejected_receipt)
+        assert json.loads(rejected_receipt.read_text())["state"]=="rejected"
+        assert json.loads((root/"status.json").read_text())["peers"]==1
         assert not list(root.rglob("keys.dat"))
         assert not list(root.rglob("maildir"))
-        print("PASS: real loopback handshake, proof-of-work validation, keyless object storage")
+        print("PASS: real loopback handshake, proof-of-work validation, keyless object storage, publication, peer fetch, rejected malformed job")
     finally:
         process.terminate()
         try: out,err=process.communicate(timeout=5)

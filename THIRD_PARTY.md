@@ -23,3 +23,9 @@
 - zlib 1.3.2: https://zlib.net, zlib license (bundled transitive dependency).
 
 Dependency license texts are included under `licenses/`.
+
+The ynotbit 0.2 relay also adds a ciphertext-only publication bridge, a bounded
+one-second event-loop wakeup, connected-peer status, and support for either
+version/verack handshake order. The expanded Qt/OpenSSL wire implementation is
+original code. Its independent fixture generator follows the documented wire
+layout and PyBitmessage v0.6 worker behavior; it does not vendor PyBitmessage code.

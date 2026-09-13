@@ -13,6 +13,52 @@ ApplicationWindow {
     color: "#f5f7fa"
     property string folder: "Inbox"
     property var selected: ({})
+    property string draftId: ""
+    property bool dirty: false
+    property bool loadingDraft: false
+    property var senders: []
+    property var history: []
+    function saveCurrent() {
+        if (!dirty || !session.mailboxOpen)
+            return true;
+        var sender = fromField.currentIndex >= 0 ? senders[fromField.currentIndex].address : "";
+        var id = session.saveLetter(draftId, sender, toField.text, subjectField.text, bodyField.text, broadcastField.checked ? "broadcast" : "direct");
+        if (!id)
+            return false;
+        draftId = id;
+        dirty = false;
+        return true;
+    }
+    function editLetter(letter, reply) {
+        if (composer.visible && !saveCurrent())
+            return;
+        loadingDraft = true;
+        senders = session.identities;
+        draftId = reply ? "" : (letter.hash || "");
+        var sender = reply ? letter.to : letter.from;
+        fromField.currentIndex = senders.length ? 0 : -1;
+        for (var n = 0; n < senders.length; ++n)
+            if (senders[n].address === sender)
+                fromField.currentIndex = n;
+        toField.text = reply ? (letter.folder === "Channels" ? letter.to : letter.from) : (letter.to || "");
+        subjectField.text = reply ? (/^Re:/i.test(letter.subject || "") ? letter.subject : "Re: " + (letter.subject || "")) : (letter.subject || "");
+        bodyField.text = reply ? "" : (letter.body || "");
+        broadcastField.checked = !reply && letter.kind === "broadcast";
+        dirty = reply;
+        loadingDraft = false;
+        composer.open();
+    }
+    function changedDraft() {
+        if (composer.visible && !loadingDraft) {
+            dirty = true;
+            autosave.restart();
+        }
+    }
+    Timer {
+        id: autosave
+        interval: 800
+        onTriggered: root.saveCurrent()
+    }
     property color ink: "#182c3a"
     property color muted: "#758591"
     property color accent: "#197e76"
@@ -21,7 +67,30 @@ ApplicationWindow {
     onClosing: session.lock()
     Connections {
         target: session
+        function onAboutToCloseMailbox() {
+            root.saveCurrent();
+            composer.close();
+            root.selected = ({});
+            root.history = [];
+        }
+        function onChanged() {
+            if (root.selected.hash) {
+                var found = false;
+                for (var i = 0; i < session.messages.length; ++i)
+                    if (session.messages[i].hash === root.selected.hash) {
+                        root.selected = session.messages[i];
+                        found = true;
+                        break;
+                    }
+                if (!found)
+                    root.selected = ({});
+            }
+        }
         function onLocked() {
+            root.dirty = false;
+            root.draftId = "";
+            root.senders = [];
+            root.history = [];
             root.selected = ({});
             composer.close();
             toField.clear();
@@ -35,6 +104,7 @@ ApplicationWindow {
         leftPadding: 16
         rightPadding: 16
         contentItem: Text {
+            textFormat: Text.PlainText
             text: btn.text
             color: btn.enabled ? root.ink : "#a3adb4"
             font.pixelSize: 13
@@ -63,7 +133,7 @@ ApplicationWindow {
             MenuSeparator {}
             Action {
                 text: "Create mailbox…"
-                enabled: session.unlocked && !session.mailboxOpen
+                enabled: session.unlocked
                 onTriggered: session.createMailbox()
             }
             Action {
@@ -73,6 +143,11 @@ ApplicationWindow {
                     root.selected = ({});
                     session.openMailbox();
                 }
+            }
+            Action {
+                text: "Close mailbox"
+                enabled: session.mailboxOpen
+                onTriggered: session.closeMailbox()
             }
             Action {
                 text: "Back up mailbox and vault…"
@@ -85,6 +160,28 @@ ApplicationWindow {
                 enabled: session.unlocked
                 shortcut: "Ctrl+L"
                 onTriggered: session.lock()
+            }
+        }
+        Menu {
+            title: "Network"
+            Action {
+                text: "Network enabled"
+                checkable: true
+                checked: session.networkEnabled
+                onTriggered: session.setNetworkEnabled(checked)
+            }
+            Action {
+                text: "Peer / proxy settings…"
+                onTriggered: session.configureNode()
+            }
+            Action {
+                text: "Restart node"
+                enabled: session.networkEnabled
+                onTriggered: session.restartNode()
+            }
+            Action {
+                text: "Retention settings…"
+                onTriggered: session.configureRetention()
             }
         }
         Menu {
@@ -108,6 +205,11 @@ ApplicationWindow {
                 text: "Change vault password…"
                 enabled: session.unlocked
                 onTriggered: session.changePassword()
+            }
+            Action {
+                text: "Subscribe to broadcasts…"
+                enabled: session.mailboxOpen
+                onTriggered: session.subscribe()
             }
             Action {
                 text: "Inspect retained objects again"
@@ -134,8 +236,9 @@ ApplicationWindow {
                     radius: 11
                     color: root.accent
                     Text {
+                        textFormat: Text.PlainText
                         anchors.centerIn: parent
-                        text: "n"
+                        text: "y"
                         font.pixelSize: 27
                         font.bold: true
                         color: "white"
@@ -144,12 +247,14 @@ ApplicationWindow {
                 ColumnLayout {
                     spacing: 2
                     Text {
-                        text: "notbit"
+                        textFormat: Text.PlainText
+                        text: "ynotbit"
                         font.pixelSize: 21
                         font.weight: Font.DemiBold
                         color: root.ink
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: "PRIVATE CORRESPONDENCE"
                         font.pixelSize: 9
                         font.letterSpacing: 1.8
@@ -166,6 +271,7 @@ ApplicationWindow {
                     color: session.unlocked ? "#e4f3ec" : "#edf1f5"
                     Text {
                         id: stateText
+                        textFormat: Text.PlainText
                         anchors.centerIn: parent
                         text: session.unlocked ? "Vault unlocked" : "Vault locked"
                         font.pixelSize: 12
@@ -192,6 +298,7 @@ ApplicationWindow {
                 anchors.fill: parent
                 anchors.margins: 10
                 Text {
+                    textFormat: Text.PlainText
                     text: session.error
                     color: "#82461c"
                     Layout.fillWidth: true
@@ -219,9 +326,10 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: "＋  Write a letter"
                         enabled: session.mailboxOpen
-                        onClicked: composer.open()
+                        onClicked: root.editLetter({}, false)
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: "MAILBOX"
                         font.pixelSize: 10
                         font.letterSpacing: 1.6
@@ -230,14 +338,15 @@ ApplicationWindow {
                         Layout.bottomMargin: 6
                     }
                     Repeater {
-                        model: ["Inbox", "Drafts", "Channels", "Identities"]
+                        model: ["Inbox", "Drafts", "Outbox", "Sent", "Channels", "Broadcasts", "Archive", "Trash", "Identities"]
                         delegate: Rectangle {
                             required property string modelData
                             Layout.fillWidth: true
-                            height: 40
+                            height: 34
                             radius: 7
                             color: root.folder === modelData ? "#dcebe8" : "transparent"
                             Text {
+                                textFormat: Text.PlainText
                                 anchors.verticalCenter: parent.verticalCenter
                                 anchors.left: parent.left
                                 anchors.leftMargin: 12
@@ -258,12 +367,14 @@ ApplicationWindow {
                         Layout.fillHeight: true
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: "Your keys. Your mailbox."
                         color: root.muted
                         font.pixelSize: 12
                     }
                     Text {
-                        text: "Development build · 0.1"
+                        textFormat: Text.PlainText
+                        text: "Development build · 0.2"
                         color: root.muted
                         font.pixelSize: 10
                     }
@@ -289,6 +400,7 @@ ApplicationWindow {
                         radius: 22
                         color: "#e1eeeb"
                         Text {
+                            textFormat: Text.PlainText
                             anchors.centerIn: parent
                             text: "✉"
                             font.pixelSize: 32
@@ -296,6 +408,7 @@ ApplicationWindow {
                         }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         Layout.alignment: Qt.AlignHCenter
                         text: session.unlocked ? "Open your correspondence" : "A quiet place for your letters"
                         font.pixelSize: 27
@@ -303,6 +416,7 @@ ApplicationWindow {
                         color: root.ink
                     }
                     Text {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         text: session.unlocked ? "Choose an encrypted mailbox from Documents, or create one. Its key stays in your vault." : "Unlock your vault to read your mailbox. The background node can keep collecting objects while your keys stay locked."
                         wrapMode: Text.WordWrap
@@ -333,12 +447,14 @@ ApplicationWindow {
                         spacing: 30
                         ColumnLayout {
                             Text {
+                                textFormat: Text.PlainText
                                 text: "01  UNLOCK"
                                 font.pixelSize: 10
                                 font.letterSpacing: 1
                                 color: root.accent
                             }
                             Text {
+                                textFormat: Text.PlainText
                                 text: "Your vault"
                                 color: root.muted
                                 font.pixelSize: 12
@@ -346,12 +462,14 @@ ApplicationWindow {
                         }
                         ColumnLayout {
                             Text {
+                                textFormat: Text.PlainText
                                 text: "02  INSPECT"
                                 font.pixelSize: 10
                                 font.letterSpacing: 1
                                 color: root.accent
                             }
                             Text {
+                                textFormat: Text.PlainText
                                 text: "Retained objects"
                                 color: root.muted
                                 font.pixelSize: 12
@@ -359,12 +477,14 @@ ApplicationWindow {
                         }
                         ColumnLayout {
                             Text {
+                                textFormat: Text.PlainText
                                 text: "03  READ"
                                 font.pixelSize: 10
                                 font.letterSpacing: 1
                                 color: root.accent
                             }
                             Text {
+                                textFormat: Text.PlainText
                                 text: "Your correspondence"
                                 color: root.muted
                                 font.pixelSize: 12
@@ -378,12 +498,14 @@ ApplicationWindow {
                     visible: root.folder === "Identities"
                     spacing: 16
                     Text {
+                        textFormat: Text.PlainText
                         text: "Identities & chans"
                         font.pixelSize: 25
                         font.weight: Font.DemiBold
                         color: root.ink
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: session.unlocked ? "Private keys remain inside the encrypted vault. Chans share an identity among members." : "Unlock your vault to view identities."
                         color: root.muted
                         wrapMode: Text.WordWrap
@@ -415,7 +537,7 @@ ApplicationWindow {
                         delegate: Rectangle {
                             required property var modelData
                             width: ListView.view.width
-                            height: 86
+                            height: 120
                             radius: 9
                             color: "white"
                             border.color: "#e0e7eb"
@@ -424,16 +546,36 @@ ApplicationWindow {
                                 anchors.margins: 16
                                 spacing: 8
                                 Text {
+                                    textFormat: Text.PlainText
                                     text: modelData.label + (modelData.chan ? " · Shared chan" : "")
                                     color: root.ink
                                     font.bold: true
                                 }
                                 TextEdit {
+                                    textFormat: TextEdit.PlainText
                                     text: modelData.address
                                     readOnly: true
                                     selectByMouse: true
                                     color: root.muted
                                     font.pixelSize: 12
+                                }
+                                Row {
+                                    spacing: 8
+                                    Button {
+                                        text: "Copy address"
+                                        onClicked: session.copyAddress(modelData.address)
+                                    }
+                                    Button {
+                                        text: "Rename"
+                                        onClicked: session.renameIdentity(modelData.address)
+                                    }
+                                    Button {
+                                        text: modelData.chan ? "Write to chan" : "Write"
+                                        enabled: session.mailboxOpen
+                                        onClicked: root.editLetter({
+                                            to: modelData.address
+                                        }, false)
+                                    }
                                 }
                             }
                         }
@@ -455,16 +597,30 @@ ApplicationWindow {
                                 Layout.margins: 20
                                 spacing: 6
                                 Text {
+                                    textFormat: Text.PlainText
                                     text: root.folder
                                     font.pixelSize: 24
                                     font.weight: Font.DemiBold
                                     color: root.ink
                                 }
                                 Text {
+                                    textFormat: Text.PlainText
                                     text: session.document
                                     color: root.muted
                                     font.pixelSize: 11
                                 }
+                            }
+                            TextField {
+                                id: searchField
+                                Layout.fillWidth: true
+                                Layout.margins: 12
+                                placeholderText: "Search this folder"
+                            }
+                            Button {
+                                text: "Manage subscriptions"
+                                visible: root.folder === "Broadcasts"
+                                Layout.fillWidth: true
+                                onClicked: subscriptionsDialog.open()
                             }
                             ListView {
                                 Layout.fillWidth: true
@@ -474,7 +630,7 @@ ApplicationWindow {
                                 delegate: Rectangle {
                                     required property var modelData
                                     width: ListView.view.width
-                                    height: modelData.folder === root.folder ? 104 : 0
+                                    height: modelData.folder === root.folder && (!searchField.text || (modelData.subject + " " + modelData.body + " " + modelData.from + " " + modelData.to).toLowerCase().includes(searchField.text.toLowerCase())) ? 104 : 0
                                     visible: height > 0
                                     color: root.selected.hash === modelData.hash ? "#eaf3f1" : "white"
                                     Column {
@@ -482,13 +638,15 @@ ApplicationWindow {
                                         anchors.margins: 17
                                         spacing: 7
                                         Text {
+                                            textFormat: Text.PlainText
                                             width: parent.width
-                                            text: modelData.subject || "Untitled letter"
+                                            text: (modelData.unread ? "• " : "") + (modelData.subject || "Untitled letter")
                                             elide: Text.ElideRight
                                             font.weight: Font.DemiBold
                                             color: root.ink
                                         }
                                         Text {
+                                            textFormat: Text.PlainText
                                             width: parent.width
                                             text: modelData.body.replace(/\n/g, " ")
                                             elide: Text.ElideRight
@@ -496,14 +654,18 @@ ApplicationWindow {
                                             font.pixelSize: 12
                                         }
                                         Text {
-                                            text: modelData.received
+                                            textFormat: Text.PlainText
+                                            text: modelData.state ? modelData.state.replace(/_/g, " ") : modelData.received
                                             color: root.muted
                                             font.pixelSize: 10
                                         }
                                     }
                                     MouseArea {
                                         anchors.fill: parent
-                                        onClicked: root.selected = modelData
+                                        onClicked: {
+                                            root.selected = modelData;
+                                            session.readLetter(modelData.hash);
+                                        }
                                     }
                                     Rectangle {
                                         anchors.bottom: parent.bottom
@@ -528,12 +690,14 @@ ApplicationWindow {
                             visible: !root.selected.hash
                             spacing: 12
                             Text {
+                                textFormat: Text.PlainText
                                 Layout.alignment: Qt.AlignHCenter
                                 text: "No letter selected"
                                 color: root.ink
                                 font.pixelSize: 21
                             }
                             Text {
+                                textFormat: Text.PlainText
                                 text: "Letters appear after cached objects are decrypted."
                                 color: root.muted
                                 font.pixelSize: 12
@@ -548,6 +712,7 @@ ApplicationWindow {
                                 width: parent.width
                                 spacing: 18
                                 Text {
+                                    textFormat: Text.PlainText
                                     Layout.fillWidth: true
                                     text: root.selected.subject || "Untitled letter"
                                     font.pixelSize: 25
@@ -556,13 +721,75 @@ ApplicationWindow {
                                     wrapMode: Text.WordWrap
                                 }
                                 Text {
+                                    textFormat: Text.PlainText
                                     Layout.fillWidth: true
-                                    text: root.selected.folder === "Drafts" ? "DRAFT · NOT SENT" : "DECRYPTED · SAVED LOCALLY"
+                                    text: root.selected.state ? root.selected.state.replace(/_/g, " ").toUpperCase() : root.selected.folder === "Drafts" ? "DRAFT · NOT SENT" : "DECRYPTED · SAVED LOCALLY"
                                     color: root.accent
                                     font.pixelSize: 10
                                     font.letterSpacing: 1.1
                                 }
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: 7
+                                    Button {
+                                        text: "Edit / Send"
+                                        visible: root.selected.folder === "Drafts"
+                                        onClicked: root.editLetter(root.selected, false)
+                                    }
+                                    Button {
+                                        text: "Reply"
+                                        visible: ["Inbox", "Channels", "Broadcasts", "Archive"].includes(root.selected.folder)
+                                        onClicked: root.editLetter(root.selected, true)
+                                    }
+                                    Button {
+                                        text: "Delivery history"
+                                        visible: !!root.selected.state
+                                        onClicked: {
+                                            root.history = session.deliveryHistory(root.selected.hash);
+                                            historyDialog.open();
+                                        }
+                                    }
+                                    Button {
+                                        text: "Retry"
+                                        visible: ["failed", "expired", "cancelled"].includes(root.selected.state)
+                                        onClicked: session.retryLetter(root.selected.hash)
+                                    }
+                                    Button {
+                                        text: "Cancel delivery"
+                                        visible: !!root.selected.state && !["acknowledged", "published", "cancelled", "failed", "expired"].includes(root.selected.state)
+                                        onClicked: session.cancelLetter(root.selected.hash)
+                                    }
+                                    Button {
+                                        text: "Archive"
+                                        visible: ["Inbox", "Channels", "Broadcasts", "Sent"].includes(root.selected.folder)
+                                        onClicked: session.moveLetter(root.selected.hash, "Archive")
+                                    }
+                                    Button {
+                                        text: "Trash"
+                                        visible: root.selected.folder !== "Trash" && (!root.selected.state || ["acknowledged", "published", "cancelled", "failed", "expired"].includes(root.selected.state))
+                                        onClicked: session.moveLetter(root.selected.hash, "Trash")
+                                    }
+                                    Button {
+                                        text: "Restore"
+                                        visible: root.selected.folder === "Trash"
+                                        onClicked: session.restoreLetter(root.selected.hash)
+                                    }
+                                    Button {
+                                        text: "Delete permanently"
+                                        visible: root.selected.folder === "Trash"
+                                        onClicked: session.deleteLetter(root.selected.hash)
+                                    }
+                                }
+                                Text {
+                                    textFormat: Text.PlainText
+                                    Layout.fillWidth: true
+                                    visible: !!root.selected.deliveryError
+                                    text: root.selected.deliveryError || ""
+                                    color: "#82461c"
+                                    wrapMode: Text.WordWrap
+                                }
                                 TextEdit {
+                                    textFormat: TextEdit.PlainText
                                     Layout.fillWidth: true
                                     text: "From  " + (root.selected.from || "Choose an identity before sending") + "\nTo      " + (root.selected.to || "")
                                     readOnly: true
@@ -577,6 +804,7 @@ ApplicationWindow {
                                     color: "#e0e6eb"
                                 }
                                 TextEdit {
+                                    textFormat: TextEdit.PlainText
                                     Layout.fillWidth: true
                                     text: root.selected.body || ""
                                     readOnly: true
@@ -610,6 +838,7 @@ ApplicationWindow {
                         color: root.accent
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: session.status
                         color: root.ink
                         font.pixelSize: 11
@@ -618,12 +847,14 @@ ApplicationWindow {
                         Layout.fillWidth: true
                     }
                     Text {
+                        textFormat: Text.PlainText
                         text: session.objectCount + " cached objects · " + (session.cacheBytes / 1048576).toFixed(1) + " MB"
                         color: root.muted
                         font.pixelSize: 11
                     }
                 }
                 Text {
+                    textFormat: Text.PlainText
                     text: session.activity
                     color: root.muted
                     font.pixelSize: 10
@@ -635,51 +866,176 @@ ApplicationWindow {
     }
     Dialog {
         id: composer
-        title: "Write a letter"
+        objectName: "composer"
+        title: root.draftId ? "Edit letter" : "Write a letter"
         modal: true
-        width: 640
-        height: 540
+        width: Math.min(680, root.width - 60)
+        height: Math.min(630, root.height - 70)
         anchors.centerIn: parent
-        standardButtons: Dialog.Cancel
+        closePolicy: Popup.CloseOnEscape
+        onClosed: {
+            if (root.dirty && session.mailboxOpen && !root.saveCurrent())
+                Qt.callLater(function () {
+                    composer.open();
+                });
+        }
         ColumnLayout {
             anchors.fill: parent
             spacing: 12
+            ComboBox {
+                id: fromField
+                objectName: "senderSelector"
+                Layout.fillWidth: true
+                model: root.senders
+                textRole: "label"
+                onActivated: root.changedDraft()
+            }
+            Text {
+                textFormat: Text.PlainText
+                visible: !root.senders.length
+                text: "Create or import an identity to send this letter."
+                color: root.muted
+            }
+            CheckBox {
+                id: broadcastField
+                text: "Broadcast to subscribers"
+                onToggled: root.changedDraft()
+            }
             TextField {
                 id: toField
+                objectName: "recipientField"
                 Layout.fillWidth: true
+                visible: !broadcastField.checked
                 placeholderText: "Recipient · BM-address"
+                onTextEdited: root.changedDraft()
             }
             TextField {
                 id: subjectField
+                objectName: "subjectField"
                 Layout.fillWidth: true
                 placeholderText: "Subject"
+                onTextEdited: root.changedDraft()
             }
             ScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 TextArea {
                     id: bodyField
+                    textFormat: TextEdit.PlainText
+                    objectName: "bodyField"
                     placeholderText: "Take your time. Write something worth sending."
                     wrapMode: TextEdit.Wrap
+                    onTextChanged: root.changedDraft()
                 }
             }
             Text {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
-                text: "This development build saves encrypted drafts. Sending and acknowledgments are still being integrated."
+                text: session.error || (root.dirty ? "Unsaved changes" : root.draftId ? "Saved in your encrypted mailbox" : "Drafts are saved as you write")
+                wrapMode: Text.WordWrap
+                color: session.error ? "#82461c" : root.muted
+                font.pixelSize: 12
+            }
+            Text {
+                textFormat: Text.PlainText
+                Layout.fillWidth: true
+                text: "Send queues proof of work and network delivery. Locking pauses preparation; already submitted objects can continue relaying."
                 wrapMode: Text.WordWrap
                 color: root.muted
                 font.pixelSize: 12
             }
+            RowLayout {
+                FlatButton {
+                    text: "Save & close"
+                    onClicked: {
+                        root.dirty = true;
+                        if (root.saveCurrent()) {
+                            composer.close();
+                            root.folder = "Drafts";
+                        }
+                    }
+                }
+                Item {
+                    Layout.fillWidth: true
+                }
+                FlatButton {
+                    objectName: "sendButton"
+                    text: "Send letter"
+                    enabled: root.senders.length > 0 && !!bodyField.text.trim() && (broadcastField.checked || !!toField.text.trim())
+                    onClicked: {
+                        root.dirty = true;
+                        if (root.saveCurrent() && session.sendLetter(root.draftId)) {
+                            root.dirty = false;
+                            composer.close();
+                            root.folder = "Outbox";
+                            root.selected = ({});
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Dialog {
+        id: historyDialog
+        title: "Delivery history"
+        modal: true
+        width: 580
+        height: 420
+        anchors.centerIn: parent
+        standardButtons: Dialog.Close
+        ScrollView {
+            anchors.fill: parent
+            contentWidth: availableWidth
+            Column {
+                width: parent.width
+                spacing: 16
+                Repeater {
+                    model: root.history
+                    Text {
+                        textFormat: Text.PlainText
+                        required property var modelData
+                        width: parent.width
+                        text: modelData.time + " · " + modelData.state.replace(/_/g, " ") + "\n" + modelData.detail
+                        wrapMode: Text.WordWrap
+                        color: root.ink
+                    }
+                }
+            }
+        }
+    }
+    Dialog {
+        id: subscriptionsDialog
+        title: "Broadcast subscriptions"
+        modal: true
+        width: 580
+        height: 420
+        anchors.centerIn: parent
+        standardButtons: Dialog.Close
+        ColumnLayout {
+            anchors.fill: parent
             FlatButton {
-                text: "Save encrypted draft"
-                onClicked: {
-                    session.saveDraft(toField.text, subjectField.text, bodyField.text);
-                    if (!session.error) {
-                        composer.close();
-                        toField.clear();
-                        subjectField.clear();
-                        bodyField.clear();
-                        root.folder = "Drafts";
+                text: "Add subscription…"
+                onClicked: session.subscribe()
+            }
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: session.subscriptions
+                clip: true
+                delegate: Column {
+                    required property var modelData
+                    width: ListView.view.width
+                    spacing: 5
+                    Text {
+                        textFormat: Text.PlainText
+                        width: parent.width
+                        text: modelData.label + "\n" + modelData.address
+                        wrapMode: Text.WrapAnywhere
+                        color: root.ink
+                    }
+                    Button {
+                        text: "Unsubscribe"
+                        onClicked: session.unsubscribe(modelData.address)
                     }
                 }
             }

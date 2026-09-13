@@ -636,7 +636,7 @@ ntb_main_context_poll(struct ntb_main_context *mc)
 
         n_events = poll((struct pollfd *) mc->poll_array.data,
                         mc->poll_array.length / sizeof (struct pollfd),
-                        get_timeout(mc));
+                        get_timeout(mc) < 0 || get_timeout(mc) > 1000 ? 1000 : get_timeout(mc));
 
         /* Once we've polled we can assume that some time has passed so our
            cached values of the clocks are no longer valid */

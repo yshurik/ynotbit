@@ -65,6 +65,35 @@ int main(int argc, char **argv) {
         QTest::qWait(200);
         if (app.arguments().size() > 1)
             require(window->grabWindow().save(app.arguments()[1]), "preview capture");
+        // Reopen an existing draft, edit it, and activate the actual QML send control.
+        auto draft = session.messages().first().toMap();
+        auto ownAddress = session.identities().first().toMap().value("address").toString();
+        draft["to"] = ownAddress;
+        require(QMetaObject::invokeMethod(window, "editLetter", Q_ARG(QVariant, QVariant(draft)),
+                                          Q_ARG(QVariant, QVariant(false))),
+                "open draft editor");
+        QTest::qWait(20);
+        auto *sendButton = window->findChild<QObject *>("sendButton");
+        auto *bodyField = window->findChild<QObject *>("bodyField");
+        require(sendButton && bodyField, "send controls exist");
+        bodyField->setProperty("text", "Edited through the composer");
+        require(sendButton->property("enabled").toBool(),
+                "send control enabled with sender and recipient");
+        require(QMetaObject::invokeMethod(sendButton, "clicked"), "activate send control");
+        require(session.messages().size() == 1, "editing does not duplicate draft");
+        auto outgoing = session.messages().first().toMap();
+        require(outgoing.value("folder") == "Outbox" &&
+                    outgoing.value("body") == "Edited through the composer",
+                "send saves edits and queues letter");
+        session.cancelLetter(outgoing.value("hash").toString());
+        require(session.messages().first().toMap().value("state") == "cancelled",
+                "desktop cancellation");
+        // Lock flushes the editor immediately, before its debounce timer fires.
+        require(QMetaObject::invokeMethod(window, "editLetter",
+                                          Q_ARG(QVariant, QVariant(QVariantMap())),
+                                          Q_ARG(QVariant, QVariant(false))),
+                "open new editor");
+        bodyField->setProperty("text", "Saved when locking immediately");
         session.lock();
         QTest::qWait(50);
         require(!session.unlocked() && !session.mailboxOpen() && session.messages().isEmpty() &&
@@ -78,8 +107,8 @@ int main(int argc, char **argv) {
                 "wrong password rejected in desktop");
         answer = "a private test password";
         session.unlockVault();
-        require(session.mailboxOpen() && session.messages().size() == 1,
-                "unlock restores document and message list");
+        require(session.mailboxOpen() && session.messages().size() == 2,
+                "unlock restores sent draft and draft flushed before lock");
         session.lock();
         std::cout << "PASS: desktop file/password dialogs, identity, encrypted draft, lock clears "
                      "views, failed unlock, document reopen\n";

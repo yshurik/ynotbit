@@ -492,6 +492,8 @@ set_log_file(struct ntb_store *store,
         }
 }
 
+extern void ynotbit_relay_tick(struct ntb_network *, const char *);
+
 static void
 run_main_loop(struct ntb_network *nw,
               struct ntb_keyring *keyring,
@@ -520,9 +522,10 @@ run_main_loop(struct ntb_network *nw,
 
         quit_source = ntb_main_context_add_quit(NULL, quit_cb, &quit);
 
-        do
+        do {
+                ynotbit_relay_tick(nw, option_store_directory);
                 ntb_main_context_poll(NULL);
-        while(!quit);
+        } while(!quit);
 
         ntb_log("Exiting...");
 

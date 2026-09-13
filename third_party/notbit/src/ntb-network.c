@@ -154,6 +154,7 @@ struct ntb_network_peer {
         struct ntb_list requested_inventories;
 
         enum ntb_network_peer_state state;
+        bool received_version;
         enum ntb_network_direction direction;
 };
 
@@ -455,6 +456,7 @@ add_peer(struct ntb_network *nw,
         peer = ntb_slice_alloc(&ntb_network_peer_allocator);
 
         peer->state = NTB_NETWORK_PEER_STATE_AWAITING_VERACK_OUT;
+        peer->received_version = false;
 
         command_signal = ntb_connection_get_event_signal(conn);
         ntb_signal_add(command_signal, &peer->event_listener);
@@ -833,6 +835,7 @@ handle_version(struct ntb_network *nw,
                 nw->n_unconnected_addrs--;
         }
 
+        peer->received_version = true;
         ntb_connection_send_verack(peer->connection);
 
         switch (peer->state) {
@@ -860,7 +863,10 @@ handle_verack(struct ntb_network *nw,
 {
         switch (peer->state) {
         case NTB_NETWORK_PEER_STATE_AWAITING_VERACK_OUT:
-                peer->state = NTB_NETWORK_PEER_STATE_AWAITING_VERSION_OUT;
+                if (peer->received_version)
+                        connection_established(nw, peer);
+                else
+                        peer->state = NTB_NETWORK_PEER_STATE_AWAITING_VERSION_OUT;
                 break;
 
         case NTB_NETWORK_PEER_STATE_AWAITING_VERACK_IN:
@@ -1822,4 +1828,26 @@ ntb_network_free(struct ntb_network *nw)
         assert(nw->n_unconnected_addrs == 0);
 
         free(nw);
+}
+
+/* Desktop bridge: called only on the network event-loop thread. */
+int ntb_network_connected_peers(struct ntb_network *nw)
+{
+        int count = 0;
+        struct ntb_network_peer *peer;
+        ntb_list_for_each(peer, &nw->peers, link)
+                if (peer->state == NTB_NETWORK_PEER_STATE_CONNECTED) count++;
+        return count;
+}
+void ntb_network_offer(struct ntb_network *nw, const uint8_t *hash)
+{
+        broadcast_inv(nw, hash);
+}
+
+int ntb_network_submit(struct ntb_network *nw, const uint8_t *object, size_t length)
+{
+        uint8_t hash[NTB_PROTO_HASH_LENGTH];
+        ntb_proto_double_hash(object, length, hash);
+        ntb_network_add_object_from_data(nw, object, length, 0, "local encrypted outbox");
+        return ntb_network_get_object(nw, hash, NULL) != NTB_NETWORK_OBJECT_LOCATION_NOWHERE;
 }
