@@ -26,7 +26,7 @@ class Session : public QObject {
     Mailbox mailbox_;
     std::unique_ptr<Cache> cache_;
     std::unique_ptr<Delivery> delivery_;
-    QString root_, vaultPath_, mailPath_, mailKey_, error_, activity_;
+    QString root_, vaultPath_, mailPath_, mailKey_, pendingVaultPath_, error_, activity_;
     QVariantList messages_;
     std::optional<quint64> displayedRevision_;
     QProcess node_;
@@ -80,6 +80,10 @@ class Session : public QObject {
     Q_INVOKABLE void createVault();
     Q_INVOKABLE void openVault();
     Q_INVOKABLE void unlockVault();
+    Q_INVOKABLE void beginVaultCreate();
+    Q_INVOKABLE void beginVaultOpen();
+    Q_INVOKABLE void beginVaultUnlock();
+    Q_INVOKABLE void submitVaultPassword(QString password, QString repeat, bool create);
     Q_INVOKABLE void createMailbox();
     Q_INVOKABLE void openMailbox();
     Q_INVOKABLE void lock();
@@ -116,5 +120,7 @@ class Session : public QObject {
     void messageRead(QString id);
     void locked();
     void aboutToCloseMailbox();
+    void vaultPasswordRequired(QString path, bool create);
+    void vaultPasswordAccepted();
 };
 } // namespace bm

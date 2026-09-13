@@ -134,6 +134,17 @@ ApplicationWindow {
             markdownEditor.loadMarkdown("");
             readerEditor.loadMarkdown("");
         }
+        function onVaultPasswordRequired(path, create) {
+            vaultDialog.creating = create;
+            vaultDialog.path = path;
+            vaultPassword.clear();
+            vaultRepeat.clear();
+            session.clearError();
+            vaultDialog.open();
+        }
+        function onVaultPasswordAccepted() {
+            vaultDialog.close();
+        }
     }
     component FlatButton: Button {
         id: btn
@@ -166,12 +177,12 @@ ApplicationWindow {
             Action {
                 text: "Create vault…"
                 enabled: !session.unlocked
-                onTriggered: session.createVault()
+                onTriggered: session.beginVaultCreate()
             }
             Action {
                 text: "Open vault…"
                 enabled: !session.unlocked
-                onTriggered: session.openVault()
+                onTriggered: session.beginVaultOpen()
             }
             MenuSeparator {}
             Action {
@@ -323,7 +334,7 @@ ApplicationWindow {
                 }
                 FlatButton {
                     text: session.unlocked ? "Lock vault" : "Unlock vault"
-                    onClicked: session.unlocked ? session.lock() : session.unlockVault()
+                    onClicked: session.unlocked ? session.lock() : session.beginVaultUnlock()
                 }
             }
         }
@@ -472,11 +483,11 @@ ApplicationWindow {
                         Layout.topMargin: 9
                         FlatButton {
                             text: session.unlocked ? "Open mailbox…" : "Open vault…"
-                            onClicked: session.unlocked ? session.openMailbox() : session.openVault()
+                            onClicked: session.unlocked ? session.openMailbox() : session.beginVaultOpen()
                         }
                         FlatButton {
                             text: session.unlocked ? "Create mailbox…" : "Create vault…"
-                            onClicked: session.unlocked ? session.createMailbox() : session.createVault()
+                            onClicked: session.unlocked ? session.createMailbox() : session.beginVaultCreate()
                         }
                     }
                     Rectangle {
@@ -935,6 +946,81 @@ ApplicationWindow {
                     elide: Text.ElideRight
                 }
             }
+        }
+    }
+    Dialog {
+        id: vaultDialog
+        objectName: "vaultPasswordDialog"
+        property bool creating: false
+        property string path: ""
+        title: creating ? "Create encrypted vault" : "Unlock vault"
+        modal: true
+        width: Math.min(470, root.width - 56)
+        anchors.centerIn: parent
+        padding: 24
+        closePolicy: Popup.CloseOnEscape
+        onOpened: vaultPassword.forceActiveFocus()
+        background: Rectangle {
+            color: root.surface
+            radius: 12
+            border.color: root.border
+        }
+        contentItem: ColumnLayout {
+            spacing: 14
+            Text {
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                text: vaultDialog.creating ? "Choose a password to protect your identities and mailbox keys." : "Unlock your vault to inspect the encrypted mailbox."
+                wrapMode: Text.WordWrap
+                color: root.muted
+            }
+            Text {
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                text: vaultDialog.path
+                elide: Text.ElideMiddle
+                color: root.muted
+                font.pixelSize: 11
+            }
+            TextField {
+                id: vaultPassword
+                Layout.fillWidth: true
+                placeholderText: vaultDialog.creating ? "Vault password" : "Password"
+                echoMode: TextInput.Password
+                onAccepted: vaultDialog.submit()
+            }
+            TextField {
+                id: vaultRepeat
+                Layout.fillWidth: true
+                visible: vaultDialog.creating
+                placeholderText: "Repeat password"
+                echoMode: TextInput.Password
+                onAccepted: vaultDialog.submit()
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: session.error.length > 0
+                textFormat: Text.PlainText
+                text: session.error
+                color: root.warningInk
+                wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                FlatButton {
+                    text: "Cancel"
+                    onClicked: vaultDialog.close()
+                }
+                FlatButton {
+                    text: vaultDialog.creating ? "Create vault" : "Unlock"
+                    enabled: vaultPassword.text.length > 0 && (!vaultDialog.creating || vaultRepeat.text.length > 0)
+                    onClicked: vaultDialog.submit()
+                }
+            }
+        }
+        function submit() {
+            session.submitVaultPassword(vaultPassword.text, vaultRepeat.text, creating);
         }
     }
     Dialog {

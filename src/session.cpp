@@ -211,6 +211,79 @@ void Session::unlockVault() {
             openMailboxPath(mailPath_);
     });
 }
+void Session::beginVaultCreate() {
+    attempt([&] {
+        check(!unlocked(), "Lock the current vault first");
+        auto p = chooseSave("Create vault", "Bitmessage vault (*.bmvault)", ".bmvault");
+        if (p.isEmpty())
+            return;
+        pendingVaultPath_ = p;
+        emit vaultPasswordRequired(p, true);
+    });
+}
+void Session::beginVaultOpen() {
+    attempt([&] {
+        check(!unlocked(), "Lock the current vault first");
+        auto p = QFileDialog::getOpenFileName(nullptr, "Open vault", documentsPath(),
+                                              "Bitmessage vault (*.bmvault)");
+        if (p.isEmpty())
+            return;
+        pendingVaultPath_ = p;
+        emit vaultPasswordRequired(p, false);
+    });
+}
+void Session::beginVaultUnlock() {
+    attempt([&] {
+        check(!unlocked(), "Vault is already unlocked");
+        check(!vaultPath_.isEmpty(), "Choose a vault first");
+        pendingVaultPath_ = vaultPath_;
+        emit vaultPasswordRequired(vaultPath_, false);
+    });
+}
+void Session::submitVaultPassword(QString passphrase, QString repeated, bool create) {
+    attempt([&] {
+        check(!pendingVaultPath_.isEmpty(), "Choose a vault first");
+        check(!passphrase.isEmpty(), "Password cannot be empty");
+        if (create)
+            check(passphrase == repeated, "Passwords do not match");
+        const auto path = pendingVaultPath_;
+        QByteArray bytes = passphrase.toUtf8();
+        passphrase.fill(QChar(0));
+        repeated.fill(QChar(0));
+        if (create) {
+            check(!QFile::exists(path), "Choose a new filename; existing vaults are never overwritten");
+            acquireVault(path);
+            try {
+                vault_.create(path, bytes);
+                vaultPath_ = path;
+                mailPath_.clear();
+                mailKey_.clear();
+                activity_ = "Vault created. Add an identity and create a mailbox.";
+            } catch (...) {
+                vaultLock_.reset();
+                sodium_memzero(bytes.data(), bytes.size());
+                throw;
+            }
+        } else {
+            acquireVault(path);
+            try {
+                vault_.unlock(path, bytes);
+                vaultPath_ = path;
+                mailPath_.clear();
+                mailKey_.clear();
+                activity_ = "Vault unlocked. Open a mailbox to inspect cached objects.";
+            } catch (...) {
+                vaultLock_.reset();
+                sodium_memzero(bytes.data(), bytes.size());
+                throw;
+            }
+        }
+        sodium_memzero(bytes.data(), bytes.size());
+        pendingVaultPath_.clear();
+        emit vaultPasswordAccepted();
+        emit changed();
+    });
+}
 void Session::createMailbox() {
     emit aboutToCloseMailbox();
     attempt([&] {
