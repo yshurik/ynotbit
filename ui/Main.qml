@@ -687,6 +687,9 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 clip: true
+                                reuseItems: true
+                                cacheBuffer: 0
+                                boundsBehavior: Flickable.StopAtBounds
                                 model: session.messageModel
                                 onContentYChanged: if (contentY + height * 2 > contentHeight) session.messageModel.fetchMore()
                                 delegate: Rectangle {
@@ -699,10 +702,6 @@ ApplicationWindow {
                                     required property bool unread
                                     required property string state
                                     required property string received
-                                    Connections {
-                                        target: session
-                                        function onMessageRead(id) { if (id === letterRow.hash) letterRow.unread = false; }
-                                    }
                                     width: ListView.view.width
                                     height: 104
                                     visible: true
