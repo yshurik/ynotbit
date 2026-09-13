@@ -19,7 +19,9 @@ public:
         return QVariant::fromValue(QImage());
     }
 };
-constexpr auto dialect = QTextDocument::MarkdownDialectGitHub | QTextDocument::MarkdownNoHTML;
+constexpr QTextDocument::MarkdownFeatures dialect =
+    QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
+                                    QTextDocument::MarkdownNoHTML);
 }
 MarkdownEditor::MarkdownEditor(QObject *parent) : QObject(parent) {}
 void MarkdownEditor::attach(QObject *textEdit) {

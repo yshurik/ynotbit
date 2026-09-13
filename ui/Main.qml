@@ -880,7 +880,6 @@ ApplicationWindow {
                                     color: root.ink
                                     selectionColor: root.active
                                     selectedTextColor: root.ink
-                                    linkColor: root.accent
                                     font.pixelSize: 15
                                     onLinkActivated: function(link) {
                                         externalLinkDialog.destination = link;

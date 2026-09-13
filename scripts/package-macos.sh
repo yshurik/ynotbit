@@ -6,6 +6,9 @@ build_dir="${1:?Usage: package-macos.sh BUILD_DIR OUTPUT_ZIP QT_PREFIX}"
 output_zip="${2:?An absolute output zip path is required}"
 qt_prefix="${3:?Qt installation prefix is required}"
 case "$output_zip" in /*) ;; *) echo 'Use an absolute output path' >&2; exit 1;; esac
+if [[ ! -f "$project_dir/assets/ynotbit.icns" ]]; then
+  "$project_dir/scripts/make-macos-icon.sh" "$project_dir/assets/ynotbit.icns"
+fi
 stage_dir="$(mktemp -d /tmp/ynotbit-package.XXXXXX)"
 trap 'rm -rf "$stage_dir"' EXIT
 app_dir="$stage_dir/ynotbit.app"
