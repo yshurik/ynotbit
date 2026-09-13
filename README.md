@@ -8,6 +8,8 @@ separate encrypted mailbox document. Its keyless relay continues collecting
 network objects while the vault is locked. Unlocking inspects retained objects
 and saves matching letters to the mailbox.
 
+![ynotbit desktop with an editable encrypted draft](docs/images/desktop.png)
+
 ## Using the app
 
 1. Create or open a `.bmvault` file. Create an identity, import `keys.dat`, or join
@@ -72,6 +74,12 @@ is `ynotbit`; macOS produces `ynotbit.app`. Tests use temporary documents and
 loopback peers, never public-network messages. The independent wire fixtures can
 be regenerated with `tests/generate_wire_fixtures.py` using Python cryptography
 50.0.1; the normal test suite does not need that package.
+
+To package an Apple Silicon build with Qt's runtime libraries:
+
+```sh
+scripts/package-macos.sh /absolute/build /absolute/ynotbit-macos-arm64.zip /absolute/Qt/6.8.3/macos
+```
 
 ## Documents, network data, and portability
 

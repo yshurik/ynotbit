@@ -15,6 +15,7 @@ ditto --norsrc "$build_dir/ynotbit.app" "$app_dir"
 rm -rf "$app_dir/Contents/PlugIns/sqldrivers" "$app_dir/Contents/Resources/qml/QtQuick/LocalStorage"
 mkdir -p "$app_dir/Contents/Resources/licenses"
 cp "$project_dir"/licenses/* "$app_dir/Contents/Resources/licenses/"
+cp "$project_dir/third_party/notbit/COPYING" "$app_dir/Contents/Resources/licenses/notbit.txt"
 cp "$project_dir/LICENSE" "$project_dir/THIRD_PARTY.md" "$app_dir/Contents/Resources/licenses/"
 python3 - "$app_dir" <<'PY'
 import pathlib, subprocess, sys
