@@ -21,7 +21,8 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     app.setOrganizationName("NotbitDesktop");
     app.setApplicationName("Notbit Desktop");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationDisplayName("ynotbit");
+    app.setApplicationVersion("0.2.0-dev");
     QQuickStyle::setStyle("Basic");
     try {
         auto args = app.arguments();

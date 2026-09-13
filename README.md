@@ -1,4 +1,11 @@
-# Notbit Desktop — development build 0.1
+# ynotbit — why not bit?
+
+A compact desktop Bitmessage client based on [notbit](https://github.com/bpeel/notbit),
+by [yshurik](https://github.com/yshurik). Development version: **0.2.0-dev**.
+
+The sending workflow is under active implementation. The current GUI still only
+saves drafts; the encrypted outbox and expanded wire codecs are foundational work,
+not a claim of working end-to-end delivery.
 
 A native Qt Quick desktop client foundation based on notbit. This first build
 implements encrypted vault/mailbox documents, a keyless background relay, and
@@ -44,7 +51,7 @@ local incoming-message inspection. It is not yet a complete messaging client.
 
 ## Use the macOS build
 
-The supplied `Notbit.app` is an Apple Silicon development build requiring
+The supplied `ynotbit.app` is an Apple Silicon development build requiring
 macOS 15.6 or newer. Its runtime frameworks and libcrypto are bundled. It is
 ad-hoc signed, not Developer ID signed or notarized.
 

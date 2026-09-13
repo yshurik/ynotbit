@@ -9,7 +9,7 @@ ApplicationWindow {
     height: 780
     minimumWidth: 900
     minimumHeight: 620
-    title: session.document + " — Notbit"
+    title: session.document + " — ynotbit"
     color: "#f5f7fa"
     property string folder: "Inbox"
     property var selected: ({})

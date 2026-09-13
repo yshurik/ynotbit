@@ -1,0 +1,28 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build autoconf automake libtool tcl-dev libssl-dev libgl1-mesa-dev libxkbcommon-dev
+          python3 -m pip install aqtinstall==3.3.0
+          python3 -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 -O "$RUNNER_TEMP/qt"
+      - name: Build encrypted storage dependencies
+        run: |
+          scripts/build-dependencies.sh "$RUNNER_TEMP/sources" "$RUNNER_TEMP/deps"
+          echo "PKG_CONFIG_PATH=$RUNNER_TEMP/deps/lib/pkgconfig" >> "$GITHUB_ENV"
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/qt/6.8.3/gcc_64"
+      - name: Build
+        run: cmake --build build --parallel 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

@@ -1,5 +1,6 @@
 #include "storage.h"
 #include "protocol.h"
+#include "sqlite_helpers.h"
 #include <QDataStream>
 #include <QDateTime>
 #include <QFile>
@@ -236,45 +237,7 @@ QStringList Vault::mailboxIds() const {
         ids << id;
     return ids;
 }
-class Statement {
-    sqlite3_stmt *s_ = nullptr;
-
-  public:
-    Statement(sqlite3 *db, const char *sql) {
-        check(db, "Mailbox is closed");
-        if (sqlite3_prepare_v2(db, sql, -1, &s_, nullptr) != SQLITE_OK)
-            fail(QString::fromUtf8(sqlite3_errmsg(db)));
-    }
-    ~Statement() {
-        sqlite3_finalize(s_);
-    }
-    sqlite3_stmt *get() const {
-        return s_;
-    }
-    void text(int n, const QString &t) {
-        auto b = t.toUtf8();
-        check(sqlite3_bind_text(s_, n, b.constData(), b.size(), SQLITE_TRANSIENT) == SQLITE_OK,
-              "Cannot bind value");
-    }
-    void number(int n, qint64 i) {
-        sqlite3_bind_int64(s_, n, i);
-    }
-    bool row() {
-        int r = sqlite3_step(s_);
-        if (r == SQLITE_ROW)
-            return true;
-        check(r == SQLITE_DONE, QString::fromUtf8(sqlite3_errmsg(sqlite3_db_handle(s_))));
-        return false;
-    }
-    QString text(int n) const {
-        auto p = sqlite3_column_text(s_, n);
-        return p ? QString::fromUtf8(reinterpret_cast<const char *>(p), sqlite3_column_bytes(s_, n))
-                 : QString();
-    }
-    qint64 number(int n) const {
-        return sqlite3_column_int64(s_, n);
-    }
-};
+using detail::Statement;
 void Mailbox::sql(const char *q) {
     check(db_, "Mailbox is closed");
     char *err = nullptr;
@@ -328,6 +291,7 @@ void Mailbox::create(const QString &path, const QString &id, const Secret &key) 
         s.text(1, id);
         s.row();
         sql("COMMIT");
+        migrate();
     } catch (...) {
         close();
         QFile::remove(path);
@@ -338,8 +302,9 @@ void Mailbox::open(const QString &path, const Secret &key) {
     connect(path, key, false);
     try {
         Statement s(db_, "PRAGMA user_version");
-        check(s.row() && s.number(0) == 1, "Unsupported mailbox format");
+        check(s.row() && (s.number(0) == 1 || s.number(0) == 2), "Unsupported mailbox format");
         keyId();
+        migrate();
     } catch (...) {
         close();
         throw;
@@ -372,7 +337,10 @@ void Mailbox::store(const QString &hash, const QString &from, const QString &to,
                     const QString &subject, const QString &body, qint64 c, const QString &folder) {
     sql("BEGIN IMMEDIATE");
     try {
-        Statement s(db_, "INSERT OR IGNORE INTO messages VALUES(?,?,?,?,?,?,?)");
+        Statement s(
+            db_,
+            "INSERT OR IGNORE INTO messages(hash,sender,recipient,subject,body,folder,received) "
+            "VALUES(?,?,?,?,?,?,?)");
         s.text(1, hash);
         s.text(2, from);
         s.text(3, to);
