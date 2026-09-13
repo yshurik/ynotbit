@@ -1,9 +1,12 @@
 #include "session.h"
+#include "appearance.h"
+#include "markdown_editor.h"
 #include <QApplication>
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <qqml.h>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QTemporaryDir>
@@ -20,6 +23,8 @@ int main(int argc, char **argv) {
     app.setOrganizationName("NotbitTests");
     app.setApplicationName("DesktopLifecycle");
     QQuickStyle::setStyle("Basic");
+    qmlRegisterType<bm::Appearance>("Ynotbit", 1, 0, "Appearance");
+    qmlRegisterType<bm::MarkdownEditor>("Ynotbit", 1, 0, "MarkdownEditor");
     QTemporaryDir dir;
     try {
         QString file, answer = "a private test password";

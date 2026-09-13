@@ -261,6 +261,14 @@ void Mailbox::connect(const QString &path, const Secret &key, bool create) {
         fail("Cannot open mailbox");
     }
     try {
+        sqlite3_update_hook(
+            db_,
+            [](void *context, int, const char *, const char *table, sqlite3_int64) {
+                if (qstrcmp(table, "messages") == 0 || qstrcmp(table, "outbox") == 0 ||
+                    qstrcmp(table, "settings") == 0)
+                    ++static_cast<Mailbox *>(context)->messageRevision_;
+            },
+            this);
         sqlite3_busy_timeout(db_, 3000);
 #ifdef SQLITE_HAS_CODEC
         check(sqlite3_key(db_, key.data(), 32) == SQLITE_OK, "Cannot apply mailbox key");
@@ -314,6 +322,7 @@ void Mailbox::close() {
     if (db_) {
         sqlite3_close_v2(db_);
         db_ = nullptr;
+        ++messageRevision_;
     }
 }
 QString Mailbox::keyId() const {

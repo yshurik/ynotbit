@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Ynotbit 1.0
 
 ApplicationWindow {
     id: root
@@ -10,7 +11,34 @@ ApplicationWindow {
     minimumWidth: 900
     minimumHeight: 620
     title: session.document + " — ynotbit"
-    color: "#f5f7fa"
+    color: canvas
+    Appearance { id: appearance }
+    MarkdownEditor { id: markdownEditor; onContentChanged: root.changedDraft() }
+    MarkdownEditor { id: readerEditor }
+    property color canvas: appearance.dark ? "#141b23" : "#f5f7fa"
+    property color surface: appearance.dark ? "#1b2530" : "#ffffff"
+    property color sidebar: appearance.dark ? "#17212b" : "#f1f5f7"
+    property color border: appearance.dark ? "#354553" : "#dbe3e8"
+    property color hover: appearance.dark ? "#293b48" : "#e8eff2"
+    property color active: appearance.dark ? "#234b46" : "#dcebe8"
+    property color warningBackground: appearance.dark ? "#432e23" : "#fff0e6"
+    property color warningInk: appearance.dark ? "#ffc28f" : "#82461c"
+    palette.window: canvas
+    palette.windowText: ink
+    palette.base: surface
+    palette.alternateBase: sidebar
+    palette.text: ink
+    palette.button: surface
+    palette.buttonText: ink
+    palette.placeholderText: muted
+    palette.highlight: active
+    palette.highlightedText: ink
+    palette.mid: border
+    palette.dark: border
+    palette.light: surface
+    palette.link: accent
+    palette.toolTipBase: surface
+    palette.toolTipText: ink
     property string folder: "Inbox"
     property var selected: ({})
     property string draftId: ""
@@ -18,11 +46,20 @@ ApplicationWindow {
     property bool loadingDraft: false
     property var senders: []
     property var history: []
+    function singleLine(value) {
+        return (value || "").replace(/[\r\n\u0000-\u001f\u007f\u2028\u2029]+/g, " ");
+    }
+    onSelectedChanged: readerEditor.loadMarkdown(root.selected.body || "")
+    Component.onCompleted: {
+        markdownEditor.attach(bodyField);
+        readerEditor.attach(readerBody);
+        readerEditor.loadMarkdown(root.selected.body || "");
+    }
     function saveCurrent() {
         if (!dirty || !session.mailboxOpen)
             return true;
         var sender = fromField.currentIndex >= 0 ? senders[fromField.currentIndex].address : "";
-        var id = session.saveLetter(draftId, sender, toField.text, subjectField.text, bodyField.text, broadcastField.checked ? "broadcast" : "direct");
+        var id = session.saveLetter(draftId, sender, toField.text, subjectField.text, markdownEditor.markdown(), broadcastField.checked ? "broadcast" : "direct");
         if (!id)
             return false;
         draftId = id;
@@ -42,7 +79,7 @@ ApplicationWindow {
                 fromField.currentIndex = n;
         toField.text = reply ? (letter.folder === "Channels" ? letter.to : letter.from) : (letter.to || "");
         subjectField.text = reply ? (/^Re:/i.test(letter.subject || "") ? letter.subject : "Re: " + (letter.subject || "")) : (letter.subject || "");
-        bodyField.text = reply ? "" : (letter.body || "");
+        markdownEditor.loadMarkdown(reply ? "" : (letter.body || ""));
         broadcastField.checked = !reply && letter.kind === "broadcast";
         dirty = reply;
         loadingDraft = false;
@@ -59,10 +96,9 @@ ApplicationWindow {
         interval: 800
         onTriggered: root.saveCurrent()
     }
-    property color ink: "#182c3a"
-    property color muted: "#758591"
-    property color accent: "#197e76"
-    font.family: "Helvetica Neue"
+    property color ink: appearance.dark ? "#e6edf3" : "#182c3a"
+    property color muted: appearance.dark ? "#a5b4c1" : "#586c7b"
+    property color accent: appearance.dark ? "#73d8c7" : "#126d65"
     font.pixelSize: 14
     onClosing: session.lock()
     Connections {
@@ -73,7 +109,7 @@ ApplicationWindow {
             root.selected = ({});
             root.history = [];
         }
-        function onChanged() {
+        function onMessagesChanged() {
             if (root.selected.hash) {
                 var found = false;
                 for (var i = 0; i < session.messages.length; ++i)
@@ -95,7 +131,8 @@ ApplicationWindow {
             composer.close();
             toField.clear();
             subjectField.clear();
-            bodyField.clear();
+            markdownEditor.loadMarkdown("");
+            readerEditor.loadMarkdown("");
         }
     }
     component FlatButton: Button {
@@ -106,18 +143,24 @@ ApplicationWindow {
         contentItem: Text {
             textFormat: Text.PlainText
             text: btn.text
-            color: btn.enabled ? root.ink : "#a3adb4"
+            color: btn.enabled ? root.ink : root.muted
             font.pixelSize: 13
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
         }
         background: Rectangle {
             radius: 7
-            color: btn.down ? "#dbe5e9" : btn.hovered ? "#e8eff2" : "#ffffff"
-            border.color: "#dbe3e8"
+            color: btn.down ? root.active : btn.hovered ? root.hover : root.surface
+            border.color: btn.activeFocus ? root.accent : root.border
         }
     }
     menuBar: MenuBar {
+        Menu {
+            title: "Appearance"
+            Action { text: "System"; checkable: true; checked: appearance.mode === "system"; onTriggered: appearance.mode = "system" }
+            Action { text: "Light"; checkable: true; checked: appearance.mode === "light"; onTriggered: appearance.mode = "light" }
+            Action { text: "Dark"; checkable: true; checked: appearance.mode === "dark"; onTriggered: appearance.mode = "dark" }
+        }
         Menu {
             title: "File"
             Action {
@@ -224,7 +267,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 72
-            color: "#fff"
+            color: root.surface
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 24
@@ -241,7 +284,7 @@ ApplicationWindow {
                         text: "y"
                         font.pixelSize: 27
                         font.bold: true
-                        color: "white"
+                        color: root.canvas
                     }
                 }
                 ColumnLayout {
@@ -268,7 +311,7 @@ ApplicationWindow {
                     implicitWidth: stateText.width + 24
                     implicitHeight: 30
                     radius: 15
-                    color: session.unlocked ? "#e4f3ec" : "#edf1f5"
+                    color: session.unlocked ? root.active : root.sidebar
                     Text {
                         id: stateText
                         textFormat: Text.PlainText
@@ -287,20 +330,20 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: "#e0e6eb"
+            color: root.border
         }
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: session.error.length ? 48 : 0
             visible: session.error.length > 0
-            color: "#fff0e6"
+            color: root.warningBackground
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: 10
                 Text {
                     textFormat: Text.PlainText
                     text: session.error
-                    color: "#82461c"
+                    color: root.warningInk
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                 }
@@ -317,7 +360,7 @@ ApplicationWindow {
             Rectangle {
                 Layout.preferredWidth: 212
                 Layout.fillHeight: true
-                color: "#f1f5f7"
+                color: root.sidebar
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 16
@@ -344,7 +387,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             height: 34
                             radius: 7
-                            color: root.folder === modelData ? "#dcebe8" : "transparent"
+                            color: root.folder === modelData ? root.active : "transparent"
                             Text {
                                 textFormat: Text.PlainText
                                 anchors.verticalCenter: parent.verticalCenter
@@ -383,7 +426,7 @@ ApplicationWindow {
             Rectangle {
                 Layout.fillHeight: true
                 width: 1
-                color: "#e0e6eb"
+                color: root.border
             }
             Item {
                 Layout.fillWidth: true
@@ -398,7 +441,7 @@ ApplicationWindow {
                         width: 68
                         height: 68
                         radius: 22
-                        color: "#e1eeeb"
+                        color: root.active
                         Text {
                             textFormat: Text.PlainText
                             anchors.centerIn: parent
@@ -440,7 +483,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.topMargin: 27
                         height: 1
-                        color: "#dde5e9"
+                        color: root.border
                     }
                     RowLayout {
                         Layout.alignment: Qt.AlignHCenter
@@ -539,8 +582,8 @@ ApplicationWindow {
                             width: ListView.view.width
                             height: 120
                             radius: 9
-                            color: "white"
-                            border.color: "#e0e7eb"
+                            color: root.surface
+                            border.color: root.border
                             Column {
                                 anchors.fill: parent
                                 anchors.margins: 16
@@ -588,7 +631,7 @@ ApplicationWindow {
                     Rectangle {
                         Layout.preferredWidth: 300
                         Layout.fillHeight: true
-                        color: "#fff"
+                        color: root.surface
                         ColumnLayout {
                             anchors.fill: parent
                             spacing: 0
@@ -628,11 +671,21 @@ ApplicationWindow {
                                 clip: true
                                 model: session.messages
                                 delegate: Rectangle {
+                                    id: letterRow
                                     required property var modelData
+                                    property bool unread: modelData.unread
+                                    Connections {
+                                        target: session
+                                        function onMessageRead(id) {
+                                            if (id === letterRow.modelData.hash)
+                                                letterRow.unread = false;
+                                        }
+                                    }
                                     width: ListView.view.width
                                     height: modelData.folder === root.folder && (!searchField.text || (modelData.subject + " " + modelData.body + " " + modelData.from + " " + modelData.to).toLowerCase().includes(searchField.text.toLowerCase())) ? 104 : 0
                                     visible: height > 0
-                                    color: root.selected.hash === modelData.hash ? "#eaf3f1" : "white"
+                                    clip: true
+                                    color: root.selected.hash === modelData.hash ? root.active : root.surface
                                     Column {
                                         anchors.fill: parent
                                         anchors.margins: 17
@@ -640,16 +693,21 @@ ApplicationWindow {
                                         Text {
                                             textFormat: Text.PlainText
                                             width: parent.width
-                                            text: (modelData.unread ? "• " : "") + (modelData.subject || "Untitled letter")
+                                            objectName: "letterListSubject"
+                                            text: (letterRow.unread ? "• " : "") + root.singleLine(modelData.subject || "Untitled letter")
                                             elide: Text.ElideRight
+                                            maximumLineCount: 1
+                                            wrapMode: Text.NoWrap
                                             font.weight: Font.DemiBold
                                             color: root.ink
                                         }
                                         Text {
                                             textFormat: Text.PlainText
                                             width: parent.width
-                                            text: modelData.body.replace(/\n/g, " ")
+                                            text: root.singleLine(modelData.body)
                                             elide: Text.ElideRight
+                                            maximumLineCount: 1
+                                            wrapMode: Text.NoWrap
                                             color: root.muted
                                             font.pixelSize: 12
                                         }
@@ -671,7 +729,7 @@ ApplicationWindow {
                                         anchors.bottom: parent.bottom
                                         width: parent.width
                                         height: 1
-                                        color: "#edf1f4"
+                                        color: root.border
                                     }
                                 }
                             }
@@ -680,7 +738,7 @@ ApplicationWindow {
                     Rectangle {
                         width: 1
                         Layout.fillHeight: true
-                        color: "#e0e6eb"
+                        color: root.border
                     }
                     Item {
                         Layout.fillHeight: true
@@ -712,13 +770,21 @@ ApplicationWindow {
                                 width: parent.width
                                 spacing: 18
                                 Text {
+                                    objectName: "readerSubject"
                                     textFormat: Text.PlainText
                                     Layout.fillWidth: true
-                                    text: root.selected.subject || "Untitled letter"
-                                    font.pixelSize: 25
+                                    text: root.singleLine(root.selected.subject || "Untitled letter")
+                                    font.pixelSize: 22
                                     font.weight: Font.DemiBold
                                     color: root.ink
-                                    wrapMode: Text.WordWrap
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: 2
+                                    elide: Text.ElideRight
+                                }
+                                Button {
+                                    text: "Show full subject"
+                                    visible: (root.selected.subject || "").length > 100 || /[\r\n\u2028\u2029]/.test(root.selected.subject || "")
+                                    onClicked: fullSubjectDialog.open()
                                 }
                                 Text {
                                     textFormat: Text.PlainText
@@ -785,7 +851,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     visible: !!root.selected.deliveryError
                                     text: root.selected.deliveryError || ""
-                                    color: "#82461c"
+                                    color: root.warningInk
                                     wrapMode: Text.WordWrap
                                 }
                                 TextEdit {
@@ -801,17 +867,25 @@ ApplicationWindow {
                                 Rectangle {
                                     Layout.fillWidth: true
                                     height: 1
-                                    color: "#e0e6eb"
+                                    color: root.border
                                 }
                                 TextEdit {
-                                    textFormat: TextEdit.PlainText
+                                    id: readerBody
+                                    objectName: "readerBody"
+                                    textFormat: TextEdit.MarkdownText
                                     Layout.fillWidth: true
-                                    text: root.selected.body || ""
                                     readOnly: true
                                     selectByMouse: true
                                     wrapMode: TextEdit.Wrap
                                     color: root.ink
+                                    selectionColor: root.active
+                                    selectedTextColor: root.ink
+                                    linkColor: root.accent
                                     font.pixelSize: 15
+                                    onLinkActivated: function(link) {
+                                        externalLinkDialog.destination = link;
+                                        externalLinkDialog.open();
+                                    }
                                 }
                             }
                         }
@@ -822,7 +896,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 65
-            color: "#fff"
+            color: root.surface
             ColumnLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 23
@@ -869,8 +943,8 @@ ApplicationWindow {
         objectName: "composer"
         title: root.draftId ? "Edit letter" : "Write a letter"
         modal: true
-        width: Math.min(680, root.width - 60)
-        height: Math.min(630, root.height - 70)
+        width: Math.min(760, root.width - 60)
+        height: Math.min(720, root.height - 70)
         anchors.centerIn: parent
         closePolicy: Popup.CloseOnEscape
         onClosed: {
@@ -916,16 +990,52 @@ ApplicationWindow {
                 placeholderText: "Subject"
                 onTextEdited: root.changedDraft()
             }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 4
+                ToolButton { text: "Bold"; Accessible.name: "Bold"; focusPolicy: Qt.NoFocus; onClicked: { markdownEditor.bold(); bodyField.forceActiveFocus(); } }
+                ToolButton { text: "Italic"; Accessible.name: "Italic"; focusPolicy: Qt.NoFocus; onClicked: { markdownEditor.italic(); bodyField.forceActiveFocus(); } }
+                ToolButton { text: "Heading"; focusPolicy: Qt.NoFocus; onClicked: { markdownEditor.heading(2); bodyField.forceActiveFocus(); } }
+                ToolButton { text: "Body"; focusPolicy: Qt.NoFocus; onClicked: { markdownEditor.heading(0); bodyField.forceActiveFocus(); } }
+                ToolButton { text: "• List"; focusPolicy: Qt.NoFocus; onClicked: { markdownEditor.list(false); bodyField.forceActiveFocus(); } }
+                ToolButton { text: "1. List"; focusPolicy: Qt.NoFocus; onClicked: { markdownEditor.list(true); bodyField.forceActiveFocus(); } }
+                ToolButton { text: "Link"; focusPolicy: Qt.NoFocus; onClicked: { linkField.clear(); insertLinkDialog.open(); } }
+                ToolButton { text: "Code"; focusPolicy: Qt.NoFocus; onClicked: { markdownEditor.code(); bodyField.forceActiveFocus(); } }
+                ToolButton { text: "Quote"; focusPolicy: Qt.NoFocus; onClicked: { markdownEditor.quote(); bodyField.forceActiveFocus(); } }
+            }
             ScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 TextArea {
                     id: bodyField
-                    textFormat: TextEdit.PlainText
+                    textFormat: TextEdit.RichText
                     objectName: "bodyField"
+                    selectByMouse: true
+                    persistentSelection: true
+                    color: root.ink
+                    selectionColor: root.active
+                    selectedTextColor: root.ink
+                    placeholderTextColor: root.muted
+                    background: Rectangle { color: root.surface; radius: 6; border.color: bodyField.activeFocus ? root.accent : root.border }
+                    padding: 14
                     placeholderText: "Take your time. Write something worth sending."
                     wrapMode: TextEdit.Wrap
-                    onTextChanged: root.changedDraft()
+                    Keys.onPressed: function(event) {
+                        if (event.matches(StandardKey.Paste)) { markdownEditor.pastePlainText(); event.accepted = true; }
+                        else if (event.matches(StandardKey.Bold)) { markdownEditor.bold(); event.accepted = true; }
+                        else if (event.matches(StandardKey.Italic)) { markdownEditor.italic(); event.accepted = true; }
+                    }
+                    TapHandler { acceptedButtons: Qt.RightButton; onTapped: composerMenu.popup() }
+                    Menu {
+                        id: composerMenu
+                        MenuItem { text: "Undo"; enabled: bodyField.canUndo; onTriggered: bodyField.undo() }
+                        MenuItem { text: "Redo"; enabled: bodyField.canRedo; onTriggered: bodyField.redo() }
+                        MenuSeparator {}
+                        MenuItem { text: "Cut"; enabled: bodyField.selectedText.length > 0; onTriggered: bodyField.cut() }
+                        MenuItem { text: "Copy"; enabled: bodyField.selectedText.length > 0; onTriggered: bodyField.copy() }
+                        MenuItem { text: "Paste"; onTriggered: markdownEditor.pastePlainText() }
+                        MenuItem { text: "Select all"; onTriggered: bodyField.selectAll() }
+                    }
                 }
             }
             Text {
@@ -933,7 +1043,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: session.error || (root.dirty ? "Unsaved changes" : root.draftId ? "Saved in your encrypted mailbox" : "Drafts are saved as you write")
                 wrapMode: Text.WordWrap
-                color: session.error ? "#82461c" : root.muted
+                color: session.error ? root.warningInk : root.muted
                 font.pixelSize: 12
             }
             Text {
@@ -972,6 +1082,58 @@ ApplicationWindow {
                         }
                     }
                 }
+            }
+        }
+    }
+    Dialog {
+        id: insertLinkDialog
+        title: "Insert link"
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(480, root.width - 60)
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: { markdownEditor.link(linkField.text); bodyField.forceActiveFocus(); }
+        onOpened: { standardButton(Dialog.Ok).enabled = false; linkField.forceActiveFocus(); }
+        TextField {
+            id: linkField
+            width: parent.width
+            placeholderText: "https://example.org"
+            onTextChanged: if (insertLinkDialog.visible) insertLinkDialog.standardButton(Dialog.Ok).enabled = markdownEditor.allowedLink(text)
+        }
+    }
+    Dialog {
+        id: externalLinkDialog
+        property string destination: ""
+        title: readerEditor.allowedLink(destination) ? "Open in your browser?" : "Link blocked"
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(520, root.width - 60)
+        standardButtons: readerEditor.allowedLink(destination) ? Dialog.Open | Dialog.Cancel : Dialog.Close
+        onAccepted: if (readerEditor.allowedLink(destination)) Qt.openUrlExternally(destination)
+        Label {
+            width: parent.width
+            textFormat: Text.PlainText
+            text: readerEditor.allowedLink(externalLinkDialog.destination) ? "Opening this link leaves your private mailbox.\n\n" + externalLinkDialog.destination : "Only HTTPS links can be opened.\n\n" + externalLinkDialog.destination
+            wrapMode: Text.WrapAnywhere
+        }
+    }
+    Dialog {
+        id: fullSubjectDialog
+        title: "Full subject"
+        modal: true
+        width: Math.min(620, root.width - 60)
+        height: Math.min(400, root.height - 90)
+        anchors.centerIn: parent
+        standardButtons: Dialog.Close
+        ScrollView {
+            anchors.fill: parent
+            TextArea {
+                text: root.selected.subject || ""
+                textFormat: TextEdit.PlainText
+                readOnly: true
+                selectByMouse: true
+                wrapMode: TextEdit.Wrap
+                font.pixelSize: 14
             }
         }
     }

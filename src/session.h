@@ -16,7 +16,7 @@ class Session : public QObject {
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(QString document READ document NOTIFY changed)
     Q_PROPERTY(QString error READ error NOTIFY changed)
-    Q_PROPERTY(QVariantList messages READ messages NOTIFY changed)
+    Q_PROPERTY(QVariantList messages READ messages NOTIFY messagesChanged)
     Q_PROPERTY(QVariantList identities READ identities NOTIFY changed)
     Q_PROPERTY(qint64 objectCount READ objectCount NOTIFY changed)
     Q_PROPERTY(qint64 cacheBytes READ cacheBytes NOTIFY changed)
@@ -28,6 +28,7 @@ class Session : public QObject {
     std::unique_ptr<Delivery> delivery_;
     QString root_, vaultPath_, mailPath_, mailKey_, error_, activity_;
     QVariantList messages_;
+    std::optional<quint64> displayedRevision_;
     QProcess node_;
     QTimer timer_;
     std::unique_ptr<QLockFile> nodeLock_, vaultLock_, mailLock_;
@@ -37,6 +38,7 @@ class Session : public QObject {
     void startNode();
     void attempt(const std::function<void()> &f);
     void refresh();
+    void clearMessages();
     void tick();
     void acquireVault(const QString &);
     void openMailboxPath(const QString &);
@@ -110,6 +112,8 @@ class Session : public QObject {
     }
   signals:
     void changed();
+    void messagesChanged();
+    void messageRead(QString id);
     void locked();
     void aboutToCloseMailbox();
 };

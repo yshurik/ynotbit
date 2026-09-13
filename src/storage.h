@@ -83,6 +83,7 @@ struct Subscription;
 struct DeliveryEvent;
 class Mailbox {
     sqlite3 *db_ = nullptr;
+    quint64 messageRevision_ = 0;
     void connect(const QString &, const Secret &, bool create);
     void sql(const char *);
     void migrate();
@@ -107,6 +108,10 @@ class Mailbox {
     void advance(qint64 checkpoint);
     qint64 checkpoint() const;
     QVector<Message> messages() const;
+    // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
+    quint64 messageRevision() const {
+        return messageRevision_;
+    }
     void backup(const QString &, const Secret &);
     QString saveDraft(const QString &id, const QString &from, const QString &to,
                       const QString &subject, const QString &body);

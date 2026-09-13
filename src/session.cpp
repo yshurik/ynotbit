@@ -219,7 +219,7 @@ void Session::createMailbox() {
               "Choose a new filename; existing mailbox documents are never overwritten");
         delivery_->stop();
         mailbox_.close();
-        messages_.clear();
+        clearMessages();
         mailLock_.reset();
         mailLock_ = std::make_unique<QLockFile>(p + ".lock");
         check(mailLock_->tryLock(), "Mailbox is in use");
@@ -240,7 +240,7 @@ void Session::openMailboxPath(const QString &p) {
     delivery_->stop();
     check(unlocked(), "Unlock a vault first");
     mailbox_.close();
-    messages_.clear();
+    clearMessages();
     mailLock_.reset();
     mailLock_ = std::make_unique<QLockFile>(p + ".lock");
     check(mailLock_->tryLock(), "Mailbox is open in another instance");
@@ -278,7 +278,7 @@ void Session::lock() {
     recent.setValue("vault", vaultPath_);
     recent.setValue("mailbox", mailPath_);
     mailbox_.close();
-    messages_.clear();
+    clearMessages();
     vault_.lock();
     mailLock_.reset();
     vaultLock_.reset();
@@ -374,15 +374,19 @@ void Session::rescan() {
     });
 }
 void Session::refresh() {
-    messages_.clear();
-    if (!mailboxOpen())
+    if (!mailboxOpen()) {
+        clearMessages();
         return;
+    }
+    if (displayedRevision_ == mailbox_.messageRevision())
+        return;
+    QVariantList messages;
     QMap<QString, OutboxItem> outgoing;
     for (const auto &item : mailbox_.outbox())
         outgoing.insert(item.id, item);
     for (const auto &m : mailbox_.messages()) {
         const auto out = outgoing.value(m.hash);
-        messages_ << QVariantMap{
+        messages << QVariantMap{
             {"hash", m.hash},
             {"from", m.from},
             {"to", m.to},
@@ -396,6 +400,18 @@ void Session::refresh() {
              out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
             {"received",
              QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
+    }
+    displayedRevision_ = mailbox_.messageRevision();
+    if (messages_ != messages) {
+        messages_ = std::move(messages);
+        emit messagesChanged();
+    }
+}
+void Session::clearMessages() {
+    displayedRevision_.reset();
+    if (!messages_.isEmpty()) {
+        messages_.clear();
+        emit messagesChanged();
     }
 }
 void Session::tick() {
@@ -502,8 +518,22 @@ void Session::deleteLetter(QString id) {
 void Session::readLetter(QString id) {
     attempt([&] {
         if (mailboxOpen()) {
-            mailbox_.markRead(id);
+            // Catch up first only if another operation changed the mailbox. Marking
+            // one row read must not reload all message bodies from SQLCipher.
             refresh();
+            mailbox_.markRead(id);
+            displayedRevision_ = mailbox_.messageRevision();
+            for (qsizetype i = 0; i < messages_.size(); ++i) {
+                auto message = std::as_const(messages_).at(i).toMap();
+                if (message.value("hash").toString() != id)
+                    continue;
+                if (message.value("unread").toBool()) {
+                    message["unread"] = false;
+                    messages_[i] = message;
+                    emit messageRead(id);
+                }
+                break;
+            }
         }
     });
 }
@@ -568,13 +598,12 @@ void Session::closeMailbox() {
     delivery_->stop();
     mailbox_.close();
     mailLock_.reset();
-    messages_.clear();
+    clearMessages();
     mailPath_.clear();
     mailKey_.clear();
     emit changed();
 }
 void Session::startNode() {
-#ifdef Q_OS_UNIX
     if (offline_)
         return;
     QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
@@ -588,10 +617,6 @@ void Session::startNode() {
     node_.setProgram(QCoreApplication::applicationFilePath());
     node_.setArguments(args);
     node_.start();
-#else
-    if (!offline_)
-        error_ = "Native Windows relay port is not yet available";
-#endif
 }
 void Session::restartNode() {
     attempt([&] {

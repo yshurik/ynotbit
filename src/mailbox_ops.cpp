@@ -405,7 +405,7 @@ void Mailbox::deleteMessage(const QString &id) {
     t.commit();
 }
 void Mailbox::markRead(const QString &id) {
-    Statement s(db_, "UPDATE messages SET unread=0 WHERE hash=?");
+    Statement s(db_, "UPDATE messages SET unread=0 WHERE hash=? AND unread<>0");
     s.text(1, id);
     s.row();
 }
