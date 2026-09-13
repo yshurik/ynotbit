@@ -515,11 +515,7 @@ QVariantMap Session::message(QString id) const {
         return {};
     const auto m = mailbox_.message(id);
     OutboxItem out;
-    for (const auto &candidate : mailbox_.outbox())
-        if (candidate.id == id) {
-            out = candidate;
-            break;
-        }
+    try { out = mailbox_.outgoing(id); } catch (...) { }
     return {{"hash", m.hash},
             {"from", m.from},
             {"to", m.to},

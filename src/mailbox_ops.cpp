@@ -137,10 +137,17 @@ QVector<OutboxItem> Mailbox::outbox() const {
     return result;
 }
 OutboxItem Mailbox::outgoing(const QString &id) const {
-    for (auto &o : outbox())
-        if (o.id == id)
-            return o;
-    throw std::runtime_error("No delivery record for this letter");
+    Statement s(db_,
+                "SELECT id,kind,state,error,object_hash,ack_token,ack_object,expires,next_attempt,attempts "
+                "FROM outbox WHERE id=?");
+    s.text(1, id);
+    require(s.row(), "No delivery record for this letter");
+    OutboxItem o;
+    o.id = s.text(0); o.kind = s.text(1); o.state = s.text(2); o.error = s.text(3);
+    o.objectHash = s.text(4); o.ackToken = s.blob(5); o.ackObject = s.blob(6);
+    o.expires = s.number(7); o.nextAttempt = s.number(8); o.attempts = int(s.number(9));
+    o.message = message(o.id);
+    return o;
 }
 void Mailbox::deliveryUpdate(const QString &id, const QString &state, const QString &detail,
                              qint64 next) {
