@@ -1,6 +1,7 @@
 #pragma once
 #include "cache.h"
 #include "delivery.h"
+#include "message_model.h"
 #include "storage.h"
 #include <QLockFile>
 #include <QObject>
@@ -17,6 +18,7 @@ class Session : public QObject {
     Q_PROPERTY(QString document READ document NOTIFY changed)
     Q_PROPERTY(QString error READ error NOTIFY changed)
     Q_PROPERTY(QVariantList messages READ messages NOTIFY messagesChanged)
+    Q_PROPERTY(MessageModel *messageModel READ messageModel CONSTANT)
     Q_PROPERTY(QVariantList identities READ identities NOTIFY changed)
     Q_PROPERTY(qint64 objectCount READ objectCount NOTIFY changed)
     Q_PROPERTY(qint64 cacheBytes READ cacheBytes NOTIFY changed)
@@ -26,6 +28,7 @@ class Session : public QObject {
     Mailbox mailbox_;
     std::unique_ptr<Cache> cache_;
     std::unique_ptr<Delivery> delivery_;
+    std::unique_ptr<MessageModel> messageModel_;
     QString root_, vaultPath_, mailPath_, mailKey_, pendingVaultPath_, error_, activity_;
     QVariantList messages_;
     std::optional<quint64> displayedRevision_;
@@ -63,6 +66,7 @@ class Session : public QObject {
     QVariantList messages() const {
         return messages_;
     }
+    MessageModel *messageModel() const { return messageModel_.get(); }
     QVariantList identities() const;
     qint64 objectCount() const {
         return cache_ ? cache_->count() : 0;
@@ -104,6 +108,7 @@ class Session : public QObject {
     Q_INVOKABLE void deleteLetter(QString id);
     Q_INVOKABLE void readLetter(QString id);
     Q_INVOKABLE QVariantMap message(QString id) const;
+    QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit) const;
     Q_INVOKABLE QVariantList deliveryHistory(QString id);
     Q_INVOKABLE void subscribe();
     Q_INVOKABLE void unsubscribe(QString address);

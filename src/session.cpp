@@ -2,6 +2,7 @@
 #include "protocol.h"
 #include "protocol_wire.h"
 #include "scanner.h"
+#include "message_model.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QDateTime>
@@ -66,6 +67,7 @@ static QString documentsPath() {
 }
 Session::Session(QString root, bool offline, QObject *parent)
     : QObject(parent), root_(std::move(root)), offline_(offline) {
+    messageModel_ = std::make_unique<MessageModel>(this, this);
     QDir().mkpath(root_);
     nodeLock_ = std::make_unique<QLockFile>(root_ + "/desktop.lock");
     check(nodeLock_->tryLock(), "Another app instance is using this node folder");
@@ -489,6 +491,24 @@ void Session::refresh() {
         messages_ = std::move(messages);
         emit messagesChanged();
     }
+    if (messageModel_)
+        messageModel_->reload();
+}
+QVariantList Session::messagePage(const QString &folder, const QString &search, int offset,
+                                  int limit) const {
+    QVariantList result;
+    if (!mailboxOpen()) return result;
+    QMap<QString, OutboxItem> outgoing;
+    for (const auto &item : mailbox_.outbox()) outgoing.insert(item.id, item);
+    for (const auto &m : mailbox_.messageSummaries(folder, search, offset, limit)) {
+        const auto out = outgoing.value(m.hash);
+        result << QVariantMap{{"hash", m.hash}, {"from", m.from}, {"to", m.to},
+            {"subject", m.subject}, {"preview", m.body}, {"folder", m.folder},
+            {"state", out.state}, {"deliveryError", out.error}, {"unread", mailbox_.unread(m.hash)},
+            {"kind", out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
+            {"received", QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
+    }
+    return result;
 }
 QVariantMap Session::message(QString id) const {
     if (!mailboxOpen())
@@ -638,6 +658,7 @@ void Session::readLetter(QString id) {
                     message["unread"] = false;
                     messages_[i] = message;
                     emit messageRead(id);
+                    if (messageModel_) messageModel_->markRead(id);
                 }
                 break;
             }

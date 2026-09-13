@@ -50,10 +50,12 @@ ApplicationWindow {
         return (value || "").replace(/[\r\n\u0000-\u001f\u007f\u2028\u2029]+/g, " ");
     }
     onSelectedChanged: readerEditor.loadMarkdown(root.selected.body || "")
+    onFolderChanged: if (session.messageModel) session.messageModel.folder = root.folder
     Component.onCompleted: {
         markdownEditor.attach(bodyField);
         readerEditor.attach(readerBody);
         readerEditor.loadMarkdown(root.selected.body || "");
+        session.messageModel.folder = root.folder;
     }
     function saveCurrent() {
         if (!dirty || !session.mailboxOpen)
@@ -112,6 +114,8 @@ ApplicationWindow {
             root.history = [];
         }
         function onMessagesChanged() {
+            if (session.messageModel)
+                session.messageModel.reload();
             if (root.selected.hash) {
                 var found = false;
                 for (var i = 0; i < session.messages.length; ++i)
@@ -671,6 +675,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.margins: 12
                                 placeholderText: "Search this folder"
+                                onTextEdited: session.messageModel.search = text
                             }
                             Button {
                                 text: "Manage subscriptions"
@@ -682,23 +687,27 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 clip: true
-                                model: session.messages
+                                model: session.messageModel
+                                onContentYChanged: if (contentY + height * 2 > contentHeight) session.messageModel.fetchMore()
                                 delegate: Rectangle {
                                     id: letterRow
-                                    required property var modelData
-                                    property bool unread: modelData.unread
+                                    required property string hash
+                                    required property string subject
+                                    required property string preview
+                                    required property string from
+                                    required property string to
+                                    required property bool unread
+                                    required property string state
+                                    required property string received
                                     Connections {
                                         target: session
-                                        function onMessageRead(id) {
-                                            if (id === letterRow.modelData.hash)
-                                                letterRow.unread = false;
-                                        }
+                                        function onMessageRead(id) { if (id === letterRow.hash) letterRow.unread = false; }
                                     }
                                     width: ListView.view.width
-                                    height: modelData.folder === root.folder && (!searchField.text || (modelData.subject + " " + modelData.preview + " " + modelData.from + " " + modelData.to).toLowerCase().includes(searchField.text.toLowerCase())) ? 104 : 0
-                                    visible: height > 0
+                                    height: 104
+                                    visible: true
                                     clip: true
-                                    color: root.selected.hash === modelData.hash ? root.active : root.surface
+                                    color: root.selected.hash === letterRow.hash ? root.active : root.surface
                                     Column {
                                         anchors.fill: parent
                                         anchors.margins: 17
@@ -707,7 +716,7 @@ ApplicationWindow {
                                             textFormat: Text.PlainText
                                             width: parent.width
                                             objectName: "letterListSubject"
-                                            text: (letterRow.unread ? "• " : "") + root.singleLine(modelData.subject || "Untitled letter")
+                                            text: (letterRow.unread ? "• " : "") + root.singleLine(letterRow.subject || "Untitled letter")
                                             elide: Text.ElideRight
                                             maximumLineCount: 1
                                             wrapMode: Text.NoWrap
@@ -717,7 +726,7 @@ ApplicationWindow {
                                         Text {
                                             textFormat: Text.PlainText
                                             width: parent.width
-                                            text: root.singleLine(modelData.preview)
+                                            text: root.singleLine(letterRow.preview)
                                             elide: Text.ElideRight
                                             maximumLineCount: 1
                                             wrapMode: Text.NoWrap
@@ -726,7 +735,7 @@ ApplicationWindow {
                                         }
                                         Text {
                                             textFormat: Text.PlainText
-                                            text: modelData.state ? modelData.state.replace(/_/g, " ") : modelData.received
+                                            text: letterRow.state ? letterRow.state.replace(/_/g, " ") : letterRow.received
                                             color: root.muted
                                             font.pixelSize: 10
                                         }
@@ -734,8 +743,8 @@ ApplicationWindow {
                                     MouseArea {
                                         anchors.fill: parent
                                         onClicked: {
-                                            root.selected = session.message(modelData.hash);
-                                            session.readLetter(modelData.hash);
+                                            root.selected = session.message(letterRow.hash);
+                                            session.readLetter(letterRow.hash);
                                         }
                                     }
                                     Rectangle {
