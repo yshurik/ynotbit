@@ -60,6 +60,10 @@ static QString chooseSave(const QString &title, const QString &filter, const QSt
         p += suffix;
     return p;
 }
+static QString documentsPath() {
+    const auto path = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    return path.isEmpty() ? QDir::homePath() : path;
+}
 Session::Session(QString root, bool offline, QObject *parent)
     : QObject(parent), root_(std::move(root)), offline_(offline) {
     QDir().mkpath(root_);
@@ -169,8 +173,8 @@ void Session::createVault() {
 void Session::openVault() {
     attempt([&] {
         check(!unlocked(), "Lock the current vault first");
-        auto p =
-            QFileDialog::getOpenFileName(nullptr, "Open vault", {}, "Bitmessage vault (*.bmvault)");
+        auto p = QFileDialog::getOpenFileName(nullptr, "Open vault", documentsPath(),
+                                              "Bitmessage vault (*.bmvault)");
         if (p.isEmpty())
             return;
         auto pass = password("Unlock vault");
@@ -264,7 +268,7 @@ void Session::openMailbox() {
     emit aboutToCloseMailbox();
     attempt([&] {
         check(unlocked(), "Unlock a vault first");
-        auto p = QFileDialog::getOpenFileName(nullptr, "Open mailbox", {},
+        auto p = QFileDialog::getOpenFileName(nullptr, "Open mailbox", documentsPath(),
                                               "Bitmessage mailbox (*.bmmail)");
         if (!p.isEmpty())
             openMailboxPath(p);
@@ -328,7 +332,7 @@ void Session::importIdentities() {
     attempt([&] {
         check(unlocked(), "Unlock a vault first");
         auto p = QFileDialog::getOpenFileName(nullptr, "Import notbit / PyBitmessage identities",
-                                              {}, "Key files (*.dat);;All files (*)");
+                                              documentsPath(), "Key files (*.dat);;All files (*)");
         if (p.isEmpty())
             return;
         vault_.importKeys(p);
@@ -347,7 +351,7 @@ void Session::changePassword() {
 void Session::backup() {
     attempt([&] {
         check(mailboxOpen(), "Open a mailbox first");
-        auto dir = QFileDialog::getExistingDirectory(nullptr, "Choose backup folder");
+        auto dir = QFileDialog::getExistingDirectory(nullptr, "Choose backup folder", documentsPath());
         if (dir.isEmpty())
             return;
         auto base =
