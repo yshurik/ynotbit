@@ -374,6 +374,15 @@ QVector<Message> Mailbox::messages() const {
             {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
     return list;
 }
+QVector<Message> Mailbox::messageSummaries() const {
+    Statement s(db_, "SELECT hash,sender,recipient,subject,substr(body,1,240),folder,received "
+                     "FROM messages ORDER BY received DESC,rowid DESC");
+    QVector<Message> list;
+    while (s.row())
+        list.push_back(
+            {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
+    return list;
+}
 void Mailbox::backup(const QString &path, const Secret &key) {
     check(db_, "Mailbox is closed");
     Mailbox dest;

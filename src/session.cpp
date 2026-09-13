@@ -233,9 +233,12 @@ void Session::beginVaultOpen() {
     });
 }
 void Session::beginVaultUnlock() {
+    if (vaultPath_.isEmpty()) {
+        beginVaultOpen();
+        return;
+    }
     attempt([&] {
         check(!unlocked(), "Vault is already unlocked");
-        check(!vaultPath_.isEmpty(), "Choose a vault first");
         pendingVaultPath_ = vaultPath_;
         emit vaultPasswordRequired(vaultPath_, false);
     });
@@ -461,14 +464,14 @@ void Session::refresh() {
     QMap<QString, OutboxItem> outgoing;
     for (const auto &item : mailbox_.outbox())
         outgoing.insert(item.id, item);
-    for (const auto &m : mailbox_.messages()) {
+    for (const auto &m : mailbox_.messageSummaries()) {
         const auto out = outgoing.value(m.hash);
-        messages << QVariantMap{
+        QVariantMap row{
             {"hash", m.hash},
             {"from", m.from},
             {"to", m.to},
             {"subject", m.subject},
-            {"body", m.body},
+            {"preview", m.body},
             {"folder", m.folder},
             {"state", out.state},
             {"deliveryError", out.error},
@@ -477,12 +480,39 @@ void Session::refresh() {
              out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
             {"received",
              QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
+        if (m.folder == "Drafts" || m.folder == "Outbox" || m.folder == "Sent")
+            row["body"] = mailbox_.message(m.hash).body;
+        messages << row;
     }
     displayedRevision_ = mailbox_.messageRevision();
     if (messages_ != messages) {
         messages_ = std::move(messages);
         emit messagesChanged();
     }
+}
+QVariantMap Session::message(QString id) const {
+    if (!mailboxOpen())
+        return {};
+    const auto m = mailbox_.message(id);
+    OutboxItem out;
+    for (const auto &candidate : mailbox_.outbox())
+        if (candidate.id == id) {
+            out = candidate;
+            break;
+        }
+    return {{"hash", m.hash},
+            {"from", m.from},
+            {"to", m.to},
+            {"subject", m.subject},
+            {"body", m.body},
+            {"preview", m.body.left(240)},
+            {"folder", m.folder},
+            {"state", out.state},
+            {"deliveryError", out.error},
+            {"unread", mailbox_.unread(m.hash)},
+            {"kind", out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct")
+                                         : out.kind},
+            {"received", QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
 }
 void Session::clearMessages() {
     displayedRevision_.reset();

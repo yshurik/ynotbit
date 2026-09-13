@@ -108,6 +108,7 @@ class Mailbox {
     void advance(qint64 checkpoint);
     qint64 checkpoint() const;
     QVector<Message> messages() const;
+    QVector<Message> messageSummaries() const;
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     quint64 messageRevision() const {
         return messageRevision_;

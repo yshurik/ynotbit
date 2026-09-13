@@ -103,6 +103,7 @@ class Session : public QObject {
     Q_INVOKABLE void restoreLetter(QString id);
     Q_INVOKABLE void deleteLetter(QString id);
     Q_INVOKABLE void readLetter(QString id);
+    Q_INVOKABLE QVariantMap message(QString id) const;
     Q_INVOKABLE QVariantList deliveryHistory(QString id);
     Q_INVOKABLE void subscribe();
     Q_INVOKABLE void unsubscribe(QString address);

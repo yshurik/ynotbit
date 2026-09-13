@@ -97,9 +97,10 @@ int main(int argc, char **argv) {
             session.readLetter(id);
             worst = std::max(worst, selection.nsecsElapsed());
             require(!session.messages()[i].toMap().value("unread").toBool(), "read flag updated");
-            require(session.messages()[i].toMap().value("body").toString().constData() ==
-                        original[i].toMap().value("body").toString().constData(),
-                    "mark-read reloaded plaintext body");
+            require(session.messages()[i].toMap().value("body").toString().isEmpty(),
+                    "message list retained a full plaintext body");
+            require(session.message(id).value("body").toString().size() == 10000,
+                    "targeted message load failed");
         }
         require(resets.isEmpty(), "mark-read reset the entire message list");
         require(readUpdates.size() == 100, "targeted read updates missing");

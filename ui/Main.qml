@@ -69,6 +69,8 @@ ApplicationWindow {
     function editLetter(letter, reply) {
         if (composer.visible && !saveCurrent())
             return;
+        if (letter.hash && !letter.body)
+            letter = session.message(letter.hash);
         loadingDraft = true;
         senders = session.identities;
         draftId = reply ? "" : (letter.hash || "");
@@ -114,7 +116,7 @@ ApplicationWindow {
                 var found = false;
                 for (var i = 0; i < session.messages.length; ++i)
                     if (session.messages[i].hash === root.selected.hash) {
-                        root.selected = session.messages[i];
+                        root.selected = session.message(root.selected.hash);
                         found = true;
                         break;
                     }
@@ -693,7 +695,7 @@ ApplicationWindow {
                                         }
                                     }
                                     width: ListView.view.width
-                                    height: modelData.folder === root.folder && (!searchField.text || (modelData.subject + " " + modelData.body + " " + modelData.from + " " + modelData.to).toLowerCase().includes(searchField.text.toLowerCase())) ? 104 : 0
+                                    height: modelData.folder === root.folder && (!searchField.text || (modelData.subject + " " + modelData.preview + " " + modelData.from + " " + modelData.to).toLowerCase().includes(searchField.text.toLowerCase())) ? 104 : 0
                                     visible: height > 0
                                     clip: true
                                     color: root.selected.hash === modelData.hash ? root.active : root.surface
@@ -715,7 +717,7 @@ ApplicationWindow {
                                         Text {
                                             textFormat: Text.PlainText
                                             width: parent.width
-                                            text: root.singleLine(modelData.body)
+                                            text: root.singleLine(modelData.preview)
                                             elide: Text.ElideRight
                                             maximumLineCount: 1
                                             wrapMode: Text.NoWrap
@@ -732,7 +734,7 @@ ApplicationWindow {
                                     MouseArea {
                                         anchors.fill: parent
                                         onClicked: {
-                                            root.selected = modelData;
+                                            root.selected = session.message(modelData.hash);
                                             session.readLetter(modelData.hash);
                                         }
                                     }
