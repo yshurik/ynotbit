@@ -1,6 +1,6 @@
 # Portable notbit desktop — approved design
 
-C++/Qt Quick desktop application, libsodium Argon2id authenticated vault,
+C++/Qt Widgets desktop application, libsodium Argon2id authenticated vault,
 SQLCipher mailbox documents, and a notbit-derived network node.
 
 Vault files contain identity signing/encryption secrets and independent random
@@ -22,3 +22,12 @@ identities; subscription broadcasts are a separate protocol feature.
 Delivery targets: macOS app, Linux AppImage, standalone Windows exe. Portability
 must be demonstrated by builds, not inferred from Qt support. Protocol changes
 require compatibility fixtures and peer checks before release claims.
+
+The Widgets frontend uses a uniform-height QListView with a painted delegate and
+a bounded three-page model cache. SQLCipher queries use the folder/time index for
+unfiltered lists; body search runs only when requested. QTextBrowser renders the
+selected body, and QTextEdit provides visual Markdown composition. No QML engine,
+JavaScript runtime, or Quick scene graph is loaded. Network directory discovery
+is incremental, bounded to 128 entries or roughly 5 ms per tick (one validation
+can exceed that budget). Storage and delivery still run on the main thread; a
+full-text search or expensive object validation can still cause latency.

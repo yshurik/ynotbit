@@ -2,6 +2,7 @@
 #include "protocol.h"
 #include <QDateTime>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QRegularExpression>
 #include <QUuid>
@@ -69,10 +70,15 @@ Cache::~Cache() {
 }
 void Cache::discover() {
     static QRegularExpression valid("^[a-f0-9]{64}$");
-    QDir dir(root_ + "/objects");
-    int added = 0;
-    for (const auto &f :
-         dir.entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Time | QDir::Reversed)) {
+    if (!discovery_)
+        discovery_ =
+            std::make_unique<QDirIterator>(root_ + "/objects", QDir::Files | QDir::NoSymLinks);
+    int examined = 0;
+    QElapsedTimer budget;
+    budget.start();
+    while (discovery_->hasNext() && examined++ < 128 && budget.elapsed() < 5) {
+        discovery_->next();
+        const auto f = discovery_->fileInfo();
         if (!valid.match(f.fileName()).hasMatch())
             continue;
         Stmt known(db_, "SELECT 1 FROM objects WHERE hash=?");
@@ -92,9 +98,9 @@ void Cache::discover() {
         insert.num(2, f.size());
         insert.num(3, QDateTime::currentSecsSinceEpoch());
         insert.row();
-        if (++added >= 512)
-            break;
     }
+    if (!discovery_->hasNext())
+        discovery_.reset();
 }
 QVector<CachedObject> Cache::after(qint64 sequence, int limit) const {
     Stmt s(db_, "SELECT seq,hash FROM objects WHERE seq>? ORDER BY seq LIMIT ?");

@@ -1,14 +1,9 @@
 #include "session.h"
 #include "portable_relay.h"
 #include "appearance.h"
-#include "markdown_editor.h"
+#include "desktop_window.h"
 #include <QApplication>
 #include <QDir>
-#include <QQmlApplicationEngine>
-#include <QQmlContext>
-#include <qqml.h>
-#include <QQuickStyle>
-#include <QQuickWindow>
 #include <QStandardPaths>
 #include <QTimer>
 #include <iostream>
@@ -31,10 +26,7 @@ int main(int argc, char **argv) {
     app.setOrganizationName("NotbitDesktop");
     app.setApplicationName("Notbit Desktop");
     app.setApplicationDisplayName("ynotbit");
-    app.setApplicationVersion("0.3.0-dev");
-    QQuickStyle::setStyle("Basic");
-    qmlRegisterType<bm::Appearance>("Ynotbit", 1, 0, "Appearance");
-    qmlRegisterType<bm::MarkdownEditor>("Ynotbit", 1, 0, "MarkdownEditor");
+    app.setApplicationVersion("0.4.0-dev");
     try {
         auto args = app.arguments();
         QString root =
@@ -45,18 +37,13 @@ int main(int argc, char **argv) {
         if (index >= 0 && index + 1 < args.size())
             root = QDir(args[index + 1]).absolutePath();
         bm::Session session(root, args.contains("--offline"));
-        QQmlApplicationEngine engine;
-        engine.rootContext()->setContextProperty("session", &session);
-        engine.load(QUrl("qrc:/ui/Main.qml"));
-        if (engine.rootObjects().isEmpty())
-            return 1;
+        bm::DesktopWindow window(session);
+        window.show();
         index = args.indexOf("--screenshot");
         if (index >= 0 && index + 1 < args.size()) {
             auto path = args[index + 1];
             QTimer::singleShot(1200, &app, [&, path] {
-                auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
-                if (window)
-                    window->grabWindow().save(path);
+                window.grab().save(path);
                 app.quit();
             });
         }

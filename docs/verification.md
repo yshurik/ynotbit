@@ -1,4 +1,4 @@
-# Verification — ynotbit 0.3 development
+# Verification — ynotbit 0.4 Widgets development
 
 Validated locally on Apple Silicon macOS using Qt 6.8.3, SQLCipher 4.6.1,
 libsodium 1.0.20, and OpenSSL 3.6.1. The macOS target is 15.6+ arm64.
@@ -24,15 +24,13 @@ The CTest suite covers:
   message orders, minimum-difficulty proof of work, inventory/getdata/object,
   disk persistence, local ciphertext publication, peer fetch, rejected malformed
   jobs, peer status, and absence of keys.dat/Maildir.
-- **gui-smoke:** real QML application startup in offline mode.
-- **desktop:** native file/password dialogs, identity creation, real draft editor
-  and Send control, editing without duplication, cancellation, immediate lock
-  flushing unsaved text, wrong-password rejection, and document restoration.
-- **editor:** visual Markdown round trips, safe resource handling, link policy, and
-  system/light/dark palette behavior.
-- **memory:** a synthetic 1,000-message mailbox exercises repeated refreshes,
-  targeted read updates, QML model stability, and draft invalidation. It guards
-  against rebuilding and retaining every decrypted body on each status tick.
+- **gui-smoke:** Qt Widgets application startup in offline mode.
+- **desktop:** an encrypted 1,500-message mailbox (10 KB per body), scrolling to
+  distant rows, a three-page cache bound, folder search, full-body selection,
+  visual Markdown rendering, blocked local image resources, composing through
+  the persistent outbox, system/light/dark palette selection, plaintext view
+  clearing on lock, styled unlock rejection/retry, recent-mailbox restoration,
+  and saving an active editor before locking.
 - **qt-relay / qt-relay-verack-first:** the portable Qt relay's loopback handshake
   and publication path on platforms without the Unix notbit engine.
 
@@ -43,6 +41,33 @@ Tests never send messages to the public Bitmessage network. These checks are not
 an independent security audit or public-network certification.
 
 Run the complete suite with `ctest --test-dir build --output-on-failure` after
-configuring Qt and the encrypted-storage dependencies. The current environment
-does not contain Qt 6.8, so a fresh local build is pending on a configured Qt
-toolchain; Python syntax and patch checks pass here.
+configuring Qt and the encrypted-storage dependencies.
+
+## Widgets performance check
+
+A native Cocoa run of `build/desktop_tests` on 14 September 2026, using the
+synthetic mailbox above and an empty offline network cache, measured:
+
+- Vault unlock plus mailbox open: 640 ms (includes password derivation).
+- Physical footprint after opening the mailbox: 56.5 MiB.
+- 60 scroll positions across 1,500 rows: 384 ms total.
+- 50 selections rendering 10 KB bodies: 921 ms total (including UI event processing).
+- Physical footprint after scrolling and selection: 71.2 MiB.
+- Another 500 selections: footprint remained between 71.19 and 71.27 MiB.
+
+Footprint uses macOS `TASK_VM_INFO.phys_footprint`. These are workload-specific
+measurements of the desktop test process, including fixture-creation allocations,
+not a guarantee for arbitrary messages or proof of absence of leaks. Tests use no
+user documents. The list caches no more than 300 truncated summaries, and only
+the selected message body is retained by the reader. The packaged application
+has no Qt Quick/QML engine or runtime dependency.
+
+Full-text search and delivery inspection still execute on the main thread.
+Unfiltered list access uses a folder/time index; deep OFFSET seeks and searches
+can still get slower with very large mailboxes. Further background storage work
+would be needed to guarantee bounded latency for those operations.
+
+The final local suite passed 11/11 (38.24 seconds). The extracted, ad-hoc-signed
+Apple Silicon bundle passed signature/dependency checks and a native offline
+launch; vmmap reported a 52.4 MiB idle physical footprint with no mailbox open.
+The ZIP is 13,292,671 bytes. No Quick or QML libraries are bundled.

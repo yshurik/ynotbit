@@ -1,5 +1,6 @@
 #pragma once
 #include <QAbstractListModel>
+#include <QCache>
 #include <QVariantMap>
 
 namespace bm {
@@ -8,30 +9,33 @@ class MessageModel final : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(QString folder READ folder WRITE setFolder NOTIFY folderChanged)
     Q_PROPERTY(QString search READ search WRITE setSearch NOTIFY searchChanged)
-    Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
-public:
+  public:
     explicit MessageModel(Session *session, QObject *parent = nullptr);
     int rowCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
-    QString folder() const { return folder_; }
-    QString search() const { return search_; }
-    bool loading() const { return loading_; }
+    QString folder() const {
+        return folder_;
+    }
+    QString search() const {
+        return search_;
+    }
     Q_INVOKABLE void reload();
-    Q_INVOKABLE void fetchMore();
     Q_INVOKABLE void markRead(const QString &id);
-signals:
+    int cachedPages() const {
+        return pages_.size();
+    }
+  signals:
     void folderChanged();
     void searchChanged();
-    void loadingChanged();
-public slots:
+  public slots:
     void setFolder(const QString &folder);
     void setSearch(const QString &search);
-private:
+
+  private:
     Session *session_;
-    QVector<QVariantMap> rows_;
+    mutable QCache<int, QVariantList> pages_{3};
+    int count_ = 0;
     QString folder_ = "Inbox", search_;
-    int offset_ = 0;
-    bool loading_ = false, exhausted_ = false;
 };
-}
+} // namespace bm

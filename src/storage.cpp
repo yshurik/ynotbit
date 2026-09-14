@@ -8,8 +8,8 @@
 #include <QSaveFile>
 #include <QSettings>
 #include <QUuid>
-#include <cstring>
 #include <algorithm>
+#include <cstring>
 #include <sqlite3.h>
 #include <stdexcept>
 #include <utility>
@@ -387,15 +387,42 @@ QVector<Message> Mailbox::messageSummaries(int limit) const {
 }
 QVector<Message> Mailbox::messageSummaries(const QString &folder, const QString &search, int offset,
                                            int limit) const {
-    Statement s(db_, "SELECT hash,sender,recipient,subject,substr(body,1,240),folder,received "
-                     "FROM messages WHERE folder=? AND (subject LIKE ? OR sender LIKE ? OR "
-                     "recipient LIKE ? OR body LIKE ?) ORDER BY received DESC,rowid DESC LIMIT ? OFFSET ?");
-    const auto pattern = "%" + search + "%";
-    s.text(1, folder); s.text(2, pattern); s.text(3, pattern); s.text(4, pattern); s.text(5, pattern);
-    s.number(6, std::clamp(limit, 1, 500)); s.number(7, std::max(0, offset));
+    const auto query =
+        search.isEmpty()
+            ? "SELECT "
+              "hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received FROM "
+              "messages WHERE folder=? ORDER BY received DESC,rowid DESC LIMIT ? OFFSET ?"
+            : "SELECT "
+              "hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received FROM "
+              "messages WHERE folder=? AND (instr(lower(subject),lower(?)) OR "
+              "instr(lower(sender),lower(?)) OR instr(lower(recipient),lower(?)) OR "
+              "instr(lower(body),lower(?))) ORDER BY received DESC,rowid DESC LIMIT ? OFFSET ?";
+    Statement s(db_, query);
+    s.text(1, folder);
+    int parameter = 2;
+    if (!search.isEmpty())
+        for (int i = 0; i < 4; ++i)
+            s.text(parameter++, search);
+    s.number(parameter++, std::clamp(limit, 1, 500));
+    s.number(parameter, std::max(0, offset));
     QVector<Message> list;
-    while (s.row()) list.push_back({s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
+    while (s.row())
+        list.push_back(
+            {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
     return list;
+}
+int Mailbox::messageCount(const QString &folder, const QString &search) const {
+    Statement s(db_, search.isEmpty()
+                         ? "SELECT count(*) FROM messages WHERE folder=?"
+                         : "SELECT count(*) FROM messages WHERE folder=? AND "
+                           "(instr(lower(subject),lower(?)) OR instr(lower(sender),lower(?)) OR "
+                           "instr(lower(recipient),lower(?)) OR instr(lower(body),lower(?)))");
+    s.text(1, folder);
+    if (!search.isEmpty())
+        for (int i = 2; i <= 5; ++i)
+            s.text(i, search);
+    s.row();
+    return int(s.number(0));
 }
 void Mailbox::backup(const QString &path, const Secret &key) {
     check(db_, "Mailbox is closed");

@@ -252,7 +252,8 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
         if (create)
             check(passphrase == repeated, "Passwords do not match");
         const auto path = pendingVaultPath_;
-        QByteArray bytes = passphrase.toUtf8();
+        Password secret{passphrase.toUtf8()};
+        auto &bytes = secret.bytes;
         passphrase.fill(QChar(0));
         repeated.fill(QChar(0));
         if (create) {
@@ -273,9 +274,8 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
             acquireVault(path);
             try {
                 vault_.unlock(path, bytes);
+                if (vaultPath_ != path) { mailPath_.clear(); mailKey_.clear(); }
                 vaultPath_ = path;
-                mailPath_.clear();
-                mailKey_.clear();
                 activity_ = "Vault unlocked. Open a mailbox to inspect cached objects.";
             } catch (...) {
                 vaultLock_.reset();
@@ -286,6 +286,7 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
         sodium_memzero(bytes.data(), bytes.size());
         pendingVaultPath_.clear();
         emit vaultPasswordAccepted();
+        if (!create && !mailPath_.isEmpty()) openMailboxPath(mailPath_);
         emit changed();
     });
 }
@@ -462,35 +463,8 @@ void Session::refresh() {
     }
     if (displayedRevision_ == mailbox_.messageRevision())
         return;
-    QVariantList messages;
-    QMap<QString, OutboxItem> outgoing;
-    for (const auto &item : mailbox_.outbox())
-        outgoing.insert(item.id, item);
-    for (const auto &m : mailbox_.messageSummaries(500)) {
-        const auto out = outgoing.value(m.hash);
-        QVariantMap row{
-            {"hash", m.hash},
-            {"from", m.from},
-            {"to", m.to},
-            {"subject", m.subject},
-            {"preview", m.body},
-            {"folder", m.folder},
-            {"state", out.state},
-            {"deliveryError", out.error},
-            {"unread", mailbox_.unread(m.hash)},
-            {"kind",
-             out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
-            {"received",
-             QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
-        if (m.folder == "Drafts" || m.folder == "Outbox" || m.folder == "Sent")
-            row["body"] = mailbox_.message(m.hash).body;
-        messages << row;
-    }
     displayedRevision_ = mailbox_.messageRevision();
-    if (messages_ != messages) {
-        messages_ = std::move(messages);
-        emit messagesChanged();
-    }
+    emit messagesChanged();
     if (messageModel_)
         messageModel_->reload();
 }
@@ -498,10 +472,11 @@ QVariantList Session::messagePage(const QString &folder, const QString &search, 
                                   int limit) const {
     QVariantList result;
     if (!mailboxOpen()) return result;
-    QMap<QString, OutboxItem> outgoing;
-    for (const auto &item : mailbox_.outbox()) outgoing.insert(item.id, item);
     for (const auto &m : mailbox_.messageSummaries(folder, search, offset, limit)) {
-        const auto out = outgoing.value(m.hash);
+        OutboxItem out;
+        if (m.folder == "Outbox" || m.folder == "Sent") {
+            try { out = mailbox_.outgoing(m.hash); } catch (...) {}
+        }
         result << QVariantMap{{"hash", m.hash}, {"from", m.from}, {"to", m.to},
             {"subject", m.subject}, {"preview", m.body}, {"folder", m.folder},
             {"state", out.state}, {"deliveryError", out.error}, {"unread", mailbox_.unread(m.hash)},
@@ -532,10 +507,8 @@ QVariantMap Session::message(QString id) const {
 }
 void Session::clearMessages() {
     displayedRevision_.reset();
-    if (!messages_.isEmpty()) {
-        messages_.clear();
-        emit messagesChanged();
-    }
+    if (messageModel_) messageModel_->reload();
+    emit messagesChanged();
 }
 void Session::tick() {
     if (busy_)
@@ -646,18 +619,8 @@ void Session::readLetter(QString id) {
             refresh();
             mailbox_.markRead(id);
             displayedRevision_ = mailbox_.messageRevision();
-            for (qsizetype i = 0; i < messages_.size(); ++i) {
-                auto message = std::as_const(messages_).at(i).toMap();
-                if (message.value("hash").toString() != id)
-                    continue;
-                if (message.value("unread").toBool()) {
-                    message["unread"] = false;
-                    messages_[i] = message;
-                    emit messageRead(id);
-                    if (messageModel_) messageModel_->markRead(id);
-                }
-                break;
-            }
+            messageModel_->markRead(id);
+            emit messageRead(id);
         }
     });
 }

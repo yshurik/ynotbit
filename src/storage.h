@@ -111,6 +111,7 @@ class Mailbox {
     QVector<Message> messageSummaries(int limit = 2000) const;
     QVector<Message> messageSummaries(const QString &folder, const QString &search, int offset,
                                       int limit) const;
+    int messageCount(const QString &folder, const QString &search) const;
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     quint64 messageRevision() const {
         return messageRevision_;

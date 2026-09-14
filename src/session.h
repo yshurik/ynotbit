@@ -17,7 +17,6 @@ class Session : public QObject {
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(QString document READ document NOTIFY changed)
     Q_PROPERTY(QString error READ error NOTIFY changed)
-    Q_PROPERTY(QVariantList messages READ messages NOTIFY messagesChanged)
     Q_PROPERTY(MessageModel *messageModel READ messageModel CONSTANT)
     Q_PROPERTY(QVariantList identities READ identities NOTIFY changed)
     Q_PROPERTY(qint64 objectCount READ objectCount NOTIFY changed)
@@ -30,7 +29,6 @@ class Session : public QObject {
     std::unique_ptr<Delivery> delivery_;
     std::unique_ptr<MessageModel> messageModel_;
     QString root_, vaultPath_, mailPath_, mailKey_, pendingVaultPath_, error_, activity_;
-    QVariantList messages_;
     std::optional<quint64> displayedRevision_;
     QProcess node_;
     QTimer timer_;
@@ -62,9 +60,6 @@ class Session : public QObject {
     }
     QString activity() const {
         return activity_;
-    }
-    QVariantList messages() const {
-        return messages_;
     }
     MessageModel *messageModel() const { return messageModel_.get(); }
     QVariantList identities() const;
@@ -109,6 +104,7 @@ class Session : public QObject {
     Q_INVOKABLE void readLetter(QString id);
     Q_INVOKABLE QVariantMap message(QString id) const;
     QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit) const;
+    int messageCount(const QString &folder, const QString &search) const { return mailboxOpen() ? mailbox_.messageCount(folder, search) : 0; }
     Q_INVOKABLE QVariantList deliveryHistory(QString id);
     Q_INVOKABLE void subscribe();
     Q_INVOKABLE void unsubscribe(QString address);

@@ -26,6 +26,7 @@ static bool column(sqlite3 *db, const char *table, const QString &name) {
 }
 void Mailbox::migrate() {
     Transaction t(db_);
+    sql("CREATE INDEX IF NOT EXISTS messages_folder_received ON messages(folder,received)");
     if (!column(db_, "meta", "cache_id"))
         sql("ALTER TABLE meta ADD COLUMN cache_id TEXT NOT NULL DEFAULT ''");
     if (!column(db_, "meta", "identities"))
