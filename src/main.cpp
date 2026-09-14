@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
     app.setOrganizationName("NotbitDesktop");
     app.setApplicationName("Notbit Desktop");
     app.setApplicationDisplayName("ynotbit");
-    app.setApplicationVersion("0.4.2-dev");
+    app.setApplicationVersion("0.4.3-dev");
     try {
         auto args = app.arguments();
         QString root =

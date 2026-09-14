@@ -193,6 +193,15 @@ int main(int argc, char **argv) {
         }
         window.selectMessage(formatted);
         require(!badge->isVisible(), "draft has no stale acknowledgment badge");
+        const auto longSubject = session.saveLetter({}, address, address, QString(500, 'L'),
+                                                    "Long subject body", "direct");
+        window.selectMessage(longSubject);
+        auto subjectLabel = window.findChild<QLabel *>("subjectLabel");
+        require(subjectLabel && subjectLabel->text().endsWith("…"),
+                "long subjects use a readable ellipsis preview");
+        require(subjectLabel->toolTip().size() == 500,
+                "full long subject remains available as tooltip");
+        require(subjectLabel->height() <= 120, "long subject stays within the reader header");
         QTimer::singleShot(50, &window, [&] {
             auto dialog = window.findChild<QDialog *>("composer");
             require(dialog, "composer opens");

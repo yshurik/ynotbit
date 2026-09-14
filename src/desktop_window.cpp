@@ -389,8 +389,11 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     read->setContentsMargins(28, 28, 28, 24);
     read->setSpacing(14);
     subject_ = new QLabel("No letter selected");
+    subject_->setObjectName("subjectLabel");
     subject_->setWordWrap(true);
-    subject_->setMaximumHeight(90);
+    subject_->setMaximumHeight(120);
+    subject_->setMinimumHeight(0);
+    subject_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     subject_->setTextFormat(Qt::PlainText);
     subject_->setStyleSheet("font-size:22px;font-weight:600;");
     read->addWidget(subject_);
@@ -783,7 +786,13 @@ void DesktopWindow::selectMessage(const QString &id) {
         return;
     }
     subject_->setText(singleLine(selected_["subject"].toString()).left(240));
-    subject_->setFont(subject_->text().contains("BM-") ? addressFont() : QApplication::font());
+    const auto fullSubject = singleLine(selected_["subject"].toString());
+    auto subjectPreview = fullSubject;
+    if (subjectPreview.size() > 160)
+        subjectPreview = subjectPreview.left(157).trimmed() + "…";
+    subject_->setText(subjectPreview);
+    subject_->setToolTip(fullSubject);
+    subject_->setFont(subjectPreview.contains("BM-") ? addressFont() : QApplication::font());
     fromAddress_->setText(selected_["from"].toString());
     toAddress_->setText(selected_["to"].toString());
     deliveryError_->setText(selected_["deliveryError"].toString());
