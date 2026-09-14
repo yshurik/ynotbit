@@ -123,6 +123,9 @@ void Delivery::plan(Mailbox &m, const Vault &v, qint64 time) {
                 continue;
             }
             const bool ack = !recipient->chan && (recipient->behaviors & 1);
+            m.recordMilestone(item.id, "key_available",
+                              "Recipient encryption key available for this delivery (local, "
+                              "cached, or received)");
             if (ack && item.ackObject.isEmpty()) {
                 if (item.ackToken.isEmpty()) {
                     item.ackToken.resize(32);
@@ -160,6 +163,9 @@ void Delivery::processJobs(Mailbox &m, bool online) {
             const auto id = mining_;
             mining_.clear();
             m.updateJob(id, "ready", solved, Protocol::inventoryHash(solved));
+            if (it->kind == "message" || it->kind == "broadcast")
+                m.recordMilestone(it->owner, "prepared",
+                                  "Encrypted object and proof of work completed");
         }
     }
     for (auto j : m.jobs()) {

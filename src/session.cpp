@@ -1,9 +1,9 @@
 #include "session.h"
 #include "appearance.h"
+#include "message_model.h"
 #include "protocol.h"
 #include "protocol_wire.h"
 #include "scanner.h"
-#include "message_model.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QDateTime>
@@ -29,7 +29,8 @@ static QString addressInput(const QString &title, const QString &label, bool *ac
     dialog.setWindowTitle(title);
     dialog.setLabelText(label);
     dialog.setInputMode(QInputDialog::TextInput);
-    if (auto field=dialog.findChild<QLineEdit *>()) field->setFont(addressFont());
+    if (auto field = dialog.findChild<QLineEdit *>())
+        field->setFont(addressFont());
     *accepted = dialog.exec() == QDialog::Accepted;
     return dialog.textValue();
 }
@@ -268,7 +269,8 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
         passphrase.fill(QChar(0));
         repeated.fill(QChar(0));
         if (create) {
-            check(!QFile::exists(path), "Choose a new filename; existing vaults are never overwritten");
+            check(!QFile::exists(path),
+                  "Choose a new filename; existing vaults are never overwritten");
             acquireVault(path);
             try {
                 vault_.create(path, bytes);
@@ -285,7 +287,10 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
             acquireVault(path);
             try {
                 vault_.unlock(path, bytes);
-                if (vaultPath_ != path) { mailPath_.clear(); mailKey_.clear(); }
+                if (vaultPath_ != path) {
+                    mailPath_.clear();
+                    mailKey_.clear();
+                }
                 vaultPath_ = path;
                 activity_ = "Vault unlocked. Open a mailbox to inspect cached objects.";
             } catch (...) {
@@ -297,7 +302,8 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
         sodium_memzero(bytes.data(), bytes.size());
         pendingVaultPath_.clear();
         emit vaultPasswordAccepted();
-        if (!create && !mailPath_.isEmpty()) openMailboxPath(mailPath_);
+        if (!create && !mailPath_.isEmpty())
+            openMailboxPath(mailPath_);
         emit changed();
     });
 }
@@ -405,8 +411,7 @@ void Session::joinChannel() {
             return;
         auto expected =
             addressInput("Verify chan address",
-                                  "Expected BM-address (leave empty to create a version 4 chan)",
-                                  &ok);
+                         "Expected BM-address (leave empty to create a version 4 chan)", &ok);
         if (!ok) {
             phrase.fill(QChar(0));
             return;
@@ -441,7 +446,8 @@ void Session::changePassword() {
 void Session::backup() {
     attempt([&] {
         check(mailboxOpen(), "Open a mailbox first");
-        auto dir = QFileDialog::getExistingDirectory(nullptr, "Choose backup folder", documentsPath());
+        auto dir =
+            QFileDialog::getExistingDirectory(nullptr, "Choose backup folder", documentsPath());
         if (dir.isEmpty())
             return;
         auto base =
@@ -481,26 +487,45 @@ void Session::refresh() {
 }
 QVariantList Session::channels() const {
     QMap<QString, QString> labels;
-    if (mailboxOpen()) for (const auto &address : mailbox_.channelAddresses()) labels[address] = address;
-    if (unlocked()) for (const auto &i : vault_.identities()) if (i.chan) labels[i.address] = i.label.isEmpty() ? i.address : i.label;
+    if (mailboxOpen())
+        for (const auto &address : mailbox_.channelAddresses())
+            labels[address] = address;
+    if (unlocked())
+        for (const auto &i : vault_.identities())
+            if (i.chan)
+                labels[i.address] = i.label.isEmpty() ? i.address : i.label;
     QVariantList result;
-    for (auto i=labels.cbegin();i!=labels.cend();++i) result << QVariantMap{{"address",i.key()},{"label",i.value()}};
+    for (auto i = labels.cbegin(); i != labels.cend(); ++i)
+        result << QVariantMap{{"address", i.key()}, {"label", i.value()}};
     return result;
 }
 QVariantList Session::messagePage(const QString &folder, const QString &search, int offset,
                                   int limit, const QString &recipient) const {
     QVariantList result;
-    if (!mailboxOpen()) return result;
+    if (!mailboxOpen())
+        return result;
     for (const auto &m : mailbox_.messageSummaries(folder, search, offset, limit, recipient)) {
         OutboxItem out;
         if (m.folder == "Outbox" || m.folder == "Sent") {
-            try { out = mailbox_.outgoing(m.hash); } catch (...) {}
+            try {
+                out = mailbox_.outgoing(m.hash);
+            } catch (...) {
+            }
         }
-        result << QVariantMap{{"hash", m.hash}, {"from", m.from}, {"to", m.to},
-            {"subject", m.subject}, {"preview", m.body}, {"folder", m.folder},
-            {"state", out.state}, {"deliveryError", out.error}, {"unread", mailbox_.unread(m.hash)},
-            {"kind", out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
-            {"received", QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
+        result << QVariantMap{
+            {"hash", m.hash},
+            {"from", m.from},
+            {"to", m.to},
+            {"subject", m.subject},
+            {"preview", m.body},
+            {"folder", m.folder},
+            {"state", out.state},
+            {"deliveryError", out.error},
+            {"unread", mailbox_.unread(m.hash)},
+            {"kind",
+             out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
+            {"received",
+             QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
     }
     return result;
 }
@@ -509,24 +534,29 @@ QVariantMap Session::message(QString id) const {
         return {};
     const auto m = mailbox_.message(id);
     OutboxItem out;
-    try { out = mailbox_.outgoing(id); } catch (...) { }
-    return {{"hash", m.hash},
-            {"from", m.from},
-            {"to", m.to},
-            {"subject", m.subject},
-            {"body", m.body},
-            {"preview", m.body.left(240)},
-            {"folder", m.folder},
-            {"state", out.state},
-            {"deliveryError", out.error},
-            {"unread", mailbox_.unread(m.hash)},
-            {"kind", out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct")
-                                         : out.kind},
-            {"received", QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
+    try {
+        out = mailbox_.outgoing(id);
+    } catch (...) {
+    }
+    return {
+        {"hash", m.hash},
+        {"from", m.from},
+        {"to", m.to},
+        {"subject", m.subject},
+        {"body", m.body},
+        {"preview", m.body.left(240)},
+        {"storedAt", m.received},
+        {"folder", m.folder},
+        {"state", out.state},
+        {"deliveryError", out.error},
+        {"unread", mailbox_.unread(m.hash)},
+        {"kind", out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
+        {"received", QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
 }
 void Session::clearMessages() {
     displayedRevision_.reset();
-    if (messageModel_) messageModel_->reload();
+    if (messageModel_)
+        messageModel_->reload();
     emit messagesChanged();
 }
 void Session::tick() {
@@ -645,14 +675,18 @@ void Session::readLetter(QString id) {
 }
 QVariantList Session::deliveryHistory(QString id) {
     QVariantList result;
-    attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+    if (!mailboxOpen())
+        return result;
+    try {
         for (const auto &e : mailbox_.events(id))
             result << QVariantMap{
-                {"time", QDateTime::fromSecsSinceEpoch(e.timestamp).toString("dd MMM hh:mm:ss")},
+                {"time",
+                 QDateTime::fromSecsSinceEpoch(e.timestamp).toString("dd MMM yyyy · HH:mm:ss")},
                 {"state", e.state},
                 {"detail", e.detail}};
-    });
+    } catch (const std::exception &e) {
+        error_ = QString::fromUtf8(e.what());
+    }
     return result;
 }
 QVariantList Session::subscriptions() const {
@@ -666,9 +700,8 @@ void Session::subscribe() {
     attempt([&] {
         check(mailboxOpen(), "Open a mailbox first");
         bool ok = false;
-        auto address = addressInput("Subscribe to broadcasts",
-                                             "Publisher BM-address", &ok)
-                           .trimmed();
+        auto address =
+            addressInput("Subscribe to broadcasts", "Publisher BM-address", &ok).trimmed();
         if (!ok)
             return;
         check(Wire::validAddress(address), "Invalid Bitmessage address");

@@ -58,8 +58,12 @@ class LetterDelegate : public QStyledItemDelegate {
              true, pal.text().color());
         text(36, i.data(Qt::UserRole + 5).toString(), false, pal.placeholderText().color());
         auto state = i.data(Qt::UserRole + 7).toString();
+        const auto stateColor =
+            state == "acknowledged"
+                ? QColor(pal.base().color().lightness() < 128 ? "#8ce0b2" : "#17643b")
+                : pal.placeholderText().color();
         text(62, state.isEmpty() ? i.data(Qt::UserRole + 11).toString() : state.replace('_', ' '),
-             false, pal.placeholderText().color());
+             false, stateColor);
         p->setPen(pal.mid().color());
         p->drawLine(o.rect.bottomLeft(), o.rect.bottomRight());
         p->restore();
@@ -428,12 +432,43 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         dialog.exec();
     });
     read->addWidget(actions_);
-    details_ = new QLabel;
-    details_->setObjectName("messageAddresses");
-    details_->setFont(addressFont());
-    details_->setTextFormat(Qt::PlainText);
-    details_->setWordWrap(true);
-    details_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    details_ = new QWidget;
+    auto metadata = new QGridLayout(details_);
+    metadata->setContentsMargins(0, 0, 0, 0);
+    metadata->setHorizontalSpacing(14);
+    metadata->setVerticalSpacing(6);
+    metadata->setColumnStretch(1, 1);
+    fromAddress_ = new QLabel;
+    toAddress_ = new QLabel;
+    fromAddress_->setObjectName("messageAddresses");
+    toAddress_->setObjectName("toAddress");
+    int addressRow = 0;
+    for (auto field : {fromAddress_, toAddress_}) {
+        field->setFont(addressFont());
+        field->setTextFormat(Qt::PlainText);
+        field->setWordWrap(true);
+        field->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        auto label = new QLabel(addressRow == 0 ? "From" : "To");
+        metadata->addWidget(label, addressRow, 0, Qt::AlignTop);
+        metadata->addWidget(field, addressRow++, 1);
+    }
+    deliveryStatus_ = new QLabel;
+    deliveryStatus_->setObjectName("deliveryStatus");
+    deliveryStatus_->setTextFormat(Qt::PlainText);
+    metadata->addWidget(deliveryStatus_, 2, 1, Qt::AlignLeft);
+    deliveryError_ = new QLabel;
+    deliveryError_->setTextFormat(Qt::PlainText);
+    deliveryError_->setWordWrap(true);
+    metadata->addWidget(deliveryError_, 3, 1);
+    timeline_ = new QLabel;
+    timeline_->setObjectName("messageTimeline");
+    timeline_->setTextFormat(Qt::RichText);
+    timeline_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    timeline_->setToolTip("Times are local. Received in mailbox is when the object was decrypted "
+                          "and saved, which may be after network arrival while locked. Sent to "
+                          "peers is a relay offer, not a read receipt.");
+    metadata->addWidget(timeline_, 4, 0, 1, 2);
+    details_->hide();
     read->addWidget(details_);
     body_ = new QTextBrowser;
     body_->setObjectName("readerBody");
@@ -533,6 +568,13 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     connect(&appearance_, &Appearance::changed, this, &DesktopWindow::updateTheme);
     connect(&session_, &Session::changed, this, &DesktopWindow::updateState);
     connect(&session_, &Session::messagesChanged, this, &DesktopWindow::refreshChannels);
+    connect(
+        &session_, &Session::messagesChanged, this,
+        [this] {
+            if (!selected_.value("hash").toString().isEmpty())
+                updateTimeline();
+        },
+        Qt::QueuedConnection);
     // Let the controller leave its guarded operation before the modal dialog
     // submits a password through that same controller.
     connect(&session_, &Session::vaultPasswordRequired, this, &DesktopWindow::vaultDialog,
@@ -541,7 +583,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         selected_.clear();
         body_->clear();
         subject_->setText("No letter selected");
-        details_->clear();
+        clearDetails();
         actions_->hide();
     });
     connect(letters_->selectionModel(), &QItemSelectionModel::currentChanged, this,
@@ -552,7 +594,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
                     selected_.clear();
                     body_->clear();
                     subject_->setText("No letter selected");
-                    details_->clear();
+                    clearDetails();
                     actions_->hide();
                 }
             });
@@ -560,7 +602,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         selected_.clear();
         body_->clear();
         subject_->setText("No letter selected");
-        details_->clear();
+        clearDetails();
         actions_->hide();
     });
     connect(folders_, &QListWidget::currentTextChanged, this, [this](QString folder) {
@@ -571,7 +613,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         selected_.clear();
         body_->clear();
         subject_->setText(folder == "Identities" ? "Identities & chans" : "No letter selected");
-        details_->clear();
+        clearDetails();
         actions_->hide();
         if (folder == "Identities")
             refreshIdentities();
@@ -595,6 +637,92 @@ void DesktopWindow::updateTheme() {
                  dark ? "#1b2530" : "#ffffff", dark ? "#354553" : "#dbe3e8",
                  dark ? "#234b46" : "#dcebe8", dark ? "#73d8c7" : "#126d65"));
     letters_->viewport()->update();
+    updateDeliveryStatus();
+}
+void DesktopWindow::clearDetails() {
+    fromAddress_->clear();
+    toAddress_->clear();
+    deliveryStatus_->clear();
+    deliveryError_->clear();
+    timeline_->clear();
+    details_->hide();
+}
+void DesktopWindow::updateDeliveryStatus() {
+    const auto state = selected_.value("state").toString();
+    const bool success = state == "acknowledged";
+    auto label = state;
+    label.replace('_', ' ');
+    if (!label.isEmpty())
+        label[0] = label[0].toUpper();
+    deliveryStatus_->setText(label);
+    deliveryStatus_->setVisible(!label.isEmpty());
+    deliveryStatus_->setToolTip(
+        success ? "Recipient acknowledged delivery. This is not a read receipt." : QString());
+    const bool dark = appearance_.dark();
+    deliveryStatus_->setStyleSheet(
+        QString(
+            "QLabel {color:%1;background:%2;border-radius:6px;padding:4px 9px;font-weight:600;}")
+            .arg(success ? (dark ? "#8ce0b2" : "#17643b") : (dark ? "#c1cdd7" : "#435867"),
+                 success ? (dark ? "#183d2b" : "#e0f3e7") : (dark ? "#263440" : "#e8edf1")));
+}
+void DesktopWindow::updateTimeline() {
+    const auto events = session_.deliveryHistory(selected_.value("hash").toString());
+    QString html = "<table cellspacing='0' cellpadding='2'>";
+    auto row = [&](const QString &label, const QString &time) {
+        html += "<tr><td style='padding-right:16px'>" + label.toHtmlEscaped() + "</td><td>" +
+                time.toHtmlEscaped() + "</td></tr>";
+    };
+    if (events.isEmpty()) {
+        const auto folder = selected_.value("folder").toString();
+        const auto label = folder == "Drafts" ? "Draft saved"
+                                              : (folder == "Inbox" || folder == "Channels" ||
+                                                         folder == "Broadcasts"
+                                                     ? "Received in mailbox"
+                                                     : "Saved in mailbox");
+        row(label, QDateTime::fromSecsSinceEpoch(selected_.value("storedAt").toLongLong())
+                       .toString("dd MMM yyyy · HH:mm:ss"));
+    } else {
+        const QMap<QString, QString> labels{{"queued", "Queued"},
+                                            {"awaiting_pubkey", "Requested recipient key"},
+                                            {"key_available", "Recipient key available"},
+                                            {"calculating_ack", "Receipt preparation started"},
+                                            {"calculating_message", "Message preparation started"},
+                                            {"prepared", "Prepared"},
+                                            {"publishing", "Submitted to relay"},
+                                            {"published", "Sent to peers"},
+                                            {"awaiting_ack", "Sent to peers"},
+                                            {"acknowledged", "Acknowledged"},
+                                            {"failed", "Failed"},
+                                            {"expired", "Expired"},
+                                            {"cancelled", "Cancelled"}};
+        // Show the latest occurrence of each recorded stage; the full history
+        // remains available in More, including retries and detailed explanations.
+        QMap<QString, int> latest;
+        for (int i = 0; i < events.size(); ++i)
+            latest[events[i].toMap().value("state").toString()] = i;
+        for (int i = 0; i < events.size(); ++i) {
+            const auto event = events[i].toMap();
+            const auto state = event.value("state").toString();
+            if (labels.contains(state) && latest.value(state) == i)
+                row(labels.value(state), event.value("time").toString());
+            if (state != "key_available" && state != "prepared")
+                selected_["state"] = state;
+        }
+        const auto current = selected_.value("state").toString();
+        bool currentShown = false;
+        for (const auto &event : events)
+            if (event.toMap().value("state").toString() == current)
+                currentShown = true;
+        if (!current.isEmpty() && !currentShown) {
+            auto label = current;
+            label.replace('_', ' ');
+            if (!label.isEmpty())
+                label[0] = label[0].toUpper();
+            row(label, QDateTime::currentDateTime().toString("dd MMM yyyy · HH:mm:ss"));
+        }
+    }
+    timeline_->setText(html + "</table>");
+    updateDeliveryStatus();
 }
 void DesktopWindow::updateState() {
     setWindowTitle(session_.document() + " — ynotbit");
@@ -656,9 +784,13 @@ void DesktopWindow::selectMessage(const QString &id) {
     }
     subject_->setText(singleLine(selected_["subject"].toString()).left(240));
     subject_->setFont(subject_->text().contains("BM-") ? addressFont() : QApplication::font());
-    details_->setText("From  " + selected_["from"].toString() + "\nTo      " +
-                      selected_["to"].toString() + "\n" + selected_["state"].toString() + " " +
-                      selected_["deliveryError"].toString());
+    fromAddress_->setText(selected_["from"].toString());
+    toAddress_->setText(selected_["to"].toString());
+    deliveryError_->setText(selected_["deliveryError"].toString());
+    deliveryError_->setVisible(!deliveryError_->text().isEmpty());
+    updateDeliveryStatus();
+    details_->show();
+    updateTimeline();
     body_->document()->setLayoutEnabled(false);
     body_->document()->setMarkdown(
         selected_["body"].toString(),

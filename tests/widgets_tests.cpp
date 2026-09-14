@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     try {
         bm::Vault vault;
         vault.create(temp.filePath("vault"), "test password");
-        vault.addIdentity("Personal");
+        const auto personal = vault.addIdentity("Personal");
         const auto emptyChannel =
             vault.addChannel("widgets empty channel regression", "Empty channel");
         auto key = vault.addMailboxKey();
@@ -43,6 +43,10 @@ int main(int argc, char **argv) {
                           "Subject " + QString::number(i), QString(10000, 'x'), i, "Channels");
         mailbox.store("other-channel", "sender", "second-recipient", "Only channel two",
                       "Separate discussion", 1600, "Channels");
+        const auto acknowledged = mailbox.saveDraft({}, personal, emptyChannel,
+                                                    "Delivery confirmed", "A delivered letter.");
+        mailbox.queueDraft(acknowledged, "direct", QDateTime::currentSecsSinceEpoch() + 86400);
+        mailbox.setDelivery(acknowledged, "acknowledged");
         mailbox.close();
         vault.lock();
         QDir().mkpath(temp.filePath("node"));
@@ -160,10 +164,35 @@ int main(int argc, char **argv) {
                     .isNull(),
                 "reader blocks local resources");
         if (app.arguments().contains("--capture")) {
+            window.selectMessage(acknowledged);
+            QCoreApplication::processEvents();
             auto n = app.arguments().indexOf("--capture");
             if (n + 1 < app.arguments().size())
                 window.grab().save(app.arguments()[n + 1]);
         }
+        window.selectMessage(acknowledged);
+        QCoreApplication::processEvents();
+        auto fromLabel = window.findChild<QLabel *>("messageAddresses");
+        auto toLabel = window.findChild<QLabel *>("toAddress");
+        require(fromLabel->mapTo(&window, QPoint()).x() == toLabel->mapTo(&window, QPoint()).x(),
+                "From and To address columns align");
+        auto badge = window.findChild<QLabel *>("deliveryStatus");
+        require(badge->isVisible() && badge->text() == "Acknowledged",
+                "acknowledgment has a separate status badge");
+        auto timeline = window.findChild<QLabel *>("messageTimeline");
+        require(timeline->text().contains("Queued") && timeline->text().contains("Acknowledged"),
+                "delivery timeline shows queued and acknowledged stages");
+        for (const auto &mode : {QString("light"), QString("dark")}) {
+            for (auto action : window.findChildren<QAction *>())
+                if (action->text() == mode)
+                    action->trigger();
+            QCoreApplication::processEvents();
+            auto color = badge->palette().color(QPalette::WindowText);
+            require(color.green() > color.red() && color.green() > color.blue(),
+                    "acknowledged status is green in both themes");
+        }
+        window.selectMessage(formatted);
+        require(!badge->isVisible(), "draft has no stale acknowledgment badge");
         QTimer::singleShot(50, &window, [&] {
             auto dialog = window.findChild<QDialog *>("composer");
             require(dialog, "composer opens");

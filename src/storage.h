@@ -132,6 +132,7 @@ class Mailbox {
     void retry(const QString &id, qint64 expires);
     void cancel(const QString &id);
     QVector<DeliveryEvent> events(const QString &id) const;
+    void recordMilestone(const QString &id, const QString &state, const QString &detail);
     QString addJob(NetworkJob job);
     QVector<NetworkJob> jobs() const;
     void updateJob(const QString &id, const QString &state, const QByteArray &payload = {},

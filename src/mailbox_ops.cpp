@@ -27,7 +27,8 @@ static bool column(sqlite3 *db, const char *table, const QString &name) {
 void Mailbox::migrate() {
     Transaction t(db_);
     sql("CREATE INDEX IF NOT EXISTS messages_folder_received ON messages(folder,received)");
-    sql("CREATE INDEX IF NOT EXISTS messages_channel_received ON messages(folder,recipient,received)");
+    sql("CREATE INDEX IF NOT EXISTS messages_channel_received ON "
+        "messages(folder,recipient,received)");
     if (!column(db_, "meta", "cache_id"))
         sql("ALTER TABLE meta ADD COLUMN cache_id TEXT NOT NULL DEFAULT ''");
     if (!column(db_, "meta", "identities"))
@@ -139,15 +140,23 @@ QVector<OutboxItem> Mailbox::outbox() const {
     return result;
 }
 OutboxItem Mailbox::outgoing(const QString &id) const {
-    Statement s(db_,
-                "SELECT id,kind,state,error,object_hash,ack_token,ack_object,expires,next_attempt,attempts "
-                "FROM outbox WHERE id=?");
+    Statement s(
+        db_,
+        "SELECT id,kind,state,error,object_hash,ack_token,ack_object,expires,next_attempt,attempts "
+        "FROM outbox WHERE id=?");
     s.text(1, id);
     require(s.row(), "No delivery record for this letter");
     OutboxItem o;
-    o.id = s.text(0); o.kind = s.text(1); o.state = s.text(2); o.error = s.text(3);
-    o.objectHash = s.text(4); o.ackToken = s.blob(5); o.ackObject = s.blob(6);
-    o.expires = s.number(7); o.nextAttempt = s.number(8); o.attempts = int(s.number(9));
+    o.id = s.text(0);
+    o.kind = s.text(1);
+    o.state = s.text(2);
+    o.error = s.text(3);
+    o.objectHash = s.text(4);
+    o.ackToken = s.blob(5);
+    o.ackObject = s.blob(6);
+    o.expires = s.number(7);
+    o.nextAttempt = s.number(8);
+    o.attempts = int(s.number(9));
     o.message = message(o.id);
     return o;
 }
@@ -259,6 +268,17 @@ QVector<DeliveryEvent> Mailbox::events(const QString &id) const {
     while (s.row())
         r << DeliveryEvent{s.number(0), s.text(1), s.text(2)};
     return r;
+}
+void Mailbox::recordMilestone(const QString &id, const QString &state, const QString &detail) {
+    Statement s(db_, "INSERT INTO delivery_events(id,ts,state,detail) SELECT ?,?,?,? WHERE NOT "
+                     "EXISTS (SELECT 1 FROM delivery_events WHERE id=? AND state=?)");
+    s.text(1, id);
+    s.number(2, now());
+    s.text(3, state);
+    s.text(4, detail);
+    s.text(5, id);
+    s.text(6, state);
+    s.row();
 }
 QString Mailbox::addJob(NetworkJob job) {
     if (job.id.isEmpty())
