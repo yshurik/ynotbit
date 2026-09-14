@@ -33,12 +33,16 @@ int main(int argc, char **argv) {
         bm::Vault vault;
         vault.create(temp.filePath("vault"), "test password");
         vault.addIdentity("Personal");
+        const auto emptyChannel =
+            vault.addChannel("widgets empty channel regression", "Empty channel");
         auto key = vault.addMailboxKey();
         bm::Mailbox mailbox;
         mailbox.create(temp.filePath("mailbox"), key, vault.mailboxKey(key));
         for (int i = 0; i < 1500; ++i)
             mailbox.store(QString::number(i), "sender", "recipient",
                           "Subject " + QString::number(i), QString(10000, 'x'), i, "Channels");
+        mailbox.store("other-channel", "sender", "second-recipient", "Only channel two",
+                      "Separate discussion", 1600, "Channels");
         mailbox.close();
         vault.lock();
         QDir().mkpath(temp.filePath("node"));
@@ -71,6 +75,17 @@ int main(int argc, char **argv) {
         footprint("Mailbox open");
         auto list = window.findChild<QListView *>("letters");
         require(list, "list exists");
+        auto channels = window.findChild<QComboBox *>("channelSelector");
+        const auto mono = [](const QFont &font) {
+            QFontMetricsF metrics(font);
+            return qAbs(metrics.horizontalAdvance("iiii") - metrics.horizontalAdvance("WWWW")) <
+                   0.1;
+        };
+        require(mono(channels->font()), "channel addresses use equal-width characters");
+        require(mono(window.findChild<QLabel *>("messageAddresses")->font()),
+                "message address headers use fixed width");
+        require(channels && channels->count() == 3, "stored and empty joined channels are listed");
+        channels->setCurrentIndex(channels->findData("recipient"));
         require(list->model()->rowCount() == 1500, "all channel rows available");
         clock.restart();
         for (int i = 0; i < 1500; i += 25) {
@@ -82,6 +97,35 @@ int main(int argc, char **argv) {
         session.messageModel()->setSearch("Subject 1499");
         require(session.messageModel()->rowCount() == 1, "search finds old rows");
         session.messageModel()->setSearch("");
+        window.selectMessage("0");
+        channels->setCurrentIndex(channels->findData("second-recipient"));
+        require(list->model()->rowCount() == 1, "second channel excludes first channel messages");
+        require(list->model()->index(0, 0).data(Qt::UserRole + 1) == "other-channel",
+                "channel page has correct recipient");
+        require(window.findChild<QTextBrowser *>("readerBody")->toPlainText().isEmpty(),
+                "switching channel clears previous body");
+        session.messageModel()->setSearch("Subject");
+        require(list->model()->rowCount() == 0, "search stays within selected channel");
+        session.messageModel()->setSearch("");
+        folders->setCurrentRow(0);
+        folders->setCurrentRow(4);
+        require(channels->currentData() == "second-recipient",
+                "channel selection survives folder navigation");
+        channels->setCurrentIndex(channels->findData(emptyChannel));
+        require(list->model()->rowCount() == 0,
+                "empty joined channel does not show mixed messages");
+        QTimer::singleShot(30, &window, [&] {
+            auto dialog = window.findChild<QDialog *>("composer");
+            require(dialog->findChild<QLineEdit *>("recipientField")->text() == emptyChannel,
+                    "channel compose targets selected channel");
+            require(mono(dialog->findChild<QLineEdit *>("recipientField")->font()),
+                    "recipient field uses fixed width");
+            require(dialog->findChild<QComboBox *>("senderSelector")->currentData() == emptyChannel,
+                    "channel compose uses channel identity");
+            dialog->reject();
+        });
+        window.findChild<QPushButton *>("writeButton")->click();
+        channels->setCurrentIndex(channels->findData("recipient"));
         clock.restart();
         for (int i = 0; i < 50; ++i) {
             window.selectMessage(QString::number(i));

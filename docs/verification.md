@@ -43,7 +43,7 @@ an independent security audit or public-network certification.
 Run the complete suite with `ctest --test-dir build --output-on-failure` after
 configuring Qt and the encrypted-storage dependencies.
 
-## Widgets performance check
+## Widgets 0.4.0 performance check
 
 A native Cocoa run of `build/desktop_tests` on 14 September 2026, using the
 synthetic mailbox above and an empty offline network cache, measured:
@@ -71,3 +71,18 @@ The final local suite passed 11/11 (38.24 seconds). The extracted, ad-hoc-signed
 Apple Silicon bundle passed signature/dependency checks and a native offline
 launch; vmmap reported a 52.4 MiB idle physical footprint with no mailbox open.
 The ZIP is 13,292,671 bytes. No Quick or QML libraries are bundled.
+
+## 0.4.1 channel navigation and address typography
+
+The desktop regression now includes two separate channel recipients and a joined
+channel with no messages. It verifies recipient-filtered counts and rows, search
+isolation, clearing the old reader, selection retention across folder navigation,
+and the sender/recipient prefilled by Write to channel. Existing 1,500-row paging
+and lock/composer checks remain in place.
+
+Address typography checks compare actual glyph advances for narrow and wide
+characters. Native macOS passed; the offscreen platform exposed a proportional
+FixedFont fallback, now handled by selecting an installed fixed-pitch font.
+BM-addresses in document text are styled by a highlighter without changing the
+stored Markdown. Other core, lifecycle, delivery, and relay tests passed during
+this change; the desktop and startup gates were rerun after the font correction.

@@ -1,4 +1,5 @@
 #include "session.h"
+#include "appearance.h"
 #include "protocol.h"
 #include "protocol_wire.h"
 #include "scanner.h"
@@ -9,6 +10,7 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QHostAddress>
 #include <QInputDialog>
 #include <QJsonDocument>
@@ -22,6 +24,15 @@
 #include <algorithm>
 #include <stdexcept>
 namespace bm {
+static QString addressInput(const QString &title, const QString &label, bool *accepted) {
+    QInputDialog dialog;
+    dialog.setWindowTitle(title);
+    dialog.setLabelText(label);
+    dialog.setInputMode(QInputDialog::TextInput);
+    if (auto field=dialog.findChild<QLineEdit *>()) field->setFont(addressFont());
+    *accepted = dialog.exec() == QDialog::Accepted;
+    return dialog.textValue();
+}
 static void check(bool b, const char *m) {
     if (!b)
         throw std::runtime_error(m);
@@ -393,9 +404,9 @@ void Session::joinChannel() {
         if (!ok)
             return;
         auto expected =
-            QInputDialog::getText(nullptr, "Verify chan address",
+            addressInput("Verify chan address",
                                   "Expected BM-address (leave empty to create a version 4 chan)",
-                                  QLineEdit::Normal, {}, &ok);
+                                  &ok);
         if (!ok) {
             phrase.fill(QChar(0));
             return;
@@ -468,11 +479,19 @@ void Session::refresh() {
     if (messageModel_)
         messageModel_->reload();
 }
+QVariantList Session::channels() const {
+    QMap<QString, QString> labels;
+    if (mailboxOpen()) for (const auto &address : mailbox_.channelAddresses()) labels[address] = address;
+    if (unlocked()) for (const auto &i : vault_.identities()) if (i.chan) labels[i.address] = i.label.isEmpty() ? i.address : i.label;
+    QVariantList result;
+    for (auto i=labels.cbegin();i!=labels.cend();++i) result << QVariantMap{{"address",i.key()},{"label",i.value()}};
+    return result;
+}
 QVariantList Session::messagePage(const QString &folder, const QString &search, int offset,
-                                  int limit) const {
+                                  int limit, const QString &recipient) const {
     QVariantList result;
     if (!mailboxOpen()) return result;
-    for (const auto &m : mailbox_.messageSummaries(folder, search, offset, limit)) {
+    for (const auto &m : mailbox_.messageSummaries(folder, search, offset, limit, recipient)) {
         OutboxItem out;
         if (m.folder == "Outbox" || m.folder == "Sent") {
             try { out = mailbox_.outgoing(m.hash); } catch (...) {}
@@ -647,8 +666,8 @@ void Session::subscribe() {
     attempt([&] {
         check(mailboxOpen(), "Open a mailbox first");
         bool ok = false;
-        auto address = QInputDialog::getText(nullptr, "Subscribe to broadcasts",
-                                             "Publisher BM-address", QLineEdit::Normal, {}, &ok)
+        auto address = addressInput("Subscribe to broadcasts",
+                                             "Publisher BM-address", &ok)
                            .trimmed();
         if (!ok)
             return;

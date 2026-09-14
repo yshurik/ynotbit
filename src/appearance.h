@@ -1,8 +1,10 @@
 #pragma once
 #include <QObject>
 #include <QPalette>
+#include <QFont>
 
 namespace bm {
+QFont addressFont();
 class Appearance : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString mode READ mode WRITE setMode NOTIFY changed)

@@ -13,8 +13,9 @@ QVariant MessageModel::data(const QModelIndex &index, int role) const {
     const int page = index.row() / 100;
     if (!pages_.contains(page)) {
         try {
-            pages_.insert(
-                page, new QVariantList(session_->messagePage(folder_, search_, page * 100, 100)));
+            pages_.insert(page, new QVariantList(session_->messagePage(
+                                    folder_, search_, page * 100, 100,
+                                    folder_ == "Channels" ? channel_ : QString())));
         } catch (...) {
             return {};
         }
@@ -51,7 +52,10 @@ void MessageModel::setSearch(const QString &search) {
     }
 }
 void MessageModel::reload() {
-    const int count = session_->messageCount(folder_, search_);
+    const int count = folder_ == "Channels" && channel_.isEmpty()
+                          ? 0
+                          : session_->messageCount(folder_, search_,
+                                                   folder_ == "Channels" ? channel_ : QString());
     if (count == count_) {
         pages_.clear();
         if (count_)
@@ -61,6 +65,18 @@ void MessageModel::reload() {
     beginResetModel();
     pages_.clear();
     count_ = count;
+    endResetModel();
+}
+void MessageModel::setChannel(const QString &address) {
+    if (channel_ == address)
+        return;
+    beginResetModel();
+    channel_ = address;
+    pages_.clear();
+    count_ = folder_ == "Channels" && channel_.isEmpty()
+                 ? 0
+                 : session_->messageCount(folder_, search_,
+                                          folder_ == "Channels" ? channel_ : QString());
     endResetModel();
 }
 void MessageModel::markRead(const QString &id) {

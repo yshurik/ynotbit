@@ -1,7 +1,7 @@
 # ynotbit — why not bit?
 
 A compact desktop Bitmessage client based on [notbit](https://github.com/bpeel/notbit),
-by [yshurik](https://github.com/yshurik). **Development version: 0.4.0.**
+by [yshurik](https://github.com/yshurik). **Development version: 0.4.1.**
 
 ynotbit keeps identity keys in a password-protected vault and correspondence in a
 separate encrypted mailbox document. Its keyless relay continues collecting
@@ -39,6 +39,8 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
 - Direct-message decryption and sender verification; acknowledgments; bounded
   automatic expiry retries; manual retry and cancellation; reply using the
   authenticated sender key. Cancellation cannot recall objects already relayed.
+- Channels have a named selector, separate message lists and search, and a
+  Write to channel action. BM-addresses use a fixed-width font.
 - Broadcast publishing/subscriptions (v4/v5 objects), shared chans, folder search,
   read state, archive, trash/restore, and explicit permanent deletion.
 - A separate notbit relay receives no vault or mailbox keys. Its bounded local

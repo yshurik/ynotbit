@@ -8,6 +8,8 @@ class QLabel;
 class QTextBrowser;
 class QWidget;
 class QVBoxLayout;
+class QComboBox;
+class QLineEdit;
 namespace bm {
 class Session;
 class DesktopWindow : public QMainWindow {
@@ -22,6 +24,10 @@ class DesktopWindow : public QMainWindow {
     Appearance appearance_;
     QListView *letters_;
     QListWidget *folders_;
+    QComboBox *channels_;
+    QLineEdit *search_;
+    QWidget *channelControls_;
+    QVariantList channelIdentities_;
     QLabel *heading_, *document_, *status_, *error_, *subject_, *details_;
     QTextBrowser *body_;
     QWidget *actions_, *reader_, *identities_, *welcome_;
@@ -30,6 +36,7 @@ class DesktopWindow : public QMainWindow {
     void updateState();
     void updateTheme();
     void refreshIdentities();
+    void refreshChannels();
     void vaultDialog(QString path, bool create);
 };
 } // namespace bm

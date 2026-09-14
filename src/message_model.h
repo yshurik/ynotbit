@@ -31,11 +31,12 @@ class MessageModel final : public QAbstractListModel {
   public slots:
     void setFolder(const QString &folder);
     void setSearch(const QString &search);
+    void setChannel(const QString &address);
 
   private:
     Session *session_;
     mutable QCache<int, QVariantList> pages_{3};
     int count_ = 0;
-    QString folder_ = "Inbox", search_;
+    QString folder_ = "Inbox", search_, channel_;
 };
 } // namespace bm

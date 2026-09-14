@@ -1,9 +1,35 @@
 #include "appearance.h"
 #include <QApplication>
+#include <QFontDatabase>
+#include <QFontMetricsF>
 #include <QSettings>
 #include <QStyleHints>
 
 namespace bm {
+QFont addressFont() {
+    static const QFont chosen = [] {
+        auto font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        const auto fixed = [](const QFont &candidate) {
+            QFontMetricsF metrics(candidate);
+            return qAbs(metrics.horizontalAdvance("iiii") - metrics.horizontalAdvance("WWWW")) <
+                   0.1;
+        };
+        if (fixed(font))
+            return font;
+        // Some platform plugins return the proportional default for FixedFont.
+        for (const auto &family : QFontDatabase::families()) {
+            if (!QFontDatabase::isFixedPitch(family))
+                continue;
+            font.setFamily(family);
+            if (fixed(font))
+                return font;
+        }
+        font.setFamily("monospace");
+        font.setStyleHint(QFont::Monospace);
+        return font;
+    }();
+    return chosen;
+}
 Appearance::Appearance(QObject *parent) : QObject(parent) {
     mode_ = QSettings().value("appearance/theme", "system").toString();
     if (mode_ != "light" && mode_ != "dark")
@@ -54,4 +80,4 @@ void Appearance::apply() {
         palette.setColor(QPalette::Disabled, role, muted);
     QApplication::setPalette(palette);
 }
-}
+} // namespace bm

@@ -103,8 +103,9 @@ class Session : public QObject {
     Q_INVOKABLE void deleteLetter(QString id);
     Q_INVOKABLE void readLetter(QString id);
     Q_INVOKABLE QVariantMap message(QString id) const;
-    QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit) const;
-    int messageCount(const QString &folder, const QString &search) const { return mailboxOpen() ? mailbox_.messageCount(folder, search) : 0; }
+    QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit, const QString &recipient = {}) const;
+    int messageCount(const QString &folder, const QString &search, const QString &recipient = {}) const { return mailboxOpen() ? mailbox_.messageCount(folder, search, recipient) : 0; }
+    QVariantList channels() const;
     Q_INVOKABLE QVariantList deliveryHistory(QString id);
     Q_INVOKABLE void subscribe();
     Q_INVOKABLE void unsubscribe(QString address);

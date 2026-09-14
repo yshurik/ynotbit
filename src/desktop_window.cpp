@@ -6,6 +6,20 @@
 
 namespace bm {
 namespace {
+class AddressHighlighter : public QSyntaxHighlighter {
+  public:
+    explicit AddressHighlighter(QTextDocument *document) : QSyntaxHighlighter(document) {}
+    void highlightBlock(const QString &text) override {
+        static const QRegularExpression address("\\bBM-[1-9A-HJ-NP-Za-km-z]{20,50}\\b");
+        QTextCharFormat format;
+        format.setFontFamilies(addressFont().families());
+        auto matches = address.globalMatch(text);
+        while (matches.hasNext()) {
+            auto match = matches.next();
+            setFormat(match.capturedStart(), match.capturedLength(), format);
+        }
+    }
+};
 QString singleLine(QString text) {
     return text.replace('\n', ' ').replace('\r', ' ');
 }
@@ -28,6 +42,8 @@ class LetterDelegate : public QStyledItemDelegate {
         p->fillRect(o.rect, o.state & QStyle::State_Selected ? pal.highlight() : pal.base());
         auto text = [&](int y, QString value, bool bold, QColor color) {
             QFont font = o.font;
+            if (value.contains("BM-"))
+                font.setFamilies(addressFont().families());
             font.setBold(bold);
             p->setFont(font);
             p->setPen(color);
@@ -93,6 +109,7 @@ class Composer : public QDialog {
         layout->setContentsMargins(24, 24, 24, 24);
         layout->setSpacing(12);
         sender_ = new QComboBox;
+        sender_->setFont(addressFont());
         sender_->setObjectName("senderSelector");
         for (auto value : session.identities()) {
             auto identity = value.toMap();
@@ -107,6 +124,7 @@ class Composer : public QDialog {
         layout->addWidget(broadcast_);
         broadcast_->setChecked(!reply && letter["kind"] == "broadcast");
         to_ = new QLineEdit;
+        to_->setFont(addressFont());
         to_->setObjectName("recipientField");
         to_->setPlaceholderText("Recipient · BM-address");
         to_->setText(reply ? letter[letter["folder"] == "Channels" ? "to" : "from"].toString()
@@ -127,6 +145,7 @@ class Composer : public QDialog {
         body_->setAcceptRichText(false);
         auto doc = new SafeDocument(body_);
         body_->setDocument(doc);
+        new AddressHighlighter(doc);
         original_ = reply ? QString() : letter["body"].toString();
         doc->setMarkdown(original_,
                          QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
@@ -299,7 +318,12 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     side->setObjectName("sidebar");
     auto nav = new QVBoxLayout(side);
     nav->setContentsMargins(16, 16, 16, 16);
-    button("＋  Write a letter", nav, [this] { compose(); })->setObjectName("writeButton");
+    button("＋  Write a letter", nav, [this] {
+        if (folders_->currentRow() == 4 && channels_->currentIndex() >= 0)
+            compose({{"to", channels_->currentData()}, {"from", channels_->currentData()}});
+        else
+            compose();
+    })->setObjectName("writeButton");
     nav->addSpacing(20);
     nav->addWidget(new QLabel("MAILBOX"));
     folders_ = new QListWidget;
@@ -317,7 +341,23 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     mid->addWidget(heading_);
     document_ = new QLabel;
     mid->addWidget(document_);
-    auto search = new QLineEdit;
+    channelControls_ = new QWidget;
+    auto channelLayout = new QVBoxLayout(channelControls_);
+    channelLayout->setContentsMargins(0, 0, 0, 0);
+    channels_ = new QComboBox;
+    channels_->setFont(addressFont());
+    channels_->setObjectName("channelSelector");
+    channels_->setPlaceholderText("No channels yet");
+    channels_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    channels_->setMinimumContentsLength(12);
+    channels_->setAccessibleName("Channel");
+    channelLayout->addWidget(channels_);
+    button("Join or create channel…", channelLayout, [this] {
+        session_.joinChannel();
+        refreshChannels();
+    });
+    mid->addWidget(channelControls_);
+    auto search = search_ = new QLineEdit;
     search->setPlaceholderText("Search this folder");
     mid->addWidget(search);
     auto debounce = new QTimer(this);
@@ -325,6 +365,12 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     connect(search, &QLineEdit::textChanged, this, [debounce] { debounce->start(250); });
     connect(debounce, &QTimer::timeout, this,
             [this, search] { session_.messageModel()->setSearch(search->text()); });
+    connect(channels_, &QComboBox::currentIndexChanged, this, [this] {
+        session_.messageModel()->setChannel(channels_->currentData().toString());
+        channels_->setToolTip("<pre>" + channels_->currentData().toString().toHtmlEscaped() +
+                              "</pre>");
+        updateState();
+    });
     letters_ = new QListView;
     letters_->setObjectName("letters");
     letters_->setModel(session_.messageModel());
@@ -374,10 +420,17 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         QMessageBox::information(this, "Delivery history", text);
     });
     menu->addAction("Full subject", this, [this] {
-        QMessageBox::information(this, "Full subject", selected_["subject"].toString());
+        QMessageBox dialog(QMessageBox::Information, "Full subject",
+                           selected_["subject"].toString(), QMessageBox::Ok, this);
+        dialog.setTextFormat(Qt::PlainText);
+        if (selected_["subject"].toString().contains("BM-"))
+            dialog.setFont(addressFont());
+        dialog.exec();
     });
     read->addWidget(actions_);
     details_ = new QLabel;
+    details_->setObjectName("messageAddresses");
+    details_->setFont(addressFont());
     details_->setTextFormat(Qt::PlainText);
     details_->setWordWrap(true);
     details_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -385,6 +438,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     body_ = new QTextBrowser;
     body_->setObjectName("readerBody");
     body_->setDocument(new SafeDocument(body_));
+    new AddressHighlighter(body_->document());
     body_->setOpenLinks(false);
     body_->setFrameShape(QFrame::NoFrame);
     read->addWidget(body_, 1);
@@ -455,8 +509,14 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             addresses << m["address"].toString();
         }
         bool ok;
-        auto value =
-            QInputDialog::getItem(this, "Unsubscribe", "Subscription", labels, 0, false, &ok);
+        QInputDialog dialog(this);
+        dialog.setWindowTitle("Unsubscribe");
+        dialog.setLabelText("Subscription");
+        dialog.setComboBoxItems(labels);
+        dialog.setComboBoxEditable(false);
+        dialog.setFont(addressFont());
+        ok = dialog.exec() == QDialog::Accepted;
+        auto value = dialog.textValue();
         if (ok && labels.contains(value))
             session_.unsubscribe(addresses[labels.indexOf(value)]);
     });
@@ -472,6 +532,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     }
     connect(&appearance_, &Appearance::changed, this, &DesktopWindow::updateTheme);
     connect(&session_, &Session::changed, this, &DesktopWindow::updateState);
+    connect(&session_, &Session::messagesChanged, this, &DesktopWindow::refreshChannels);
     // Let the controller leave its guarded operation before the modal dialog
     // submits a password through that same controller.
     connect(&session_, &Session::vaultPasswordRequired, this, &DesktopWindow::vaultDialog,
@@ -504,6 +565,8 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     });
     connect(folders_, &QListWidget::currentTextChanged, this, [this](QString folder) {
         heading_->setText(folder);
+        if (folder == "Channels")
+            refreshChannels();
         session_.messageModel()->setFolder(folder);
         selected_.clear();
         body_->clear();
@@ -540,7 +603,18 @@ void DesktopWindow::updateState() {
     error_->setVisible(!session_.error().isEmpty());
     findChild<QPushButton *>("lockButton")
         ->setText(session_.unlocked() ? "Lock vault" : "Unlock vault");
-    findChild<QPushButton *>("writeButton")->setEnabled(session_.mailboxOpen());
+    const bool channelPage = folders_->currentRow() == 4;
+    auto write = findChild<QPushButton *>("writeButton");
+    write->setText(channelPage ? "＋  Write to channel" : "＋  Write a letter");
+    write->setEnabled(session_.mailboxOpen() && (!channelPage || channels_->currentIndex() >= 0));
+    channelControls_->setVisible(channelPage);
+    channelControls_->setEnabled(session_.unlocked());
+    search_->setPlaceholderText(channelPage ? "Search this channel" : "Search this folder");
+    const auto identities = session_.unlocked() ? session_.identities() : QVariantList();
+    if (identities != channelIdentities_) {
+        channelIdentities_ = identities;
+        refreshChannels();
+    }
     const bool identityPage = folders_->currentRow() == 8 && session_.unlocked();
     welcome_->setVisible(!session_.mailboxOpen() && !identityPage);
     body_->setVisible(session_.mailboxOpen() && !identityPage);
@@ -553,6 +627,25 @@ void DesktopWindow::updateState() {
         session_.status() + " · " + QString::number(session_.objectCount()) + " cached objects · " +
         QString::number(session_.cacheBytes() / 1048576.0, 'f', 1) + " MB\n" + session_.activity());
 }
+void DesktopWindow::refreshChannels() {
+    const auto entries = session_.channels();
+    const auto previous = channels_->currentData().toString();
+    QSignalBlocker blocker(channels_);
+    channels_->clear();
+    for (auto v : entries) {
+        auto item = v.toMap();
+        auto address = item["address"].toString();
+        auto label = item["label"].toString();
+        channels_->addItem(label == address ? address : label + " · " + address.right(8), address);
+        channels_->setItemData(channels_->count() - 1, "<pre>" + address.toHtmlEscaped() + "</pre>",
+                               Qt::ToolTipRole);
+    }
+    int index = channels_->findData(previous);
+    if (index >= 0)
+        channels_->setCurrentIndex(index);
+    channels_->setToolTip("<pre>" + channels_->currentData().toString().toHtmlEscaped() + "</pre>");
+    session_.messageModel()->setChannel(channels_->currentData().toString());
+}
 void DesktopWindow::selectMessage(const QString &id) {
     try {
         selected_ = session_.message(id);
@@ -562,6 +655,7 @@ void DesktopWindow::selectMessage(const QString &id) {
         return;
     }
     subject_->setText(singleLine(selected_["subject"].toString()).left(240));
+    subject_->setFont(subject_->text().contains("BM-") ? addressFont() : QApplication::font());
     details_->setText("From  " + selected_["from"].toString() + "\nTo      " +
                       selected_["to"].toString() + "\n" + selected_["state"].toString() + " " +
                       selected_["deliveryError"].toString());
@@ -637,7 +731,14 @@ void DesktopWindow::refreshIdentities() {
     }
     for (auto v : session_.identities()) {
         auto m = v.toMap();
-        auto label = new QLabel(m["label"].toString() + "\n" + m["address"].toString());
+        auto name = new QLabel(m["label"].toString());
+        if (name->text().contains("BM-"))
+            name->setFont(addressFont());
+        name->setTextFormat(Qt::PlainText);
+        identityLayout_->addWidget(name);
+        auto label = new QLabel(m["address"].toString());
+        label->setFont(addressFont());
+        label->setObjectName("identityAddress");
         label->setTextFormat(Qt::PlainText);
         label->setTextInteractionFlags(Qt::TextSelectableByMouse);
         identityLayout_->addWidget(label);

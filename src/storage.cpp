@@ -385,21 +385,19 @@ QVector<Message> Mailbox::messageSummaries(int limit) const {
             {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
     return list;
 }
+static QByteArray messageFilter(const QString &search, const QString &recipient) {
+    QByteArray filter(" WHERE folder=?");
+    if (!recipient.isEmpty()) filter += " AND recipient=?";
+    if (!search.isEmpty()) filter += " AND (instr(lower(subject),lower(?)) OR instr(lower(sender),lower(?)) OR instr(lower(recipient),lower(?)) OR instr(lower(body),lower(?)))";
+    return filter;
+}
 QVector<Message> Mailbox::messageSummaries(const QString &folder, const QString &search, int offset,
-                                           int limit) const {
-    const auto query =
-        search.isEmpty()
-            ? "SELECT "
-              "hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received FROM "
-              "messages WHERE folder=? ORDER BY received DESC,rowid DESC LIMIT ? OFFSET ?"
-            : "SELECT "
-              "hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received FROM "
-              "messages WHERE folder=? AND (instr(lower(subject),lower(?)) OR "
-              "instr(lower(sender),lower(?)) OR instr(lower(recipient),lower(?)) OR "
-              "instr(lower(body),lower(?))) ORDER BY received DESC,rowid DESC LIMIT ? OFFSET ?";
-    Statement s(db_, query);
+                                           int limit, const QString &recipient) const {
+    const auto query = QByteArray("SELECT hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received FROM messages") + messageFilter(search,recipient) + " ORDER BY received DESC,rowid DESC LIMIT ? OFFSET ?";
+    Statement s(db_, query.constData());
     s.text(1, folder);
     int parameter = 2;
+    if (!recipient.isEmpty()) s.text(parameter++,recipient);
     if (!search.isEmpty())
         for (int i = 0; i < 4; ++i)
             s.text(parameter++, search);
@@ -411,18 +409,23 @@ QVector<Message> Mailbox::messageSummaries(const QString &folder, const QString 
             {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
     return list;
 }
-int Mailbox::messageCount(const QString &folder, const QString &search) const {
-    Statement s(db_, search.isEmpty()
-                         ? "SELECT count(*) FROM messages WHERE folder=?"
-                         : "SELECT count(*) FROM messages WHERE folder=? AND "
-                           "(instr(lower(subject),lower(?)) OR instr(lower(sender),lower(?)) OR "
-                           "instr(lower(recipient),lower(?)) OR instr(lower(body),lower(?)))");
+int Mailbox::messageCount(const QString &folder, const QString &search, const QString &recipient) const {
+    const auto query = QByteArray("SELECT count(*) FROM messages") + messageFilter(search,recipient);
+    Statement s(db_, query.constData());
     s.text(1, folder);
+    int parameter = 2;
+    if (!recipient.isEmpty()) s.text(parameter++,recipient);
     if (!search.isEmpty())
-        for (int i = 2; i <= 5; ++i)
-            s.text(i, search);
+        for (int i = 0; i < 4; ++i)
+            s.text(parameter++, search);
     s.row();
     return int(s.number(0));
+}
+QStringList Mailbox::channelAddresses() const {
+    Statement s(db_, "SELECT DISTINCT recipient FROM messages WHERE folder='Channels' AND recipient<>'' ORDER BY recipient");
+    QStringList result;
+    while (s.row()) result << s.text(0);
+    return result;
 }
 void Mailbox::backup(const QString &path, const Secret &key) {
     check(db_, "Mailbox is closed");
