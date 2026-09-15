@@ -31,6 +31,12 @@ jobs:
           dir: ${{ github.workspace }}/qt
           cache: true
 
+      - name: Resolve Qt prefix
+        id: qt
+        run: |
+          prefix=$(find "${{ github.workspace }}/qt/Qt/${{ env.QT_VERSION }}" -mindepth 1 -maxdepth 1 -type d)
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+
       - name: Cache pinned libsodium/SQLCipher
         id: deps-cache
         uses: actions/cache@v4
@@ -47,7 +53,7 @@ jobs:
           PKG_CONFIG_PATH: ${{ runner.temp }}/deps-prefix/lib/pkgconfig
         run: |
           cmake -S . -B build -G Ninja \
-            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/qt/${{ env.QT_VERSION }}/gcc_64 \
+            -DCMAKE_PREFIX_PATH=${{ steps.qt.outputs.prefix }} \
             -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
@@ -60,7 +66,7 @@ jobs:
         run: |
           scripts/package-linux.sh "${{ github.workspace }}/build" \
             "${{ github.workspace }}/ynotbit-linux-x86_64.tar.gz" \
-            "${{ github.workspace }}/qt/${{ env.QT_VERSION }}/gcc_64"
+            "${{ steps.qt.outputs.prefix }}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -85,6 +91,12 @@ jobs:
           dir: ${{ github.workspace }}/qt
           cache: true
 
+      - name: Resolve Qt prefix
+        id: qt
+        run: |
+          prefix=$(find "${{ github.workspace }}/qt/Qt/${{ env.QT_VERSION }}" -mindepth 1 -maxdepth 1 -type d)
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+
       - name: Cache pinned libsodium/SQLCipher
         id: deps-cache
         uses: actions/cache@v4
@@ -101,7 +113,7 @@ jobs:
           PKG_CONFIG_PATH: ${{ runner.temp }}/deps-prefix/lib/pkgconfig
         run: |
           cmake -S . -B build -G Ninja \
-            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/qt/${{ env.QT_VERSION }}/clang_64 \
+            -DCMAKE_PREFIX_PATH=${{ steps.qt.outputs.prefix }} \
             -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
@@ -114,7 +126,7 @@ jobs:
         run: |
           scripts/package-macos.sh "${{ github.workspace }}/build" \
             "${{ github.workspace }}/ynotbit-macos-arm64.zip" \
-            "${{ github.workspace }}/qt/${{ env.QT_VERSION }}/clang_64"
+            "${{ steps.qt.outputs.prefix }}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -138,6 +150,12 @@ jobs:
           dir: ${{ github.workspace }}/qt
           cache: true
 
+      - name: Resolve Qt prefix
+        id: qt
+        run: |
+          $prefix = Get-ChildItem -Directory "${{ github.workspace }}\qt\Qt\${{ env.QT_VERSION }}" | Select-Object -First 1 -ExpandProperty FullName
+          echo "prefix=$prefix" >> $env:GITHUB_OUTPUT
+
       - name: Install pkg-config
         run: choco install pkgconfiglite -y
 
@@ -159,7 +177,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows `
-            -DCMAKE_PREFIX_PATH="${{ github.workspace }}\qt\${{ env.QT_VERSION }}\msvc2022_64"
+            -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.prefix }}"
 
       - name: Build
         run: cmake --build build --parallel
@@ -172,7 +190,7 @@ jobs:
           scripts/package-windows.ps1 `
             -BuildDir "${{ github.workspace }}\build" `
             -OutputZip "${{ github.workspace }}\ynotbit-windows-x86_64.zip" `
-            -QtBinDir "${{ github.workspace }}\qt\${{ env.QT_VERSION }}\msvc2022_64\bin" `
+            -QtBinDir "${{ steps.qt.outputs.prefix }}\bin" `
             -VcpkgBinDir "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin"
 
       - uses: actions/upload-artifact@v4
