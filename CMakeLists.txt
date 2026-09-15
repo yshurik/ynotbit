@@ -39,6 +39,7 @@ if(UNIX)
  list(FILTER NTB_ENGINE_SOURCES EXCLUDE REGEX "/(main|dump-store|ntb-address|ntb-base58|ntb-buffer|ntb-util|ntb-error|ntb-ecc|ntb-proto|ntb-netaddress)\\.c$")
  add_library(notbit_engine STATIC ${NTB_ENGINE_SOURCES})
  target_link_libraries(notbit_engine PUBLIC notbit_codec Threads::Threads)
+ target_compile_definitions(notbit_engine PRIVATE _GNU_SOURCE)
  target_compile_options(notbit_engine PRIVATE -Wno-deprecated-declarations -include sys/types.h)
 endif()
 qt_add_executable(ynotbit MACOSX_BUNDLE src/main.cpp src/session.cpp src/session.h
