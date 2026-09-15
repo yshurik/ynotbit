@@ -122,6 +122,10 @@ qint64 Cache::bytes() const {
     return s.num(0);
 }
 void Cache::prune(qint64 maximumBytes, int days) {
+    // A paused discover() iterator may still be walking entries this call is about
+    // to delete, and won't see files written after it started either; drop it so
+    // the next discover() re-scans the directory as it stands now.
+    discovery_.reset();
     auto used = bytes(), threshold = QDateTime::currentSecsSinceEpoch() - qint64(days) * 86400;
     Stmt s(db_, "SELECT seq,hash,size,received FROM objects ORDER BY seq");
     while (s.row()) {
