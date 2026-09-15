@@ -75,12 +75,243 @@ QPushButton *button(QString text, QBoxLayout *layout, std::function<void()> fn) 
     QObject::connect(b, &QPushButton::clicked, b, std::move(fn));
     return b;
 }
+void renderMarkdown(QTextBrowser *body, const QString &text) {
+    body->document()->setLayoutEnabled(false);
+    body->document()->setMarkdown(
+        text, QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
+                                              QTextDocument::MarkdownNoHTML));
+    body->document()->clearUndoRedoStacks();
+    for (auto block = body->document()->begin(); block.isValid(); block = block.next()) {
+        QTextCursor cursor(block);
+        auto format = block.blockFormat();
+        format.setLineHeight(130, QTextBlockFormat::ProportionalHeight);
+        format.setBottomMargin(block.textList() ? 3 : 10);
+        cursor.setBlockFormat(format);
+    }
+    body->document()->setLayoutEnabled(true);
+    body->moveCursor(QTextCursor::Start);
+    body->verticalScrollBar()->setValue(0);
+}
+QLabel *subjectArea(QBoxLayout *layout, const QString &labelName, const QString &scrollName) {
+    auto label = new QLabel;
+    label->setObjectName(labelName);
+    label->setWordWrap(true);
+    label->setTextFormat(Qt::PlainText);
+    label->setStyleSheet("font-size:15px;font-weight:600;");
+    auto scroll = new QScrollArea;
+    scroll->setObjectName(scrollName);
+    scroll->setWidget(label);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    scroll->setMaximumHeight(112); // 20% of the 560px initial dialog height
+    layout->addWidget(scroll);
+    return label;
+}
+QColor iconColor(bool dark) {
+    return dark ? QColor("#c1cdd7") : QColor("#435867");
+}
+QIcon materialIcon(const QString &name, QColor color) {
+    const int size = 80;
+    QPixmap pixmap(size, size);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.scale(2.0, 2.0); // drawing coordinates below are authored for a 40x40 canvas
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(color, 2.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.setBrush(Qt::NoBrush);
+    if (name == "reply") {
+        QPainterPath path;
+        path.moveTo(28, 13);
+        path.cubicTo(28, 23, 19, 26, 12, 26);
+        p.drawPath(path);
+        QPainterPath arrow;
+        arrow.moveTo(18, 19);
+        arrow.lineTo(11, 26);
+        arrow.lineTo(18, 33);
+        p.drawPath(arrow);
+    } else if (name == "archive") {
+        p.drawRoundedRect(8, 9, 24, 7, 2, 2);
+        p.drawRect(10, 16, 20, 15);
+        p.drawLine(16, 23, 24, 23);
+    } else if (name == "delete") {
+        p.drawLine(10, 12, 30, 12);
+        p.drawRect(16, 8, 8, 4);
+        p.drawRect(12, 12, 16, 20);
+        p.drawLine(18, 16, 18, 28);
+        p.drawLine(22, 16, 22, 28);
+    } else if (name == "edit") {
+        p.drawLine(11, 29, 25, 15);
+        p.setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.drawLine(25, 15, 29, 11);
+    } else if (name == "more") {
+        p.setBrush(color);
+        p.setPen(Qt::NoPen);
+        for (int y : {10, 20, 30})
+            p.drawEllipse(QPointF(20, y), 2.6, 2.6);
+    } else if (name == "bold") {
+        p.setFont(QFont(QApplication::font().family(), 17, QFont::Bold));
+        p.setPen(color);
+        p.drawText(QRectF(0, 0, 40, 40), Qt::AlignCenter, "B");
+    } else if (name == "italic") {
+        QFont f(QApplication::font().family(), 17);
+        f.setItalic(true);
+        p.setFont(f);
+        p.setPen(color);
+        p.drawText(QRectF(0, 0, 40, 40), Qt::AlignCenter, "I");
+    } else if (name == "strike") {
+        QFont f(QApplication::font().family(), 17);
+        f.setStrikeOut(true);
+        p.setFont(f);
+        p.setPen(color);
+        p.drawText(QRectF(0, 0, 40, 40), Qt::AlignCenter, "S");
+    } else if (name == "code") {
+        auto f = addressFont();
+        f.setPointSize(13);
+        f.setBold(true);
+        p.setFont(f);
+        p.setPen(color);
+        p.drawText(QRectF(0, 0, 40, 40), Qt::AlignCenter, "</>");
+    } else if (name == "link") {
+        for (double angle : {-45.0, 135.0}) {
+            p.save();
+            p.translate(20, 20);
+            p.rotate(angle);
+            p.drawRoundedRect(QRectF(-11, -5, 13, 10), 5, 5);
+            p.restore();
+        }
+    } else if (name == "image") {
+        p.drawRoundedRect(8, 10, 24, 18, 2, 2);
+        p.setBrush(color);
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(QPointF(15, 17), 2, 2);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(color, 2.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        QPainterPath mountains;
+        mountains.moveTo(11, 28);
+        mountains.lineTo(18, 20);
+        mountains.lineTo(23, 25);
+        mountains.lineTo(28, 19);
+        mountains.lineTo(32, 24);
+        p.setClipRect(9, 11, 22, 16);
+        p.drawPath(mountains);
+    } else if (name == "eraser") {
+        p.drawLine(9, 30, 24, 30);
+        QPainterPath eraser;
+        eraser.moveTo(15, 26);
+        eraser.lineTo(27, 14);
+        eraser.lineTo(33, 20);
+        eraser.lineTo(21, 32);
+        eraser.closeSubpath();
+        p.drawPath(eraser);
+    }
+    return QIcon(pixmap);
+}
+class MarkdownEdit : public QTextEdit {
+  public:
+    using QTextEdit::QTextEdit;
+
+  protected:
+    void keyPressEvent(QKeyEvent *event) override {
+        if (event->key() == Qt::Key_Space && tryAutoFormat())
+            return;
+        QTextEdit::keyPressEvent(event);
+    }
+
+  private:
+    bool tryAutoFormat() {
+        auto cursor = textCursor();
+        if (cursor.hasSelection())
+            return false;
+        auto block = cursor.block();
+        auto prefix = block.text().left(cursor.position() - block.position());
+        auto apply = [&](const std::function<void(QTextCursor &)> &fn) {
+            cursor.beginEditBlock();
+            cursor.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
+            cursor.removeSelectedText();
+            fn(cursor);
+            cursor.endEditBlock();
+            setTextCursor(cursor);
+            return true;
+        };
+        if (prefix == "#" || prefix == "##" || prefix == "###") {
+            int level = prefix.size();
+            return apply([level](QTextCursor &c) {
+                auto f = c.blockFormat();
+                f.setHeadingLevel(level);
+                c.setBlockFormat(f);
+                QTextCharFormat t;
+                t.setFontWeight(QFont::Bold);
+                t.setFontPointSize(level == 1 ? 22 : level == 2 ? 18 : 15);
+                c.mergeCharFormat(t);
+            });
+        }
+        if (prefix == "-" || prefix == "*")
+            return apply([](QTextCursor &c) {
+                QTextListFormat f;
+                f.setStyle(QTextListFormat::ListDisc);
+                c.createList(f);
+            });
+        if (prefix == "1.")
+            return apply([](QTextCursor &c) {
+                QTextListFormat f;
+                f.setStyle(QTextListFormat::ListDecimal);
+                c.createList(f);
+            });
+        if (prefix == ">")
+            return apply([](QTextCursor &c) {
+                auto f = c.blockFormat();
+                f.setProperty(QTextFormat::BlockQuoteLevel, 1);
+                f.setLeftMargin(24);
+                c.setBlockFormat(f);
+            });
+        return false;
+    }
+};
+class HeadingGutter : public QWidget {
+  public:
+    explicit HeadingGutter(QTextEdit *editor) : editor_(editor) {
+        setFixedWidth(28);
+        connect(editor_->document(), &QTextDocument::contentsChanged, this, [this] { update(); });
+        connect(editor_->verticalScrollBar(), &QScrollBar::valueChanged, this,
+                [this] { update(); });
+    }
+
+  protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        auto f = p.font();
+        f.setPointSize(10);
+        f.setBold(true);
+        p.setFont(f);
+        p.setPen(editor_->palette().color(QPalette::PlaceholderText));
+        auto doc = editor_->document();
+        auto layout = doc->documentLayout();
+        int scrollOffset = editor_->verticalScrollBar()->value();
+        for (auto block = doc->begin(); block.isValid(); block = block.next()) {
+            int level = block.blockFormat().headingLevel();
+            if (level <= 0)
+                continue;
+            auto rect = layout->blockBoundingRect(block);
+            int top = static_cast<int>(rect.top()) - scrollOffset;
+            if (top + rect.height() < 0 || top > height())
+                continue;
+            p.drawText(QRect(0, top, width() - 4, qMax(static_cast<int>(rect.height()), 1)),
+                       Qt::AlignRight | Qt::AlignTop, "H" + QString::number(level));
+        }
+    }
+
+  private:
+    QTextEdit *editor_;
+};
 class Composer : public QDialog {
     Session &session_;
     QString id_, original_;
     QComboBox *sender_;
     QLineEdit *to_, *subject_;
-    QCheckBox *broadcast_;
+    QPushButton *modePrivate_, *modePublic_;
+    QWidget *floatingToolbar_;
     QTextEdit *body_;
     QLabel *status_;
     QTimer autosave_;
@@ -91,19 +322,20 @@ class Composer : public QDialog {
         auto body = bodyEdited_ ? body_->document()->toMarkdown() : original_;
         auto id = session_.saveLetter(id_, sender_->currentData().toString(), to_->text(),
                                       subject_->text(), body,
-                                      broadcast_->isChecked() ? "broadcast" : "direct");
+                                      modePublic_->isChecked() ? "broadcast" : "direct");
         if (id.isEmpty()) {
             status_->setText(session_.error());
+            status_->show();
             return false;
         }
         id_ = id;
         dirty_ = false;
-        status_->setText("Saved in your encrypted mailbox");
+        status_->hide();
         return true;
     }
 
   public:
-    Composer(Session &session, QVariantMap letter, bool reply, QWidget *parent)
+    Composer(Session &session, QVariantMap letter, bool reply, bool dark, QWidget *parent)
         : QDialog(parent), session_(session) {
         setObjectName("composer");
         setWindowTitle(reply ? "Reply" : "Write a letter");
@@ -112,10 +344,27 @@ class Composer : public QDialog {
         auto layout = new QVBoxLayout(this);
         layout->setContentsMargins(24, 24, 24, 24);
         layout->setSpacing(12);
+        auto modeRow = new QHBoxLayout;
+        modePrivate_ = new QPushButton;
+        modePrivate_->setObjectName("modePrivateButton");
+        modePrivate_->setCheckable(true);
+        modePrivate_->setChecked(true);
+        modePublic_ = new QPushButton;
+        modePublic_->setObjectName("modePublicButton");
+        modePublic_->setCheckable(true);
+        auto modeGroup = new QButtonGroup(this);
+        modeGroup->setExclusive(true);
+        modeGroup->addButton(modePrivate_);
+        modeGroup->addButton(modePublic_);
+        modeRow->addWidget(modePrivate_);
+        modeRow->addWidget(modePublic_);
+        modeRow->addStretch();
+        layout->addLayout(modeRow);
         sender_ = new QComboBox;
         sender_->setFont(addressFont());
         sender_->setObjectName("senderSelector");
-        for (auto value : session.identities()) {
+        auto identities = session.identities();
+        for (auto value : identities) {
             auto identity = value.toMap();
             sender_->addItem(identity["label"].toString(), identity["address"]);
         }
@@ -124,9 +373,22 @@ class Composer : public QDialog {
         if (n >= 0)
             sender_->setCurrentIndex(n);
         layout->addWidget(sender_);
-        broadcast_ = new QCheckBox("Broadcast to subscribers");
-        layout->addWidget(broadcast_);
-        broadcast_->setChecked(!reply && letter["kind"] == "broadcast");
+        auto updateModeLabels = [this, identities] {
+            bool channel = false;
+            for (auto value : identities) {
+                auto identity = value.toMap();
+                if (identity["address"] == sender_->currentData()) {
+                    channel = identity["chan"].toBool();
+                    break;
+                }
+            }
+            modePrivate_->setText(channel ? "Personal" : "Private mail");
+            modePublic_->setText(channel ? "Anonymous" : "Public mail");
+        };
+        updateModeLabels();
+        connect(sender_, &QComboBox::currentIndexChanged, this, updateModeLabels);
+        modePublic_->setChecked(!reply && letter["kind"] == "broadcast");
+        modePrivate_->setChecked(reply || letter["kind"] != "broadcast");
         to_ = new QLineEdit;
         to_->setFont(addressFont());
         to_->setObjectName("recipientField");
@@ -143,8 +405,10 @@ class Composer : public QDialog {
         subject_->setText(subject);
         layout->addWidget(subject_);
         auto tools = new QToolBar;
+        tools->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        tools->setIconSize(QSize(28, 28));
         layout->addWidget(tools);
-        body_ = new QTextEdit;
+        body_ = new MarkdownEdit;
         body_->setObjectName("bodyField");
         body_->setAcceptRichText(false);
         auto doc = new SafeDocument(body_);
@@ -160,60 +424,49 @@ class Composer : public QDialog {
         body_->moveCursor(QTextCursor::Start);
         body_->setCurrentCharFormat(QTextCharFormat());
         body_->setPlaceholderText("Take your time. Write something worth sending.");
-        layout->addWidget(body_, 1);
-        auto format = [&](QString name, std::function<void()> fn) {
-            auto a = tools->addAction(name);
+        auto bodyRow = new QHBoxLayout;
+        bodyRow->setContentsMargins(0, 0, 0, 0);
+        bodyRow->setSpacing(4);
+        auto gutter = new HeadingGutter(body_);
+        gutter->setObjectName("headingGutter");
+        bodyRow->addWidget(gutter);
+        bodyRow->addWidget(body_, 1);
+        layout->addLayout(bodyRow, 1);
+        auto icon = [dark](QString name) { return materialIcon(name, iconColor(dark)); };
+        auto format = [&](QString iconName, QString objName, QString tip,
+                          std::function<void()> fn) {
+            auto a = tools->addAction(icon(iconName), tip);
+            a->setObjectName(objName);
             connect(a, &QAction::triggered, this, [this, fn] {
                 fn();
                 body_->setFocus();
             });
             return a;
         };
-        format("Bold", [this] {
+        format("bold", "boldAction", "Bold", [this] {
             QTextCharFormat f;
             f.setFontWeight(body_->fontWeight() == QFont::Bold ? QFont::Normal : QFont::Bold);
             body_->mergeCurrentCharFormat(f);
         })->setShortcut(QKeySequence::Bold);
-        format("Italic", [this] {
+        format("italic", "italicAction", "Italic", [this] {
             QTextCharFormat f;
             f.setFontItalic(!body_->fontItalic());
             body_->mergeCurrentCharFormat(f);
         })->setShortcut(QKeySequence::Italic);
-        for (auto label : {QString("Heading"), QString("Body")})
-            format(label, [this, label] {
-                auto c = body_->textCursor();
-                auto f = c.blockFormat();
-                f.setHeadingLevel(label == "Heading" ? 2 : 0);
-                c.setBlockFormat(f);
-                QTextCharFormat t;
-                t.setFontWeight(label == "Heading" ? QFont::Bold : QFont::Normal);
-                t.setFontPointSize(label == "Heading" ? 18 : 12);
-                c.mergeCharFormat(t);
-            });
-        format("• List", [this] {
-            QTextListFormat f;
-            f.setStyle(QTextListFormat::ListDisc);
-            body_->textCursor().createList(f);
-        });
-        format("1. List", [this] {
-            QTextListFormat f;
-            f.setStyle(QTextListFormat::ListDecimal);
-            body_->textCursor().createList(f);
-        });
-        format("Quote", [this] {
-            auto c = body_->textCursor();
-            auto f = c.blockFormat();
-            f.setProperty(QTextFormat::BlockQuoteLevel, 1);
-            f.setLeftMargin(24);
-            c.setBlockFormat(f);
-        });
-        format("Code", [this] {
+        format("strike", "strikeAction", "Strikethrough", [this] {
             QTextCharFormat f;
-            f.setFontFixedPitch(true);
-            f.setFontFamilies({"monospace"});
+            f.setFontStrikeOut(!body_->currentCharFormat().fontStrikeOut());
             body_->mergeCurrentCharFormat(f);
         });
-        format("Link", [this] {
+        format("code", "codeAction", "Inline code", [this] {
+            bool isCode = body_->currentCharFormat().fontFixedPitch();
+            QTextCharFormat f;
+            f.setFontFixedPitch(!isCode);
+            if (!isCode)
+                f.setFontFamilies({"monospace"});
+            body_->mergeCurrentCharFormat(f);
+        });
+        format("link", "linkAction", "Link", [this] {
             bool ok;
             auto url = QInputDialog::getText(this, "Insert link", "https:// address",
                                              QLineEdit::Normal, {}, &ok);
@@ -230,27 +483,116 @@ class Composer : public QDialog {
             else
                 c.insertText(url, f);
         });
-        status_ = new QLabel("Drafts are saved as you write");
+        format("image", "imageAction", "Images aren't supported — remote images are never "
+                                       "loaded, for privacy",
+               [] {})
+            ->setEnabled(false);
+        format("eraser", "clearFormatAction", "Clear formatting", [this] {
+            auto c = body_->textCursor();
+            if (c.hasSelection())
+                c.setCharFormat(QTextCharFormat());
+            else
+                body_->setCurrentCharFormat(QTextCharFormat());
+        });
+        floatingToolbar_ = new QWidget(this, Qt::Tool | Qt::FramelessWindowHint);
+        floatingToolbar_->setObjectName("floatingToolbar");
+        floatingToolbar_->setAttribute(Qt::WA_ShowWithoutActivating);
+        auto floatLayout = new QHBoxLayout(floatingToolbar_);
+        floatLayout->setContentsMargins(4, 4, 4, 4);
+        floatLayout->setSpacing(2);
+        auto floatButton = [&](QString iconName, QString objName, std::function<void()> fn) {
+            auto b = new QToolButton;
+            b->setObjectName(objName);
+            b->setIcon(icon(iconName));
+            b->setIconSize(QSize(20, 20));
+            connect(b, &QToolButton::clicked, this, [this, fn] {
+                fn();
+                body_->setFocus();
+            });
+            floatLayout->addWidget(b);
+            return b;
+        };
+        floatButton("bold", "floatBoldButton", [this] {
+            QTextCharFormat f;
+            f.setFontWeight(body_->fontWeight() == QFont::Bold ? QFont::Normal : QFont::Bold);
+            body_->mergeCurrentCharFormat(f);
+        });
+        floatButton("italic", "floatItalicButton", [this] {
+            QTextCharFormat f;
+            f.setFontItalic(!body_->fontItalic());
+            body_->mergeCurrentCharFormat(f);
+        });
+        floatButton("strike", "floatStrikeButton", [this] {
+            QTextCharFormat f;
+            f.setFontStrikeOut(!body_->currentCharFormat().fontStrikeOut());
+            body_->mergeCurrentCharFormat(f);
+        });
+        floatButton("code", "floatCodeButton", [this] {
+            bool isCode = body_->currentCharFormat().fontFixedPitch();
+            QTextCharFormat f;
+            f.setFontFixedPitch(!isCode);
+            if (!isCode)
+                f.setFontFamilies({"monospace"});
+            body_->mergeCurrentCharFormat(f);
+        });
+        floatButton("link", "floatLinkButton", [this] {
+            bool ok;
+            auto url = QInputDialog::getText(this, "Insert link", "https:// address",
+                                             QLineEdit::Normal, {}, &ok);
+            QUrl u(url);
+            if (!ok || u.scheme() != "https" || u.host().isEmpty())
+                return;
+            auto c = body_->textCursor();
+            QTextCharFormat f;
+            f.setAnchor(true);
+            f.setAnchorHref(url);
+            f.setFontUnderline(true);
+            if (c.hasSelection())
+                c.mergeCharFormat(f);
+            else
+                c.insertText(url, f);
+        });
+        floatingToolbar_->hide();
+        connect(body_, &QTextEdit::selectionChanged, this, [this] {
+            if (!body_->textCursor().hasSelection()) {
+                floatingToolbar_->hide();
+                return;
+            }
+            auto cursor = body_->textCursor();
+            cursor.setPosition(qMin(cursor.anchor(), cursor.position()));
+            auto rect = body_->cursorRect(cursor);
+            auto point = body_->viewport()->mapToGlobal(rect.topLeft());
+            floatingToolbar_->adjustSize();
+            floatingToolbar_->move(point.x(), point.y() - floatingToolbar_->height() - 6);
+            floatingToolbar_->show();
+        });
+        status_ = new QLabel;
         status_->setWordWrap(true);
+        status_->hide();
         layout->addWidget(status_);
-        auto note = new QLabel(
-            "Send queues proof of work and network delivery. Locking pauses preparation.");
-        note->setWordWrap(true);
-        layout->addWidget(note);
         auto actions = new QHBoxLayout;
         layout->addLayout(actions);
-        button("Save & close", actions, [this] {
+        auto discard = button("Discard draft", actions, [this] {
+            if (!id_.isEmpty())
+                session_.moveLetter(id_, "Trash");
+            dirty_ = false;
+            QDialog::done(QDialog::Rejected);
+        });
+        discard->setObjectName("discardButton");
+        actions->addStretch();
+        button("Save a draft", actions, [this] {
             dirty_ = true;
             if (save())
                 accept();
         });
-        actions->addStretch();
-        auto send = button("Send letter", actions, [this] {
+        auto send = button("Send", actions, [this] {
             dirty_ = true;
             if (save() && session_.sendLetter(id_))
                 accept();
-            else
+            else {
                 status_->setText(session_.error());
+                status_->show();
+            }
         });
         send->setObjectName("sendButton");
         id_ = reply ? QString() : letter["hash"].toString();
@@ -268,11 +610,11 @@ class Composer : public QDialog {
         connect(to_, &QLineEdit::textEdited, this, changed);
         connect(subject_, &QLineEdit::textEdited, this, changed);
         connect(sender_, &QComboBox::currentIndexChanged, this, changed);
-        connect(broadcast_, &QCheckBox::toggled, this, [this, changed](bool checked) {
+        connect(modePublic_, &QPushButton::toggled, this, [this, changed](bool checked) {
             to_->setVisible(!checked);
             changed();
         });
-        to_->setVisible(!broadcast_->isChecked());
+        to_->setVisible(!modePublic_->isChecked());
         connect(&session_, &Session::aboutToCloseMailbox, this, [this] {
             if (save())
                 accept();
@@ -282,6 +624,89 @@ class Composer : public QDialog {
         if (save())
             QDialog::reject();
     }
+};
+class MessageWindow : public QDialog {
+  public:
+    MessageWindow(Session &session, QVariantMap letter, bool dark, QWidget *parent)
+        : QDialog(parent), session_(session), letter_(std::move(letter)), dark_(dark) {
+        setObjectName("messageWindow");
+        setAttribute(Qt::WA_DeleteOnClose);
+        setWindowTitle(singleLine(letter_["subject"].toString()).left(80));
+        resize(640, 560);
+        auto layout = new QVBoxLayout(this);
+        layout->setContentsMargins(3, 3, 3, 3);
+        layout->setSpacing(12);
+        auto toolbar = new QToolBar;
+        toolbar->setObjectName("windowActionsToolbar");
+        toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        toolbar->setIconSize(QSize(40, 40));
+        auto replyAction = toolbar->addAction(materialIcon("reply", iconColor(dark)), "Reply");
+        connect(replyAction, &QAction::triggered, this, [this] {
+            Composer dialog(session_, letter_, true, dark_, this);
+            dialog.exec();
+        });
+        auto archiveAction = toolbar->addAction(materialIcon("archive", iconColor(dark)), "Archive");
+        connect(archiveAction, &QAction::triggered, this,
+                [this] { session_.moveLetter(letter_["hash"].toString(), "Archive"); });
+        auto trashAction = toolbar->addAction(materialIcon("delete", iconColor(dark)), "Trash");
+        connect(trashAction, &QAction::triggered, this,
+                [this] { session_.moveLetter(letter_["hash"].toString(), "Trash"); });
+        auto more = new QToolButton;
+        more->setIcon(materialIcon("more", iconColor(dark)));
+        more->setToolTip("More");
+        more->setPopupMode(QToolButton::InstantPopup);
+        auto menu = new QMenu(more);
+        more->setMenu(menu);
+        toolbar->addWidget(more);
+        menu->addAction("Copy subject", this,
+                        [this] { QApplication::clipboard()->setText(letter_["subject"].toString()); });
+        const bool trashed = letter_["folder"] == "Trash";
+        const bool outgoing = letter_["folder"] == "Outbox";
+        menu->addAction("Restore", this, [this] { session_.restoreLetter(letter_["hash"].toString()); })
+            ->setVisible(trashed);
+        menu->addAction("Delete permanently", this,
+                        [this] { session_.deleteLetter(letter_["hash"].toString()); })
+            ->setVisible(trashed);
+        menu->addAction("Retry", this, [this] { session_.retryLetter(letter_["hash"].toString()); })
+            ->setVisible(outgoing);
+        menu->addAction("Cancel delivery", this,
+                        [this] { session_.cancelLetter(letter_["hash"].toString()); })
+            ->setVisible(outgoing);
+        layout->addWidget(toolbar);
+        auto subject = subjectArea(layout, "windowSubjectLabel", "windowSubjectScroll");
+        const auto subjectText = singleLine(letter_["subject"].toString());
+        subject->setText(subjectText);
+        subject->setFont(subjectText.contains("BM-") ? addressFont() : QApplication::font());
+        auto addresses =
+            new QLabel(letter_["from"].toString() + "  →  " + letter_["to"].toString());
+        addresses->setObjectName("windowAddresses");
+        addresses->setFont(addressFont());
+        addresses->setTextFormat(Qt::PlainText);
+        addresses->setWordWrap(true);
+        addresses->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        layout->addWidget(addresses);
+        auto body = new QTextBrowser;
+        body->setObjectName("windowBody");
+        body->setDocument(new SafeDocument(body));
+        new AddressHighlighter(body->document());
+        body->setOpenLinks(false);
+        body->setFrameShape(QFrame::NoFrame);
+        body->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+        connect(body, &QTextBrowser::anchorClicked, this, [this](QUrl url) {
+            if (url.scheme() == "https" &&
+                QMessageBox::question(this, "Open link",
+                                      "Open this link in your browser?\n" +
+                                          url.toDisplayString()) == QMessageBox::Yes)
+                QDesktopServices::openUrl(url);
+        });
+        layout->addWidget(body, 1);
+        renderMarkdown(body, letter_["body"].toString());
+    }
+
+  private:
+    Session &session_;
+    QVariantMap letter_;
+    bool dark_;
 };
 } // namespace
 DesktopWindow::DesktopWindow(Session &session) : session_(session) {
@@ -386,37 +811,54 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     split->addWidget(middle);
     reader_ = new QWidget;
     auto read = new QVBoxLayout(reader_);
-    read->setContentsMargins(28, 28, 28, 24);
+    read->setContentsMargins(3, 3, 3, 3);
     read->setSpacing(14);
-    subject_ = new QLabel("No letter selected");
-    subject_->setObjectName("subjectLabel");
-    subject_->setWordWrap(true);
-    subject_->setMaximumHeight(120);
-    subject_->setMinimumHeight(0);
-    subject_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-    subject_->setTextFormat(Qt::PlainText);
-    subject_->setStyleSheet("font-size:22px;font-weight:600;");
-    read->addWidget(subject_);
-    actions_ = new QWidget;
-    auto actions = new QHBoxLayout(actions_);
-    actions->setContentsMargins(0, 0, 0, 0);
-    button("Edit / Send", actions, [this] { compose(selected_); })->setObjectName("editAction");
-    button("Reply", actions, [this] { compose(selected_, true); })->setObjectName("replyAction");
-    button("Archive", actions,
-           [this] { session_.moveLetter(selected_["hash"].toString(), "Archive"); });
-    button("Trash", actions,
-           [this] { session_.moveLetter(selected_["hash"].toString(), "Trash"); });
-    auto more = new QPushButton("More");
-    actions->addWidget(more);
+    auto toolbar = new QToolBar;
+    toolbar->setObjectName("actionsToolbar");
+    toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    toolbar->setIconSize(QSize(40, 40));
+    actions_ = toolbar;
+    auto editAction =
+        toolbar->addAction(materialIcon("edit", iconColor(appearance_.dark())), "Edit / Send");
+    editAction->setObjectName("editAction");
+    connect(editAction, &QAction::triggered, this, [this] { compose(selected_); });
+    auto replyAction = toolbar->addAction(materialIcon("reply", iconColor(appearance_.dark())), "Reply");
+    replyAction->setObjectName("replyAction");
+    connect(replyAction, &QAction::triggered, this, [this] { compose(selected_, true); });
+    auto archiveAction =
+        toolbar->addAction(materialIcon("archive", iconColor(appearance_.dark())), "Archive");
+    archiveAction->setObjectName("archiveAction");
+    connect(archiveAction, &QAction::triggered, this,
+            [this] { session_.moveLetter(selected_["hash"].toString(), "Archive"); });
+    auto trashAction = toolbar->addAction(materialIcon("delete", iconColor(appearance_.dark())), "Trash");
+    trashAction->setObjectName("trashAction");
+    connect(trashAction, &QAction::triggered, this,
+            [this] { session_.moveLetter(selected_["hash"].toString(), "Trash"); });
+    auto more = new QToolButton;
+    more->setObjectName("moreActionsButton");
+    more->setIcon(materialIcon("more", iconColor(appearance_.dark())));
+    more->setToolTip("More");
+    more->setPopupMode(QToolButton::InstantPopup);
     auto menu = new QMenu(more);
     more->setMenu(menu);
+    toolbar->addWidget(more);
+    menu->addAction("Copy subject", this,
+                    [this] { QApplication::clipboard()->setText(selected_["subject"].toString()); });
+    menu->addAction("Open in new window", this,
+                    [this] {
+                        (new MessageWindow(session_, selected_, appearance_.dark(), this))->show();
+                    });
     menu->addAction("Restore", this,
-                    [this] { session_.restoreLetter(selected_["hash"].toString()); });
+                    [this] { session_.restoreLetter(selected_["hash"].toString()); })
+        ->setObjectName("restoreAction");
     menu->addAction("Delete permanently", this,
-                    [this] { session_.deleteLetter(selected_["hash"].toString()); });
-    menu->addAction("Retry", this, [this] { session_.retryLetter(selected_["hash"].toString()); });
+                    [this] { session_.deleteLetter(selected_["hash"].toString()); })
+        ->setObjectName("deletePermanentlyAction");
+    menu->addAction("Retry", this, [this] { session_.retryLetter(selected_["hash"].toString()); })
+        ->setObjectName("retryAction");
     menu->addAction("Cancel delivery", this,
-                    [this] { session_.cancelLetter(selected_["hash"].toString()); });
+                    [this] { session_.cancelLetter(selected_["hash"].toString()); })
+        ->setObjectName("cancelDeliveryAction");
     menu->addAction("Delivery history", this, [this] {
         QString text;
         for (auto v : session_.deliveryHistory(selected_["hash"].toString())) {
@@ -435,6 +877,8 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         dialog.exec();
     });
     read->addWidget(actions_);
+    subject_ = subjectArea(read, "subjectLabel", "subjectScroll");
+    subject_->setText("No letter selected");
     details_ = new QWidget;
     auto metadata = new QGridLayout(details_);
     metadata->setContentsMargins(0, 0, 0, 0);
@@ -479,6 +923,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     new AddressHighlighter(body_->document());
     body_->setOpenLinks(false);
     body_->setFrameShape(QFrame::NoFrame);
+    body_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     read->addWidget(body_, 1);
     connect(body_, &QTextBrowser::anchorClicked, this, [this](QUrl url) {
         if (url.scheme() == "https" &&
@@ -515,6 +960,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     split->addWidget(reader_);
     split->setSizes({212, 300, 648});
     status_ = new QLabel;
+    status_->setObjectName("statusBar");
     status_->setContentsMargins(24, 12, 24, 12);
     outer->addWidget(status_);
     auto file = menuBar()->addMenu("File");
@@ -601,6 +1047,12 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
                     actions_->hide();
                 }
             });
+    connect(letters_, &QListView::doubleClicked, this, [this](QModelIndex i) {
+        if (i.isValid())
+            (new MessageWindow(session_, session_.message(i.data(Qt::UserRole + 1).toString()),
+                               appearance_.dark(), this))
+                ->show();
+    });
     connect(session_.messageModel(), &QAbstractItemModel::modelReset, this, [this] {
         selected_.clear();
         body_->clear();
@@ -632,6 +1084,7 @@ void DesktopWindow::updateTheme() {
         QString(
             "QWidget{font-size:13px;} QMainWindow,QDialog{background:%1;} "
             "QWidget#sidebar{background:%2;} QWidget#header{background:%3;} "
+            "QWidget#statusBar{background:%3;font-size:11px;} "
             "QPushButton,QLineEdit,QComboBox{padding:9px;border:1px solid %4;border-radius:6px;} "
             "QPushButton:hover{background:%2;} QListView,QTextEdit{border:0;} "
             "QListWidget::item{padding:10px;} QListWidget::item:selected{background:%5;color:%6;} "
@@ -641,6 +1094,12 @@ void DesktopWindow::updateTheme() {
                  dark ? "#234b46" : "#dcebe8", dark ? "#73d8c7" : "#126d65"));
     letters_->viewport()->update();
     updateDeliveryStatus();
+    const auto color = iconColor(dark);
+    findChild<QAction *>("editAction")->setIcon(materialIcon("edit", color));
+    findChild<QAction *>("replyAction")->setIcon(materialIcon("reply", color));
+    findChild<QAction *>("archiveAction")->setIcon(materialIcon("archive", color));
+    findChild<QAction *>("trashAction")->setIcon(materialIcon("delete", color));
+    findChild<QToolButton *>("moreActionsButton")->setIcon(materialIcon("more", color));
 }
 void DesktopWindow::clearDetails() {
     fromAddress_->clear();
@@ -785,14 +1244,9 @@ void DesktopWindow::selectMessage(const QString &id) {
         error_->show();
         return;
     }
-    subject_->setText(singleLine(selected_["subject"].toString()).left(240));
     const auto fullSubject = singleLine(selected_["subject"].toString());
-    auto subjectPreview = fullSubject;
-    if (subjectPreview.size() > 160)
-        subjectPreview = subjectPreview.left(157).trimmed() + "…";
-    subject_->setText(subjectPreview);
-    subject_->setToolTip(fullSubject);
-    subject_->setFont(subjectPreview.contains("BM-") ? addressFont() : QApplication::font());
+    subject_->setText(fullSubject);
+    subject_->setFont(fullSubject.contains("BM-") ? addressFont() : QApplication::font());
     fromAddress_->setText(selected_["from"].toString());
     toAddress_->setText(selected_["to"].toString());
     deliveryError_->setText(selected_["deliveryError"].toString());
@@ -800,24 +1254,16 @@ void DesktopWindow::selectMessage(const QString &id) {
     updateDeliveryStatus();
     details_->show();
     updateTimeline();
-    body_->document()->setLayoutEnabled(false);
-    body_->document()->setMarkdown(
-        selected_["body"].toString(),
-        QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
-                                        QTextDocument::MarkdownNoHTML));
-    body_->document()->clearUndoRedoStacks();
-    for (auto block = body_->document()->begin(); block.isValid(); block = block.next()) {
-        QTextCursor cursor(block);
-        auto format = block.blockFormat();
-        format.setLineHeight(130, QTextBlockFormat::ProportionalHeight);
-        format.setBottomMargin(block.textList() ? 3 : 10);
-        cursor.setBlockFormat(format);
-    }
-    body_->document()->setLayoutEnabled(true);
-    body_->verticalScrollBar()->setValue(0);
+    renderMarkdown(body_, selected_["body"].toString());
     actions_->show();
-    findChild<QPushButton *>("editAction")->setVisible(selected_["folder"] == "Drafts");
-    findChild<QPushButton *>("replyAction")->setVisible(selected_["folder"] != "Drafts");
+    findChild<QAction *>("editAction")->setVisible(selected_["folder"] == "Drafts");
+    findChild<QAction *>("replyAction")->setVisible(selected_["folder"] != "Drafts");
+    const bool trashed = selected_["folder"] == "Trash";
+    findChild<QAction *>("restoreAction")->setVisible(trashed);
+    findChild<QAction *>("deletePermanentlyAction")->setVisible(trashed);
+    const bool outgoing = selected_["folder"] == "Outbox";
+    findChild<QAction *>("retryAction")->setVisible(outgoing);
+    findChild<QAction *>("cancelDeliveryAction")->setVisible(outgoing);
     session_.readLetter(id);
 }
 void DesktopWindow::compose(QVariantMap letter, bool reply) {
@@ -825,7 +1271,7 @@ void DesktopWindow::compose(QVariantMap letter, bool reply) {
         return;
     if (letter.contains("hash"))
         letter = session_.message(letter["hash"].toString());
-    Composer dialog(session_, letter, reply, this);
+    Composer dialog(session_, letter, reply, appearance_.dark(), this);
     dialog.exec();
 }
 void DesktopWindow::vaultDialog(QString path, bool create) {
