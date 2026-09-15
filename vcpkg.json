@@ -1,0 +1,9 @@
+{
+  "name": "ynotbit",
+  "version": "0.4.3",
+  "dependencies": [
+    "openssl",
+    "libsodium",
+    "sqlcipher"
+  ]
+}

@@ -1,0 +1,197 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+env:
+  QT_VERSION: "6.8.3"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libssl-dev \
+            autoconf automake libtool tcl librsvg2-bin build-essential
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          dir: ${{ github.workspace }}/qt
+          cache: true
+
+      - name: Cache pinned libsodium/SQLCipher
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/deps-prefix
+          key: linux-deps-${{ hashFiles('scripts/build-dependencies.sh') }}
+
+      - name: Build pinned libsodium/SQLCipher
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: scripts/build-dependencies.sh ${{ runner.temp }}/deps-work ${{ runner.temp }}/deps-prefix
+
+      - name: Configure
+        env:
+          PKG_CONFIG_PATH: ${{ runner.temp }}/deps-prefix/lib/pkgconfig
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/qt/${{ env.QT_VERSION }}/gcc_64 \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: xvfb-run -a ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: |
+          scripts/package-linux.sh "${{ github.workspace }}/build" \
+            "${{ github.workspace }}/ynotbit-linux-x86_64.tar.gz" \
+            "${{ github.workspace }}/qt/${{ env.QT_VERSION }}/gcc_64"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ynotbit-linux
+          path: ynotbit-linux-x86_64.tar.gz
+
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install ninja pkg-config
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          target: desktop
+          arch: clang_64
+          dir: ${{ github.workspace }}/qt
+          cache: true
+
+      - name: Cache pinned libsodium/SQLCipher
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/deps-prefix
+          key: macos-deps-${{ hashFiles('scripts/build-dependencies.sh') }}
+
+      - name: Build pinned libsodium/SQLCipher
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: scripts/build-dependencies.sh ${{ runner.temp }}/deps-work ${{ runner.temp }}/deps-prefix
+
+      - name: Configure
+        env:
+          PKG_CONFIG_PATH: ${{ runner.temp }}/deps-prefix/lib/pkgconfig
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/qt/${{ env.QT_VERSION }}/clang_64 \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: |
+          scripts/package-macos.sh "${{ github.workspace }}/build" \
+            "${{ github.workspace }}/ynotbit-macos-arm64.zip" \
+            "${{ github.workspace }}/qt/${{ env.QT_VERSION }}/clang_64"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ynotbit-macos
+          path: ynotbit-macos-arm64.zip
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          dir: ${{ github.workspace }}/qt
+          cache: true
+
+      - name: Install pkg-config
+        run: choco install pkgconfiglite -y
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
+          key: windows-vcpkg-${{ hashFiles('vcpkg.json') }}
+
+      - name: Install libsodium/SQLCipher/OpenSSL via vcpkg
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install --triplet x64-windows
+
+      - name: Configure
+        env:
+          PKG_CONFIG_PATH: ${{ env.VCPKG_INSTALLATION_ROOT }}\installed\x64-windows\lib\pkgconfig
+        run: |
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}\qt\${{ env.QT_VERSION }}\msvc2022_64"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: |
+          scripts/package-windows.ps1 `
+            -BuildDir "${{ github.workspace }}\build" `
+            -OutputZip "${{ github.workspace }}\ynotbit-windows-x86_64.zip" `
+            -QtBinDir "${{ github.workspace }}\qt\${{ env.QT_VERSION }}\msvc2022_64\bin" `
+            -VcpkgBinDir "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ynotbit-windows
+          path: ynotbit-windows-x86_64.zip
+
+  release:
+    needs: [build-linux, build-macos, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          draft: true
+          generate_release_notes: true
