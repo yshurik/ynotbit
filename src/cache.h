@@ -1,6 +1,8 @@
 #pragma once
 #include <QString>
 #include <QVector>
+#include <QDirIterator>
+#include <memory>
 struct sqlite3;
 namespace bm {
 struct CachedObject {
@@ -11,6 +13,7 @@ class Cache {
     sqlite3 *db_ = nullptr;
     QString root_, id_;
     qint64 pruned_ = 0;
+    std::unique_ptr<QDirIterator> discovery_;
 
   public:
     explicit Cache(const QString &root);

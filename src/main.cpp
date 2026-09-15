@@ -1,10 +1,9 @@
 #include "session.h"
+#include "portable_relay.h"
+#include "appearance.h"
+#include "desktop_window.h"
 #include <QApplication>
 #include <QDir>
-#include <QQmlApplicationEngine>
-#include <QQmlContext>
-#include <QQuickStyle>
-#include <QQuickWindow>
 #include <QStandardPaths>
 #include <QTimer>
 #include <iostream>
@@ -14,16 +13,20 @@ int ntb_daemon(int argc, char **argv);
 }
 #endif
 int main(int argc, char **argv) {
+    if (argc > 1 && std::string(argv[1]) == "--qt-node")
+        return bm::runPortableRelay(argc, argv);
 #ifdef Q_OS_UNIX
     if (argc > 1 && std::string(argv[1]) == "--node")
         return ntb_daemon(argc - 1, argv + 1);
+#else
+    if (argc > 1 && std::string(argv[1]) == "--node")
+        return bm::runPortableRelay(argc, argv);
 #endif
     QApplication app(argc, argv);
     app.setOrganizationName("NotbitDesktop");
     app.setApplicationName("Notbit Desktop");
     app.setApplicationDisplayName("ynotbit");
-    app.setApplicationVersion("0.2.0-dev");
-    QQuickStyle::setStyle("Basic");
+    app.setApplicationVersion("0.4.3-dev");
     try {
         auto args = app.arguments();
         QString root =
@@ -34,18 +37,13 @@ int main(int argc, char **argv) {
         if (index >= 0 && index + 1 < args.size())
             root = QDir(args[index + 1]).absolutePath();
         bm::Session session(root, args.contains("--offline"));
-        QQmlApplicationEngine engine;
-        engine.rootContext()->setContextProperty("session", &session);
-        engine.load(QUrl("qrc:/ui/Main.qml"));
-        if (engine.rootObjects().isEmpty())
-            return 1;
+        bm::DesktopWindow window(session);
+        window.show();
         index = args.indexOf("--screenshot");
         if (index >= 0 && index + 1 < args.size()) {
             auto path = args[index + 1];
             QTimer::singleShot(1200, &app, [&, path] {
-                auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
-                if (window)
-                    window->grabWindow().save(path);
+                window.grab().save(path);
                 app.quit();
             });
         }

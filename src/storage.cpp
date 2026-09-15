@@ -8,6 +8,7 @@
 #include <QSaveFile>
 #include <QSettings>
 #include <QUuid>
+#include <algorithm>
 #include <cstring>
 #include <sqlite3.h>
 #include <stdexcept>
@@ -261,6 +262,14 @@ void Mailbox::connect(const QString &path, const Secret &key, bool create) {
         fail("Cannot open mailbox");
     }
     try {
+        sqlite3_update_hook(
+            db_,
+            [](void *context, int, const char *, const char *table, sqlite3_int64) {
+                if (qstrcmp(table, "messages") == 0 || qstrcmp(table, "outbox") == 0 ||
+                    qstrcmp(table, "settings") == 0 || qstrcmp(table, "delivery_events") == 0)
+                    ++static_cast<Mailbox *>(context)->messageRevision_;
+            },
+            this);
         sqlite3_busy_timeout(db_, 3000);
 #ifdef SQLITE_HAS_CODEC
         check(sqlite3_key(db_, key.data(), 32) == SQLITE_OK, "Cannot apply mailbox key");
@@ -314,6 +323,7 @@ void Mailbox::close() {
     if (db_) {
         sqlite3_close_v2(db_);
         db_ = nullptr;
+        ++messageRevision_;
     }
 }
 QString Mailbox::keyId() const {
@@ -364,6 +374,58 @@ QVector<Message> Mailbox::messages() const {
         list.push_back(
             {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
     return list;
+}
+QVector<Message> Mailbox::messageSummaries(int limit) const {
+    Statement s(db_, "SELECT hash,sender,recipient,subject,substr(body,1,240),folder,received "
+                     "FROM messages ORDER BY received DESC,rowid DESC LIMIT ?");
+    s.number(1, std::clamp(limit, 1, 10000));
+    QVector<Message> list;
+    while (s.row())
+        list.push_back(
+            {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
+    return list;
+}
+static QByteArray messageFilter(const QString &search, const QString &recipient) {
+    QByteArray filter(" WHERE folder=?");
+    if (!recipient.isEmpty()) filter += " AND recipient=?";
+    if (!search.isEmpty()) filter += " AND (instr(lower(subject),lower(?)) OR instr(lower(sender),lower(?)) OR instr(lower(recipient),lower(?)) OR instr(lower(body),lower(?)))";
+    return filter;
+}
+QVector<Message> Mailbox::messageSummaries(const QString &folder, const QString &search, int offset,
+                                           int limit, const QString &recipient) const {
+    const auto query = QByteArray("SELECT hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received FROM messages") + messageFilter(search,recipient) + " ORDER BY received DESC,rowid DESC LIMIT ? OFFSET ?";
+    Statement s(db_, query.constData());
+    s.text(1, folder);
+    int parameter = 2;
+    if (!recipient.isEmpty()) s.text(parameter++,recipient);
+    if (!search.isEmpty())
+        for (int i = 0; i < 4; ++i)
+            s.text(parameter++, search);
+    s.number(parameter++, std::clamp(limit, 1, 500));
+    s.number(parameter, std::max(0, offset));
+    QVector<Message> list;
+    while (s.row())
+        list.push_back(
+            {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
+    return list;
+}
+int Mailbox::messageCount(const QString &folder, const QString &search, const QString &recipient) const {
+    const auto query = QByteArray("SELECT count(*) FROM messages") + messageFilter(search,recipient);
+    Statement s(db_, query.constData());
+    s.text(1, folder);
+    int parameter = 2;
+    if (!recipient.isEmpty()) s.text(parameter++,recipient);
+    if (!search.isEmpty())
+        for (int i = 0; i < 4; ++i)
+            s.text(parameter++, search);
+    s.row();
+    return int(s.number(0));
+}
+QStringList Mailbox::channelAddresses() const {
+    Statement s(db_, "SELECT DISTINCT recipient FROM messages WHERE folder='Channels' AND recipient<>'' ORDER BY recipient");
+    QStringList result;
+    while (s.row()) result << s.text(0);
+    return result;
 }
 void Mailbox::backup(const QString &path, const Secret &key) {
     check(db_, "Mailbox is closed");

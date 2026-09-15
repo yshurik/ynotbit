@@ -6,13 +6,14 @@ build_dir="${1:?Usage: package-macos.sh BUILD_DIR OUTPUT_ZIP QT_PREFIX}"
 output_zip="${2:?An absolute output zip path is required}"
 qt_prefix="${3:?Qt installation prefix is required}"
 case "$output_zip" in /*) ;; *) echo 'Use an absolute output path' >&2; exit 1;; esac
+if [[ ! -f "$project_dir/assets/ynotbit.icns" ]]; then
+  "$project_dir/scripts/make-macos-icon.sh" "$project_dir/assets/ynotbit.icns"
+fi
 stage_dir="$(mktemp -d /tmp/ynotbit-package.XXXXXX)"
 trap 'rm -rf "$stage_dir"' EXIT
 app_dir="$stage_dir/ynotbit.app"
 ditto --norsrc "$build_dir/ynotbit.app" "$app_dir"
-"$qt_prefix/bin/macdeployqt" "$app_dir" -qmldir="$project_dir/ui" -always-overwrite
-# ynotbit uses SQLCipher directly, not Qt SQL drivers or QML LocalStorage.
-rm -rf "$app_dir/Contents/PlugIns/sqldrivers" "$app_dir/Contents/Resources/qml/QtQuick/LocalStorage"
+"$qt_prefix/bin/macdeployqt" "$app_dir" -always-overwrite
 mkdir -p "$app_dir/Contents/Resources/licenses"
 cp "$project_dir"/licenses/* "$app_dir/Contents/Resources/licenses/"
 cp "$project_dir/third_party/notbit/COPYING" "$app_dir/Contents/Resources/licenses/notbit.txt"

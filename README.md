@@ -1,7 +1,7 @@
 # ynotbit — why not bit?
 
 A compact desktop Bitmessage client based on [notbit](https://github.com/bpeel/notbit),
-by [yshurik](https://github.com/yshurik). **Development version: 0.2.0.**
+by [yshurik](https://github.com/yshurik). **Development version: 0.4.3.**
 
 ynotbit keeps identity keys in a password-protected vault and correspondence in a
 separate encrypted mailbox document. Its keyless relay continues collecting
@@ -39,11 +39,24 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
 - Direct-message decryption and sender verification; acknowledgments; bounded
   automatic expiry retries; manual retry and cancellation; reply using the
   authenticated sender key. Cancellation cannot recall objects already relayed.
+- Channels have a named selector, separate message lists and search, and a
+  Write to channel action. BM-addresses use a fixed-width font.
+- Message details align sender and recipient addresses, color successful
+  acknowledgment, and show the recorded delivery timeline: prepared, key
+  available, sent to peers, acknowledged, or received in the mailbox.
 - Broadcast publishing/subscriptions (v4/v5 objects), shared chans, folder search,
   read state, archive, trash/restore, and explicit permanent deletion.
 - A separate notbit relay receives no vault or mailbox keys. Its bounded local
   queue accepts network objects, validates proof of work, and records acceptance,
   rejection, and offers to connected peers. Receipt state survives restarts.
+- A Qt-native bounded relay is also available for non-Unix builds (`--qt-node`),
+  with the same object limits, persistence, SOCKS5 support, peer admission rules,
+  and publication receipts. Unix builds continue to use the mature notbit engine.
+- The desktop uses Qt Widgets, without QML or Qt Quick. A painted list keeps at
+  most three pages of 100 message summaries, loading only the selected body.
+- The composer is a visual Markdown editor. Rendered messages use a safe Markdown
+  document that does not fetch local files or remote images. Appearance follows the
+  system color scheme by default and can be set to light or dark.
 - Peer count, offline mode, node restart, additional peer and SOCKS5 proxy settings,
   configurable network-cache retention, recent document paths, and combined backup.
 
@@ -54,8 +67,7 @@ An offer to peers is not proof that every peer or the final recipient received i
 
 ## Build and test
 
-Requirements: CMake 3.22+, C++20, Qt 6.8+ (Core, Gui, Quick, QuickControls2,
-Widgets, Network, Test), OpenSSL, libsodium, SQLCipher, pkg-config, Ninja.
+Requirements: CMake 3.22+, C++20, Qt 6.8+ (Core, Gui, Widgets, Network, Test), OpenSSL, libsodium, SQLCipher, pkg-config, Ninja.
 Python 3 runs the loopback relay tests. Autoconf, Automake, make and Tcl are
 needed when building the pinned storage dependencies from source.
 
@@ -106,9 +118,9 @@ are not guaranteed erased from all memory, swap, crash dumps or screenshots.
 
 The packaged macOS build targets **Apple Silicon, macOS 15.6+** and bundles its
 runtime dependencies. It is ad-hoc signed, not Developer ID signed or notarized.
-Native Windows relay support and single-EXE packaging remain unfinished. Linux
-AppImage generation is not yet validated. Attachment UI, configurable CPU
-parallelism, and large-mailbox paging are not implemented.
+Windows and Linux builds use the same Qt application and native relay path; their
+release bundles still need to be produced and validated on their respective
+toolchains. Attachment UI and configurable CPU parallelism are not implemented.
 
 A Linux CI workflow template is in `docs/ci/build.yml`. It is not active: the
 GitHub login used to create this repository lacks the `workflow` scope required

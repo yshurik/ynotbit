@@ -1,6 +1,7 @@
 #pragma once
 #include "cache.h"
 #include "delivery.h"
+#include "message_model.h"
 #include "storage.h"
 #include <QLockFile>
 #include <QObject>
@@ -16,7 +17,7 @@ class Session : public QObject {
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(QString document READ document NOTIFY changed)
     Q_PROPERTY(QString error READ error NOTIFY changed)
-    Q_PROPERTY(QVariantList messages READ messages NOTIFY changed)
+    Q_PROPERTY(MessageModel *messageModel READ messageModel CONSTANT)
     Q_PROPERTY(QVariantList identities READ identities NOTIFY changed)
     Q_PROPERTY(qint64 objectCount READ objectCount NOTIFY changed)
     Q_PROPERTY(qint64 cacheBytes READ cacheBytes NOTIFY changed)
@@ -26,8 +27,9 @@ class Session : public QObject {
     Mailbox mailbox_;
     std::unique_ptr<Cache> cache_;
     std::unique_ptr<Delivery> delivery_;
-    QString root_, vaultPath_, mailPath_, mailKey_, error_, activity_;
-    QVariantList messages_;
+    std::unique_ptr<MessageModel> messageModel_;
+    QString root_, vaultPath_, mailPath_, mailKey_, pendingVaultPath_, error_, activity_;
+    std::optional<quint64> displayedRevision_;
     QProcess node_;
     QTimer timer_;
     std::unique_ptr<QLockFile> nodeLock_, vaultLock_, mailLock_;
@@ -37,6 +39,7 @@ class Session : public QObject {
     void startNode();
     void attempt(const std::function<void()> &f);
     void refresh();
+    void clearMessages();
     void tick();
     void acquireVault(const QString &);
     void openMailboxPath(const QString &);
@@ -58,9 +61,7 @@ class Session : public QObject {
     QString activity() const {
         return activity_;
     }
-    QVariantList messages() const {
-        return messages_;
-    }
+    MessageModel *messageModel() const { return messageModel_.get(); }
     QVariantList identities() const;
     qint64 objectCount() const {
         return cache_ ? cache_->count() : 0;
@@ -78,6 +79,10 @@ class Session : public QObject {
     Q_INVOKABLE void createVault();
     Q_INVOKABLE void openVault();
     Q_INVOKABLE void unlockVault();
+    Q_INVOKABLE void beginVaultCreate();
+    Q_INVOKABLE void beginVaultOpen();
+    Q_INVOKABLE void beginVaultUnlock();
+    Q_INVOKABLE void submitVaultPassword(QString password, QString repeat, bool create);
     Q_INVOKABLE void createMailbox();
     Q_INVOKABLE void openMailbox();
     Q_INVOKABLE void lock();
@@ -97,6 +102,10 @@ class Session : public QObject {
     Q_INVOKABLE void restoreLetter(QString id);
     Q_INVOKABLE void deleteLetter(QString id);
     Q_INVOKABLE void readLetter(QString id);
+    Q_INVOKABLE QVariantMap message(QString id) const;
+    QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit, const QString &recipient = {}) const;
+    int messageCount(const QString &folder, const QString &search, const QString &recipient = {}) const { return mailboxOpen() ? mailbox_.messageCount(folder, search, recipient) : 0; }
+    QVariantList channels() const;
     Q_INVOKABLE QVariantList deliveryHistory(QString id);
     Q_INVOKABLE void subscribe();
     Q_INVOKABLE void unsubscribe(QString address);
@@ -110,7 +119,11 @@ class Session : public QObject {
     }
   signals:
     void changed();
+    void messagesChanged();
+    void messageRead(QString id);
     void locked();
     void aboutToCloseMailbox();
+    void vaultPasswordRequired(QString path, bool create);
+    void vaultPasswordAccepted();
 };
 } // namespace bm

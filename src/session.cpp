@@ -1,4 +1,6 @@
 #include "session.h"
+#include "appearance.h"
+#include "message_model.h"
 #include "protocol.h"
 #include "protocol_wire.h"
 #include "scanner.h"
@@ -8,6 +10,7 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QHostAddress>
 #include <QInputDialog>
 #include <QJsonDocument>
@@ -21,6 +24,16 @@
 #include <algorithm>
 #include <stdexcept>
 namespace bm {
+static QString addressInput(const QString &title, const QString &label, bool *accepted) {
+    QInputDialog dialog;
+    dialog.setWindowTitle(title);
+    dialog.setLabelText(label);
+    dialog.setInputMode(QInputDialog::TextInput);
+    if (auto field = dialog.findChild<QLineEdit *>())
+        field->setFont(addressFont());
+    *accepted = dialog.exec() == QDialog::Accepted;
+    return dialog.textValue();
+}
 static void check(bool b, const char *m) {
     if (!b)
         throw std::runtime_error(m);
@@ -60,8 +73,13 @@ static QString chooseSave(const QString &title, const QString &filter, const QSt
         p += suffix;
     return p;
 }
+static QString documentsPath() {
+    const auto path = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    return path.isEmpty() ? QDir::homePath() : path;
+}
 Session::Session(QString root, bool offline, QObject *parent)
     : QObject(parent), root_(std::move(root)), offline_(offline) {
+    messageModel_ = std::make_unique<MessageModel>(this, this);
     QDir().mkpath(root_);
     nodeLock_ = std::make_unique<QLockFile>(root_ + "/desktop.lock");
     check(nodeLock_->tryLock(), "Another app instance is using this node folder");
@@ -169,8 +187,8 @@ void Session::createVault() {
 void Session::openVault() {
     attempt([&] {
         check(!unlocked(), "Lock the current vault first");
-        auto p =
-            QFileDialog::getOpenFileName(nullptr, "Open vault", {}, "Bitmessage vault (*.bmvault)");
+        auto p = QFileDialog::getOpenFileName(nullptr, "Open vault", documentsPath(),
+                                              "Bitmessage vault (*.bmvault)");
         if (p.isEmpty())
             return;
         auto pass = password("Unlock vault");
@@ -207,6 +225,88 @@ void Session::unlockVault() {
             openMailboxPath(mailPath_);
     });
 }
+void Session::beginVaultCreate() {
+    attempt([&] {
+        check(!unlocked(), "Lock the current vault first");
+        auto p = chooseSave("Create vault", "Bitmessage vault (*.bmvault)", ".bmvault");
+        if (p.isEmpty())
+            return;
+        pendingVaultPath_ = p;
+        emit vaultPasswordRequired(p, true);
+    });
+}
+void Session::beginVaultOpen() {
+    attempt([&] {
+        check(!unlocked(), "Lock the current vault first");
+        auto p = QFileDialog::getOpenFileName(nullptr, "Open vault", documentsPath(),
+                                              "Bitmessage vault (*.bmvault)");
+        if (p.isEmpty())
+            return;
+        pendingVaultPath_ = p;
+        emit vaultPasswordRequired(p, false);
+    });
+}
+void Session::beginVaultUnlock() {
+    if (vaultPath_.isEmpty()) {
+        beginVaultOpen();
+        return;
+    }
+    attempt([&] {
+        check(!unlocked(), "Vault is already unlocked");
+        pendingVaultPath_ = vaultPath_;
+        emit vaultPasswordRequired(vaultPath_, false);
+    });
+}
+void Session::submitVaultPassword(QString passphrase, QString repeated, bool create) {
+    attempt([&] {
+        check(!pendingVaultPath_.isEmpty(), "Choose a vault first");
+        check(!passphrase.isEmpty(), "Password cannot be empty");
+        if (create)
+            check(passphrase == repeated, "Passwords do not match");
+        const auto path = pendingVaultPath_;
+        Password secret{passphrase.toUtf8()};
+        auto &bytes = secret.bytes;
+        passphrase.fill(QChar(0));
+        repeated.fill(QChar(0));
+        if (create) {
+            check(!QFile::exists(path),
+                  "Choose a new filename; existing vaults are never overwritten");
+            acquireVault(path);
+            try {
+                vault_.create(path, bytes);
+                vaultPath_ = path;
+                mailPath_.clear();
+                mailKey_.clear();
+                activity_ = "Vault created. Add an identity and create a mailbox.";
+            } catch (...) {
+                vaultLock_.reset();
+                sodium_memzero(bytes.data(), bytes.size());
+                throw;
+            }
+        } else {
+            acquireVault(path);
+            try {
+                vault_.unlock(path, bytes);
+                if (vaultPath_ != path) {
+                    mailPath_.clear();
+                    mailKey_.clear();
+                }
+                vaultPath_ = path;
+                activity_ = "Vault unlocked. Open a mailbox to inspect cached objects.";
+            } catch (...) {
+                vaultLock_.reset();
+                sodium_memzero(bytes.data(), bytes.size());
+                throw;
+            }
+        }
+        sodium_memzero(bytes.data(), bytes.size());
+        pendingVaultPath_.clear();
+        emit vaultPasswordAccepted();
+        if (!create && !mailPath_.isEmpty())
+            openMailboxPath(mailPath_);
+        emit changed();
+    });
+}
 void Session::createMailbox() {
     emit aboutToCloseMailbox();
     attempt([&] {
@@ -219,7 +319,7 @@ void Session::createMailbox() {
               "Choose a new filename; existing mailbox documents are never overwritten");
         delivery_->stop();
         mailbox_.close();
-        messages_.clear();
+        clearMessages();
         mailLock_.reset();
         mailLock_ = std::make_unique<QLockFile>(p + ".lock");
         check(mailLock_->tryLock(), "Mailbox is in use");
@@ -240,7 +340,7 @@ void Session::openMailboxPath(const QString &p) {
     delivery_->stop();
     check(unlocked(), "Unlock a vault first");
     mailbox_.close();
-    messages_.clear();
+    clearMessages();
     mailLock_.reset();
     mailLock_ = std::make_unique<QLockFile>(p + ".lock");
     check(mailLock_->tryLock(), "Mailbox is open in another instance");
@@ -264,7 +364,7 @@ void Session::openMailbox() {
     emit aboutToCloseMailbox();
     attempt([&] {
         check(unlocked(), "Unlock a vault first");
-        auto p = QFileDialog::getOpenFileName(nullptr, "Open mailbox", {},
+        auto p = QFileDialog::getOpenFileName(nullptr, "Open mailbox", documentsPath(),
                                               "Bitmessage mailbox (*.bmmail)");
         if (!p.isEmpty())
             openMailboxPath(p);
@@ -278,7 +378,7 @@ void Session::lock() {
     recent.setValue("vault", vaultPath_);
     recent.setValue("mailbox", mailPath_);
     mailbox_.close();
-    messages_.clear();
+    clearMessages();
     vault_.lock();
     mailLock_.reset();
     vaultLock_.reset();
@@ -310,9 +410,8 @@ void Session::joinChannel() {
         if (!ok)
             return;
         auto expected =
-            QInputDialog::getText(nullptr, "Verify chan address",
-                                  "Expected BM-address (leave empty to create a version 4 chan)",
-                                  QLineEdit::Normal, {}, &ok);
+            addressInput("Verify chan address",
+                         "Expected BM-address (leave empty to create a version 4 chan)", &ok);
         if (!ok) {
             phrase.fill(QChar(0));
             return;
@@ -328,7 +427,7 @@ void Session::importIdentities() {
     attempt([&] {
         check(unlocked(), "Unlock a vault first");
         auto p = QFileDialog::getOpenFileName(nullptr, "Import notbit / PyBitmessage identities",
-                                              {}, "Key files (*.dat);;All files (*)");
+                                              documentsPath(), "Key files (*.dat);;All files (*)");
         if (p.isEmpty())
             return;
         vault_.importKeys(p);
@@ -347,7 +446,8 @@ void Session::changePassword() {
 void Session::backup() {
     attempt([&] {
         check(mailboxOpen(), "Open a mailbox first");
-        auto dir = QFileDialog::getExistingDirectory(nullptr, "Choose backup folder");
+        auto dir =
+            QFileDialog::getExistingDirectory(nullptr, "Choose backup folder", documentsPath());
         if (dir.isEmpty())
             return;
         auto base =
@@ -374,20 +474,50 @@ void Session::rescan() {
     });
 }
 void Session::refresh() {
-    messages_.clear();
-    if (!mailboxOpen())
+    if (!mailboxOpen()) {
+        clearMessages();
         return;
-    QMap<QString, OutboxItem> outgoing;
-    for (const auto &item : mailbox_.outbox())
-        outgoing.insert(item.id, item);
-    for (const auto &m : mailbox_.messages()) {
-        const auto out = outgoing.value(m.hash);
-        messages_ << QVariantMap{
+    }
+    if (displayedRevision_ == mailbox_.messageRevision())
+        return;
+    displayedRevision_ = mailbox_.messageRevision();
+    emit messagesChanged();
+    if (messageModel_)
+        messageModel_->reload();
+}
+QVariantList Session::channels() const {
+    QMap<QString, QString> labels;
+    if (mailboxOpen())
+        for (const auto &address : mailbox_.channelAddresses())
+            labels[address] = address;
+    if (unlocked())
+        for (const auto &i : vault_.identities())
+            if (i.chan)
+                labels[i.address] = i.label.isEmpty() ? i.address : i.label;
+    QVariantList result;
+    for (auto i = labels.cbegin(); i != labels.cend(); ++i)
+        result << QVariantMap{{"address", i.key()}, {"label", i.value()}};
+    return result;
+}
+QVariantList Session::messagePage(const QString &folder, const QString &search, int offset,
+                                  int limit, const QString &recipient) const {
+    QVariantList result;
+    if (!mailboxOpen())
+        return result;
+    for (const auto &m : mailbox_.messageSummaries(folder, search, offset, limit, recipient)) {
+        OutboxItem out;
+        if (m.folder == "Outbox" || m.folder == "Sent") {
+            try {
+                out = mailbox_.outgoing(m.hash);
+            } catch (...) {
+            }
+        }
+        result << QVariantMap{
             {"hash", m.hash},
             {"from", m.from},
             {"to", m.to},
             {"subject", m.subject},
-            {"body", m.body},
+            {"preview", m.body},
             {"folder", m.folder},
             {"state", out.state},
             {"deliveryError", out.error},
@@ -397,6 +527,37 @@ void Session::refresh() {
             {"received",
              QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
     }
+    return result;
+}
+QVariantMap Session::message(QString id) const {
+    if (!mailboxOpen())
+        return {};
+    const auto m = mailbox_.message(id);
+    OutboxItem out;
+    try {
+        out = mailbox_.outgoing(id);
+    } catch (...) {
+    }
+    return {
+        {"hash", m.hash},
+        {"from", m.from},
+        {"to", m.to},
+        {"subject", m.subject},
+        {"body", m.body},
+        {"preview", m.body.left(240)},
+        {"storedAt", m.received},
+        {"folder", m.folder},
+        {"state", out.state},
+        {"deliveryError", out.error},
+        {"unread", mailbox_.unread(m.hash)},
+        {"kind", out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
+        {"received", QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
+}
+void Session::clearMessages() {
+    displayedRevision_.reset();
+    if (messageModel_)
+        messageModel_->reload();
+    emit messagesChanged();
 }
 void Session::tick() {
     if (busy_)
@@ -502,21 +663,30 @@ void Session::deleteLetter(QString id) {
 void Session::readLetter(QString id) {
     attempt([&] {
         if (mailboxOpen()) {
-            mailbox_.markRead(id);
+            // Catch up first only if another operation changed the mailbox. Marking
+            // one row read must not reload all message bodies from SQLCipher.
             refresh();
+            mailbox_.markRead(id);
+            displayedRevision_ = mailbox_.messageRevision();
+            messageModel_->markRead(id);
+            emit messageRead(id);
         }
     });
 }
 QVariantList Session::deliveryHistory(QString id) {
     QVariantList result;
-    attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+    if (!mailboxOpen())
+        return result;
+    try {
         for (const auto &e : mailbox_.events(id))
             result << QVariantMap{
-                {"time", QDateTime::fromSecsSinceEpoch(e.timestamp).toString("dd MMM hh:mm:ss")},
+                {"time",
+                 QDateTime::fromSecsSinceEpoch(e.timestamp).toString("dd MMM yyyy · HH:mm:ss")},
                 {"state", e.state},
                 {"detail", e.detail}};
-    });
+    } catch (const std::exception &e) {
+        error_ = QString::fromUtf8(e.what());
+    }
     return result;
 }
 QVariantList Session::subscriptions() const {
@@ -530,9 +700,8 @@ void Session::subscribe() {
     attempt([&] {
         check(mailboxOpen(), "Open a mailbox first");
         bool ok = false;
-        auto address = QInputDialog::getText(nullptr, "Subscribe to broadcasts",
-                                             "Publisher BM-address", QLineEdit::Normal, {}, &ok)
-                           .trimmed();
+        auto address =
+            addressInput("Subscribe to broadcasts", "Publisher BM-address", &ok).trimmed();
         if (!ok)
             return;
         check(Wire::validAddress(address), "Invalid Bitmessage address");
@@ -568,13 +737,12 @@ void Session::closeMailbox() {
     delivery_->stop();
     mailbox_.close();
     mailLock_.reset();
-    messages_.clear();
+    clearMessages();
     mailPath_.clear();
     mailKey_.clear();
     emit changed();
 }
 void Session::startNode() {
-#ifdef Q_OS_UNIX
     if (offline_)
         return;
     QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
@@ -588,10 +756,6 @@ void Session::startNode() {
     node_.setProgram(QCoreApplication::applicationFilePath());
     node_.setArguments(args);
     node_.start();
-#else
-    if (!offline_)
-        error_ = "Native Windows relay port is not yet available";
-#endif
 }
 void Session::restartNode() {
     attempt([&] {

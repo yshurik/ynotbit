@@ -83,6 +83,7 @@ struct Subscription;
 struct DeliveryEvent;
 class Mailbox {
     sqlite3 *db_ = nullptr;
+    quint64 messageRevision_ = 0;
     void connect(const QString &, const Secret &, bool create);
     void sql(const char *);
     void migrate();
@@ -107,6 +108,15 @@ class Mailbox {
     void advance(qint64 checkpoint);
     qint64 checkpoint() const;
     QVector<Message> messages() const;
+    QVector<Message> messageSummaries(int limit = 2000) const;
+    QVector<Message> messageSummaries(const QString &folder, const QString &search, int offset,
+                                      int limit, const QString &recipient = {}) const;
+    int messageCount(const QString &folder, const QString &search, const QString &recipient = {}) const;
+    QStringList channelAddresses() const;
+    // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
+    quint64 messageRevision() const {
+        return messageRevision_;
+    }
     void backup(const QString &, const Secret &);
     QString saveDraft(const QString &id, const QString &from, const QString &to,
                       const QString &subject, const QString &body);
@@ -122,6 +132,7 @@ class Mailbox {
     void retry(const QString &id, qint64 expires);
     void cancel(const QString &id);
     QVector<DeliveryEvent> events(const QString &id) const;
+    void recordMilestone(const QString &id, const QString &state, const QString &detail);
     QString addJob(NetworkJob job);
     QVector<NetworkJob> jobs() const;
     void updateJob(const QString &id, const QString &state, const QByteArray &payload = {},

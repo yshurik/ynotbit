@@ -1,5 +1,6 @@
 """Exercise the real, keyless relay over loopback; never contact public peers."""
 import hashlib
+import os
 import json
 import uuid
 import pathlib
@@ -57,7 +58,7 @@ with tempfile.TemporaryDirectory() as temporary:
         nonce+=1
     payload=struct.pack(">Q",nonce)+rest
     object_hash=sha(sha(payload))[:32]
-    process=subprocess.Popen([sys.argv[1],"--node","-D",str(root),"-b","-B","-e","-L","-i","-P",f"127.0.0.1:{port}"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    process=subprocess.Popen([sys.argv[1],os.environ.get("YNOTBIT_TEST_NODE_FLAG","--node"),"-D",str(root),"-b","-B","-e","-L","-i","-P",f"127.0.0.1:{port}"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     try:
         peer,_=listener.accept();peer.settimeout(8)
         command,_=receive(peer)
