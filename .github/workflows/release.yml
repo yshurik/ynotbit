@@ -162,22 +162,27 @@ jobs:
       - name: Cache vcpkg packages
         uses: actions/cache@v4
         with:
-          path: ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
+          path: ${{ github.workspace }}\build\vcpkg_installed
           key: windows-vcpkg-${{ hashFiles('vcpkg.json') }}
 
-      - name: Install libsodium/SQLCipher/OpenSSL via vcpkg
-        run: |
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install --triplet x64-windows
-
       - name: Configure
-        env:
-          PKG_CONFIG_PATH: ${{ env.VCPKG_INSTALLATION_ROOT }}\installed\x64-windows\lib\pkgconfig
         run: |
           cmake -S . -B build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows `
             -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.prefix }}"
+
+      - name: Debug sqlite3.h codec declaration
+        run: |
+          $general = "${{ github.workspace }}\build\vcpkg_installed\x64-windows\include\sqlite3.h"
+          $cipher = "${{ github.workspace }}\build\vcpkg_installed\x64-windows\include\sqlcipher\sqlite3.h"
+          Write-Output "general sqlite3.h exists: $(Test-Path $general)"
+          Write-Output "sqlcipher sqlite3.h exists: $(Test-Path $cipher)"
+          if (Test-Path $cipher) {
+            Write-Output "--- sqlite3_key context in sqlcipher/sqlite3.h ---"
+            Select-String -Path $cipher -Pattern "sqlite3_key|SQLITE_HAS_CODEC" -Context 2,2
+          }
 
       - name: Build
         run: cmake --build build --parallel
@@ -191,7 +196,7 @@ jobs:
             -BuildDir "${{ github.workspace }}\build" `
             -OutputZip "${{ github.workspace }}\ynotbit-windows-x86_64.zip" `
             -QtBinDir "${{ steps.qt.outputs.prefix }}\bin" `
-            -VcpkgBinDir "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin"
+            -VcpkgBinDir "${{ github.workspace }}\build\vcpkg_installed\x64-windows\bin"
 
       - uses: actions/upload-artifact@v4
         with:
