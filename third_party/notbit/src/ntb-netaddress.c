@@ -25,7 +25,15 @@
 
 #include <string.h>
 #include <inttypes.h>
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
+#endif
 #include <stdio.h>
 #include <stdbool.h>
 #include <errno.h>
@@ -33,6 +41,24 @@
 #include "ntb-netaddress.h"
 #include "ntb-util.h"
 #include "ntb-buffer.h"
+
+#ifdef _WIN32
+/* inet_ntop/inet_pton live in ws2_32.dll; callers of this library (the
+ * desktop app and every standalone test binary) may never otherwise
+ * touch Winsock, so initialise it lazily here rather than relying on
+ * every caller to have done it first. */
+static void
+ntb_netaddress_ensure_winsock(void)
+{
+        static bool initialized = false;
+
+        if (!initialized) {
+                WSADATA wsa_data;
+                WSAStartup(MAKEWORD(2, 2), &wsa_data);
+                initialized = true;
+        }
+}
+#endif
 
 static const uint8_t
 ipv4_magic[12] = {
@@ -134,6 +160,10 @@ ntb_netaddress_to_string(const struct ntb_netaddress *address)
         char *buf = ntb_alloc(buffer_length);
         int len;
 
+#ifdef _WIN32
+        ntb_netaddress_ensure_winsock();
+#endif
+
         if (ntb_netaddress_is_ipv6(address)) {
                 buf[0] = '[';
                 inet_ntop(AF_INET6,
@@ -167,6 +197,10 @@ ntb_netaddress_from_string(struct ntb_netaddress *address,
         char *port_end;
         unsigned long port;
         bool ret = true;
+
+#ifdef _WIN32
+        ntb_netaddress_ensure_winsock();
+#endif
 
         ntb_buffer_init(&buffer);
 

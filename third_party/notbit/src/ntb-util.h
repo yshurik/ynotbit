@@ -26,7 +26,9 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#ifndef _WIN32
 #include <pthread.h>
+#endif
 
 #ifdef __GNUC__
 #define NTB_NO_RETURN __attribute__((noreturn))
@@ -126,8 +128,10 @@ ntb_fatal(const char *format, ...);
 NTB_PRINTF_FORMAT(1, 2) void
 ntb_warning(const char *format, ...);
 
+#ifndef _WIN32
 int
 ntb_close(int fd);
+#endif
 
 static inline char
 ntb_ascii_tolower(char ch)
@@ -138,9 +142,11 @@ ntb_ascii_tolower(char ch)
                 return ch;
 }
 
+#ifndef _WIN32
 pthread_t
 ntb_create_thread(void *(* thread_func)(void *),
                   void *user_data);
+#endif
 
 #ifdef HAVE_STATIC_ASSERT
 #define NTB_STATIC_ASSERT(EXPRESSION, MESSAGE)  \

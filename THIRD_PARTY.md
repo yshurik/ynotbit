@@ -5,8 +5,10 @@
   `third_party/notbit/COPYING` and the source headers. Modifications disable
   keyring/IPC creation in the desktop relay, disable Maildir creation, retain
   expired local objects without reintroducing them into network inventory, bound
-  EC coordinate parsing, compare ECIES MACs in constant time, and clear selected
-  cryptographic work buffers.
+  EC coordinate parsing, compare ECIES MACs in constant time, clear selected
+  cryptographic work buffers, and port `ntb-netaddress.c`/`.h` to Winsock2 and
+  guard the POSIX-only thread/fd helpers in `ntb-util.c`/`.h` for the Windows
+  build (both unused by the notbit_engine relay, which stays Unix-only).
 - The user's Docker integration https://github.com/yshurik/docker-bitmessage and
   its `yshurik/notbit` smtp branch were inspected as prior art. The new desktop
   does not embed SMTP or Dovecot and does not copy their container-specific patch.

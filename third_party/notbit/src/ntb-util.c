@@ -27,7 +27,9 @@
 #include <stdarg.h>
 #include <string.h>
 #include <errno.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include "ntb-util.h"
 
@@ -147,6 +149,7 @@ ntb_strconcat(const char *string1, ...)
         return result;
 }
 
+#ifndef _WIN32
 int
 ntb_close(int fd)
 {
@@ -177,3 +180,4 @@ ntb_create_thread(void *(* thread_func)(void *),
 
         return thread;
 }
+#endif
