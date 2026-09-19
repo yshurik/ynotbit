@@ -10,6 +10,13 @@ and saves matching letters to the mailbox.
 
 ![ynotbit desktop with an editable encrypted draft](docs/images/desktop.png)
 
+## Download
+
+[**v0.4.3 release**](https://github.com/yshurik/ynotbit/releases/tag/v0.4.3) — prebuilt,
+CI-tested downloads for Linux (x86_64), macOS (Apple Silicon), and Windows (x86_64).
+See [Current boundaries](#current-boundaries) below for what each build does and doesn't
+guarantee.
+
 ## Using the app
 
 1. Create or open a `.bmvault` file. Create an identity, import `keys.dat`, or join
@@ -87,10 +94,25 @@ loopback peers, never public-network messages. The independent wire fixtures can
 be regenerated with `tests/generate_wire_fixtures.py` using Python cryptography
 50.0.1; the normal test suite does not need that package.
 
-To package an Apple Silicon build with Qt's runtime libraries:
+On Windows, build with MSVC and Ninja; get OpenSSL, libsodium, and SQLCipher via
+[vcpkg](https://github.com/microsoft/vcpkg) (`vcpkg.json` manifest, `x64-windows`
+triplet) instead of `build-dependencies.sh`, and pass
+`-DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake`. See
+`.github/workflows/release.yml` for the exact, CI-verified sequence on all three
+platforms.
+
+To package a build for redistribution, with Qt's runtime libraries bundled in:
 
 ```sh
+# macOS
 scripts/package-macos.sh /absolute/build /absolute/ynotbit-macos-arm64.zip /absolute/Qt/6.8.3/macos
+# Linux — builds a self-contained AppDir with linuxdeploy
+scripts/package-linux.sh /absolute/build /absolute/ynotbit-linux-x86_64.tar.gz /absolute/Qt/6.8.3/gcc_64
+```
+```powershell
+# Windows
+scripts/package-windows.ps1 -BuildDir C:\absolute\build -OutputZip C:\absolute\ynotbit-windows-x86_64.zip `
+  -QtBinDir C:\absolute\Qt\6.8.3\msvc2022_64\bin -VcpkgBinDir C:\absolute\build\vcpkg_installed\x64-windows\bin
 ```
 
 ## Documents, network data, and portability
@@ -118,13 +140,15 @@ are not guaranteed erased from all memory, swap, crash dumps or screenshots.
 
 The packaged macOS build targets **Apple Silicon, macOS 15.6+** and bundles its
 runtime dependencies. It is ad-hoc signed, not Developer ID signed or notarized.
-Windows and Linux builds use the same Qt application and native relay path; their
-release bundles still need to be produced and validated on their respective
-toolchains. Attachment UI and configurable CPU parallelism are not implemented.
+The Windows build uses the Qt-native relay path (`--qt-node`) rather than the
+notbit engine, which is Unix-only; both use the same wire protocol and storage.
+Attachment UI and configurable CPU parallelism are not implemented.
 
-A Linux CI workflow template is in `docs/ci/build.yml`. It is not active: the
-GitHub login used to create this repository lacks the `workflow` scope required
-to publish `.github/workflows` files.
+`.github/workflows/release.yml` builds, tests, and packages Linux, macOS, and
+Windows on every `v*` tag push (or manual dispatch), then attaches the three
+archives to a GitHub Release. `docs/ci/build.yml` is an older, unused template
+for a lighter continuous build-and-test workflow (every push/PR, no packaging);
+it's not wired into `.github/workflows/` yet.
 
 See [verification](docs/verification.md), [architecture](docs/design.md),
 [implementation plan](docs/superpowers/plans/2026-09-13-complete-messaging.md),
