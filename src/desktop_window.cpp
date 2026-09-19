@@ -758,8 +758,10 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     logo->setStyleSheet("background:#126d65;color:white;border-radius:10px;font-size:28px;font-"
                         "weight:700;padding:6px 12px;");
     top->addWidget(logo);
-    auto brand = new QLabel("<b style='font-size:20px'>ynotbit</b><br><span "
-                            "style='font-size:10px'>PRIVATE CORRESPONDENCE</span>");
+    auto brand = new QLabel(
+        "<b style='font-size:20px'>ynotbit</b><br><span "
+        "style='font-size:10px'>PRIVATE CORRESPONDENCE</span><br><span "
+        "style='font-size:9px;color:palette(mid)'>Your keys. Your mailbox.</span>");
     top->addWidget(brand);
     top->addStretch();
     button("Close mailbox", top, [this] { session_.closeMailbox(); })
@@ -789,7 +791,6 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     folders_->addItems({"Inbox", "Drafts", "Outbox", "Sent", "Channels", "Broadcasts", "Archive",
                         "Trash", "Identities"});
     nav->addWidget(folders_, 1);
-    nav->addWidget(new QLabel("Your keys. Your mailbox."));
     split->addWidget(side);
     auto middle = listColumn_ = new QWidget;
     auto mid = new QVBoxLayout(middle);
