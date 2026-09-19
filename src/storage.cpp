@@ -10,7 +10,7 @@
 #include <QUuid>
 #include <algorithm>
 #include <cstring>
-#include <sqlite3.h>
+#include <sqlcipher/sqlite3.h>
 #include <stdexcept>
 #include <utility>
 namespace bm {

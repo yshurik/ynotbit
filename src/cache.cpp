@@ -6,7 +6,7 @@
 #include <QFile>
 #include <QRegularExpression>
 #include <QUuid>
-#include <sqlite3.h>
+#include <sqlcipher/sqlite3.h>
 #include <stdexcept>
 namespace bm {
 static void check(bool v) {

@@ -1,7 +1,7 @@
 #pragma once
 #include <QByteArray>
 #include <QString>
-#include <sqlite3.h>
+#include <sqlcipher/sqlite3.h>
 #include <stdexcept>
 namespace bm::detail {
 class Statement {

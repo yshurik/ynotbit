@@ -173,17 +173,6 @@ jobs:
             -DVCPKG_TARGET_TRIPLET=x64-windows `
             -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.prefix }}"
 
-      - name: Debug sqlite3.h codec declaration
-        run: |
-          $general = "${{ github.workspace }}\build\vcpkg_installed\x64-windows\include\sqlite3.h"
-          $cipher = "${{ github.workspace }}\build\vcpkg_installed\x64-windows\include\sqlcipher\sqlite3.h"
-          Write-Output "general sqlite3.h exists: $(Test-Path $general)"
-          Write-Output "sqlcipher sqlite3.h exists: $(Test-Path $cipher)"
-          if (Test-Path $cipher) {
-            Write-Output "--- sqlite3_key context in sqlcipher/sqlite3.h ---"
-            Select-String -Path $cipher -Pattern "sqlite3_key|SQLITE_HAS_CODEC" -Context 2,2
-          }
-
       - name: Build
         run: cmake --build build --parallel
 
