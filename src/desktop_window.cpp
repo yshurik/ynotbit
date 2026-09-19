@@ -345,13 +345,22 @@ class Composer : public QDialog {
         layout->setContentsMargins(24, 24, 24, 24);
         layout->setSpacing(12);
         auto modeRow = new QHBoxLayout;
+        // font-weight in the :checked rule would make the checked button's text
+        // bold and wider than the sizeHint computed from its regular-weight state,
+        // clipping the label -- background/border contrast alone indicates selection.
+        const QString modeButtonStyle =
+            "QPushButton { border: 1px solid palette(mid); }"
+            "QPushButton:checked { background: palette(highlight); "
+            "color: palette(highlighted-text); border-color: palette(highlight); }";
         modePrivate_ = new QPushButton;
         modePrivate_->setObjectName("modePrivateButton");
         modePrivate_->setCheckable(true);
         modePrivate_->setChecked(true);
+        modePrivate_->setStyleSheet(modeButtonStyle);
         modePublic_ = new QPushButton;
         modePublic_->setObjectName("modePublicButton");
         modePublic_->setCheckable(true);
+        modePublic_->setStyleSheet(modeButtonStyle);
         auto modeGroup = new QButtonGroup(this);
         modeGroup->setExclusive(true);
         modeGroup->addButton(modePrivate_);
@@ -360,6 +369,15 @@ class Composer : public QDialog {
         modeRow->addWidget(modePublic_);
         modeRow->addStretch();
         layout->addLayout(modeRow);
+        auto modeHint = new QLabel;
+        modeHint->setObjectName("modeHint");
+        modeHint->setWordWrap(true);
+        {
+            auto f = modeHint->font();
+            f.setPointSizeF(f.pointSizeF() * 0.9);
+            modeHint->setFont(f);
+        }
+        layout->addWidget(modeHint);
         sender_ = new QComboBox;
         sender_->setFont(addressFont());
         sender_->setObjectName("senderSelector");
@@ -373,7 +391,7 @@ class Composer : public QDialog {
         if (n >= 0)
             sender_->setCurrentIndex(n);
         layout->addWidget(sender_);
-        auto updateModeLabels = [this, identities] {
+        auto updateModeLabels = [this, identities, modeHint] {
             bool channel = false;
             for (auto value : identities) {
                 auto identity = value.toMap();
@@ -384,9 +402,21 @@ class Composer : public QDialog {
             }
             modePrivate_->setText(channel ? "Personal" : "Private mail");
             modePublic_->setText(channel ? "Anonymous" : "Public mail");
+            if (modePrivate_->isChecked())
+                modeHint->setText(channel
+                                       ? "Encrypted to the channel's shared address. Anyone who "
+                                         "knows the channel phrase can read it."
+                                       : "Encrypted to one recipient. Only they can read it.");
+            else
+                modeHint->setText(
+                    channel
+                        ? "Sent as the channel to everyone subscribed. Your own identity isn't "
+                          "revealed."
+                        : "Sent to everyone subscribed to your address. Anyone can read it.");
         };
         updateModeLabels();
         connect(sender_, &QComboBox::currentIndexChanged, this, updateModeLabels);
+        connect(modePrivate_, &QPushButton::toggled, this, updateModeLabels);
         modePublic_->setChecked(!reply && letter["kind"] == "broadcast");
         modePrivate_->setChecked(reply || letter["kind"] != "broadcast");
         to_ = new QLineEdit;
@@ -595,6 +625,7 @@ class Composer : public QDialog {
             }
         });
         send->setObjectName("sendButton");
+        send->setDefault(true);
         id_ = reply ? QString() : letter["hash"].toString();
         dirty_ = reply;
         auto changed = [this] {
