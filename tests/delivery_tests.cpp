@@ -145,12 +145,19 @@ int main(int argc, char **argv) {
             Wire::encodeBroadcast(av.identities()[0], "Announcement", "Subscriber only", expires);
         bm.subscribe(alice, "Alice's announcements");
         cacheObject(b, broadcast);
-        bc.discover();
-        bd.scan(bc, bm, bv, 100);
+        // discover() is a bounded, incremental scan (like Session::tick() calls it in
+        // production): one call isn't guaranteed to finish, especially under slow I/O.
         bool found = false;
-        for (const auto &m : bm.messages())
-            if (m.folder == "Broadcasts" && m.subject == "Announcement")
-                found = true;
+        const auto broadcastDeadline = QDateTime::currentMSecsSinceEpoch() + 5000;
+        while (!found && QDateTime::currentMSecsSinceEpoch() < broadcastDeadline) {
+            bc.discover();
+            bd.scan(bc, bm, bv, 100);
+            for (const auto &m : bm.messages())
+                if (m.folder == "Broadcasts" && m.subject == "Announcement")
+                    found = true;
+            if (!found)
+                QThread::msleep(5);
+        }
         require(found, "subscribed broadcast decoded");
         ad.stop();
         bd.stop();

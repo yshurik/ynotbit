@@ -1,6 +1,7 @@
 #pragma once
 #include <QString>
 #include <QVector>
+#include <QDateTime>
 #include <QDirIterator>
 #include <memory>
 struct sqlite3;
@@ -14,6 +15,7 @@ class Cache {
     QString root_, id_;
     qint64 pruned_ = 0;
     std::unique_ptr<QDirIterator> discovery_;
+    QDateTime discoveryModified_;
 
   public:
     explicit Cache(const QString &root);

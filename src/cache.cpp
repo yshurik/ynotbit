@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QRegularExpression>
 #include <QUuid>
 #include <sqlcipher/sqlite3.h>
@@ -70,9 +71,19 @@ Cache::~Cache() {
 }
 void Cache::discover() {
     static QRegularExpression valid("^[a-f0-9]{64}$");
-    if (!discovery_)
+    // QDirIterator snapshots the directory at construction: files written after
+    // that are invisible to it no matter how many more times it's resumed. Rebuild
+    // whenever the objects directory's own mtime shows it changed since the
+    // current iterator was built, so a file added while a large backlog is still
+    // being drained can't stay invisible until that backlog happens to finish.
+    auto objectsModified = QFileInfo(root_ + "/objects").lastModified();
+    if (discovery_ && objectsModified > discoveryModified_)
+        discovery_.reset();
+    if (!discovery_) {
         discovery_ =
             std::make_unique<QDirIterator>(root_ + "/objects", QDir::Files | QDir::NoSymLinks);
+        discoveryModified_ = objectsModified;
+    }
     int examined = 0;
     QElapsedTimer budget;
     budget.start();
