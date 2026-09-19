@@ -1,6 +1,7 @@
 #include "desktop_window.h"
 #include "session.h"
 #include <QDesktopServices>
+#include <QFileInfo>
 #include <QTextList>
 #include <QtWidgets>
 
@@ -761,12 +762,9 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
                             "style='font-size:10px'>PRIVATE CORRESPONDENCE</span>");
     top->addWidget(brand);
     top->addStretch();
-    button("Unlock vault", top, [this] {
-        if (session_.unlocked())
-            session_.lock();
-        else
-            session_.beginVaultUnlock();
-    })->setObjectName("lockButton");
+    button("Close mailbox", top, [this] { session_.closeMailbox(); })
+        ->setObjectName("closeMailboxButton");
+    button("Lock vault", top, [this] { session_.lock(); })->setObjectName("lockButton");
     outer->addWidget(header);
     error_ = new QLabel;
     error_->setWordWrap(true);
@@ -774,7 +772,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     outer->addWidget(error_);
     auto split = new QSplitter;
     outer->addWidget(split, 1);
-    auto side = new QWidget;
+    auto side = sidebarWidget_ = new QWidget;
     side->setObjectName("sidebar");
     auto nav = new QVBoxLayout(side);
     nav->setContentsMargins(16, 16, 16, 16);
@@ -793,7 +791,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     nav->addWidget(folders_, 1);
     nav->addWidget(new QLabel("Your keys. Your mailbox."));
     split->addWidget(side);
-    auto middle = new QWidget;
+    auto middle = listColumn_ = new QWidget;
     auto mid = new QVBoxLayout(middle);
     mid->setContentsMargins(12, 20, 12, 0);
     heading_ = new QLabel("Inbox");
@@ -963,28 +961,112 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
                 QMessageBox::Yes)
             QDesktopServices::openUrl(url);
     });
-    welcome_ = new QWidget;
-    auto welcomeLayout = new QVBoxLayout(welcome_);
-    welcomeLayout->addStretch();
-    auto welcomeText =
-        new QLabel("Your keys. Your mailbox.\n\nUnlock your vault to read encrypted "
-                   "correspondence.\nThe relay can keep receiving while your vault is locked.");
-    welcomeText->setWordWrap(true);
-    welcomeLayout->addWidget(welcomeText);
-    button("Open vault…", welcomeLayout, [this] {
-        session_.beginVaultOpen();
-    })->setObjectName("openVaultButton");
-    button("Create vault…", welcomeLayout, [this] {
-        session_.beginVaultCreate();
-    })->setObjectName("createVaultButton");
-    button("Open mailbox…", welcomeLayout, [this] {
-        session_.openMailbox();
-    })->setObjectName("openMailboxButton");
-    button("Create mailbox…", welcomeLayout, [this] {
-        session_.createMailbox();
-    })->setObjectName("createMailboxButton");
-    welcomeLayout->addStretch();
-    read->addWidget(welcome_, 1);
+    welcomeStack_ = new QStackedWidget;
+    welcomeStack_->setObjectName("welcomeStack");
+    // State 1: vault locked (or none chosen yet). A vault target is shown with an
+    // inline password field instead of a modal dialog; recents let you switch targets.
+    lockedPage_ = new QWidget;
+    auto lockedOuter = new QVBoxLayout(lockedPage_);
+    lockedOuter->addStretch();
+    auto lockedCard = new QWidget;
+    lockedCard->setFixedWidth(380);
+    auto lockedCardLayout = new QVBoxLayout(lockedCard);
+    lockedCardLayout->setSpacing(14);
+    auto lockedTitle = new QLabel("<b style='font-size:16px'>Vault locked</b>");
+    lockedCardLayout->addWidget(lockedTitle);
+    auto lockedSubtitle = new QLabel("Choose a vault file and enter its passphrase to unlock.");
+    lockedSubtitle->setStyleSheet("color:palette(mid);");
+    lockedSubtitle->setWordWrap(true);
+    lockedCardLayout->addWidget(lockedSubtitle);
+    auto authGroup = new QWidget;
+    authGroup->setObjectName("vaultAuthGroup");
+    auto authLayout = new QVBoxLayout(authGroup);
+    authLayout->setContentsMargins(0, 0, 0, 0);
+    authLayout->setSpacing(8);
+    auto vaultBox = new QWidget;
+    vaultBox->setObjectName("vaultBox");
+    vaultBox->setStyleSheet(
+        "QWidget#vaultBox{border:1px solid palette(mid);border-radius:8px;padding:10px;}");
+    auto vaultBoxLayout = new QVBoxLayout(vaultBox);
+    lockedVaultName_ = new QLabel;
+    lockedVaultName_->setObjectName("lockedVaultName");
+    lockedVaultName_->setStyleSheet("font-weight:700;");
+    lockedVaultPath_ = new QLabel;
+    lockedVaultPath_->setObjectName("lockedVaultPath");
+    lockedVaultPath_->setFont(addressFont());
+    lockedVaultPath_->setWordWrap(true);
+    lockedVaultPath_->setStyleSheet("color:palette(mid);font-size:11px;");
+    vaultBoxLayout->addWidget(lockedVaultName_);
+    vaultBoxLayout->addWidget(lockedVaultPath_);
+    authLayout->addWidget(vaultBox);
+    vaultPasswordField_ = new QLineEdit;
+    vaultPasswordField_->setObjectName("vaultPasswordField");
+    vaultPasswordField_->setEchoMode(QLineEdit::Password);
+    vaultPasswordField_->setPlaceholderText("Passphrase");
+    authLayout->addWidget(vaultPasswordField_);
+    vaultRepeatField_ = new QLineEdit;
+    vaultRepeatField_->setObjectName("vaultRepeatField");
+    vaultRepeatField_->setEchoMode(QLineEdit::Password);
+    vaultRepeatField_->setPlaceholderText("Repeat passphrase");
+    authLayout->addWidget(vaultRepeatField_);
+    vaultUnlockButton_ = new QPushButton("Unlock vault");
+    vaultUnlockButton_->setObjectName("vaultUnlockButton");
+    authLayout->addWidget(vaultUnlockButton_);
+    lockedCardLayout->addWidget(authGroup);
+    auto lockedRecentsLabel = new QLabel("RECENT VAULTS");
+    lockedRecentsLabel->setStyleSheet("color:palette(mid);font-size:11px;font-weight:700;");
+    lockedCardLayout->addWidget(lockedRecentsLabel);
+    auto lockedRecentsContainer = new QWidget;
+    lockedRecentsLayout_ = new QVBoxLayout(lockedRecentsContainer);
+    lockedRecentsLayout_->setContentsMargins(0, 0, 0, 0);
+    lockedCardLayout->addWidget(lockedRecentsContainer);
+    button("Open vault file from disk…", lockedCardLayout,
+           [this] { session_.beginVaultOpen(); })
+        ->setObjectName("openVaultButton");
+    button("Create a new vault…", lockedCardLayout, [this] { session_.beginVaultCreate(); })
+        ->setObjectName("createVaultButton");
+    lockedOuter->addWidget(lockedCard, 0, Qt::AlignHCenter);
+    lockedOuter->addStretch();
+    welcomeStack_->addWidget(lockedPage_);
+    connect(vaultPasswordField_, &QLineEdit::returnPressed, vaultUnlockButton_,
+            &QPushButton::click);
+    connect(vaultUnlockButton_, &QPushButton::clicked, this, [this] {
+        session_.choosePendingVault(targetVaultPath_);
+        session_.submitVaultPassword(vaultPasswordField_->text(), vaultRepeatField_->text(),
+                                     vaultCreateMode_);
+        vaultPasswordField_->clear();
+        vaultRepeatField_->clear();
+    });
+    // State 2: vault unlocked, no mailbox open yet.
+    noMailboxPage_ = new QWidget;
+    auto noMailOuter = new QVBoxLayout(noMailboxPage_);
+    noMailOuter->addStretch();
+    auto noMailCard = new QWidget;
+    noMailCard->setFixedWidth(380);
+    auto noMailLayout = new QVBoxLayout(noMailCard);
+    noMailLayout->setSpacing(14);
+    auto noMailTitle = new QLabel("<b style='font-size:16px'>No mailbox open</b>");
+    noMailLayout->addWidget(noMailTitle);
+    auto noMailSubtitle =
+        new QLabel("Your vault is unlocked. Choose a mailbox to open, or open one from disk.");
+    noMailSubtitle->setStyleSheet("color:palette(mid);");
+    noMailSubtitle->setWordWrap(true);
+    noMailLayout->addWidget(noMailSubtitle);
+    auto noMailRecentsLabel = new QLabel("RECENT MAILBOXES");
+    noMailRecentsLabel->setStyleSheet("color:palette(mid);font-size:11px;font-weight:700;");
+    noMailLayout->addWidget(noMailRecentsLabel);
+    auto noMailRecentsContainer = new QWidget;
+    noMailboxRecentsLayout_ = new QVBoxLayout(noMailRecentsContainer);
+    noMailboxRecentsLayout_->setContentsMargins(0, 0, 0, 0);
+    noMailLayout->addWidget(noMailRecentsContainer);
+    button("Open mailbox file from disk…", noMailLayout, [this] { session_.openMailbox(); })
+        ->setObjectName("openMailboxButton");
+    button("Create a new mailbox…", noMailLayout, [this] { session_.createMailbox(); })
+        ->setObjectName("createMailboxButton");
+    noMailOuter->addWidget(noMailCard, 0, Qt::AlignHCenter);
+    noMailOuter->addStretch();
+    welcomeStack_->addWidget(noMailboxPage_);
+    read->addWidget(welcomeStack_, 1);
     identities_ = new QWidget;
     identityLayout_ = new QVBoxLayout(identities_);
     read->addWidget(identities_);
@@ -1055,10 +1137,14 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
                 updateTimeline();
         },
         Qt::QueuedConnection);
-    // Let the controller leave its guarded operation before the modal dialog
-    // submits a password through that same controller.
-    connect(&session_, &Session::vaultPasswordRequired, this, &DesktopWindow::vaultDialog,
+    // Let the controller leave its guarded operation before the inline password
+    // field submits a password through that same controller.
+    connect(&session_, &Session::vaultPasswordRequired, this, &DesktopWindow::showVaultPasswordFor,
             Qt::QueuedConnection);
+    connect(&session_, &Session::vaultPasswordAccepted, this, [this] {
+        vaultPasswordField_->clear();
+        vaultRepeatField_->clear();
+    });
     connect(&session_, &Session::aboutToCloseMailbox, this, [this] {
         selected_.clear();
         body_->clear();
@@ -1222,8 +1308,8 @@ void DesktopWindow::updateState() {
     document_->setText(session_.document());
     error_->setText(session_.error());
     error_->setVisible(!session_.error().isEmpty());
-    findChild<QPushButton *>("lockButton")
-        ->setText(session_.unlocked() ? "Lock vault" : "Unlock vault");
+    findChild<QPushButton *>("lockButton")->setVisible(session_.unlocked());
+    findChild<QPushButton *>("closeMailboxButton")->setVisible(session_.mailboxOpen());
     const bool channelPage = folders_->currentRow() == 4;
     auto write = findChild<QPushButton *>("writeButton");
     write->setText(channelPage ? "＋  Write to channel" : "＋  Write a letter");
@@ -1236,17 +1322,37 @@ void DesktopWindow::updateState() {
         channelIdentities_ = identities;
         refreshChannels();
     }
-    const bool identityPage = folders_->currentRow() == 8 && session_.unlocked();
-    welcome_->setVisible(!session_.mailboxOpen() && !identityPage);
-    body_->setVisible(session_.mailboxOpen() && !identityPage);
+    const bool mailboxState = session_.mailboxOpen();
+    sidebarWidget_->setVisible(mailboxState);
+    listColumn_->setVisible(mailboxState);
+    const bool identityPage = folders_->currentRow() == 8 && mailboxState;
+    welcomeStack_->setVisible(!mailboxState);
+    if (!mailboxState) {
+        if (session_.unlocked()) {
+            welcomeStack_->setCurrentWidget(noMailboxPage_);
+            refreshRecentMailboxes();
+        } else {
+            if (targetVaultPath_.isEmpty() && !session_.vaultPath().isEmpty())
+                targetVaultPath_ = session_.vaultPath();
+            welcomeStack_->setCurrentWidget(lockedPage_);
+            updateLockedScreen();
+        }
+    }
+    body_->setVisible(mailboxState && !identityPage);
     identities_->setVisible(identityPage);
-    findChild<QPushButton *>("openMailboxButton")->setVisible(session_.unlocked());
-    findChild<QPushButton *>("createMailboxButton")->setVisible(session_.unlocked());
-    findChild<QPushButton *>("openVaultButton")->setVisible(!session_.unlocked());
-    findChild<QPushButton *>("createVaultButton")->setVisible(!session_.unlocked());
     status_->setText(
-        session_.status() + " · " + QString::number(session_.objectCount()) + " cached objects · " +
-        QString::number(session_.cacheBytes() / 1048576.0, 'f', 1) + " MB\n" + session_.activity());
+        !session_.unlocked()
+            ? "Vault locked" +
+                  (targetVaultPath_.isEmpty()
+                       ? QString()
+                       : " · " + QFileInfo(targetVaultPath_).fileName()) +
+                  " · keys not loaded"
+        : !mailboxState
+            ? "Vault unlocked · no mailbox loaded"
+            : session_.status() + " · " + QString::number(session_.objectCount()) +
+                  " cached objects · " +
+                  QString::number(session_.cacheBytes() / 1048576.0, 'f', 1) + " MB\n" +
+                  session_.activity());
 }
 void DesktopWindow::refreshChannels() {
     const auto entries = session_.channels();
@@ -1305,42 +1411,48 @@ void DesktopWindow::compose(QVariantMap letter, bool reply) {
     Composer dialog(session_, letter, reply, appearance_.dark(), this);
     dialog.exec();
 }
-void DesktopWindow::vaultDialog(QString path, bool create) {
-    QDialog dialog(this);
-    dialog.setObjectName("vaultPasswordDialog");
-    dialog.setWindowTitle(create ? "Create encrypted vault" : "Unlock vault");
-    dialog.setMinimumWidth(440);
-    auto layout = new QVBoxLayout(&dialog);
-    layout->setContentsMargins(24, 24, 24, 24);
-    layout->setSpacing(12);
-    auto label = new QLabel(path);
-    label->setWordWrap(true);
-    label->setTextFormat(Qt::PlainText);
-    layout->addWidget(label);
-    auto password = new QLineEdit;
-    password->setEchoMode(QLineEdit::Password);
-    password->setPlaceholderText("Password");
-    layout->addWidget(password);
-    auto repeat = new QLineEdit;
-    repeat->setEchoMode(QLineEdit::Password);
-    repeat->setPlaceholderText("Repeat password");
-    repeat->setVisible(create);
-    layout->addWidget(repeat);
-    auto error = new QLabel;
-    error->setWordWrap(true);
-    layout->addWidget(error);
-    auto controls = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    controls->button(QDialogButtonBox::Ok)->setText(create ? "Create vault" : "Unlock");
-    layout->addWidget(controls);
-    connect(controls, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    connect(&session_, &Session::vaultPasswordAccepted, &dialog, &QDialog::accept);
-    connect(controls, &QDialogButtonBox::accepted, &dialog, [&] {
-        session_.submitVaultPassword(password->text(), repeat->text(), create);
-        error->setText(session_.error());
-    });
-    dialog.exec();
-    password->clear();
-    repeat->clear();
+void DesktopWindow::showVaultPasswordFor(QString path, bool create) {
+    targetVaultPath_ = path;
+    vaultCreateMode_ = create;
+    updateLockedScreen();
+    vaultPasswordField_->setFocus();
+}
+void DesktopWindow::updateLockedScreen() {
+    const bool hasTarget = !targetVaultPath_.isEmpty();
+    lockedVaultName_->setText(QFileInfo(targetVaultPath_).fileName());
+    lockedVaultPath_->setText(targetVaultPath_);
+    findChild<QWidget *>("vaultAuthGroup")->setVisible(hasTarget);
+    vaultRepeatField_->setVisible(vaultCreateMode_);
+    vaultUnlockButton_->setText(vaultCreateMode_ ? "Create vault" : "Unlock vault");
+    refreshRecentVaults();
+}
+void DesktopWindow::refreshRecentVaults() {
+    while (auto item = lockedRecentsLayout_->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    for (auto v : session_.recentVaults()) {
+        auto m = v.toMap();
+        auto path = m["path"].toString();
+        auto row = button(m["name"].toString(), lockedRecentsLayout_,
+                          [this, path] { showVaultPasswordFor(path, false); });
+        row->setObjectName("recentVaultRow");
+        row->setToolTip(path);
+    }
+}
+void DesktopWindow::refreshRecentMailboxes() {
+    while (auto item = noMailboxRecentsLayout_->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    for (auto v : session_.recentMailboxes()) {
+        auto m = v.toMap();
+        auto path = m["path"].toString();
+        auto row = button(m["name"].toString(), noMailboxRecentsLayout_,
+                          [this, path] { session_.openMailboxAt(path); });
+        row->setObjectName("recentMailboxRow");
+        row->setToolTip(path);
+    }
 }
 void DesktopWindow::refreshIdentities() {
     while (auto item = identityLayout_->takeAt(0)) {

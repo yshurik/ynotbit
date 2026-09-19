@@ -88,6 +88,8 @@ Session::Session(QString root, bool offline, QObject *parent)
     QSettings recent(root_ + "/desktop.ini", QSettings::IniFormat);
     vaultPath_ = recent.value("vault").toString();
     mailPath_ = recent.value("mailbox").toString();
+    recentVaultPaths_ = recent.value("recentVaults").toStringList();
+    recentMailboxPaths_ = recent.value("recentMailboxes").toStringList();
     retentionMB_ = std::clamp(recent.value("retentionMB", 512).toInt(), 64, 32768);
     retentionDays_ = std::clamp(recent.value("retentionDays", 90).toInt(), 1, 3650);
     connect(&node_, &QProcess::readyReadStandardOutput, this,
@@ -164,6 +166,32 @@ void Session::acquireVault(const QString &p) {
     vaultLock_ = std::make_unique<QLockFile>(p + ".lock");
     check(vaultLock_->tryLock(), "Vault is in use by another instance");
 }
+void Session::rememberVault(const QString &path) {
+    recentVaultPaths_.removeAll(path);
+    recentVaultPaths_.prepend(path);
+    while (recentVaultPaths_.size() > 8)
+        recentVaultPaths_.removeLast();
+}
+void Session::rememberMailbox(const QString &path) {
+    recentMailboxPaths_.removeAll(path);
+    recentMailboxPaths_.prepend(path);
+    while (recentMailboxPaths_.size() > 8)
+        recentMailboxPaths_.removeLast();
+}
+QVariantList Session::recentVaults() const {
+    QVariantList result;
+    for (const auto &p : recentVaultPaths_)
+        if (QFileInfo::exists(p))
+            result << QVariantMap{{"name", QFileInfo(p).fileName()}, {"path", p}};
+    return result;
+}
+QVariantList Session::recentMailboxes() const {
+    QVariantList result;
+    for (const auto &p : recentMailboxPaths_)
+        if (QFileInfo::exists(p))
+            result << QVariantMap{{"name", QFileInfo(p).fileName()}, {"path", p}};
+    return result;
+}
 void Session::createVault() {
     attempt([&] {
         check(!unlocked(), "Lock the current vault first");
@@ -177,6 +205,7 @@ void Session::createVault() {
             vaultPath_ = p;
             mailPath_.clear();
             mailKey_.clear();
+            rememberVault(p);
             activity_ = "Vault created. Add an identity and create a mailbox.";
         } catch (...) {
             vaultLock_.reset();
@@ -198,6 +227,7 @@ void Session::openVault() {
             vaultPath_ = p;
             mailPath_.clear();
             mailKey_.clear();
+            rememberVault(p);
             activity_ = "Vault unlocked. Open a mailbox to inspect cached objects.";
         } catch (...) {
             vaultLock_.reset();
@@ -217,6 +247,7 @@ void Session::unlockVault() {
         acquireVault(vaultPath_);
         try {
             vault_.unlock(vaultPath_, pass.bytes);
+            rememberVault(vaultPath_);
         } catch (...) {
             vaultLock_.reset();
             throw;
@@ -277,6 +308,7 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
                 vaultPath_ = path;
                 mailPath_.clear();
                 mailKey_.clear();
+                rememberVault(path);
                 activity_ = "Vault created. Add an identity and create a mailbox.";
             } catch (...) {
                 vaultLock_.reset();
@@ -292,6 +324,7 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
                     mailKey_.clear();
                 }
                 vaultPath_ = path;
+                rememberVault(path);
                 activity_ = "Vault unlocked. Open a mailbox to inspect cached objects.";
             } catch (...) {
                 vaultLock_.reset();
@@ -328,6 +361,7 @@ void Session::createMailbox() {
             mailbox_.create(p, id, vault_.mailboxKey(id));
             mailPath_ = p;
             mailKey_ = id;
+            rememberMailbox(p);
             mailbox_.bindCache(cache_->id());
             refresh();
         } catch (...) {
@@ -351,6 +385,7 @@ void Session::openMailboxPath(const QString &p) {
             mailbox_.bindCache(cache_->id());
             mailPath_ = p;
             mailKey_ = id;
+            rememberMailbox(p);
             refresh();
             return;
         } catch (...) {
@@ -370,6 +405,10 @@ void Session::openMailbox() {
             openMailboxPath(p);
     });
 }
+void Session::openMailboxAt(QString path) {
+    emit aboutToCloseMailbox();
+    attempt([&] { openMailboxPath(path); });
+}
 void Session::lock() {
     emit aboutToCloseMailbox();
     if (delivery_)
@@ -377,6 +416,8 @@ void Session::lock() {
     QSettings recent(root_ + "/desktop.ini", QSettings::IniFormat);
     recent.setValue("vault", vaultPath_);
     recent.setValue("mailbox", mailPath_);
+    recent.setValue("recentVaults", recentVaultPaths_);
+    recent.setValue("recentMailboxes", recentMailboxPaths_);
     mailbox_.close();
     clearMessages();
     vault_.lock();

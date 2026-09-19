@@ -10,6 +10,8 @@ class QWidget;
 class QVBoxLayout;
 class QComboBox;
 class QLineEdit;
+class QPushButton;
+class QStackedWidget;
 namespace bm {
 class Session;
 class DesktopWindow : public QMainWindow {
@@ -33,9 +35,18 @@ class DesktopWindow : public QMainWindow {
     QLabel *timeline_;
     QWidget *details_;
     QTextBrowser *body_;
-    QWidget *actions_, *reader_, *identities_, *welcome_;
+    QWidget *actions_, *reader_, *identities_;
+    QWidget *sidebarWidget_, *listColumn_;
+    QStackedWidget *welcomeStack_;
+    QWidget *lockedPage_, *noMailboxPage_;
+    QLabel *lockedVaultName_, *lockedVaultPath_;
+    QLineEdit *vaultPasswordField_, *vaultRepeatField_;
+    QPushButton *vaultUnlockButton_;
+    QVBoxLayout *lockedRecentsLayout_, *noMailboxRecentsLayout_;
     QVBoxLayout *identityLayout_;
     QVariantMap selected_;
+    QString targetVaultPath_;
+    bool vaultCreateMode_ = false;
     void updateState();
     void updateTheme();
     void clearDetails();
@@ -43,6 +54,9 @@ class DesktopWindow : public QMainWindow {
     void updateTimeline();
     void refreshIdentities();
     void refreshChannels();
-    void vaultDialog(QString path, bool create);
+    void showVaultPasswordFor(QString path, bool create);
+    void updateLockedScreen();
+    void refreshRecentVaults();
+    void refreshRecentMailboxes();
 };
 } // namespace bm

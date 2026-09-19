@@ -29,6 +29,7 @@ class Session : public QObject {
     std::unique_ptr<Delivery> delivery_;
     std::unique_ptr<MessageModel> messageModel_;
     QString root_, vaultPath_, mailPath_, mailKey_, pendingVaultPath_, error_, activity_;
+    QStringList recentVaultPaths_, recentMailboxPaths_;
     std::optional<quint64> displayedRevision_;
     QProcess node_;
     QTimer timer_;
@@ -43,6 +44,8 @@ class Session : public QObject {
     void tick();
     void acquireVault(const QString &);
     void openMailboxPath(const QString &);
+    void rememberVault(const QString &path);
+    void rememberMailbox(const QString &path);
 
   public:
     Session(QString dataRoot, bool offline = false, QObject *parent = nullptr);
@@ -83,8 +86,20 @@ class Session : public QObject {
     Q_INVOKABLE void beginVaultOpen();
     Q_INVOKABLE void beginVaultUnlock();
     Q_INVOKABLE void submitVaultPassword(QString password, QString repeat, bool create);
+    Q_INVOKABLE void choosePendingVault(QString path) {
+        pendingVaultPath_ = path;
+    }
     Q_INVOKABLE void createMailbox();
     Q_INVOKABLE void openMailbox();
+    Q_INVOKABLE void openMailboxAt(QString path);
+    QString vaultPath() const {
+        return vaultPath_;
+    }
+    QString mailPath() const {
+        return mailPath_;
+    }
+    QVariantList recentVaults() const;
+    QVariantList recentMailboxes() const;
     Q_INVOKABLE void lock();
     Q_INVOKABLE void addIdentity();
     Q_INVOKABLE void joinChannel();

@@ -426,21 +426,29 @@ int main(int argc, char **argv) {
         QTimer passwordResponder;
         int attempts = 0;
         QObject::connect(&passwordResponder, &QTimer::timeout, [&] {
-            auto dialog = window.findChild<QDialog *>("vaultPasswordDialog");
-            if (!dialog || !dialog->isVisible())
+            auto field = window.findChild<QLineEdit *>("vaultPasswordField");
+            auto unlockButton = window.findChild<QPushButton *>("vaultUnlockButton");
+            if (!field || !unlockButton || !unlockButton->isVisible() || attempts >= 2)
                 return;
-            auto fields = dialog->findChildren<QLineEdit *>();
-            fields.first()->setText(attempts++ == 0 ? "wrong password" : "test password");
-            dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok)->click();
+            field->setText(attempts++ == 0 ? "wrong password" : "test password");
+            unlockButton->click();
             if (attempts == 1)
-                require(!session.unlocked(), "styled dialog rejects wrong password");
+                require(!session.unlocked(), "inline unlock rejects wrong password");
         });
         passwordResponder.start(30);
         session.beginVaultUnlock();
-        QTest::qWait(100);
+        // Each attempt runs a real Argon2id unlock (memory-hard, ~100ms+ here), so
+        // poll for completion instead of assuming both attempts fit a fixed wait.
+        const auto unlockDeadline = QDateTime::currentMSecsSinceEpoch() + 5000;
+        while (!(attempts == 2 && session.mailboxOpen()) &&
+               QDateTime::currentMSecsSinceEpoch() < unlockDeadline)
+            QTest::qWait(20);
         require(attempts == 2 && session.mailboxOpen(),
-                "styled unlock retries and restores mailbox");
+                "inline unlock retries and restores mailbox");
         passwordResponder.stop();
+        require(session.recentVaults().size() >= 1 &&
+                    session.recentVaults().first().toMap()["path"] == session.vaultPath(),
+                "unlocked vault is remembered as the most recent");
         QTimer::singleShot(30, &window, [&] {
             auto dialog = window.findChild<QDialog *>("composer");
             dialog->findChild<QTextEdit *>("bodyField")->setPlainText("Saved immediately on lock");
@@ -451,6 +459,34 @@ int main(int argc, char **argv) {
         session.unlockVault();
         require(session.message(formatted)["body"].toString().contains("Saved immediately on lock"),
                 "lock flushes editor before closing database");
+        if (app.arguments().contains("--capture-states")) {
+            auto n = app.arguments().indexOf("--capture-states");
+            QString dir = n + 1 < app.arguments().size() ? app.arguments()[n + 1] : ".";
+            const auto mailboxPath = session.mailPath();
+            session.lock();
+            QTest::qWait(50);
+            window.grab().save(dir + "/state1-locked.png");
+            QTimer once;
+            QObject::connect(&once, &QTimer::timeout, [&] {
+                auto field = window.findChild<QLineEdit *>("vaultPasswordField");
+                auto btn = window.findChild<QPushButton *>("vaultUnlockButton");
+                if (field && btn && btn->isVisible()) {
+                    field->setText("test password");
+                    btn->click();
+                }
+            });
+            once.start(20);
+            const auto deadline = QDateTime::currentMSecsSinceEpoch() + 3000;
+            while (!session.unlocked() && QDateTime::currentMSecsSinceEpoch() < deadline)
+                QTest::qWait(20);
+            once.stop();
+            session.closeMailbox();
+            QCoreApplication::processEvents();
+            window.grab().save(dir + "/state2-nomailbox.png");
+            session.openMailboxAt(mailboxPath);
+            QCoreApplication::processEvents();
+            window.grab().save(dir + "/state3-full.png");
+        }
         session.lock();
         std::cout << "PASS Widgets mailbox selection, rendering and lock\n";
     } catch (const std::exception &e) {
