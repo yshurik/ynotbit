@@ -2,9 +2,11 @@
 #include <QObject>
 #include <QPalette>
 #include <QFont>
+#include <QIcon>
 
 namespace bm {
 QFont addressFont();
+QIcon appLogo();
 class Appearance : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString mode READ mode WRITE setMode NOTIFY changed)

@@ -2,10 +2,49 @@
 #include <QApplication>
 #include <QFontDatabase>
 #include <QFontMetricsF>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPixmap>
 #include <QSettings>
 #include <QStyleHints>
 
 namespace bm {
+QIcon appLogo() {
+    QIcon icon;
+    // Envelope-with-lock mark, authored on a 24x24 canvas and rasterized per
+    // size rather than scaled, so every target (window icon, header label)
+    // stays crisp instead of blurring a single fixed-resolution pixmap.
+    for (int size : {16, 22, 24, 32, 40, 48, 64, 128, 256}) {
+        QPixmap pixmap(size, size);
+        pixmap.fill(Qt::transparent);
+        QPainter p(&pixmap);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.scale(size / 24.0, size / 24.0);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor("#126d65"));
+        p.drawRoundedRect(QRectF(0, 0, 24, 24), 5.5, 5.5);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(Qt::white, 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.drawRoundedRect(QRectF(3, 5, 18, 13), 1, 1);
+        QPainterPath flap;
+        flap.moveTo(3.5, 6.5);
+        flap.lineTo(12, 12.5);
+        flap.lineTo(20.5, 6.5);
+        p.drawPath(flap);
+        p.setPen(QPen(Qt::white, 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        QPainterPath shackle;
+        shackle.moveTo(15.5, 14.5);
+        shackle.lineTo(15.5, 13.3);
+        shackle.arcTo(QRectF(15.5, 11.3, 4, 4), 180, 180);
+        shackle.lineTo(19.5, 14.5);
+        p.drawPath(shackle);
+        p.setPen(Qt::NoPen);
+        p.setBrush(Qt::white);
+        p.drawRoundedRect(QRectF(14.7, 14.3, 5.6, 4.4), 1, 1);
+        icon.addPixmap(pixmap);
+    }
+    return icon;
+}
 QFont addressFont() {
     static const QFont chosen = [] {
         auto font = QFontDatabase::systemFont(QFontDatabase::FixedFont);

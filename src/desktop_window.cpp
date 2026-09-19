@@ -206,9 +206,82 @@ QIcon materialIcon(const QString &name, QColor color) {
         eraser.lineTo(21, 32);
         eraser.closeSubpath();
         p.drawPath(eraser);
+    } else if (name == "inbox") {
+        p.drawLine(8, 18, 8, 30);
+        p.drawLine(8, 30, 32, 30);
+        p.drawLine(32, 30, 32, 18);
+        QPainterPath slot;
+        slot.moveTo(8, 18);
+        slot.lineTo(15, 18);
+        slot.lineTo(18, 24);
+        slot.lineTo(22, 24);
+        slot.lineTo(25, 18);
+        slot.lineTo(32, 18);
+        p.drawPath(slot);
+    } else if (name == "drafts") {
+        QPainterPath doc;
+        doc.moveTo(12, 8);
+        doc.lineTo(24, 8);
+        doc.lineTo(30, 14);
+        doc.lineTo(30, 32);
+        doc.lineTo(12, 32);
+        doc.closeSubpath();
+        p.drawPath(doc);
+        p.drawLine(24, 8, 24, 14);
+        p.drawLine(24, 14, 30, 14);
+        p.drawLine(16, 21, 26, 21);
+        p.drawLine(16, 26, 26, 26);
+    } else if (name == "outbox") {
+        p.drawLine(8, 22, 8, 30);
+        p.drawLine(8, 30, 32, 30);
+        p.drawLine(32, 30, 32, 22);
+        p.drawLine(20, 8, 20, 23);
+        QPainterPath arrow;
+        arrow.moveTo(14, 14);
+        arrow.lineTo(20, 8);
+        arrow.lineTo(26, 14);
+        p.drawPath(arrow);
+    } else if (name == "sent") {
+        QPainterPath plane;
+        plane.moveTo(33, 7);
+        plane.lineTo(16, 33);
+        plane.lineTo(12, 22);
+        plane.lineTo(7, 20);
+        plane.closeSubpath();
+        p.drawPath(plane);
+        p.drawLine(33, 7, 12, 22);
+    } else if (name == "channels") {
+        p.drawLine(8, 15, 32, 15);
+        p.drawLine(8, 25, 32, 25);
+        p.drawLine(15, 6, 12, 34);
+        p.drawLine(25, 6, 22, 34);
+    } else if (name == "broadcasts") {
+        p.setBrush(color);
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(QPointF(20, 20), 2.6, 2.6);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(color, 2.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        QRectF inner(13, 13, 14, 14);
+        p.drawArc(inner, -40 * 16, 80 * 16);
+        p.drawArc(inner, 140 * 16, 80 * 16);
+        QRectF outer(7, 7, 26, 26);
+        p.drawArc(outer, -40 * 16, 80 * 16);
+        p.drawArc(outer, 140 * 16, 80 * 16);
+    } else if (name == "identities") {
+        p.drawEllipse(QPointF(20, 14), 6, 6);
+        QPainterPath body;
+        body.moveTo(9, 32);
+        body.cubicTo(9, 24, 15, 21, 20, 21);
+        body.cubicTo(25, 21, 31, 24, 31, 32);
+        p.drawPath(body);
     }
     return QIcon(pixmap);
 }
+const QVector<QPair<QString, QString>> kFolderIcons = {
+    {"Inbox", "inbox"},         {"Drafts", "drafts"},       {"Outbox", "outbox"},
+    {"Sent", "sent"},           {"Channels", "channels"},   {"Broadcasts", "broadcasts"},
+    {"Archive", "archive"},     {"Trash", "delete"},        {"Identities", "identities"},
+};
 class MarkdownEdit : public QTextEdit {
   public:
     using QTextEdit::QTextEdit;
@@ -754,9 +827,9 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     header->setObjectName("header");
     auto top = new QHBoxLayout(header);
     top->setContentsMargins(24, 18, 24, 18);
-    auto logo = new QLabel("y");
-    logo->setStyleSheet("background:#126d65;color:white;border-radius:10px;font-size:28px;font-"
-                        "weight:700;padding:6px 12px;");
+    auto logo = new QLabel;
+    logo->setPixmap(appLogo().pixmap(40, 40));
+    logo->setFixedSize(40, 40);
     top->addWidget(logo);
     auto brand = new QLabel(
         "<b style='font-size:20px'>ynotbit</b><br><span "
@@ -776,21 +849,56 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     outer->addWidget(split, 1);
     auto side = sidebarWidget_ = new QWidget;
     side->setObjectName("sidebar");
+    side->setFixedWidth(68);
     auto nav = new QVBoxLayout(side);
-    nav->setContentsMargins(16, 16, 16, 16);
-    button("＋  Write a letter", nav, [this] {
+    nav->setContentsMargins(12, 14, 12, 14);
+    nav->setSpacing(6);
+    nav->setAlignment(Qt::AlignHCenter);
+    auto write = new QPushButton;
+    write->setObjectName("writeButton");
+    write->setFixedSize(44, 44);
+    write->setIconSize(QSize(20, 20));
+    write->setIcon(materialIcon("edit", Qt::white));
+    write->setCursor(Qt::PointingHandCursor);
+    connect(write, &QPushButton::clicked, this, [this] {
         if (folders_->currentRow() == 4 && channels_->currentIndex() >= 0)
             compose({{"to", channels_->currentData()}, {"from", channels_->currentData()}});
         else
             compose();
-    })->setObjectName("writeButton");
-    nav->addSpacing(20);
-    nav->addWidget(new QLabel("MAILBOX"));
-    folders_ = new QListWidget;
+    });
+    nav->addWidget(write);
+    nav->addSpacing(4);
+    auto divider = new QFrame;
+    divider->setFrameShape(QFrame::HLine);
+    divider->setFixedWidth(32);
+    divider->setStyleSheet("background:palette(mid);max-height:1px;border:0;");
+    nav->addWidget(divider);
+    nav->addSpacing(2);
+    // folders_ stays the selection model driving all existing folder-change logic
+    // below; the visible UI is the icon rail built from kFolderIcons instead.
+    folders_ = new QListWidget(side);
     folders_->setObjectName("folders");
     folders_->addItems({"Inbox", "Drafts", "Outbox", "Sent", "Channels", "Broadcasts", "Archive",
                         "Trash", "Identities"});
-    nav->addWidget(folders_, 1);
+    folders_->hide();
+    auto folderGroup = new QButtonGroup(this);
+    folderGroup->setExclusive(true);
+    for (int i = 0; i < kFolderIcons.size(); ++i) {
+        const auto &[label, iconName] = kFolderIcons[i];
+        auto icon = new QToolButton;
+        icon->setObjectName("folderIcon_" + label);
+        icon->setCheckable(true);
+        icon->setChecked(i == 0);
+        icon->setFixedSize(40, 40);
+        icon->setIconSize(QSize(19, 19));
+        icon->setIcon(materialIcon(iconName, iconColor(appearance_.dark())));
+        icon->setToolTip(label);
+        icon->setCursor(Qt::PointingHandCursor);
+        folderGroup->addButton(icon);
+        connect(icon, &QToolButton::clicked, this, [this, i] { folders_->setCurrentRow(i); });
+        nav->addWidget(icon);
+    }
+    nav->addStretch();
     split->addWidget(side);
     auto middle = listColumn_ = new QWidget;
     auto mid = new QVBoxLayout(middle);
@@ -1179,6 +1287,8 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         actions_->hide();
     });
     connect(folders_, &QListWidget::currentTextChanged, this, [this](QString folder) {
+        if (auto icon = findChild<QToolButton *>("folderIcon_" + folder))
+            icon->setChecked(true);
         heading_->setText(folder);
         if (folder == "Channels")
             refreshChannels();
@@ -1206,7 +1316,13 @@ void DesktopWindow::updateTheme() {
             "QPushButton,QLineEdit,QComboBox{padding:9px;border:1px solid %4;border-radius:6px;} "
             "QPushButton:hover{background:%2;} QListView,QTextEdit{border:0;} "
             "QListWidget::item{padding:10px;} QListWidget::item:selected{background:%5;color:%6;} "
-            "QToolBar{border:0;spacing:3px;}")
+            "QToolBar{border:0;spacing:3px;} "
+            "QPushButton#writeButton{background:%6;border:0;border-radius:10px;padding:0;} "
+            "QPushButton#writeButton:hover{background:%6;} "
+            "QWidget#sidebar QToolButton{border:0;border-radius:8px;background:transparent;"
+            "padding:0;} "
+            "QWidget#sidebar QToolButton:hover{background:%3;} "
+            "QWidget#sidebar QToolButton:checked{background:%5;}")
             .arg(dark ? "#141b23" : "#f5f7fa", dark ? "#17212b" : "#f1f5f7",
                  dark ? "#1b2530" : "#ffffff", dark ? "#354553" : "#dbe3e8",
                  dark ? "#234b46" : "#dcebe8", dark ? "#73d8c7" : "#126d65"));
@@ -1218,6 +1334,8 @@ void DesktopWindow::updateTheme() {
     findChild<QAction *>("archiveAction")->setIcon(materialIcon("archive", color));
     findChild<QAction *>("trashAction")->setIcon(materialIcon("delete", color));
     findChild<QToolButton *>("moreActionsButton")->setIcon(materialIcon("more", color));
+    for (const auto &[label, iconName] : kFolderIcons)
+        findChild<QToolButton *>("folderIcon_" + label)->setIcon(materialIcon(iconName, color));
 }
 void DesktopWindow::clearDetails() {
     fromAddress_->clear();
@@ -1313,7 +1431,7 @@ void DesktopWindow::updateState() {
     findChild<QPushButton *>("closeMailboxButton")->setVisible(session_.mailboxOpen());
     const bool channelPage = folders_->currentRow() == 4;
     auto write = findChild<QPushButton *>("writeButton");
-    write->setText(channelPage ? "＋  Write to channel" : "＋  Write a letter");
+    write->setToolTip(channelPage ? "Write to channel" : "Write a letter");
     write->setEnabled(session_.mailboxOpen() && (!channelPage || channels_->currentIndex() >= 0));
     channelControls_->setVisible(channelPage);
     channelControls_->setEnabled(session_.unlocked());
