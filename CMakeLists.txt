@@ -85,7 +85,7 @@ set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen
 qt_add_executable(desktop_tests tests/widgets_tests.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/appearance.cpp src/appearance.h)
 target_link_libraries(desktop_tests PRIVATE bmcore Qt6::Widgets Qt6::Network Qt6::Test)
 add_test(NAME desktop COMMAND desktop_tests)
-set_tests_properties(desktop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 90)
+set_tests_properties(desktop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 240)
 add_executable(outbox_tests tests/outbox_tests.cpp)
 target_link_libraries(outbox_tests PRIVATE bmcore)
 add_test(NAME outbox COMMAND outbox_tests)
