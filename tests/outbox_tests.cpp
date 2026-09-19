@@ -3,7 +3,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 #include <iostream>
-#include <sqlite3.h>
+#include <sqlcipher/sqlite3.h>
 using namespace bm;
 static void require(bool b, const char *m) {
     if (!b)
