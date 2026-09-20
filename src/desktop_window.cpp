@@ -1431,10 +1431,13 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
                 }
             });
     connect(letters_, &QListView::doubleClicked, this, [this](QModelIndex i) {
-        if (i.isValid())
-            (new MessageWindow(session_, session_.message(i.data(Qt::UserRole + 1).toString()),
-                               appearance_.dark(), this))
-                ->show();
+        if (!i.isValid())
+            return;
+        auto message = session_.message(i.data(Qt::UserRole + 1).toString());
+        if (message["folder"] == "Drafts")
+            compose(message);
+        else
+            (new MessageWindow(session_, message, appearance_.dark(), this))->show();
     });
     connect(session_.messageModel(), &QAbstractItemModel::modelReset, this, [this] {
         selected_.clear();

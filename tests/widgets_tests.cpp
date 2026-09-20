@@ -366,6 +366,31 @@ int main(int argc, char **argv) {
                 "double-click opens the correct letter");
         dPopped->close();
         QCoreApplication::processEvents();
+        folders->setCurrentRow(1);
+        QCoreApplication::processEvents();
+        const auto draftToOpen =
+            session.saveLetter({}, address, address, "Draft to reopen", "Unfinished", "direct");
+        // compose() blocks on dialog.exec(), so the dialog must be found and closed from
+        // a timer armed before the double-click, not from code after it -- that code
+        // would never run until the (never-closed) dialog returns.
+        QTimer::singleShot(50, &window, [&] {
+            require(!window.findChild<QDialog *>("messageWindow"),
+                    "double-clicking a draft does not open the read-only viewer");
+            auto draftComposer = window.findChild<QDialog *>("composer");
+            require(draftComposer, "double-clicking a draft opens it in the composer instead");
+            require(draftComposer->findChild<QLineEdit *>("subjectField")->text() ==
+                        "Draft to reopen",
+                    "the composer opens with the draft's own content, not a blank letter");
+            draftComposer->findChild<QPushButton *>("discardButton")->click();
+        });
+        for (int row = 0; row < list->model()->rowCount(); ++row) {
+            auto index = list->model()->index(row, 0);
+            if (index.data(Qt::UserRole + 1).toString() != draftToOpen)
+                continue;
+            emit list->doubleClicked(index);
+            break;
+        }
+        QCoreApplication::processEvents();
         QTimer::singleShot(50, &window, [&] {
             auto dialog = window.findChild<QDialog *>("composer");
             require(dialog, "composer opens");
