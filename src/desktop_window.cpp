@@ -911,6 +911,19 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         "style='font-size:9px;color:palette(mid)'>Your keys. Your mailbox.</span>");
     top->addWidget(brand);
     top->addStretch();
+    auto adBanner = new QPushButton("🌙  NightTrader Exchange — trade retro-style");
+    adBanner->setObjectName("adBanner");
+    adBanner->setCursor(Qt::PointingHandCursor);
+    adBanner->setToolTip("https://retro.nighttrader.exchange");
+    adBanner->setStyleSheet(
+        "QPushButton{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2b1055,stop:1 "
+        "#7597de);color:white;border:0;border-radius:8px;padding:8px 18px;font-size:12px;"
+        "font-weight:600;} QPushButton:hover{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+        "stop:0 #34136a,stop:1 #86a5e6);}");
+    connect(adBanner, &QPushButton::clicked, this,
+            [] { QDesktopServices::openUrl(QUrl("https://retro.nighttrader.exchange")); });
+    top->addWidget(adBanner);
+    top->addStretch();
     button("Close mailbox", top, [this] { session_.closeMailbox(); })
         ->setObjectName("closeMailboxButton");
     button("Lock vault", top, [this] { session_.lock(); })->setObjectName("lockButton");
