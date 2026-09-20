@@ -159,10 +159,30 @@ int main(int argc, char **argv) {
                 QThread::msleep(5);
         }
         require(found, "subscribed broadcast decoded");
+        // Chan members shouldn't need a separate manual subscribe to hear their own
+        // chan's "Anonymous"/broadcast-mode posts -- joining the chan is already that.
+        auto alicesChan = av.addChannel("delivery test chan phrase", "Test Chan", {});
+        auto bobsChan = bv.addChannel("delivery test chan phrase", "Test Chan", {});
+        require(alicesChan == bobsChan, "same phrase derives the same chan address");
+        auto chanBroadcast = Wire::encodeBroadcast(av.identities().back(), "Chan announcement",
+                                                    "Anonymous-mode post to the chan", expires);
+        cacheObject(b, chanBroadcast);
+        bool chanFound = false;
+        const auto chanDeadline = QDateTime::currentMSecsSinceEpoch() + 5000;
+        while (!chanFound && QDateTime::currentMSecsSinceEpoch() < chanDeadline) {
+            bc.discover();
+            bd.scan(bc, bm, bv, 100);
+            for (const auto &m : bm.messages())
+                if (m.folder == "Channels" && m.subject == "Chan announcement")
+                    chanFound = true;
+            if (!chanFound)
+                QThread::msleep(5);
+        }
+        require(chanFound, "chan member decodes an Anonymous-mode broadcast without subscribing");
         ad.stop();
         bd.stop();
         std::cout << "PASS: key lookup, real PoW, lock/reopen, encrypted handoff, receive, ACK, "
-                     "rescan, reply, cancel/retry, broadcasts\n";
+                     "rescan, reply, cancel/retry, broadcasts, chan broadcasts\n";
     } catch (const std::exception &e) {
         std::cerr << "FAIL: " << e.what() << '\n';
         return 1;

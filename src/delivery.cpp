@@ -309,18 +309,32 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int limit) {
                         saveKey(m, *key, h->expires);
         }
         std::optional<DecodedEnvelope> decoded;
+        bool chanBroadcast = false;
         if (h->type == 2 && token.isEmpty())
             for (const auto &i : v.identities()) {
                 decoded = Wire::decodeMessage(data, i);
                 if (decoded)
                     break;
             }
-        if (h->type == 3)
+        if (h->type == 3) {
             for (const auto &sub : m.subscriptions()) {
                 decoded = Wire::decodeBroadcast(data, sub.address);
                 if (decoded)
                     break;
             }
+            // Joining a chan already means "I care about this address's traffic" --
+            // members shouldn't also have to manually subscribe to hear a chan's own
+            // "Anonymous"/broadcast-mode posts.
+            if (!decoded)
+                for (const auto &i : v.identities())
+                    if (i.chan) {
+                        decoded = Wire::decodeBroadcast(data, i.address);
+                        if (decoded) {
+                            chanBroadcast = true;
+                            break;
+                        }
+                    }
+        }
         if (decoded) {
             auto &d = *decoded;
             auto ackToken = Wire::acknowledgmentToken(d.acknowledgment);
@@ -338,7 +352,7 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int limit) {
                 addJob(m, {}, "incoming-ack", Protocol::inventoryHash(d.acknowledgment),
                        d.acknowledgment, 1000, 1000, "ready");
             m.store(id, d.message.from, d.message.to, d.message.subject, d.message.body, o.sequence,
-                    d.broadcast ? "Broadcasts" : d.message.folder);
+                    chanBroadcast ? "Channels" : (d.broadcast ? "Broadcasts" : d.message.folder));
             ++count;
         } else
             m.advance(o.sequence);
