@@ -911,7 +911,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         "style='font-size:9px;color:palette(mid)'>Your keys. Your mailbox.</span>");
     top->addWidget(brand);
     top->addStretch();
-    auto adBanner = new QPushButton("🌙  NightTrader Exchange — trade retro-style");
+    auto adBanner = new QPushButton("🌙  NightTrader Exchange — your keys, your coins");
     adBanner->setObjectName("adBanner");
     adBanner->setCursor(Qt::PointingHandCursor);
     adBanner->setToolTip("https://retro.nighttrader.exchange");
