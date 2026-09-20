@@ -121,10 +121,15 @@ class Session : public QObject {
     QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit, const QString &recipient = {}) const;
     int messageCount(const QString &folder, const QString &search, const QString &recipient = {}) const { return mailboxOpen() ? mailbox_.messageCount(folder, search, recipient) : 0; }
     QVariantList channels() const;
+    bool channelUnread(QString address) const {
+        return mailboxOpen() && mailbox_.channelUnread(address);
+    }
     Q_INVOKABLE QVariantList deliveryHistory(QString id);
     Q_INVOKABLE void subscribe();
     Q_INVOKABLE void unsubscribe(QString address);
     Q_INVOKABLE void renameIdentity(QString address);
+    Q_INVOKABLE void deleteIdentity(QString address);
+    Q_INVOKABLE void setDefaultIdentity(QString address);
     Q_INVOKABLE void copyAddress(QString address);
     Q_INVOKABLE void closeMailbox();
     QVariantList subscriptions() const;

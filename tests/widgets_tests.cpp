@@ -79,18 +79,74 @@ int main(int argc, char **argv) {
         footprint("Mailbox open");
         auto list = window.findChild<QListView *>("letters");
         require(list, "list exists");
-        auto channels = window.findChild<QComboBox *>("channelSelector");
         const auto mono = [](const QFont &font) {
             QFontMetricsF metrics(font);
             return qAbs(metrics.horizontalAdvance("iiii") - metrics.horizontalAdvance("WWWW")) <
                    0.1;
         };
-        require(mono(channels->font()), "channel addresses use equal-width characters");
         require(mono(window.findChild<QLabel *>("messageAddresses")->font()),
                 "message address headers use fixed width");
-        require(channels && channels->count() == 3, "stored and empty joined channels are listed");
-        channels->setCurrentIndex(channels->findData("recipient"));
+        auto selectChannel = [&](const QString &address) {
+            for (auto chip : window.findChildren<QPushButton *>("channelChip"))
+                if (chip->toolTip().contains(address)) {
+                    chip->click();
+                    QTest::qWait(20);
+                    return;
+                }
+            require(false, "channel chip not found");
+        };
+        require(window.findChildren<QPushButton *>("channelChip").size() == 3,
+                "stored and empty joined channels are listed");
+        require(window.findChild<QWidget *>("channelRail")->isVisible(),
+                "the channel rail is shown on the Channels folder");
+        bool recipientChipUnread = false;
+        for (auto chip : window.findChildren<QPushButton *>("channelChip"))
+            if (chip->toolTip().contains("recipient") && !chip->toolTip().contains("second"))
+                recipientChipUnread = chip->text().startsWith(QString::fromUtf8("•"));
+        require(recipientChipUnread, "a channel with unread mail shows an unread indicator");
+        selectChannel("recipient");
+        require(window.findChild<QLabel *>("listHeading")->text() == "recipient",
+                "the list heading shows the active channel's label, not the literal folder name");
+        for (auto chip : window.findChildren<QPushButton *>("channelChip"))
+            if (chip->toolTip().contains("recipient") && !chip->toolTip().contains("second"))
+                require(chip->isChecked() && chip->styleSheet().contains(":checked"),
+                        "the active channel's chip is checked and visually distinct");
         require(list->model()->rowCount() == 1500, "all channel rows available");
+        require(window.findChild<QToolButton *>("density_comfortable") &&
+                    window.findChild<QToolButton *>("density_cozy") &&
+                    window.findChild<QToolButton *>("density_compact"),
+                "all three density buttons exist");
+        {
+            const bool capturingDensity = app.arguments().contains("--capture-density");
+            QString densityDir;
+            if (capturingDensity) {
+                auto n = app.arguments().indexOf("--capture-density");
+                densityDir = n + 1 < app.arguments().size() ? app.arguments()[n + 1] : ".";
+                window.selectMessage("0");
+                window.grab().save(densityDir + "/density-comfortable.png");
+            }
+            auto comfortableHeight = list->sizeHintForRow(0);
+            window.findChild<QToolButton *>("density_compact")->click();
+            auto compactHeight = list->sizeHintForRow(0);
+            require(compactHeight < comfortableHeight, "compact density shrinks row height");
+            if (capturingDensity)
+                window.grab().save(densityDir + "/density-compact.png");
+            window.findChild<QToolButton *>("density_cozy")->click();
+            auto cozyHeight = list->sizeHintForRow(0);
+            require(cozyHeight > compactHeight && cozyHeight < comfortableHeight,
+                    "cozy density sits between compact and comfortable");
+            if (capturingDensity)
+                window.grab().save(densityDir + "/density-cozy.png");
+            window.findChild<QToolButton *>("density_comfortable")->click();
+            require(list->sizeHintForRow(0) == comfortableHeight,
+                    "switching back to comfortable restores the original row height");
+        }
+        if (app.arguments().contains("--capture-channels")) {
+            auto n = app.arguments().indexOf("--capture-channels");
+            QString dir = n + 1 < app.arguments().size() ? app.arguments()[n + 1] : ".";
+            window.selectMessage("0");
+            window.grab().save(dir + "/channels.png");
+        }
         clock.restart();
         for (int i = 0; i < 1500; i += 25) {
             list->scrollTo(list->model()->index(i, 0));
@@ -102,7 +158,7 @@ int main(int argc, char **argv) {
         require(session.messageModel()->rowCount() == 1, "search finds old rows");
         session.messageModel()->setSearch("");
         window.selectMessage("0");
-        channels->setCurrentIndex(channels->findData("second-recipient"));
+        selectChannel("second-recipient");
         require(list->model()->rowCount() == 1, "second channel excludes first channel messages");
         require(list->model()->index(0, 0).data(Qt::UserRole + 1) == "other-channel",
                 "channel page has correct recipient");
@@ -113,9 +169,14 @@ int main(int argc, char **argv) {
         session.messageModel()->setSearch("");
         folders->setCurrentRow(0);
         folders->setCurrentRow(4);
-        require(channels->currentData() == "second-recipient",
-                "channel selection survives folder navigation");
-        channels->setCurrentIndex(channels->findData(emptyChannel));
+        {
+            bool stillOnSecondRecipient = false;
+            for (auto chip : window.findChildren<QPushButton *>("channelChip"))
+                if (chip->isChecked())
+                    stillOnSecondRecipient = chip->toolTip().contains("second-recipient");
+            require(stillOnSecondRecipient, "channel selection survives folder navigation");
+        }
+        selectChannel(emptyChannel);
         require(list->model()->rowCount() == 0,
                 "empty joined channel does not show mixed messages");
         QTimer::singleShot(30, &window, [&] {
@@ -134,7 +195,7 @@ int main(int argc, char **argv) {
             dialog->reject();
         });
         window.findChild<QPushButton *>("writeButton")->click();
-        channels->setCurrentIndex(channels->findData("recipient"));
+        selectChannel("recipient");
         clock.restart();
         for (int i = 0; i < 50; ++i) {
             window.selectMessage(QString::number(i));
@@ -292,7 +353,7 @@ int main(int argc, char **argv) {
         bodyPopped->close();
         QCoreApplication::processEvents();
         folders->setCurrentRow(4);
-        channels->setCurrentIndex(channels->findData("recipient"));
+        selectChannel("recipient");
         QCoreApplication::processEvents();
         require(list->model()->rowCount() > 0, "channel has at least one letter to double-click");
         auto dIndex = list->model()->index(0, 0);
@@ -414,6 +475,84 @@ int main(int argc, char **argv) {
                 "discarding an existing draft removes it from Drafts");
         require(session.messageCount("Trash", "") == trashBeforeExisting + 1,
                 "discarding an existing draft moves it to Trash, not a permanent delete");
+        {
+            window.findChild<QToolButton *>("folderIcon_Identities")->click();
+            require(!window.findChild<QWidget *>("listColumn")->isVisible(),
+                    "identities screen uses the full width, no message list column");
+            require(window.findChild<QWidget *>("identitiesPane")->isVisible(),
+                    "identities pane shown");
+            require(!window.findChild<QLabel *>("subjectLabel")->isVisible(),
+                    "the reader's subject label does not float above the identities pane");
+            require(!window.findChild<QScrollArea *>("subjectScroll")->isVisible(),
+                    "the subject label's empty scroll chrome does not float above the identities "
+                    "pane either");
+            auto addressLabels = window.findChildren<QLabel *>("identityAddress");
+            require(addressLabels.size() == 2, "one card per identity");
+            QStringList shown;
+            for (auto l : addressLabels)
+                shown << l->text();
+            require(shown.contains(address) && shown.contains(emptyChannel),
+                    "both identities are listed");
+            require(window.findChild<QLabel *>("defaultBadge"),
+                    "the default identity shows a badge");
+            require(window.findChild<QLabel *>("channelBadge"),
+                    "the chan identity shows a Channel badge");
+            require(window.findChildren<QPushButton *>("setDefaultButton").size() == 1,
+                    "only the non-default identity offers Set as default");
+            if (app.arguments().contains("--capture-identities")) {
+                auto n = app.arguments().indexOf("--capture-identities");
+                QString dir = n + 1 < app.arguments().size() ? app.arguments()[n + 1] : ".";
+                window.grab().save(dir + "/identities.png");
+            }
+
+            window.findChild<QToolButton *>("copyAddressButton")->click();
+            auto copied = QApplication::clipboard()->text();
+            require(copied == address || copied == emptyChannel,
+                    "copy button copies that card's address");
+
+            window.findChild<QPushButton *>("setDefaultButton")->click();
+            QTest::qWait(20);
+            bool channelIsDefault = false;
+            for (auto v : session.identities())
+                if (v.toMap()["address"].toString() == emptyChannel)
+                    channelIsDefault = v.toMap()["default"].toBool();
+            require(channelIsDefault, "Set as default promotes the chosen identity");
+
+            QTimer::singleShot(0, &window, [&] {
+                auto box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+                if (box)
+                    box->button(QMessageBox::Yes)->click();
+            });
+            auto beforeDelete = session.identities().size();
+            window.findChild<QToolButton *>("deleteIdentityButton")->click();
+            QTest::qWait(20);
+            require(session.identities().size() == beforeDelete - 1,
+                    "confirming the delete dialog removes the identity");
+
+            bool qrFound = false;
+            QTimer::singleShot(0, &window, [&] {
+                auto qr = window.findChild<QDialog *>("qrDialog");
+                qrFound = qr && qr->isVisible();
+                if (qr)
+                    qr->close();
+            });
+            window.findChild<QToolButton *>("showQrButton")->click();
+            require(qrFound, "the QR button opens a visible QR dialog");
+
+            auto beforeAdd = session.identities().size();
+            window.findChild<QPushButton *>("newIdentityButton")->click();
+            QTest::qWait(50);
+            require(session.identities().size() == beforeAdd + 1,
+                    "New identity adds an identity via the label prompt");
+
+            window.findChild<QToolButton *>("renameIdentityButton")->click();
+            QTest::qWait(50);
+            bool renamed = false;
+            for (auto l : window.findChildren<QLabel *>("identityName"))
+                renamed = renamed || l->text() == "test password";
+            require(renamed, "Rename updates the identity's label via the same prompt");
+            window.findChild<QToolButton *>("folderIcon_Inbox")->click();
+        }
         for (const auto &mode : {QString("light"), QString("dark"), QString("system")}) {
             bm::Appearance appearance;
             appearance.setMode(mode);
@@ -459,13 +598,21 @@ int main(int argc, char **argv) {
         session.unlockVault();
         require(session.message(formatted)["body"].toString().contains("Saved immediately on lock"),
                 "lock flushes editor before closing database");
-        if (app.arguments().contains("--capture-states")) {
-            auto n = app.arguments().indexOf("--capture-states");
-            QString dir = n + 1 < app.arguments().size() ? app.arguments()[n + 1] : ".";
+        {
+            const bool capturingStates = app.arguments().contains("--capture-states");
+            QString dir;
+            if (capturingStates) {
+                auto n = app.arguments().indexOf("--capture-states");
+                dir = n + 1 < app.arguments().size() ? app.arguments()[n + 1] : ".";
+            }
+            auto subjectLabel = window.findChild<QLabel *>("subjectLabel");
             const auto mailboxPath = session.mailPath();
             session.lock();
             QTest::qWait(50);
-            window.grab().save(dir + "/state1-locked.png");
+            require(subjectLabel && !subjectLabel->isVisible(),
+                    "locked state hides the reader's subject label");
+            if (capturingStates)
+                window.grab().save(dir + "/state1-locked.png");
             QTimer once;
             QObject::connect(&once, &QTimer::timeout, [&] {
                 auto field = window.findChild<QLineEdit *>("vaultPasswordField");
@@ -482,10 +629,16 @@ int main(int argc, char **argv) {
             once.stop();
             session.closeMailbox();
             QCoreApplication::processEvents();
-            window.grab().save(dir + "/state2-nomailbox.png");
+            require(!subjectLabel->isVisible(),
+                    "no-mailbox state hides the reader's subject label");
+            if (capturingStates)
+                window.grab().save(dir + "/state2-nomailbox.png");
             session.openMailboxAt(mailboxPath);
             QCoreApplication::processEvents();
-            window.grab().save(dir + "/state3-full.png");
+            require(subjectLabel->isVisible(),
+                    "full-mailbox state shows the reader's subject label again");
+            if (capturingStates)
+                window.grab().save(dir + "/state3-full.png");
         }
         session.lock();
         std::cout << "PASS Widgets mailbox selection, rendering and lock\n";

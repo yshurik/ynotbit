@@ -1,7 +1,9 @@
 #include "desktop_window.h"
 #include "session.h"
+#include "qrcodegen.hpp"
 #include <QDesktopServices>
 #include <QFileInfo>
+#include <QSettings>
 #include <QTextList>
 #include <QtWidgets>
 
@@ -33,8 +35,13 @@ class SafeDocument : public QTextDocument {
 };
 class LetterDelegate : public QStyledItemDelegate {
   public:
-    using QStyledItemDelegate::QStyledItemDelegate;
+    LetterDelegate(QObject *parent, QString density)
+        : QStyledItemDelegate(parent), density_(std::move(density)) {}
     QSize sizeHint(const QStyleOptionViewItem &, const QModelIndex &) const override {
+        if (density_ == "compact")
+            return {280, 30};
+        if (density_ == "cozy")
+            return {280, 58};
         return {280, 94};
     }
     void paint(QPainter *p, const QStyleOptionViewItem &o, const QModelIndex &i) const override {
@@ -54,21 +61,32 @@ class LetterDelegate : public QStyledItemDelegate {
                 r, Qt::AlignVCenter,
                 QFontMetrics(font).elidedText(singleLine(value), Qt::ElideRight, r.width()));
         };
-        text(10,
-             (i.data(Qt::UserRole + 9).toBool() ? "• " : "") + i.data(Qt::UserRole + 4).toString(),
-             true, pal.text().color());
-        text(36, i.data(Qt::UserRole + 5).toString(), false, pal.placeholderText().color());
-        auto state = i.data(Qt::UserRole + 7).toString();
-        const auto stateColor =
-            state == "acknowledged"
-                ? QColor(pal.base().color().lightness() < 128 ? "#8ce0b2" : "#17643b")
-                : pal.placeholderText().color();
-        text(62, state.isEmpty() ? i.data(Qt::UserRole + 11).toString() : state.replace('_', ' '),
-             false, stateColor);
+        const auto subject =
+            (i.data(Qt::UserRole + 9).toBool() ? "• " : "") + i.data(Qt::UserRole + 4).toString();
+        if (density_ == "compact") {
+            text(3, subject, true, pal.text().color());
+        } else if (density_ == "cozy") {
+            text(8, subject, true, pal.text().color());
+            text(32, i.data(Qt::UserRole + 5).toString(), false, pal.placeholderText().color());
+        } else {
+            text(10, subject, true, pal.text().color());
+            text(36, i.data(Qt::UserRole + 5).toString(), false, pal.placeholderText().color());
+            auto state = i.data(Qt::UserRole + 7).toString();
+            const auto stateColor =
+                state == "acknowledged"
+                    ? QColor(pal.base().color().lightness() < 128 ? "#8ce0b2" : "#17643b")
+                    : pal.placeholderText().color();
+            text(62,
+                 state.isEmpty() ? i.data(Qt::UserRole + 11).toString() : state.replace('_', ' '),
+                 false, stateColor);
+        }
         p->setPen(pal.mid().color());
         p->drawLine(o.rect.bottomLeft(), o.rect.bottomRight());
         p->restore();
     }
+
+  private:
+    QString density_;
 };
 QPushButton *button(QString text, QBoxLayout *layout, std::function<void()> fn) {
     auto b = new QPushButton(text);
@@ -206,6 +224,34 @@ QIcon materialIcon(const QString &name, QColor color) {
         eraser.lineTo(21, 32);
         eraser.closeSubpath();
         p.drawPath(eraser);
+    } else if (name == "copy") {
+        p.drawRoundedRect(14, 14, 16, 16, 3, 3);
+        QPainterPath back;
+        back.moveTo(10, 20);
+        back.lineTo(10, 11);
+        back.lineTo(11, 10);
+        back.lineTo(21, 10);
+        back.lineTo(22, 11);
+        back.lineTo(22, 14);
+        p.drawPath(back);
+    } else if (name == "qr") {
+        p.drawRect(8, 8, 10, 10);
+        p.drawRect(22, 8, 10, 10);
+        p.drawRect(8, 22, 10, 10);
+        p.setPen(Qt::NoPen);
+        p.setBrush(color);
+        for (double x : {23.0, 28.5})
+            for (double y : {23.0, 28.5})
+                p.drawRect(QRectF(x, y, 3.5, 3.5));
+    } else if (name == "densityComfortable") {
+        for (int y : {14, 26})
+            p.drawLine(6, y, 34, y);
+    } else if (name == "densityCozy") {
+        for (int y : {11, 20, 29})
+            p.drawLine(6, y, 34, y);
+    } else if (name == "densityCompact") {
+        for (int y : {8, 14, 20, 26, 32})
+            p.drawLine(6, y, 34, y);
     } else if (name == "inbox") {
         p.drawLine(8, 18, 8, 30);
         p.drawLine(8, 30, 32, 30);
@@ -378,6 +424,31 @@ class HeadingGutter : public QWidget {
 
   private:
     QTextEdit *editor_;
+};
+class QrCodeView : public QWidget {
+  public:
+    explicit QrCodeView(const QString &text, QWidget *parent = nullptr)
+        : QWidget(parent), code_(qrcodegen::QrCode::encodeText(text.toUtf8().constData(),
+                                                                qrcodegen::QrCode::Ecc::MEDIUM)) {
+        setFixedSize(220, 220);
+    }
+
+  protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.fillRect(rect(), Qt::white);
+        int modules = code_.getSize();
+        double scale = double(width()) / modules;
+        p.setPen(Qt::NoPen);
+        p.setBrush(Qt::black);
+        for (int y = 0; y < modules; ++y)
+            for (int x = 0; x < modules; ++x)
+                if (code_.getModule(x, y))
+                    p.drawRect(QRectF(x * scale, y * scale, scale, scale));
+    }
+
+  private:
+    qrcodegen::QrCode code_;
 };
 class Composer : public QDialog {
     Session &session_;
@@ -816,6 +887,9 @@ class MessageWindow : public QDialog {
 } // namespace
 DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     setObjectName("desktopWindow");
+    listDensity_ = QSettings().value("listDensity", "comfortable").toString();
+    if (listDensity_ != "compact" && listDensity_ != "cozy" && listDensity_ != "comfortable")
+        listDensity_ = "comfortable";
     resize(1160, 780);
     setMinimumSize(900, 620);
     auto central = new QWidget;
@@ -845,24 +919,27 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     error_->setWordWrap(true);
     error_->setContentsMargins(20, 8, 20, 8);
     outer->addWidget(error_);
-    auto split = new QSplitter;
-    outer->addWidget(split, 1);
+    auto splitWidget = new QWidget;
+    auto split = new QHBoxLayout(splitWidget);
+    split->setContentsMargins(0, 0, 0, 0);
+    split->setSpacing(0);
+    outer->addWidget(splitWidget, 1);
     auto side = sidebarWidget_ = new QWidget;
     side->setObjectName("sidebar");
-    side->setFixedWidth(68);
+    side->setFixedWidth(66);
     auto nav = new QVBoxLayout(side);
     nav->setContentsMargins(12, 14, 12, 14);
     nav->setSpacing(6);
     nav->setAlignment(Qt::AlignHCenter);
     auto write = new QPushButton;
     write->setObjectName("writeButton");
-    write->setFixedSize(44, 44);
-    write->setIconSize(QSize(20, 20));
-    write->setIcon(materialIcon("edit", Qt::white));
+    write->setFixedSize(38, 38);
+    write->setIconSize(QSize(24, 24));
+    write->setIcon(materialIcon("edit", iconColor(appearance_.dark())));
     write->setCursor(Qt::PointingHandCursor);
     connect(write, &QPushButton::clicked, this, [this] {
-        if (folders_->currentRow() == 4 && channels_->currentIndex() >= 0)
-            compose({{"to", channels_->currentData()}, {"from", channels_->currentData()}});
+        if (folders_->currentRow() == 4 && !activeChannelAddress_.isEmpty())
+            compose({{"to", activeChannelAddress_}, {"from", activeChannelAddress_}});
         else
             compose();
     });
@@ -889,8 +966,8 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         icon->setObjectName("folderIcon_" + label);
         icon->setCheckable(true);
         icon->setChecked(i == 0);
-        icon->setFixedSize(40, 40);
-        icon->setIconSize(QSize(19, 19));
+        icon->setFixedSize(38, 38);
+        icon->setIconSize(QSize(24, 24));
         icon->setIcon(materialIcon(iconName, iconColor(appearance_.dark())));
         icon->setToolTip(label);
         icon->setCursor(Qt::PointingHandCursor);
@@ -900,30 +977,42 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     }
     nav->addStretch();
     split->addWidget(side);
+    auto rail = channelRail_ = new QWidget;
+    rail->setObjectName("channelRail");
+    rail->setFixedWidth(190);
+    auto railOuter = new QVBoxLayout(rail);
+    railOuter->setContentsMargins(10, 16, 10, 12);
+    railOuter->setSpacing(4);
+    auto railHead = new QLabel("CHANNELS");
+    railHead->setStyleSheet("font-size:11px;font-weight:700;color:palette(mid);");
+    railOuter->addWidget(railHead);
+    auto railScroll = new QScrollArea;
+    railScroll->setObjectName("channelRailScroll");
+    railScroll->setWidgetResizable(true);
+    railScroll->setFrameShape(QFrame::NoFrame);
+    railScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto railList = new QWidget;
+    channelChipLayout_ = new QVBoxLayout(railList);
+    channelChipLayout_->setContentsMargins(0, 4, 0, 0);
+    channelChipLayout_->setSpacing(2);
+    railScroll->setWidget(railList);
+    railOuter->addWidget(railScroll, 1);
+    button("+ Join or create…", railOuter, [this] {
+        session_.joinChannel();
+        refreshChannels();
+    })->setObjectName("joinOrCreateChannelButton");
+    split->addWidget(rail);
     auto middle = listColumn_ = new QWidget;
+    middle->setObjectName("listColumn");
+    middle->setFixedWidth(300);
     auto mid = new QVBoxLayout(middle);
     mid->setContentsMargins(12, 20, 12, 0);
     heading_ = new QLabel("Inbox");
+    heading_->setObjectName("listHeading");
     heading_->setStyleSheet("font-size:24px;font-weight:600;");
     mid->addWidget(heading_);
     document_ = new QLabel;
     mid->addWidget(document_);
-    channelControls_ = new QWidget;
-    auto channelLayout = new QVBoxLayout(channelControls_);
-    channelLayout->setContentsMargins(0, 0, 0, 0);
-    channels_ = new QComboBox;
-    channels_->setFont(addressFont());
-    channels_->setObjectName("channelSelector");
-    channels_->setPlaceholderText("No channels yet");
-    channels_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    channels_->setMinimumContentsLength(12);
-    channels_->setAccessibleName("Channel");
-    channelLayout->addWidget(channels_);
-    button("Join or create channel…", channelLayout, [this] {
-        session_.joinChannel();
-        refreshChannels();
-    });
-    mid->addWidget(channelControls_);
     auto search = search_ = new QLineEdit;
     search->setPlaceholderText("Search this folder");
     mid->addWidget(search);
@@ -932,16 +1021,38 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     connect(search, &QLineEdit::textChanged, this, [debounce] { debounce->start(250); });
     connect(debounce, &QTimer::timeout, this,
             [this, search] { session_.messageModel()->setSearch(search->text()); });
-    connect(channels_, &QComboBox::currentIndexChanged, this, [this] {
-        session_.messageModel()->setChannel(channels_->currentData().toString());
-        channels_->setToolTip("<pre>" + channels_->currentData().toString().toHtmlEscaped() +
-                              "</pre>");
-        updateState();
-    });
+    auto densityRow = new QHBoxLayout;
+    densityRow->setContentsMargins(0, 4, 0, 4);
+    densityRow->addStretch();
+    auto densityGroup = new QButtonGroup(this);
+    densityGroup->setExclusive(true);
+    const struct { const char *id, *icon, *label; } densities[] = {
+        {"comfortable", "densityComfortable", "Comfortable"},
+        {"cozy", "densityCozy", "Cozy"},
+        {"compact", "densityCompact", "Compact"},
+    };
+    for (const auto &d : densities) {
+        auto btn = new QToolButton;
+        btn->setObjectName(QString("density_") + d.id);
+        btn->setCheckable(true);
+        btn->setChecked(listDensity_ == d.id);
+        btn->setAutoRaise(true);
+        btn->setIconSize(QSize(18, 18));
+        btn->setIcon(materialIcon(d.icon, iconColor(appearance_.dark())));
+        btn->setToolTip(d.label);
+        btn->setCursor(Qt::PointingHandCursor);
+        densityGroup->addButton(btn);
+        connect(btn, &QToolButton::clicked, this, [this, id = QString(d.id)] {
+            setListDensity(id);
+        });
+        densityRow->addWidget(btn);
+    }
+    mid->addLayout(densityRow);
     letters_ = new QListView;
     letters_->setObjectName("letters");
     letters_->setModel(session_.messageModel());
-    letters_->setItemDelegate(new LetterDelegate(letters_));
+    letterDelegate_ = new LetterDelegate(letters_, listDensity_);
+    letters_->setItemDelegate(letterDelegate_);
     letters_->setUniformItemSizes(true);
     letters_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     letters_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -1177,10 +1288,43 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     welcomeStack_->addWidget(noMailboxPage_);
     read->addWidget(welcomeStack_, 1);
     identities_ = new QWidget;
-    identityLayout_ = new QVBoxLayout(identities_);
+    identities_->setObjectName("identitiesPane");
+    auto identitiesOuter = new QVBoxLayout(identities_);
+    identitiesOuter->setContentsMargins(4, 4, 4, 0);
+    identitiesOuter->setSpacing(8);
+    auto identitiesHeadRow = new QHBoxLayout;
+    auto identitiesTitleCol = new QVBoxLayout;
+    auto identitiesHeading = new QLabel("Identities & chans");
+    identitiesHeading->setObjectName("identitiesHeading");
+    identitiesHeading->setStyleSheet("font-size:20px;font-weight:600;");
+    identitiesTitleCol->addWidget(identitiesHeading);
+    auto identitiesSub = new QLabel("Addresses you can send mail from");
+    identitiesSub->setStyleSheet("color:palette(mid);font-size:12px;");
+    identitiesTitleCol->addWidget(identitiesSub);
+    identitiesHeadRow->addLayout(identitiesTitleCol);
+    identitiesHeadRow->addStretch();
+    button("Join a channel…", identitiesHeadRow, [this] {
+        session_.joinChannel();
+        refreshIdentities();
+    })->setObjectName("joinChannelButton");
+    button("New identity", identitiesHeadRow, [this] {
+        session_.addIdentity();
+        refreshIdentities();
+    })->setObjectName("newIdentityButton");
+    identitiesOuter->addLayout(identitiesHeadRow);
+    auto identitiesScroll = new QScrollArea;
+    identitiesScroll->setObjectName("identitiesScroll");
+    identitiesScroll->setWidgetResizable(true);
+    identitiesScroll->setFrameShape(QFrame::NoFrame);
+    identitiesScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto identitiesListContainer = new QWidget;
+    identityLayout_ = new QVBoxLayout(identitiesListContainer);
+    identityLayout_->setContentsMargins(0, 4, 4, 16);
+    identityLayout_->setSpacing(10);
+    identitiesScroll->setWidget(identitiesListContainer);
+    identitiesOuter->addWidget(identitiesScroll, 1);
     read->addWidget(identities_);
-    split->addWidget(reader_);
-    split->setSizes({212, 300, 648});
+    split->addWidget(reader_, 1);
     status_ = new QLabel;
     status_->setObjectName("statusBar");
     status_->setContentsMargins(24, 12, 24, 12);
@@ -1317,10 +1461,11 @@ void DesktopWindow::updateTheme() {
             "QPushButton:hover{background:%2;} QListView,QTextEdit{border:0;} "
             "QListWidget::item{padding:10px;} QListWidget::item:selected{background:%5;color:%6;} "
             "QToolBar{border:0;spacing:3px;} "
-            "QPushButton#writeButton{background:%6;border:0;border-radius:10px;padding:0;} "
-            "QPushButton#writeButton:hover{background:%6;} "
-            "QWidget#sidebar QToolButton{border:0;border-radius:8px;background:transparent;"
-            "padding:0;} "
+            "QPushButton#writeButton{background:transparent;border:1px solid %4;"
+            "border-radius:8px;padding:0;} "
+            "QPushButton#writeButton:hover{background:%3;} "
+            "QWidget#sidebar QToolButton{border:1px solid %4;border-radius:8px;"
+            "background:transparent;padding:0;} "
             "QWidget#sidebar QToolButton:hover{background:%3;} "
             "QWidget#sidebar QToolButton:checked{background:%5;}")
             .arg(dark ? "#141b23" : "#f5f7fa", dark ? "#17212b" : "#f1f5f7",
@@ -1334,6 +1479,7 @@ void DesktopWindow::updateTheme() {
     findChild<QAction *>("archiveAction")->setIcon(materialIcon("archive", color));
     findChild<QAction *>("trashAction")->setIcon(materialIcon("delete", color));
     findChild<QToolButton *>("moreActionsButton")->setIcon(materialIcon("more", color));
+    findChild<QPushButton *>("writeButton")->setIcon(materialIcon("edit", color));
     for (const auto &[label, iconName] : kFolderIcons)
         findChild<QToolButton *>("folderIcon_" + label)->setIcon(materialIcon(iconName, color));
 }
@@ -1430,21 +1576,21 @@ void DesktopWindow::updateState() {
     findChild<QPushButton *>("lockButton")->setVisible(session_.unlocked());
     findChild<QPushButton *>("closeMailboxButton")->setVisible(session_.mailboxOpen());
     const bool channelPage = folders_->currentRow() == 4;
+    const bool mailboxState = session_.mailboxOpen();
     auto write = findChild<QPushButton *>("writeButton");
     write->setToolTip(channelPage ? "Write to channel" : "Write a letter");
-    write->setEnabled(session_.mailboxOpen() && (!channelPage || channels_->currentIndex() >= 0));
-    channelControls_->setVisible(channelPage);
-    channelControls_->setEnabled(session_.unlocked());
+    write->setEnabled(mailboxState && (!channelPage || !activeChannelAddress_.isEmpty()));
+    channelRail_->setVisible(mailboxState && channelPage);
+    channelRail_->setEnabled(session_.unlocked());
     search_->setPlaceholderText(channelPage ? "Search this channel" : "Search this folder");
     const auto identities = session_.unlocked() ? session_.identities() : QVariantList();
     if (identities != channelIdentities_) {
         channelIdentities_ = identities;
         refreshChannels();
     }
-    const bool mailboxState = session_.mailboxOpen();
-    sidebarWidget_->setVisible(mailboxState);
-    listColumn_->setVisible(mailboxState);
     const bool identityPage = folders_->currentRow() == 8 && mailboxState;
+    sidebarWidget_->setVisible(mailboxState);
+    listColumn_->setVisible(mailboxState && !identityPage);
     welcomeStack_->setVisible(!mailboxState);
     if (!mailboxState) {
         if (session_.unlocked()) {
@@ -1457,6 +1603,8 @@ void DesktopWindow::updateState() {
             updateLockedScreen();
         }
     }
+    subject_->setVisible(mailboxState && !identityPage);
+    findChild<QScrollArea *>("subjectScroll")->setVisible(mailboxState && !identityPage);
     body_->setVisible(mailboxState && !identityPage);
     identities_->setVisible(identityPage);
     status_->setText(
@@ -1475,22 +1623,54 @@ void DesktopWindow::updateState() {
 }
 void DesktopWindow::refreshChannels() {
     const auto entries = session_.channels();
-    const auto previous = channels_->currentData().toString();
-    QSignalBlocker blocker(channels_);
-    channels_->clear();
+    bool stillJoined = false;
+    for (auto v : entries)
+        stillJoined = stillJoined || v.toMap()["address"].toString() == activeChannelAddress_;
+    if (!stillJoined)
+        activeChannelAddress_ = entries.isEmpty() ? QString() : entries.first().toMap()["address"].toString();
+    while (auto item = channelChipLayout_->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    QString activeLabel;
     for (auto v : entries) {
         auto item = v.toMap();
-        auto address = item["address"].toString();
+        auto chipAddress = item["address"].toString();
         auto label = item["label"].toString();
-        channels_->addItem(label == address ? address : label + " · " + address.right(8), address);
-        channels_->setItemData(channels_->count() - 1, "<pre>" + address.toHtmlEscaped() + "</pre>",
-                               Qt::ToolTipRole);
+        if (chipAddress == activeChannelAddress_)
+            activeLabel = label;
+        auto chip = new QPushButton(
+            (session_.channelUnread(chipAddress) ? QString::fromUtf8("• ") : QString()) +
+            label);
+        chip->setObjectName("channelChip");
+        chip->setCheckable(true);
+        chip->setChecked(chipAddress == activeChannelAddress_);
+        chip->setStyleSheet("QPushButton{text-align:left;padding:8px 10px;border:0;"
+                            "border-radius:6px;} QPushButton:checked{background:palette(highlight);"
+                            "color:palette(highlighted-text);}");
+        chip->setCursor(Qt::PointingHandCursor);
+        chip->setToolTip("<pre>" + chipAddress.toHtmlEscaped() + "</pre>");
+        connect(chip, &QPushButton::clicked, this, [this, chipAddress] {
+            activeChannelAddress_ = chipAddress;
+            session_.messageModel()->setChannel(chipAddress);
+            updateState();
+            QTimer::singleShot(0, this, [this] { refreshChannels(); });
+        });
+        channelChipLayout_->addWidget(chip);
     }
-    int index = channels_->findData(previous);
-    if (index >= 0)
-        channels_->setCurrentIndex(index);
-    channels_->setToolTip("<pre>" + channels_->currentData().toString().toHtmlEscaped() + "</pre>");
-    session_.messageModel()->setChannel(channels_->currentData().toString());
+    channelChipLayout_->addStretch();
+    session_.messageModel()->setChannel(activeChannelAddress_);
+    if (folders_->currentRow() == 4)
+        heading_->setText(activeLabel.isEmpty() ? "Channels" : activeLabel);
+}
+void DesktopWindow::setListDensity(QString density) {
+    if (density == listDensity_)
+        return;
+    listDensity_ = density;
+    QSettings().setValue("listDensity", density);
+    delete letterDelegate_;
+    letterDelegate_ = new LetterDelegate(letters_, density);
+    letters_->setItemDelegate(letterDelegate_);
 }
 void DesktopWindow::selectMessage(const QString &id) {
     try {
@@ -1578,24 +1758,136 @@ void DesktopWindow::refreshIdentities() {
         delete item->widget();
         delete item;
     }
+    const auto color = iconColor(appearance_.dark());
     for (auto v : session_.identities()) {
         auto m = v.toMap();
-        auto name = new QLabel(m["label"].toString());
-        if (name->text().contains("BM-"))
-            name->setFont(addressFont());
-        name->setTextFormat(Qt::PlainText);
-        identityLayout_->addWidget(name);
-        auto label = new QLabel(m["address"].toString());
-        label->setFont(addressFont());
-        label->setObjectName("identityAddress");
-        label->setTextFormat(Qt::PlainText);
-        label->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        identityLayout_->addWidget(label);
-        button("Write", identityLayout_, [this, m] { compose({{"to", m["address"]}}); });
-        button("Rename", identityLayout_, [this, m] {
-            session_.renameIdentity(m["address"].toString());
-            refreshIdentities();
+        auto address = m["address"].toString();
+        auto label = m["label"].toString();
+        bool isDefault = m["default"].toBool();
+
+        auto card = new QFrame;
+        card->setObjectName("identityCard");
+        card->setStyleSheet(
+            "QFrame#identityCard{border:1px solid palette(mid);border-radius:8px;}");
+        auto cardRow = new QHBoxLayout(card);
+        cardRow->setContentsMargins(14, 12, 14, 12);
+        cardRow->setSpacing(10);
+
+        auto infoCol = new QVBoxLayout;
+        auto nameRow = new QHBoxLayout;
+        auto nameLabel = new QLabel(label);
+        nameLabel->setObjectName("identityName");
+        nameLabel->setStyleSheet("font-weight:700;");
+        nameLabel->setTextFormat(Qt::PlainText);
+        if (label.contains("BM-"))
+            nameLabel->setFont(addressFont());
+        nameRow->addWidget(nameLabel);
+        if (isDefault) {
+            auto badge = new QLabel("Default");
+            badge->setObjectName("defaultBadge");
+            badge->setStyleSheet("font-size:11px;font-weight:600;padding:2px 7px;"
+                                 "border-radius:5px;background:palette(highlight);"
+                                 "color:palette(highlighted-text);");
+            nameRow->addWidget(badge);
+        }
+        if (m["chan"].toBool()) {
+            auto chanBadge = new QLabel("Channel");
+            chanBadge->setObjectName("channelBadge");
+            chanBadge->setStyleSheet("font-size:11px;font-weight:600;padding:2px 7px;"
+                                     "border-radius:5px;background:palette(mid);");
+            nameRow->addWidget(chanBadge);
+        }
+        nameRow->addStretch();
+        infoCol->addLayout(nameRow);
+
+        auto addressRow = new QHBoxLayout;
+        auto addressLabel = new QLabel(address);
+        addressLabel->setObjectName("identityAddress");
+        addressLabel->setFont(addressFont());
+        addressLabel->setStyleSheet("color:palette(mid);font-size:12px;");
+        addressLabel->setTextFormat(Qt::PlainText);
+        addressLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        addressRow->addWidget(addressLabel);
+        auto copyButton = new QToolButton;
+        copyButton->setObjectName("copyAddressButton");
+        copyButton->setIcon(materialIcon("copy", color));
+        copyButton->setIconSize(QSize(14, 14));
+        copyButton->setAutoRaise(true);
+        copyButton->setCursor(Qt::PointingHandCursor);
+        copyButton->setToolTip("Copy address");
+        connect(copyButton, &QToolButton::clicked, this,
+                [this, address] { session_.copyAddress(address); });
+        addressRow->addWidget(copyButton);
+        addressRow->addStretch();
+        infoCol->addLayout(addressRow);
+        cardRow->addLayout(infoCol, 1);
+
+        if (!isDefault) {
+            auto setDefaultButton = new QPushButton("Set as default");
+            setDefaultButton->setObjectName("setDefaultButton");
+            setDefaultButton->setCursor(Qt::PointingHandCursor);
+            connect(setDefaultButton, &QPushButton::clicked, this, [this, address] {
+                session_.setDefaultIdentity(address);
+                QTimer::singleShot(0, this, [this] { refreshIdentities(); });
+            });
+            cardRow->addWidget(setDefaultButton);
+        }
+
+        auto qrButton = new QToolButton;
+        qrButton->setObjectName("showQrButton");
+        qrButton->setIcon(materialIcon("qr", color));
+        qrButton->setAutoRaise(true);
+        qrButton->setCursor(Qt::PointingHandCursor);
+        qrButton->setToolTip("Show QR code");
+        connect(qrButton, &QToolButton::clicked, this, [this, address, label] {
+            QDialog dialog(this);
+            dialog.setObjectName("qrDialog");
+            dialog.setWindowTitle(label);
+            auto qrLayout = new QVBoxLayout(&dialog);
+            qrLayout->addWidget(new QrCodeView(address, &dialog), 0, Qt::AlignHCenter);
+            auto addressText = new QLabel(address);
+            addressText->setFont(addressFont());
+            addressText->setWordWrap(true);
+            addressText->setAlignment(Qt::AlignHCenter);
+            addressText->setTextFormat(Qt::PlainText);
+            addressText->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            qrLayout->addWidget(addressText);
+            auto buttonsRow = new QHBoxLayout;
+            button("Copy address", buttonsRow, [this, address] { session_.copyAddress(address); });
+            auto closeButton = new QPushButton("Close");
+            closeButton->setObjectName("qrCloseButton");
+            connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+            buttonsRow->addWidget(closeButton);
+            qrLayout->addLayout(buttonsRow);
+            dialog.exec();
         });
+        cardRow->addWidget(qrButton);
+
+        auto renameButton = new QToolButton;
+        renameButton->setObjectName("renameIdentityButton");
+        renameButton->setIcon(materialIcon("edit", color));
+        renameButton->setAutoRaise(true);
+        renameButton->setCursor(Qt::PointingHandCursor);
+        renameButton->setToolTip("Rename");
+        connect(renameButton, &QToolButton::clicked, this, [this, address] {
+            session_.renameIdentity(address);
+            QTimer::singleShot(0, this, [this] { refreshIdentities(); });
+        });
+        cardRow->addWidget(renameButton);
+
+        auto deleteButton = new QToolButton;
+        deleteButton->setObjectName("deleteIdentityButton");
+        deleteButton->setIcon(materialIcon("delete", color));
+        deleteButton->setAutoRaise(true);
+        deleteButton->setCursor(Qt::PointingHandCursor);
+        deleteButton->setToolTip("Delete");
+        connect(deleteButton, &QToolButton::clicked, this, [this, address] {
+            session_.deleteIdentity(address);
+            QTimer::singleShot(0, this, [this] { refreshIdentities(); });
+        });
+        cardRow->addWidget(deleteButton);
+
+        identityLayout_->addWidget(card);
     }
     identityLayout_->addStretch();
 }

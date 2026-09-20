@@ -144,7 +144,10 @@ QString Session::document() const {
 QVariantList Session::identities() const {
     QVariantList result;
     for (const auto &i : vault_.identities())
-        result << QVariantMap{{"label", i.label}, {"address", i.address}, {"chan", i.chan}};
+        result << QVariantMap{{"label", i.label},
+                              {"address", i.address},
+                              {"chan", i.chan},
+                              {"default", i.isDefault}};
     return result;
 }
 void Session::attempt(const std::function<void()> &f) {
@@ -772,6 +775,24 @@ void Session::renameIdentity(QString address) {
 }
 void Session::copyAddress(QString address) {
     QApplication::clipboard()->setText(address);
+}
+void Session::setDefaultIdentity(QString address) {
+    attempt([&] {
+        check(unlocked(), "Unlock a vault first");
+        vault_.setDefaultIdentity(address);
+    });
+}
+void Session::deleteIdentity(QString address) {
+    attempt([&] {
+        check(unlocked(), "Unlock a vault first");
+        if (QMessageBox::question(
+                nullptr, "Delete identity permanently?",
+                "This permanently removes the private key for this address. Mail already sent "
+                "or received stays in your mailbox, but you will no longer be able to send as "
+                "this address or read anything newly sent to it.") != QMessageBox::Yes)
+            return;
+        vault_.deleteIdentity(address);
+    });
 }
 void Session::closeMailbox() {
     emit aboutToCloseMailbox();

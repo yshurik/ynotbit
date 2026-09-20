@@ -35,6 +35,7 @@ class Secret {
 struct Identity {
     QString label, address;
     bool chan = false;
+    bool isDefault = false;
     Secret keys{64};
     Identity() = default;
     Identity(Identity &&) = default;
@@ -73,6 +74,8 @@ class Vault {
     void importKeys(const QString &path);
     QString addMailboxKey();
     void renameIdentity(const QString &address, const QString &label);
+    void deleteIdentity(const QString &address);
+    void setDefaultIdentity(const QString &address);
     QStringList mailboxIds() const;
     const Secret &mailboxKey(const QString &) const;
 };
@@ -113,6 +116,7 @@ class Mailbox {
                                       int limit, const QString &recipient = {}) const;
     int messageCount(const QString &folder, const QString &search, const QString &recipient = {}) const;
     QStringList channelAddresses() const;
+    bool channelUnread(const QString &recipient) const;
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     quint64 messageRevision() const {
         return messageRevision_;

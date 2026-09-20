@@ -1,6 +1,7 @@
 #include "protocol.h"
 #include "storage.h"
 #include <QCoreApplication>
+#include <QDataStream>
 #include <QFile>
 #include <QTemporaryDir>
 #include <functional>
@@ -31,6 +32,61 @@ int main(int argc, char **argv) {
         require(id.startsWith("BM-"), "identity address");
         rejects([&] { vault.addIdentity(QString(3 * 1024 * 1024, QChar('X'))); });
         require(vault.identities().size() == 1, "oversized vault update rolled back");
+        require(vault.identities()[0].isDefault, "sole identity is the default");
+        auto work = vault.addIdentity("Work");
+        require(!vault.identities()[1].isDefault, "second identity is not the default yet");
+        vault.setDefaultIdentity(work);
+        require(!vault.identities()[0].isDefault && vault.identities()[1].isDefault,
+                "default moves to the chosen identity");
+        rejects([&] { vault.setDefaultIdentity("BM-does-not-exist"); });
+        vault.deleteIdentity(id);
+        require(vault.identities().size() == 1 && vault.identities()[0].address == work,
+                "identity removed");
+        require(vault.identities()[0].isDefault,
+                "deleting the default identity promotes the remaining one");
+        rejects([&] { vault.deleteIdentity("BM-does-not-exist"); });
+        {
+            auto legacyPath = d.filePath("legacy.bmvault");
+            QByteArray salt(16, 0);
+            randombytes_buf(reinterpret_cast<unsigned char *>(salt.data()), 16);
+            QByteArray password = "legacy test password";
+            unsigned char key[32];
+            require(crypto_pwhash(key, 32, password.constData(), password.size(),
+                                  reinterpret_cast<const unsigned char *>(salt.constData()), 3,
+                                  64 * 1024 * 1024, crypto_pwhash_ALG_ARGON2ID13) == 0,
+                    "derive legacy key");
+            QByteArray plain;
+            QDataStream out(&plain, QIODevice::WriteOnly);
+            out.setVersion(QDataStream::Qt_6_0);
+            out << quint32(1);
+            out << QString("Legacy") << QString("BM-2cLegacyAddressForTestOnly") << false;
+            char keyBytes[64] = {0};
+            out.writeRawData(keyBytes, 64);
+            out << quint32(0);
+            QByteArray header("BMVAULT1", 8);
+            header += salt;
+            QByteArray nonce(24, 0);
+            randombytes_buf(reinterpret_cast<unsigned char *>(nonce.data()), nonce.size());
+            header += nonce;
+            QByteArray cipher(plain.size() + crypto_aead_xchacha20poly1305_ietf_ABYTES, 0);
+            unsigned long long clen = 0;
+            crypto_aead_xchacha20poly1305_ietf_encrypt(
+                reinterpret_cast<unsigned char *>(cipher.data()), &clen,
+                reinterpret_cast<const unsigned char *>(plain.constData()), plain.size(),
+                reinterpret_cast<const unsigned char *>(header.constData()), header.size(),
+                nullptr, reinterpret_cast<const unsigned char *>(nonce.constData()), key);
+            QFile f(legacyPath);
+            require(f.open(QIODevice::WriteOnly), "write legacy vault file");
+            f.write(header);
+            f.write(cipher);
+            f.close();
+            Vault legacyVault;
+            legacyVault.unlock(legacyPath, password);
+            require(legacyVault.identities().size() == 1, "legacy vault loads one identity");
+            require(legacyVault.identities()[0].label == "Legacy", "legacy identity label");
+            require(legacyVault.identities()[0].isDefault,
+                    "legacy identity becomes the default on load");
+        }
         auto keyId = vault.addMailboxKey();
         auto mail = d.filePath("letters.bmmail");
         Mailbox box;

@@ -8,10 +8,10 @@ class QLabel;
 class QTextBrowser;
 class QWidget;
 class QVBoxLayout;
-class QComboBox;
 class QLineEdit;
 class QPushButton;
 class QStackedWidget;
+class QAbstractItemDelegate;
 namespace bm {
 class Session;
 class DesktopWindow : public QMainWindow {
@@ -26,9 +26,12 @@ class DesktopWindow : public QMainWindow {
     Appearance appearance_;
     QListView *letters_;
     QListWidget *folders_;
-    QComboBox *channels_;
+    QWidget *channelRail_;
+    QVBoxLayout *channelChipLayout_;
+    QString activeChannelAddress_;
+    QString listDensity_;
+    QAbstractItemDelegate *letterDelegate_ = nullptr;
     QLineEdit *search_;
-    QWidget *channelControls_;
     QVariantList channelIdentities_;
     QLabel *heading_, *document_, *status_, *error_, *subject_;
     QLabel *fromAddress_, *toAddress_, *deliveryStatus_, *deliveryError_;
@@ -54,6 +57,7 @@ class DesktopWindow : public QMainWindow {
     void updateTimeline();
     void refreshIdentities();
     void refreshChannels();
+    void setListDensity(QString density);
     void showVaultPasswordFor(QString path, bool create);
     void updateLockedScreen();
     void refreshRecentVaults();

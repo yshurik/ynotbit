@@ -55,7 +55,9 @@ if(UNIX)
 endif()
 qt_add_executable(ynotbit MACOSX_BUNDLE src/main.cpp src/session.cpp src/session.h
  src/portable_relay.cpp src/portable_relay.h src/appearance.cpp src/appearance.h
- src/desktop_window.cpp src/desktop_window.h src/message_model.cpp src/message_model.h)
+ src/desktop_window.cpp src/desktop_window.h src/message_model.cpp src/message_model.h
+ third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
+target_include_directories(ynotbit PRIVATE third_party/qrcodegen)
 if(APPLE)
  set_source_files_properties(assets/ynotbit.icns PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
  target_sources(ynotbit PRIVATE assets/ynotbit.icns)
@@ -82,7 +84,9 @@ if(Python3_Interpreter_FOUND)
 endif()
 add_test(NAME gui-smoke COMMAND ynotbit --offline --data-dir ${CMAKE_CURRENT_BINARY_DIR}/smoke-node --smoke-test)
 set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-qt_add_executable(desktop_tests tests/widgets_tests.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/appearance.cpp src/appearance.h)
+qt_add_executable(desktop_tests tests/widgets_tests.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/appearance.cpp src/appearance.h
+ third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
+target_include_directories(desktop_tests PRIVATE third_party/qrcodegen)
 target_link_libraries(desktop_tests PRIVATE bmcore Qt6::Widgets Qt6::Network Qt6::Test)
 add_test(NAME desktop COMMAND desktop_tests)
 set_tests_properties(desktop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 240)

@@ -371,6 +371,8 @@ QString Vault::addChannel(const QString &phrase, const QString &label,
     for (const auto &i : identities_)
         require(i.address != channel.address, "Channel already joined");
     identities_.push_back(std::move(channel));
+    if (identities_.size() == 1)
+        identities_.back().isDefault = true;
     try {
         save();
     } catch (...) {

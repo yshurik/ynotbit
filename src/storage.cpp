@@ -99,7 +99,7 @@ void Vault::save() {
     out.setVersion(QDataStream::Qt_6_0);
     out << quint32(identities_.size());
     for (const auto &i : identities_) {
-        out << i.label << i.address << i.chan;
+        out << i.label << i.address << i.chan << i.isDefault;
         out.writeRawData(reinterpret_cast<const char *>(i.keys.data()), 64);
     }
     out << quint32(mailboxKeys_.size());
@@ -110,7 +110,7 @@ void Vault::save() {
     check(out.status() == QDataStream::Ok, "Cannot serialize vault");
     check(plain.bytes.size() + 64 <= 4 * 1024 * 1024,
           "Vault is too large; existing vault preserved");
-    QByteArray header("BMVAULT1", 8);
+    QByteArray header("BMVAULT2", 8);
     header += salt_;
     QByteArray nonce(24, 0);
     randombytes_buf(nonce.data(), nonce.size());
@@ -134,7 +134,9 @@ void Vault::unlock(const QString &path, const QByteArray &password) {
     check(f.open(QIODevice::ReadOnly), "Cannot open vault");
     check(f.size() >= 64 && f.size() <= 4 * 1024 * 1024, "Invalid vault size");
     auto file = f.readAll();
-    check(file.left(8) == "BMVAULT1", "Unsupported vault format");
+    auto magic = file.left(8);
+    check(magic == "BMVAULT1" || magic == "BMVAULT2", "Unsupported vault format");
+    bool legacy = magic == "BMVAULT1";
     auto salt = file.mid(8, 16);
     auto key = derive(password, salt);
     SensitiveBytes plain;
@@ -155,9 +157,13 @@ void Vault::unlock(const QString &path, const QByteArray &password) {
     for (quint32 j = 0; j < count; ++j) {
         Identity i;
         in >> i.label >> i.address >> i.chan;
+        if (!legacy)
+            in >> i.isDefault;
         check(in.readRawData(reinterpret_cast<char *>(i.keys.data()), 64) == 64, "Truncated vault");
         identities.push_back(std::move(i));
     }
+    if (legacy && !identities.empty())
+        identities.front().isDefault = true;
     in >> count;
     check(count <= 1024, "Too many mailbox keys");
     std::map<QString, Secret> keys;
@@ -203,6 +209,8 @@ void Vault::changePassword(const QByteArray &password) {
 QString Vault::addIdentity(const QString &label) {
     check(unlocked_, "Vault is locked");
     identities_.push_back(Protocol::identity(label));
+    if (identities_.size() == 1)
+        identities_.back().isDefault = true;
     try {
         save();
     } catch (...) {
@@ -426,6 +434,11 @@ QStringList Mailbox::channelAddresses() const {
     QStringList result;
     while (s.row()) result << s.text(0);
     return result;
+}
+bool Mailbox::channelUnread(const QString &recipient) const {
+    Statement s(db_, "SELECT 1 FROM messages WHERE folder='Channels' AND recipient=? AND unread<>0 LIMIT 1");
+    s.text(1, recipient);
+    return s.row();
 }
 void Mailbox::backup(const QString &path, const Secret &key) {
     check(db_, "Mailbox is closed");

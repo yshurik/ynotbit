@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QSet>
 #include <QUuid>
+#include <algorithm>
 namespace bm {
 using detail::Statement;
 using detail::Transaction;
@@ -472,5 +473,43 @@ void Vault::renameIdentity(const QString &address, const QString &label) {
             return;
         }
     throw std::runtime_error("Identity not found");
+}
+void Vault::deleteIdentity(const QString &address) {
+    require(unlocked_, "Vault is locked");
+    auto it = std::find_if(identities_.begin(), identities_.end(),
+                           [&](const Identity &i) { return i.address == address; });
+    require(it != identities_.end(), "Identity not found");
+    auto removed = std::move(*it);
+    auto index = it - identities_.begin();
+    identities_.erase(it);
+    auto hadDefault = removed.isDefault;
+    if (hadDefault && !identities_.empty())
+        identities_.front().isDefault = true;
+    try {
+        save();
+    } catch (...) {
+        identities_.insert(identities_.begin() + index, std::move(removed));
+        if (hadDefault && identities_.size() > 1)
+            identities_[1].isDefault = false;
+        throw;
+    }
+}
+void Vault::setDefaultIdentity(const QString &address) {
+    require(unlocked_, "Vault is locked");
+    require(std::any_of(identities_.begin(), identities_.end(),
+                        [&](const Identity &i) { return i.address == address; }),
+            "Identity not found");
+    std::vector<bool> previous;
+    for (auto &i : identities_) {
+        previous.push_back(i.isDefault);
+        i.isDefault = (i.address == address);
+    }
+    try {
+        save();
+    } catch (...) {
+        for (size_t j = 0; j < identities_.size(); ++j)
+            identities_[j].isDefault = previous[j];
+        throw;
+    }
 }
 } // namespace bm
