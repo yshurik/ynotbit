@@ -328,6 +328,12 @@ const QVector<QPair<QString, QString>> kFolderIcons = {
     {"Sent", "sent"},           {"Channels", "channels"},   {"Broadcasts", "broadcasts"},
     {"Archive", "archive"},     {"Trash", "delete"},        {"Identities", "identities"},
 };
+QTextCharFormat headingCharFormat(int level) {
+    QTextCharFormat t;
+    t.setFontWeight(QFont::Bold);
+    t.setFontPointSize(level == 1 ? 22 : level == 2 ? 18 : 15);
+    return t;
+}
 class MarkdownEdit : public QTextEdit {
   public:
     using QTextEdit::QTextEdit;
@@ -338,8 +344,69 @@ class MarkdownEdit : public QTextEdit {
             return;
         QTextEdit::keyPressEvent(event);
     }
+    void insertFromMimeData(const QMimeData *source) override {
+        if (source->hasText() && looksLikeMarkdown(source->text())) {
+            insertMarkdown(source->text());
+            return;
+        }
+        QTextEdit::insertFromMimeData(source);
+    }
 
   private:
+    // A single dash-/number-prefixed line is common in ordinary prose (a note,
+    // an address); only a real multi-line list counts as a markdown signal.
+    // Headings, paired **bold**/__bold__, `code`, and [text](url) links are
+    // specific enough that even one match is enough.
+    static bool looksLikeMarkdown(const QString &text) {
+        static const QRegularExpression heading("^#{1,6}[ \\t]+\\S.*$",
+                                                QRegularExpression::MultilineOption);
+        static const QRegularExpression bold("\\*\\*[^*\\n]+\\*\\*|__[^_\\n]+__");
+        static const QRegularExpression code("`[^`\\n]+`");
+        static const QRegularExpression link("\\[[^\\]\\n]+\\]\\([^)\\n]+\\)");
+        static const QRegularExpression listLine("^[ \\t]*[-*+][ \\t]+\\S.*$",
+                                                  QRegularExpression::MultilineOption);
+        static const QRegularExpression numberedLine("^[ \\t]*\\d+\\.[ \\t]+\\S.*$",
+                                                      QRegularExpression::MultilineOption);
+        auto count = [&](const QRegularExpression &re) {
+            int n = 0;
+            auto it = re.globalMatch(text);
+            while (it.hasNext()) {
+                it.next();
+                ++n;
+            }
+            return n;
+        };
+        if (heading.match(text).hasMatch() || bold.match(text).hasMatch() ||
+            code.match(text).hasMatch() || link.match(text).hasMatch())
+            return true;
+        return count(listLine) >= 2 || count(numberedLine) >= 2;
+    }
+    void insertMarkdown(const QString &text) {
+        QTextDocument doc;
+        doc.setMarkdown(text, QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
+                                                              QTextDocument::MarkdownNoHTML));
+        // Match this app's own "# "-triggered heading sizes rather than Qt's
+        // markdown-parser defaults, so a pasted heading looks the same as one
+        // typed by hand.
+        for (auto block = doc.begin(); block.isValid(); block = block.next()) {
+            int level = block.blockFormat().headingLevel();
+            if (level <= 0)
+                continue;
+            QTextCursor c(block);
+            c.setPosition(block.position());
+            c.setPosition(block.position() + block.length() - 1, QTextCursor::KeepAnchor);
+            c.mergeCharFormat(headingCharFormat(level));
+        }
+        auto cursor = textCursor();
+        cursor.beginEditBlock();
+        if (cursor.hasSelection())
+            cursor.removeSelectedText();
+        QTextCursor docCursor(&doc);
+        docCursor.select(QTextCursor::Document);
+        cursor.insertFragment(docCursor.selection());
+        cursor.endEditBlock();
+        setTextCursor(cursor);
+    }
     bool tryAutoFormat() {
         auto cursor = textCursor();
         if (cursor.hasSelection())
@@ -361,10 +428,7 @@ class MarkdownEdit : public QTextEdit {
                 auto f = c.blockFormat();
                 f.setHeadingLevel(level);
                 c.setBlockFormat(f);
-                QTextCharFormat t;
-                t.setFontWeight(QFont::Bold);
-                t.setFontPointSize(level == 1 ? 22 : level == 2 ? 18 : 15);
-                c.mergeCharFormat(t);
+                c.mergeCharFormat(headingCharFormat(level));
             });
         }
         if (prefix == "-" || prefix == "*")

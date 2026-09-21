@@ -425,6 +425,32 @@ int main(int argc, char **argv) {
             auto gutter = dialog->findChild<QWidget *>("headingGutter");
             require(gutter && gutter->isVisible() && gutter->width() > 0,
                     "heading gutter renders beside the body");
+            body->clear();
+            QApplication::clipboard()->setText(
+                "**Bold word** and a heading:\n\n## Section\n\nplain line after");
+            QTest::keyClick(body, Qt::Key_V, Qt::ControlModifier);
+            require(!body->toPlainText().contains('*'),
+                    "pasted markdown source is parsed, not left with literal ** markers");
+            bool sawBold = false, sawHeading = false;
+            for (auto b = body->document()->begin(); b.isValid(); b = b.next()) {
+                if (b.blockFormat().headingLevel() == 2)
+                    sawHeading = true;
+                for (auto it = b.begin(); !it.atEnd(); ++it)
+                    if (it.fragment().isValid() &&
+                        it.fragment().charFormat().fontWeight() == QFont::Bold)
+                        sawBold = true;
+            }
+            require(sawBold, "pasted **bold** actually renders bold, not just stripped markers");
+            require(sawHeading, "pasted '## Section' becomes a real heading block");
+            // A dash-prefixed line alone is common in ordinary prose/notes; only
+            // a real multi-line list should be reinterpreted as markdown.
+            body->clear();
+            QApplication::clipboard()->setText("- just one line, not a list");
+            QTest::keyClick(body, Qt::Key_V, Qt::ControlModifier);
+            require(body->toPlainText() == "- just one line, not a list",
+                    "a single dash-prefixed line pastes as literal text, not a list");
+            require(!body->textCursor().currentList(),
+                    "a single dash-prefixed line is not turned into a real list");
             if (app.arguments().contains("--capture-composer")) {
                 body->clear();
                 auto c = body->textCursor();
