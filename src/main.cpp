@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
     app.setOrganizationName("NotbitDesktop");
     app.setApplicationName("Notbit Desktop");
     app.setApplicationDisplayName("ynotbit");
-    app.setApplicationVersion("0.4.6");
+    app.setApplicationVersion("0.4.7");
     app.setWindowIcon(bm::appLogo());
     try {
         auto args = app.arguments();
