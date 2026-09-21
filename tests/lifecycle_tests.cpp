@@ -118,6 +118,10 @@ int main(int argc, char **argv) {
         int calls = 0;
         while (churn.count() < written && calls < 60) {
             churn.discover();
+            // Session::tick() calls prune() right after discover() on every cycle;
+            // with default retention this is a routine no-op call (nothing over
+            // the size/age limits), which must not undo discover()'s progress.
+            churn.prune(512ll * 1024 * 1024, 90);
             ++calls;
             if (written < 320) {
                 writeChurnObject(written);
@@ -126,7 +130,8 @@ int main(int argc, char **argv) {
         }
         require(churn.count() == written,
                 "discover() drains a directory within a bounded number of calls even with "
-                "a write (and thus an mtime change) before almost every call, instead of "
+                "a write (and thus an mtime change) and a routine no-op prune() before "
+                "almost every call, instead of "
                 "resetting progress back toward the same prefix each time");
         std::cout << "PASS: locked collection, unlock scan, expired local object, crash replay, "
                      "cache relocation, retention, malformed ECIES, discover() under write churn\n";
