@@ -88,8 +88,48 @@ int main(int argc, char **argv) {
         malformed[41] = char(0xff);
         require(!Protocol::decodeMessage(malformed, vault.identities()[0]),
                 "reject oversized EC coordinate");
+        // Regression: discover() used to rebuild its directory iterator from
+        // scratch whenever the objects dir's mtime had changed since that
+        // iterator was built, on the theory that a file added mid-backlog
+        // shouldn't stay invisible until the backlog finished draining. Under
+        // real sustained write traffic the directory's mtime changes on nearly
+        // every call, so that reset fired almost every time and progress
+        // through a large/growing directory could never get past whatever a
+        // fresh scan examines first -- confirmed against a real user's node
+        // directory, where 4405 of 17486 cached object files (25%) were never
+        // registered despite existing correctly on disk.
+        //
+        // Assert forward progress deterministically rather than racing a
+        // timer: with more objects than one discover() call examines (128),
+        // two calls with a write (and thus an mtime bump) in between must
+        // register substantially more than one call's worth -- a reset before
+        // every call would keep re-scanning close to the same first ~128.
+        Cache churn(d.filePath("churn-node"));
+        auto writeChurnObject = [&](int n) {
+            auto obj = Protocol::encodeMessage(sender, vault.identities()[0],
+                                               "Churn " + QString::number(n), "x", 1700000000);
+            QFile f(d.filePath("churn-node/objects/") + Protocol::inventoryHash(obj));
+            require(f.open(QIODevice::WriteOnly), "churn object file");
+            f.write(obj);
+        };
+        for (int n = 0; n < 300; ++n)
+            writeChurnObject(n);
+        int written = 300;
+        int calls = 0;
+        while (churn.count() < written && calls < 60) {
+            churn.discover();
+            ++calls;
+            if (written < 320) {
+                writeChurnObject(written);
+                ++written;
+            }
+        }
+        require(churn.count() == written,
+                "discover() drains a directory within a bounded number of calls even with "
+                "a write (and thus an mtime change) before almost every call, instead of "
+                "resetting progress back toward the same prefix each time");
         std::cout << "PASS: locked collection, unlock scan, expired local object, crash replay, "
-                     "cache relocation, retention, malformed ECIES\n";
+                     "cache relocation, retention, malformed ECIES, discover() under write churn\n";
     } catch (const std::exception &e) {
         std::cerr << "FAIL: " << e.what() << '\n';
         return 1;
