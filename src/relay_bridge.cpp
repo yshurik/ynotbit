@@ -26,8 +26,10 @@ extern "C" void ynotbit_relay_tick(struct ntb_network *nw, const char *directory
         QDir().mkpath(root + "/publish");
         QDir().mkpath(root + "/receipts");
         const int peers = ntb_network_connected_peers(nw);
+        const int pending = ntb_network_pending_objects(nw);
         writeFile(root + "/status.json",
-                  QJsonDocument(QJsonObject{{"peers", peers}, {"time", now}}).toJson());
+                  QJsonDocument(QJsonObject{{"peers", peers}, {"pending", pending}, {"time", now}})
+                      .toJson());
         int count = 0;
         for (const auto &entry :
              QDir(root + "/publish").entryInfoList({"*.object"}, QDir::Files, QDir::Name)) {

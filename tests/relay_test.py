@@ -73,9 +73,28 @@ with tempfile.TemporaryDirectory() as temporary:
             if command==b"getdata":
                 assert object_hash in data
                 break
+        # The node has sent getdata but we (the test) haven't answered yet --
+        # deterministically exercises the "still downloading" pending count,
+        # not a race against a real second peer answering instantly.
+        pending_deadline=time.monotonic()+8
+        pending=0
+        while time.monotonic()<pending_deadline:
+            pending=json.loads((root/"status.json").read_text()).get("pending",0)
+            if pending>=1:
+                break
+            time.sleep(.05)
+        assert pending>=1,"status.json should report the outstanding getdata as pending"
         peer.sendall(frame("object",payload))
         saved=root/"objects"/object_hash.hex();wait_file(saved)
         assert saved.read_bytes()==payload
+        settle_deadline=time.monotonic()+8
+        pending=1
+        while time.monotonic()<settle_deadline:
+            pending=json.loads((root/"status.json").read_text()).get("pending",1)
+            if pending==0:
+                break
+            time.sleep(.05)
+        assert pending==0,"pending should drop back to 0 once the object is received"
         # Submit a local object through the actual ciphertext bridge and fetch it as a peer.
         # Reusing a valid inventory object also exercises crash/idempotent replay handling.
         job=str(uuid.uuid4())
@@ -110,7 +129,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert json.loads((root/"status.json").read_text())["peers"]==1
         assert not list(root.rglob("keys.dat"))
         assert not list(root.rglob("maildir"))
-        print("PASS: real loopback handshake, proof-of-work validation, keyless object storage, publication, peer fetch, rejected malformed job")
+        print("PASS: real loopback handshake, proof-of-work validation, keyless object storage, publication, peer fetch, rejected malformed job, pending-download status")
     finally:
         process.terminate()
         try: out,err=process.communicate(timeout=5)

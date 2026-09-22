@@ -135,8 +135,12 @@ QString Session::status() const {
     if (QDateTime::currentSecsSinceEpoch() - status.value("time").toInteger() > 10)
         return "Node status unavailable";
     auto peers = status.value("peers").toInt();
-    return peers ? QString("%1 connected peers · receiving and relaying").arg(peers)
-                 : "No connected peers · waiting for network";
+    auto pending = status.value("pending").toInt();
+    auto base = peers ? QString("%1 connected peers · receiving and relaying").arg(peers)
+                      : "No connected peers · waiting for network";
+    if (pending > 0)
+        base += QString(" · %1 object%2 downloading").arg(pending).arg(pending == 1 ? "" : "s");
+    return base;
 }
 QString Session::document() const {
     return mailboxOpen() ? QFileInfo(mailPath_).fileName() : "No mailbox open";

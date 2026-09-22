@@ -237,11 +237,11 @@ class Relay : public QObject {
         }
     }
     void tick() {
-        recover();publish();int readyPeers=0;
+        recover();publish();int readyPeers=0,pending=0;
         for(auto p:peers_) {
             if(!p->socket)continue;
             if((!p->ready && now()-p->connectedAt>30) || now()-p->lastActivity>600) {p->socket->abort();continue;}
-            readyPeers+=p->ready;
+            readyPeers+=p->ready;pending+=p->wanted.size()+p->requested.size();
             if(p->ready && !p->announcing.isEmpty() && p->socket->bytesToWrite()<MaxPendingWrite-33000) {
                 QList<QByteArray> batch;
                 while(!p->announcing.isEmpty() && batch.size()<1000)batch<<p->announcing.takeFirst();
@@ -253,7 +253,7 @@ class Relay : public QObject {
                 if(f.open(QIODevice::ReadOnly))send(p,"object",f.read(MaxObject));else inventory_.remove(hash);
             }
         }
-        writeFile(root_+"/status.json",QJsonDocument(QJsonObject{{"peers",readyPeers},{"time",now()},{"backend","qt"},{"inventory",inventory_.size()}}).toJson());
+        writeFile(root_+"/status.json",QJsonDocument(QJsonObject{{"peers",readyPeers},{"pending",pending},{"time",now()},{"backend","qt"},{"inventory",inventory_.size()}}).toJson());
         if(now()-lastCleanup_>60) {
             for(auto it=inventory_.begin();it!=inventory_.end();)if(it.value()<now() || !QFile::exists(root_+"/objects/"+QString::fromLatin1(it.key().toHex())))it=inventory_.erase(it);else ++it;
             QJsonArray addresses;for(const auto &e:addresses_)addresses.append(name(e));writeFile(root_+"/qt-peers.json",QJsonDocument(addresses).toJson());lastCleanup_=now();

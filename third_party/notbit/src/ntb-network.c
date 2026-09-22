@@ -1839,6 +1839,17 @@ int ntb_network_connected_peers(struct ntb_network *nw)
                 if (peer->state == NTB_NETWORK_PEER_STATE_CONNECTED) count++;
         return count;
 }
+/* Desktop bridge: objects we've sent a getdata for but haven't received yet
+ * (NTB_NETWORK_INV_STATE_STUB), summed across every peer's own list -- the
+ * same "still downloading" backlog PyBitmessage's status bar shows. */
+int ntb_network_pending_objects(struct ntb_network *nw)
+{
+        int count = 0;
+        struct ntb_network_peer *peer;
+        ntb_list_for_each(peer, &nw->peers, link)
+                count += ntb_list_length(&peer->requested_inventories);
+        return count;
+}
 void ntb_network_offer(struct ntb_network *nw, const uint8_t *hash)
 {
         broadcast_inv(nw, hash);

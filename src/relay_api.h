@@ -6,6 +6,7 @@ extern "C" {
 #endif
 struct ntb_network;
 int ntb_network_connected_peers(struct ntb_network *);
+int ntb_network_pending_objects(struct ntb_network *);
 int ntb_network_submit(struct ntb_network *, const uint8_t *, size_t);
 void ntb_network_offer(struct ntb_network *, const uint8_t *);
 #ifdef __cplusplus
