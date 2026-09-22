@@ -79,6 +79,14 @@ void MessageModel::setChannel(const QString &address) {
                                           folder_ == "Channels" ? channel_ : QString());
     endResetModel();
 }
+int MessageModel::rowForHash(const QString &hash) const {
+    if (hash.isEmpty())
+        return -1;
+    for (int row = 0; row < count_; ++row)
+        if (data(index(row), Qt::UserRole + 1).toString() == hash)
+            return row;
+    return -1;
+}
 void MessageModel::markRead(const QString &id) {
     for (int page : pages_.keys()) {
         auto *rows = pages_.object(page);

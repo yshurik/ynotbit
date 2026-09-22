@@ -33,7 +33,7 @@ class DesktopWindow : public QMainWindow {
     QAbstractItemDelegate *letterDelegate_ = nullptr;
     QLineEdit *search_;
     QVariantList channelIdentities_;
-    QLabel *heading_, *document_, *status_, *error_, *subject_;
+    QLabel *heading_, *status_, *error_, *subject_;
     QLabel *fromAddress_, *toAddress_, *deliveryStatus_, *deliveryError_;
     QLabel *timeline_;
     QWidget *details_;

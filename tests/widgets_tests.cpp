@@ -105,8 +105,8 @@ int main(int argc, char **argv) {
                 recipientChipUnread = chip->text().startsWith(QString::fromUtf8("•"));
         require(recipientChipUnread, "a channel with unread mail shows an unread indicator");
         selectChannel("recipient");
-        require(window.findChild<QLabel *>("listHeading")->text() == "recipient",
-                "the list heading shows the active channel's label, not the literal folder name");
+        require(window.findChild<QLabel *>("listHeading")->text() == "Channels",
+                "the list heading stays generic; the selected chip already shows the active channel");
         for (auto chip : window.findChildren<QPushButton *>("channelChip"))
             if (chip->toolTip().contains("recipient") && !chip->toolTip().contains("second"))
                 require(chip->isChecked() && chip->styleSheet().contains(":checked"),
@@ -213,6 +213,30 @@ int main(int argc, char **argv) {
         require(!restoreAction->isVisible() && !deletePermanentlyAction->isVisible() &&
                     !retryAction->isVisible() && !cancelDeliveryAction->isVisible(),
                 "a received channel message hides trash-only and delivery-only actions");
+        {
+            // New mail arriving mid-read forces MessageModel::reload() to do a full
+            // beginResetModel()/endResetModel(), which Qt uses to clear the view's
+            // selection -- must not also blank the already-open reader pane.
+            window.selectMessage("7");
+            auto readerBody = window.findChild<QTextBrowser *>("readerBody");
+            const auto beforeReset = readerBody->toPlainText();
+            require(!beforeReset.isEmpty(), "message body loaded before new mail arrives");
+            vault.unlock(temp.filePath("vault"), "test password");
+            bm::Mailbox injected;
+            injected.open(temp.filePath("mailbox"), vault.mailboxKey(key));
+            injected.store("new-arrival", "sender", "recipient", "New arrival",
+                           "Freshly delivered while reading.", 1700, "Channels");
+            injected.close();
+            vault.lock();
+            session.messageModel()->reload();
+            require(list->model()->rowCount() == 1501,
+                    "new mail is counted after the model reload");
+            require(readerBody->toPlainText() == beforeReset,
+                    "new mail arriving does not blank the reader pane mid-read");
+            require(list->currentIndex().isValid() &&
+                        list->currentIndex().data(Qt::UserRole + 1).toString() == "7",
+                    "the previously selected message stays selected after new mail resets the list");
+        }
         footprint("After scrolling and selections");
         if (app.arguments().contains("--soak")) {
             for (int pass = 0; pass < 5; ++pass) {

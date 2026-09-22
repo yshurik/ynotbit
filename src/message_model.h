@@ -22,6 +22,7 @@ class MessageModel final : public QAbstractListModel {
     }
     Q_INVOKABLE void reload();
     Q_INVOKABLE void markRead(const QString &id);
+    Q_INVOKABLE int rowForHash(const QString &hash) const;
     int cachedPages() const {
         return pages_.size();
     }

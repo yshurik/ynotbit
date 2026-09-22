@@ -1088,8 +1088,6 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     heading_->setObjectName("listHeading");
     heading_->setStyleSheet("font-size:24px;font-weight:600;");
     mid->addWidget(heading_);
-    document_ = new QLabel;
-    mid->addWidget(document_);
     auto search = search_ = new QLineEdit;
     search->setPlaceholderText("Search this folder");
     mid->addWidget(search);
@@ -1101,6 +1099,11 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     auto densityRow = new QHBoxLayout;
     densityRow->setContentsMargins(0, 4, 0, 4);
     densityRow->addStretch();
+    auto densitySwitch = new QWidget;
+    densitySwitch->setObjectName("densitySwitch");
+    auto densitySwitchLayout = new QHBoxLayout(densitySwitch);
+    densitySwitchLayout->setContentsMargins(0, 0, 0, 0);
+    densitySwitchLayout->setSpacing(0);
     auto densityGroup = new QButtonGroup(this);
     densityGroup->setExclusive(true);
     const struct { const char *id, *icon, *label; } densities[] = {
@@ -1113,8 +1116,8 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         btn->setObjectName(QString("density_") + d.id);
         btn->setCheckable(true);
         btn->setChecked(listDensity_ == d.id);
-        btn->setAutoRaise(true);
-        btn->setIconSize(QSize(18, 18));
+        btn->setFixedSize(26, 26);
+        btn->setIconSize(QSize(12, 12));
         btn->setIcon(materialIcon(d.icon, iconColor(appearance_.dark())));
         btn->setToolTip(d.label);
         btn->setCursor(Qt::PointingHandCursor);
@@ -1122,8 +1125,9 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         connect(btn, &QToolButton::clicked, this, [this, id = QString(d.id)] {
             setListDensity(id);
         });
-        densityRow->addWidget(btn);
+        densitySwitchLayout->addWidget(btn);
     }
+    densityRow->addWidget(densitySwitch);
     mid->addLayout(densityRow);
     letters_ = new QListView;
     letters_->setObjectName("letters");
@@ -1504,6 +1508,17 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             (new MessageWindow(session_, message, appearance_.dark(), this))->show();
     });
     connect(session_.messageModel(), &QAbstractItemModel::modelReset, this, [this] {
+        const auto hash = selected_.value("hash").toString();
+        const int row = session_.messageModel()->rowForHash(hash);
+        if (row >= 0) {
+            // New mail arriving reloads the whole model; re-anchor on the same
+            // message instead of dropping the reader pane out from under
+            // whoever is mid-read.
+            const auto idx = session_.messageModel()->index(row);
+            letters_->setCurrentIndex(idx);
+            letters_->scrollTo(idx);
+            return;
+        }
         selected_.clear();
         body_->clear();
         subject_->setText("No letter selected");
@@ -1547,7 +1562,18 @@ void DesktopWindow::updateTheme() {
             "QWidget#sidebar QToolButton{border:1px solid %4;border-radius:8px;"
             "background:transparent;padding:0;} "
             "QWidget#sidebar QToolButton:hover{background:%3;} "
-            "QWidget#sidebar QToolButton:checked{background:%5;}")
+            "QWidget#sidebar QToolButton:checked{background:%5;} "
+            "QWidget#densitySwitch{border:1px solid %4;border-radius:7px;background:transparent;} "
+            "QWidget#densitySwitch QToolButton{border:0;border-radius:0;"
+            "background:transparent;padding:0;} "
+            "QWidget#densitySwitch QToolButton:hover{background:%3;} "
+            "QWidget#densitySwitch QToolButton:checked{background:%5;} "
+            "QWidget#densitySwitch QToolButton#density_comfortable{"
+            "border-top-left-radius:6px;border-bottom-left-radius:6px;"
+            "border-right:1px solid %4;} "
+            "QWidget#densitySwitch QToolButton#density_cozy{border-right:1px solid %4;} "
+            "QWidget#densitySwitch QToolButton#density_compact{"
+            "border-top-right-radius:6px;border-bottom-right-radius:6px;}")
             .arg(dark ? "#141b23" : "#f5f7fa", dark ? "#17212b" : "#f1f5f7",
                  dark ? "#1b2530" : "#ffffff", dark ? "#354553" : "#dbe3e8",
                  dark ? "#234b46" : "#dcebe8", dark ? "#73d8c7" : "#126d65"));
@@ -1650,7 +1676,6 @@ void DesktopWindow::updateTimeline() {
 }
 void DesktopWindow::updateState() {
     setWindowTitle(session_.document() + " — ynotbit");
-    document_->setText(session_.document());
     error_->setText(session_.error());
     error_->setVisible(!session_.error().isEmpty());
     findChild<QPushButton *>("lockButton")->setVisible(session_.unlocked());
@@ -1712,13 +1737,10 @@ void DesktopWindow::refreshChannels() {
         delete item->widget();
         delete item;
     }
-    QString activeLabel;
     for (auto v : entries) {
         auto item = v.toMap();
         auto chipAddress = item["address"].toString();
         auto label = item["label"].toString();
-        if (chipAddress == activeChannelAddress_)
-            activeLabel = label;
         auto chip = new QPushButton(
             (session_.channelUnread(chipAddress) ? QString::fromUtf8("• ") : QString()) +
             label);
@@ -1741,7 +1763,7 @@ void DesktopWindow::refreshChannels() {
     channelChipLayout_->addStretch();
     session_.messageModel()->setChannel(activeChannelAddress_);
     if (folders_->currentRow() == 4)
-        heading_->setText(activeLabel.isEmpty() ? "Channels" : activeLabel);
+        heading_->setText("Channels");
 }
 void DesktopWindow::setListDensity(QString density) {
     if (density == listDensity_)
