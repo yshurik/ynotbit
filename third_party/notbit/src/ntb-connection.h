@@ -129,6 +129,9 @@ void
 ntb_connection_send_verack(struct ntb_connection *conn);
 
 void
+ntb_connection_send_getaddr(struct ntb_connection *conn);
+
+void
 ntb_connection_send_version(struct ntb_connection *conn,
                             uint64_t nonce,
                             uint16_t local_port);

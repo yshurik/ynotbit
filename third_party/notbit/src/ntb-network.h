@@ -52,7 +52,7 @@ enum ntb_network_object_location {
 struct ntb_network;
 
 struct ntb_network *
-ntb_network_new(bool add_default_nodes);
+ntb_network_new(void);
 
 void
 ntb_network_add_object_from_data(struct ntb_network *nw,

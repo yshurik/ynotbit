@@ -9,6 +9,12 @@
   cryptographic work buffers, and port `ntb-netaddress.c`/`.h` to Winsock2 and
   guard the POSIX-only thread/fd helpers in `ntb-util.c`/`.h` for the Windows
   build (both unused by the notbit_engine relay, which stays Unix-only).
+  `ntb-network.c` also drops its hard-coded 2014 default-node list (verified
+  dead, 0/10 reachable by direct TCP connect, and actively slowed discovery
+  of real peers since random candidate selection kept picking them over live
+  DNS-bootstrap addresses) and now sends `getaddr` to a peer once connected
+  instead of only waiting on unsolicited `addr` gossip, closing most of the
+  connected-peer-count gap observed against PyBitmessage.
 - The user's Docker integration https://github.com/yshurik/docker-bitmessage and
   its `yshurik/notbit` smtp branch were inspected as prior art. The new desktop
   does not embed SMTP or Dovecot and does not copy their container-specific patch.

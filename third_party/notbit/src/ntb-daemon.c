@@ -542,7 +542,7 @@ run_network(void)
         int ret = EXIT_SUCCESS;
         struct ntb_error *error = NULL;
 
-        nw = ntb_network_new(option_bootstrap);
+        nw = ntb_network_new();
 
         if (option_use_proxy)
                 ntb_network_set_proxy_address(nw, &option_proxy_address);

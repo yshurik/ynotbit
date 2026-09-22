@@ -68,11 +68,25 @@ with tempfile.TemporaryDirectory() as temporary:
         version=struct.pack(">IQQ",3,1,int(time.time()))+address+address+struct.pack(">Q",123456)+bytes([len(agent)])+agent+b"\x01\x01"
         peer.sendall(frame("verack")+frame("version",version) if len(sys.argv)>2 else frame("version",version))
         peer.sendall(frame("inv",b"\x01"+object_hash))
+        saw_getaddr=False
         while True:
             command,data=receive(peer)
+            if command==b"getaddr":
+                saw_getaddr=True
             if command==b"getdata":
                 assert object_hash in data
                 break
+        if len(sys.argv)>2 and os.environ.get("YNOTBIT_TEST_NODE_FLAG","--node")=="--node":
+            # Only checked in the verack-first ordering (handshake, and so
+            # connection_established() which sends getaddr, is guaranteed
+            # complete before this point -- in the other ordering our own
+            # verack isn't sent until much later in this script, so notbit
+            # may still be pipelining inv/getdata ahead of that) against the
+            # real notbit engine specifically: the Qt-native relay's address
+            # sharing is a separate, more minimal implementation that doesn't
+            # send real addr lists either way, so it's out of scope here.
+            assert saw_getaddr,("ynotbit should actively request the peer's known addresses "
+                                "once connected, not only wait for unsolicited addr gossip")
         # The node has sent getdata but we (the test) haven't answered yet --
         # deterministically exercises the "still downloading" pending count,
         # not a race against a real second peer answering instantly.
@@ -129,7 +143,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert json.loads((root/"status.json").read_text())["peers"]==1
         assert not list(root.rglob("keys.dat"))
         assert not list(root.rglob("maildir"))
-        print("PASS: real loopback handshake, proof-of-work validation, keyless object storage, publication, peer fetch, rejected malformed job, pending-download status")
+        print("PASS: real loopback handshake, proof-of-work validation, keyless object storage, publication, peer fetch, rejected malformed job, pending-download status, active getaddr")
     finally:
         process.terminate()
         try: out,err=process.communicate(timeout=5)

@@ -266,20 +266,18 @@ NTB_SLICE_ALLOCATOR(struct ntb_network_peer,
 NTB_SLICE_ALLOCATOR(struct ntb_network_addr,
                     ntb_network_addr_allocator);
 
-static const char *
-default_addrs[] = {
-        /* These are the addresses from the official Python client */
-        "176.31.246.114:8444",
-        "109.229.197.133:8444",
-        "174.3.101.111:8444",
-        "90.188.238.79:7829",
-        "184.75.69.2:8444",
-        "60.225.209.243:8444",
-        "5.145.140.218:8444",
-        "5.19.255.216:8444",
-        "193.159.162.189:8444",
-        "86.26.15.171:8444"
-};
+/* This project used to hard-code a hand-picked "from the official Python
+ * client" address list here. Verified by direct TCP connect: all 10 were
+ * dead (0/10 reachable) -- unsurprising for addresses frozen in source since
+ * this fork's 2014 origin, since long-running node operators rotate. A
+ * hard-coded list goes stale by nature and, worse, actively slowed down
+ * connecting to real peers: connect_queue_cb() picks a random eligible
+ * candidate, so with dead entries in the pool a large fraction of picks
+ * burned a multi-second TCP connect timeout before trying a live one.
+ * Discovery now relies on DNS bootstrap (self-updating -- whoever controls
+ * the DNS records can rotate them without a client update), the persisted
+ * addr-list.txt from previous runs, and active getaddr requests to peers
+ * once connected (see connection_established()) instead. */
 
 static void
 maybe_queue_connect(struct ntb_network *nw, bool use_idle);
@@ -766,6 +764,11 @@ connection_established(struct ntb_network *nw,
         peer->state = NTB_NETWORK_PEER_STATE_CONNECTED;
         send_addresses(nw, peer);
         send_inventory(nw, peer);
+        /* Ask for theirs too, rather than only waiting for unsolicited addr
+         * gossip -- meaningfully speeds up discovering enough peers to reach
+         * NTB_NETWORK_NUM_OUTGOING_PEERS when the hard-coded seed list and
+         * DNS bootstrap alone don't hand out many live candidates. */
+        ntb_connection_send_getaddr(peer->connection);
 }
 
 static bool
@@ -1541,12 +1544,10 @@ add_addr_string(struct ntb_network *nw,
 }
 
 struct ntb_network *
-ntb_network_new(bool add_default_nodes)
+ntb_network_new(void)
 {
         struct ntb_network *nw = ntb_alloc(sizeof *nw);
-        struct ntb_network_addr *addr;
         size_t hash_offset;
-        int i;
 
         ntb_list_init(&nw->listen_sockets);
         ntb_list_init(&nw->peers);
@@ -1582,18 +1583,6 @@ ntb_network_new(bool add_default_nodes)
          * This value doesn't need to be cryptographically secure. */
         memset(&nw->nonce, 0, sizeof nw->nonce);
         RAND_bytes((unsigned char *) &nw->nonce, sizeof nw->nonce);
-
-        /* Add a hard-coded list of initial nodes which we can use to
-         * discover more */
-        if (add_default_nodes) {
-                for (i = 0; i < NTB_N_ELEMENTS(default_addrs); i++) {
-                        addr = add_addr_string(nw, default_addrs[i], NULL);
-                        /* These addresses are hard-coded so they should
-                         * always work */
-                        assert(addr);
-                        addr->type = NTB_NETWORK_ADDR_DEFAULT;
-                }
-        }
 
         maybe_queue_connect(nw, true /* use idle */);
 

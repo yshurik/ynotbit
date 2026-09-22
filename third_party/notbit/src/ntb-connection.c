@@ -1000,6 +1000,20 @@ ntb_connection_send_verack(struct ntb_connection *conn)
         update_poll_flags(conn);
 }
 
+/* Actively pull the peer's known-address list instead of only waiting for
+ * unsolicited addr gossip -- without it, discovering new peers depends
+ * entirely on what an already-connected peer happens to volunteer on its
+ * own schedule. */
+void
+ntb_connection_send_getaddr(struct ntb_connection *conn)
+{
+        ntb_proto_add_command(&conn->out_buf,
+                              "getaddr",
+                              NTB_PROTO_ARGUMENT_END);
+
+        update_poll_flags(conn);
+}
+
 void
 ntb_connection_send_version(struct ntb_connection *conn,
                             uint64_t nonce,
