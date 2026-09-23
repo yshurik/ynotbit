@@ -393,15 +393,19 @@ QVector<Message> Mailbox::messageSummaries(int limit) const {
             {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
     return list;
 }
-static QByteArray messageFilter(const QString &search, const QString &recipient) {
+static QByteArray messageFilter(const QString &search, const QString &recipient, bool unreadOnly,
+                                bool anonymousOnly) {
     QByteArray filter(" WHERE folder=?");
     if (!recipient.isEmpty()) filter += " AND recipient=?";
+    if (unreadOnly) filter += " AND unread<>0";
+    if (anonymousOnly) filter += " AND sender=recipient";
     if (!search.isEmpty()) filter += " AND (instr(lower(subject),lower(?)) OR instr(lower(sender),lower(?)) OR instr(lower(recipient),lower(?)) OR instr(lower(body),lower(?)))";
     return filter;
 }
 QVector<Message> Mailbox::messageSummaries(const QString &folder, const QString &search, int offset,
-                                           int limit, const QString &recipient) const {
-    const auto query = QByteArray("SELECT hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received FROM messages") + messageFilter(search,recipient) + " ORDER BY received DESC,rowid DESC LIMIT ? OFFSET ?";
+                                           int limit, const QString &recipient, bool unreadOnly,
+                                           bool anonymousOnly) const {
+    const auto query = QByteArray("SELECT hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received FROM messages") + messageFilter(search,recipient,unreadOnly,anonymousOnly) + " ORDER BY received DESC,rowid DESC LIMIT ? OFFSET ?";
     Statement s(db_, query.constData());
     s.text(1, folder);
     int parameter = 2;
@@ -417,8 +421,9 @@ QVector<Message> Mailbox::messageSummaries(const QString &folder, const QString 
             {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
     return list;
 }
-int Mailbox::messageCount(const QString &folder, const QString &search, const QString &recipient) const {
-    const auto query = QByteArray("SELECT count(*) FROM messages") + messageFilter(search,recipient);
+int Mailbox::messageCount(const QString &folder, const QString &search, const QString &recipient,
+                          bool unreadOnly, bool anonymousOnly) const {
+    const auto query = QByteArray("SELECT count(*) FROM messages") + messageFilter(search,recipient,unreadOnly,anonymousOnly);
     Statement s(db_, query.constData());
     s.text(1, folder);
     int parameter = 2;

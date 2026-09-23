@@ -113,8 +113,10 @@ class Mailbox {
     QVector<Message> messages() const;
     QVector<Message> messageSummaries(int limit = 2000) const;
     QVector<Message> messageSummaries(const QString &folder, const QString &search, int offset,
-                                      int limit, const QString &recipient = {}) const;
-    int messageCount(const QString &folder, const QString &search, const QString &recipient = {}) const;
+                                      int limit, const QString &recipient = {},
+                                      bool unreadOnly = false, bool anonymousOnly = false) const;
+    int messageCount(const QString &folder, const QString &search, const QString &recipient = {},
+                     bool unreadOnly = false, bool anonymousOnly = false) const;
     QStringList channelAddresses() const;
     bool channelUnread(const QString &recipient) const;
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.

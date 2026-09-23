@@ -26,6 +26,7 @@ class MessageModel final : public QAbstractListModel {
     int cachedPages() const {
         return pages_.size();
     }
+    int totalCount() const;
   signals:
     void folderChanged();
     void searchChanged();
@@ -33,11 +34,14 @@ class MessageModel final : public QAbstractListModel {
     void setFolder(const QString &folder);
     void setSearch(const QString &search);
     void setChannel(const QString &address);
+    void setUnreadOnly(bool on);
+    void setAnonymousOnly(bool on);
 
   private:
     Session *session_;
     mutable QCache<int, QVariantList> pages_{3};
     int count_ = 0;
     QString folder_ = "Inbox", search_, channel_;
+    bool unreadOnly_ = false, anonymousOnly_ = false;
 };
 } // namespace bm

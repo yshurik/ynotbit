@@ -188,6 +188,38 @@ int main(int argc, char **argv) {
         require(!Protocol::decodeMessage(object, sender).has_value(), "wrong recipient");
         object[object.size() - 5] ^= 1;
         require(!Protocol::decodeMessage(object, recipient).has_value(), "tampered ECIES");
+        {
+            Vault filterVault;
+            filterVault.create(d.filePath("filter.bmvault"), "filter test password");
+            auto filterKey = filterVault.addMailboxKey();
+            Mailbox filterBox;
+            filterBox.create(d.filePath("filter.bmmail"), filterKey,
+                             filterVault.mailboxKey(filterKey));
+            // "Anonymous" chan posts are signed by the chan's own shared key, so
+            // sender == recipient; a direct message to the chan keeps its own
+            // sender identity, so sender != recipient (see delivery.cpp's
+            // chanBroadcast handling, which this mirrors from storage).
+            filterBox.store("anon-unread", "BM-chan", "BM-chan", "Anon unread", "b", 1, "Channels");
+            filterBox.store("anon-read", "BM-chan", "BM-chan", "Anon read", "b", 2, "Channels");
+            filterBox.markRead("anon-read");
+            filterBox.store("named-unread", "BM-alice", "BM-chan", "Named unread", "b", 3,
+                            "Channels");
+            filterBox.store("named-read", "BM-alice", "BM-chan", "Named read", "b", 4, "Channels");
+            filterBox.markRead("named-read");
+            require(filterBox.messageCount("Channels", "", "BM-chan") == 4,
+                    "unfiltered channel count");
+            require(filterBox.messageCount("Channels", "", "BM-chan", true, false) == 2,
+                    "unread-only count spans anonymous and named senders");
+            require(filterBox.messageCount("Channels", "", "BM-chan", false, true) == 2,
+                    "anonymous-only count spans read and unread");
+            require(filterBox.messageCount("Channels", "", "BM-chan", true, true) == 1,
+                    "unread and anonymous combine as AND, not OR");
+            auto onlyAnonUnread =
+                filterBox.messageSummaries("Channels", "", 0, 10, "BM-chan", true, true);
+            require(onlyAnonUnread.size() == 1 && onlyAnonUnread[0].hash == "anon-unread",
+                    "combined filter returns exactly the matching message");
+            filterBox.close();
+        }
         std::cout << "PASS: vault, password rotation, SQLCipher, deduplication, backup, chan "
                      "fixture, authenticated message codec\n";
     } catch (const std::exception &e) {

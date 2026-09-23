@@ -31,6 +31,7 @@ class DesktopWindow : public QMainWindow {
     QString activeChannelAddress_;
     QString listDensity_;
     QAbstractItemDelegate *letterDelegate_ = nullptr;
+    QLabel *listCountLabel_;
     QLineEdit *search_;
     QVariantList channelIdentities_;
     QLabel *heading_, *status_, *error_, *subject_;
@@ -58,6 +59,7 @@ class DesktopWindow : public QMainWindow {
     void refreshIdentities();
     void refreshChannels();
     void setListDensity(QString density);
+    void updateListCount();
     void showVaultPasswordFor(QString path, bool create);
     void updateLockedScreen();
     void refreshRecentVaults();

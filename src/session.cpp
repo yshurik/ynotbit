@@ -548,11 +548,13 @@ QVariantList Session::channels() const {
     return result;
 }
 QVariantList Session::messagePage(const QString &folder, const QString &search, int offset,
-                                  int limit, const QString &recipient) const {
+                                  int limit, const QString &recipient, bool unreadOnly,
+                                  bool anonymousOnly) const {
     QVariantList result;
     if (!mailboxOpen())
         return result;
-    for (const auto &m : mailbox_.messageSummaries(folder, search, offset, limit, recipient)) {
+    for (const auto &m : mailbox_.messageSummaries(folder, search, offset, limit, recipient,
+                                                   unreadOnly, anonymousOnly)) {
         OutboxItem out;
         if (m.folder == "Outbox" || m.folder == "Sent") {
             try {

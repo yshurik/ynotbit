@@ -1,6 +1,7 @@
 #include "desktop_window.h"
 #include "session.h"
 #include "qrcodegen.hpp"
+#include <QCryptographicHash>
 #include <QDesktopServices>
 #include <QFileInfo>
 #include <QSettings>
@@ -33,6 +34,127 @@ class SafeDocument : public QTextDocument {
         return QVariant::fromValue(QImage());
     }
 };
+// Port of PyBitmessage's qidenticon.py (DonRenderer), reproduced field-for-field
+// so an address renders the same identicon here as in the reference client.
+// https://github.com/Bitmessage/PyBitmessage/blob/master/src/qidenticon.py
+const QVector<QVector<QPointF>> &identiconPathSet() {
+    static const QVector<QVector<QPointF>> paths = [] {
+        QVector<QVector<QPointF>> raw = {
+            {{0, 0}, {4, 0}, {4, 4}, {0, 4}},
+            {{0, 0}, {4, 0}, {0, 4}},
+            {{2, 0}, {4, 4}, {0, 4}},
+            {{0, 0}, {2, 0}, {2, 4}, {0, 4}},
+            {{2, 0}, {4, 2}, {2, 4}, {0, 2}},
+            {{0, 0}, {4, 2}, {4, 4}, {2, 4}},
+            {{2, 0}, {4, 4}, {2, 4}, {3, 2}, {1, 2}, {2, 4}, {0, 4}},
+            {{0, 0}, {4, 2}, {2, 4}},
+            {{1, 1}, {3, 1}, {3, 3}, {1, 3}},
+            {{2, 0}, {4, 0}, {0, 4}, {0, 2}, {2, 2}},
+            {{0, 0}, {2, 0}, {2, 2}, {0, 2}},
+            {{0, 2}, {4, 2}, {2, 4}},
+            {{2, 2}, {4, 4}, {0, 4}},
+            {{2, 0}, {2, 2}, {0, 2}},
+            {{0, 0}, {2, 0}, {0, 2}},
+            {},
+        };
+        for (auto &path : raw) {
+            if (path.isEmpty())
+                continue;
+            for (auto &pt : path)
+                pt = QPointF(pt.x() / 4.0, pt.y() / 4.0);
+            path.append(path.first());
+        }
+        return raw;
+    }();
+    return paths;
+}
+// MD5(address), taking the low 64 bits the same way Python's int(hexdigest, 16)
+// would expose them to decodeIdenticon()'s shifts (only bits 0-46 are ever read).
+quint64 identiconSeed(const QString &address) {
+    auto digest = QCryptographicHash::hash(address.toUtf8(), QCryptographicHash::Md5);
+    quint64 seed = 0;
+    for (int i = 8; i < 16; ++i)
+        seed = (seed << 8) | quint8(digest.at(i));
+    return seed;
+}
+struct IdenticonFields {
+    int middleType, cornerType, sideType;
+    bool middleInvert, cornerInvert, sideInvert, swapCross;
+    int cornerTurn, sideTurn;
+    QColor foreColor, secondColor;
+};
+IdenticonFields decodeIdenticon(quint64 code) {
+    auto bits = [code](int shift, int width) {
+        return int((code >> shift) & ((quint64(1) << width) - 1));
+    };
+    static const int kMiddleSet[4] = {0, 4, 8, 15};
+    IdenticonFields f;
+    f.middleType = kMiddleSet[bits(0, 2)];
+    f.middleInvert = bits(2, 1);
+    f.cornerType = bits(3, 4);
+    f.cornerInvert = bits(7, 1);
+    f.cornerTurn = bits(8, 2);
+    f.sideType = bits(10, 4);
+    f.sideInvert = bits(14, 1);
+    f.sideTurn = bits(15, 2);
+    int blue = bits(17, 5), green = bits(22, 5), red = bits(27, 5);
+    int blue2 = bits(32, 5), green2 = bits(37, 5), red2 = bits(42, 5);
+    // Upstream advances the shift by only 1 (not 5) after reading second_red,
+    // so swap_cross reads that field's own second-lowest bit instead of an
+    // independent one. Kept verbatim for byte-for-byte parity with real
+    // PyBitmessage identicons from the same address, quirk included.
+    f.swapCross = bits(43, 1);
+    f.foreColor = QColor(red << 3, green << 3, blue << 3);
+    f.secondColor = QColor(red2 << 3, green2 << 3, blue2 << 3);
+    return f;
+}
+void drawIdenticonPatch(QPainter &p, QPoint pos, int turn, bool invert, int patchType, int size,
+                        QColor color) {
+    auto path = identiconPathSet()[patchType];
+    if (path.isEmpty()) {
+        invert = !invert;
+        path = {{0, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0}};
+    }
+    QPolygonF polygon;
+    for (const auto &pt : path)
+        polygon << QPointF(pt.x() * size, pt.y() * size);
+    const int rot = turn % 4;
+    const QPointF rect[4] = {{0, 0}, {qreal(size), 0}, {qreal(size), qreal(size)}, {0, qreal(size)}};
+    const int rotation[4] = {0, 90, 180, 270};
+    p.save();
+    p.translate(pos.x() * size, pos.y() * size);
+    p.translate(rect[rot]);
+    p.rotate(rotation[rot]);
+    if (invert) {
+        QPolygonF full({rect[0], rect[1], rect[2], rect[3]});
+        polygon = full.subtracted(polygon);
+    }
+    p.setPen(Qt::NoPen);
+    p.setBrush(color);
+    p.drawPolygon(polygon, Qt::WindingFill);
+    p.restore();
+}
+// size is the per-patch size; the returned pixmap is size*3 square, matching
+// qidenticon.render()'s "image size is 3 * size". Background is transparent
+// (PyBitmessage's default identiconlib "qidenticon_two_x" renders opacity=0).
+QPixmap identiconPixmap(const QString &address, int size) {
+    auto f = decodeIdenticon(identiconSeed(address));
+    QPixmap pixmap(size * 3, size * 3);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    drawIdenticonPatch(p, {1, 1}, 0, f.middleInvert, f.middleType, size,
+                       f.swapCross ? f.foreColor : f.secondColor);
+    static const QPoint sidePos[4] = {{1, 0}, {2, 1}, {1, 2}, {0, 1}};
+    for (int i = 0; i < 4; ++i)
+        drawIdenticonPatch(p, sidePos[i], f.sideTurn + 1 + i, f.sideInvert, f.sideType, size,
+                           f.foreColor);
+    static const QPoint cornerPos[4] = {{0, 0}, {2, 0}, {2, 2}, {0, 2}};
+    for (int i = 0; i < 4; ++i)
+        drawIdenticonPatch(p, cornerPos[i], f.cornerTurn + 1 + i, f.cornerInvert, f.cornerType, size,
+                           f.secondColor);
+    p.end();
+    return pixmap;
+}
 class LetterDelegate : public QStyledItemDelegate {
   public:
     LetterDelegate(QObject *parent, QString density)
@@ -48,6 +170,19 @@ class LetterDelegate : public QStyledItemDelegate {
         p->save();
         const auto pal = o.palette;
         p->fillRect(o.rect, o.state & QStyle::State_Selected ? pal.highlight() : pal.base());
+        const bool unread = i.data(Qt::UserRole + 9).toBool();
+        // Drafts/Outbox/Sent are always from you -- your own identicon on every
+        // row would be noise, so show who the letter is going to instead.
+        const auto folder = i.data(Qt::UserRole + 6).toString();
+        const bool useRecipient = folder == "Drafts" || folder == "Outbox" || folder == "Sent";
+        const auto identityAddress = i.data(Qt::UserRole + (useRecipient ? 3 : 2)).toString();
+        const int iconSize = density_ == "compact" ? 20 : density_ == "cozy" ? 28 : 34;
+        if (!identityAddress.isEmpty()) {
+            auto icon = identiconPixmap(identityAddress, 48)
+                            .scaled(iconSize, iconSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            p->drawPixmap(o.rect.left() + 12, o.rect.top() + (o.rect.height() - iconSize) / 2, icon);
+        }
+        const int textLeft = 12 + iconSize + 10;
         auto text = [&](int y, QString value, bool bold, QColor color) {
             QFont font = o.font;
             if (value.contains("BM-"))
@@ -55,21 +190,20 @@ class LetterDelegate : public QStyledItemDelegate {
             font.setBold(bold);
             p->setFont(font);
             p->setPen(color);
-            QRect r = o.rect.adjusted(16, y, -16, 0);
+            QRect r = o.rect.adjusted(textLeft, y, -16, 0);
             r.setHeight(24);
             p->drawText(
                 r, Qt::AlignVCenter,
                 QFontMetrics(font).elidedText(singleLine(value), Qt::ElideRight, r.width()));
         };
-        const auto subject =
-            (i.data(Qt::UserRole + 9).toBool() ? "• " : "") + i.data(Qt::UserRole + 4).toString();
+        const auto subject = i.data(Qt::UserRole + 4).toString();
         if (density_ == "compact") {
-            text(3, subject, true, pal.text().color());
+            text(3, subject, unread, pal.text().color());
         } else if (density_ == "cozy") {
-            text(8, subject, true, pal.text().color());
+            text(8, subject, unread, pal.text().color());
             text(32, i.data(Qt::UserRole + 5).toString(), false, pal.placeholderText().color());
         } else {
-            text(10, subject, true, pal.text().color());
+            text(10, subject, unread, pal.text().color());
             text(36, i.data(Qt::UserRole + 5).toString(), false, pal.placeholderText().color());
             auto state = i.data(Qt::UserRole + 7).toString();
             const auto stateColor =
@@ -243,6 +377,16 @@ QIcon materialIcon(const QString &name, QColor color) {
         for (double x : {23.0, 28.5})
             for (double y : {23.0, 28.5})
                 p.drawRect(QRectF(x, y, 3.5, 3.5));
+    } else if (name == "filterUnread") {
+        p.setBrush(color);
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(QPointF(20, 20), 8, 8);
+    } else if (name == "filterAnonymous") {
+        p.drawRoundedRect(QRectF(6, 15, 28, 11), 5, 5);
+        p.setBrush(color);
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(QPointF(14, 20.5), 2.6, 2.6);
+        p.drawEllipse(QPointF(26, 20.5), 2.6, 2.6);
     } else if (name == "densityComfortable") {
         for (int y : {14, 26})
             p.drawLine(6, y, 34, y);
@@ -1058,7 +1202,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     rail->setObjectName("channelRail");
     rail->setFixedWidth(190);
     auto railOuter = new QVBoxLayout(rail);
-    railOuter->setContentsMargins(10, 16, 10, 12);
+    railOuter->setContentsMargins(10, 5, 2, 12);
     railOuter->setSpacing(4);
     auto railHead = new QLabel("CHANNELS");
     railHead->setStyleSheet("font-size:11px;font-weight:700;color:palette(mid);");
@@ -1083,10 +1227,11 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     middle->setObjectName("listColumn");
     middle->setFixedWidth(300);
     auto mid = new QVBoxLayout(middle);
-    mid->setContentsMargins(12, 20, 12, 0);
-    heading_ = new QLabel("Inbox");
+    mid->setContentsMargins(3, 5, 3, 0);
+    mid->setSpacing(2);
+    heading_ = new QLabel("INBOX");
     heading_->setObjectName("listHeading");
-    heading_->setStyleSheet("font-size:24px;font-weight:600;");
+    heading_->setStyleSheet("font-size:11px;font-weight:700;color:palette(mid);");
     mid->addWidget(heading_);
     auto search = search_ = new QLineEdit;
     search->setPlaceholderText("Search this folder");
@@ -1094,10 +1239,45 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     auto debounce = new QTimer(this);
     debounce->setSingleShot(true);
     connect(search, &QLineEdit::textChanged, this, [debounce] { debounce->start(250); });
-    connect(debounce, &QTimer::timeout, this,
-            [this, search] { session_.messageModel()->setSearch(search->text()); });
+    connect(debounce, &QTimer::timeout, this, [this, search] {
+        session_.messageModel()->setSearch(search->text());
+        updateListCount();
+    });
     auto densityRow = new QHBoxLayout;
-    densityRow->setContentsMargins(0, 4, 0, 4);
+    densityRow->setContentsMargins(0, 0, 0, 0);
+    auto filterSwitch = new QWidget;
+    filterSwitch->setObjectName("filterSwitch");
+    auto filterSwitchLayout = new QHBoxLayout(filterSwitch);
+    filterSwitchLayout->setContentsMargins(0, 0, 0, 0);
+    filterSwitchLayout->setSpacing(0);
+    const struct { const char *id, *icon, *label; } filters[] = {
+        {"unread", "filterUnread", "Unread only"},
+        {"anonymous", "filterAnonymous", "Anonymous only"},
+    };
+    for (const auto &f : filters) {
+        auto btn = new QToolButton;
+        btn->setObjectName(QString("filter_") + f.id);
+        btn->setCheckable(true);
+        btn->setFixedSize(26, 26);
+        btn->setIconSize(QSize(12, 12));
+        btn->setIcon(materialIcon(f.icon, iconColor(appearance_.dark())));
+        btn->setToolTip(f.label);
+        btn->setCursor(Qt::PointingHandCursor);
+        connect(btn, &QToolButton::toggled, this, [this, id = QString(f.id)](bool on) {
+            if (id == "unread")
+                session_.messageModel()->setUnreadOnly(on);
+            else
+                session_.messageModel()->setAnonymousOnly(on);
+            updateListCount();
+        });
+        filterSwitchLayout->addWidget(btn);
+    }
+    densityRow->addWidget(filterSwitch);
+    densityRow->addStretch();
+    listCountLabel_ = new QLabel;
+    listCountLabel_->setObjectName("listCountLabel");
+    listCountLabel_->setStyleSheet("font-size:11px;color:palette(mid);");
+    densityRow->addWidget(listCountLabel_);
     densityRow->addStretch();
     auto densitySwitch = new QWidget;
     densitySwitch->setObjectName("densitySwitch");
@@ -1141,7 +1321,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     split->addWidget(middle);
     reader_ = new QWidget;
     auto read = new QVBoxLayout(reader_);
-    read->setContentsMargins(3, 3, 3, 3);
+    read->setContentsMargins(2, 3, 3, 3);
     read->setSpacing(14);
     auto toolbar = new QToolBar;
     toolbar->setObjectName("actionsToolbar");
@@ -1528,7 +1708,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     connect(folders_, &QListWidget::currentTextChanged, this, [this](QString folder) {
         if (auto icon = findChild<QToolButton *>("folderIcon_" + folder))
             icon->setChecked(true);
-        heading_->setText(folder);
+        heading_->setText(folder.toUpper());
         if (folder == "Channels")
             refreshChannels();
         session_.messageModel()->setFolder(folder);
@@ -1573,6 +1753,16 @@ void DesktopWindow::updateTheme() {
             "border-right:1px solid %4;} "
             "QWidget#densitySwitch QToolButton#density_cozy{border-right:1px solid %4;} "
             "QWidget#densitySwitch QToolButton#density_compact{"
+            "border-top-right-radius:6px;border-bottom-right-radius:6px;} "
+            "QWidget#filterSwitch{border:1px solid %4;border-radius:7px;background:transparent;} "
+            "QWidget#filterSwitch QToolButton{border:0;border-radius:0;"
+            "background:transparent;padding:0;} "
+            "QWidget#filterSwitch QToolButton:hover{background:%3;} "
+            "QWidget#filterSwitch QToolButton:checked{background:%5;} "
+            "QWidget#filterSwitch QToolButton#filter_unread{"
+            "border-top-left-radius:6px;border-bottom-left-radius:6px;"
+            "border-right:1px solid %4;} "
+            "QWidget#filterSwitch QToolButton#filter_anonymous{"
             "border-top-right-radius:6px;border-bottom-right-radius:6px;}")
             .arg(dark ? "#141b23" : "#f5f7fa", dark ? "#17212b" : "#f1f5f7",
                  dark ? "#1b2530" : "#ffffff", dark ? "#354553" : "#dbe3e8",
@@ -1686,8 +1876,10 @@ void DesktopWindow::updateState() {
     write->setToolTip(channelPage ? "Write to channel" : "Write a letter");
     write->setEnabled(mailboxState && (!channelPage || !activeChannelAddress_.isEmpty()));
     channelRail_->setVisible(mailboxState && channelPage);
+    heading_->setVisible(!channelPage);
     channelRail_->setEnabled(session_.unlocked());
     search_->setPlaceholderText(channelPage ? "Search this channel" : "Search this folder");
+    updateListCount();
     const auto identities = session_.unlocked() ? session_.identities() : QVariantList();
     if (identities != channelIdentities_) {
         channelIdentities_ = identities;
@@ -1741,12 +1933,18 @@ void DesktopWindow::refreshChannels() {
         auto item = v.toMap();
         auto chipAddress = item["address"].toString();
         auto label = item["label"].toString();
-        auto chip = new QPushButton(
-            (session_.channelUnread(chipAddress) ? QString::fromUtf8("• ") : QString()) +
-            label);
+        auto chip = new QPushButton(label);
         chip->setObjectName("channelChip");
         chip->setCheckable(true);
         chip->setChecked(chipAddress == activeChannelAddress_);
+        chip->setIcon(QIcon(identiconPixmap(chipAddress, 48).scaled(
+            18, 18, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+        chip->setIconSize(QSize(18, 18));
+        if (session_.channelUnread(chipAddress)) {
+            auto f = chip->font();
+            f.setBold(true);
+            chip->setFont(f);
+        }
         chip->setStyleSheet("QPushButton{text-align:left;padding:8px 10px;border:0;"
                             "border-radius:6px;} QPushButton:checked{background:palette(highlight);"
                             "color:palette(highlighted-text);}");
@@ -1773,6 +1971,15 @@ void DesktopWindow::setListDensity(QString density) {
     delete letterDelegate_;
     letterDelegate_ = new LetterDelegate(letters_, density);
     letters_->setItemDelegate(letterDelegate_);
+}
+void DesktopWindow::updateListCount() {
+    auto model = session_.messageModel();
+    const int shown = model->rowCount();
+    const int total = model->totalCount();
+    listCountLabel_->setText(shown == total
+                                  ? QString::number(total) + " total"
+                                  : QString::number(shown) + " of " + QString::number(total) +
+                                        " total");
 }
 void DesktopWindow::selectMessage(const QString &id) {
     try {
@@ -1874,6 +2081,13 @@ void DesktopWindow::refreshIdentities() {
         auto cardRow = new QHBoxLayout(card);
         cardRow->setContentsMargins(14, 12, 14, 12);
         cardRow->setSpacing(10);
+
+        auto identicon = new QLabel;
+        identicon->setObjectName("identityIdenticon");
+        identicon->setFixedSize(40, 40);
+        identicon->setPixmap(
+            identiconPixmap(address, 48).scaled(40, 40, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        cardRow->addWidget(identicon);
 
         auto infoCol = new QVBoxLayout;
         auto nameRow = new QHBoxLayout;

@@ -43,6 +43,10 @@ int main(int argc, char **argv) {
                           "Subject " + QString::number(i), QString(10000, 'x'), i, "Channels");
         mailbox.store("other-channel", "sender", "second-recipient", "Only channel two",
                       "Separate discussion", 1600, "Channels");
+        // Sender == recipient mirrors delivery.cpp's chanBroadcast handling: a chan post
+        // signed by the chan's own shared key, not an individually-attributable member.
+        mailbox.store("anon-in-recipient", "recipient", "recipient", "Anon post",
+                      "Posted anonymously", 1601, "Channels");
         const auto acknowledged = mailbox.saveDraft({}, personal, emptyChannel,
                                                     "Delivery confirmed", "A delivered letter.");
         mailbox.queueDraft(acknowledged, "direct", QDateTime::currentSecsSinceEpoch() + 86400);
@@ -95,15 +99,24 @@ int main(int argc, char **argv) {
                 }
             require(false, "channel chip not found");
         };
-        require(window.findChildren<QPushButton *>("channelChip").size() == 3,
-                "stored and empty joined channels are listed");
+        auto channelChips = window.findChildren<QPushButton *>("channelChip");
+        require(channelChips.size() == 3, "stored and empty joined channels are listed");
+        for (auto chip : channelChips)
+            require(!chip->icon().isNull(), "each channel chip shows its address's identicon");
+        require(channelChips[0]->icon().pixmap(18, 18).toImage() !=
+                    channelChips[1]->icon().pixmap(18, 18).toImage(),
+                "different channels render different identicons");
         require(window.findChild<QWidget *>("channelRail")->isVisible(),
                 "the channel rail is shown on the Channels folder");
+        require(!window.findChild<QLabel *>("listHeading")->isVisible(),
+                "the redundant list heading is hidden on the Channels folder");
         bool recipientChipUnread = false;
         for (auto chip : window.findChildren<QPushButton *>("channelChip"))
-            if (chip->toolTip().contains("recipient") && !chip->toolTip().contains("second"))
-                recipientChipUnread = chip->text().startsWith(QString::fromUtf8("•"));
-        require(recipientChipUnread, "a channel with unread mail shows an unread indicator");
+            if (chip->toolTip().contains("recipient") && !chip->toolTip().contains("second")) {
+                recipientChipUnread = chip->font().bold();
+            }
+        require(recipientChipUnread,
+                "a channel with unread mail shows its name in bold, not a text prefix or badge");
         selectChannel("recipient");
         require(window.findChild<QLabel *>("listHeading")->text() == "Channels",
                 "the list heading stays generic; the selected chip already shows the active channel");
@@ -111,11 +124,36 @@ int main(int argc, char **argv) {
             if (chip->toolTip().contains("recipient") && !chip->toolTip().contains("second"))
                 require(chip->isChecked() && chip->styleSheet().contains(":checked"),
                         "the active channel's chip is checked and visually distinct");
-        require(list->model()->rowCount() == 1500, "all channel rows available");
+        require(list->model()->rowCount() == 1501, "all channel rows available");
         require(window.findChild<QToolButton *>("density_comfortable") &&
                     window.findChild<QToolButton *>("density_cozy") &&
                     window.findChild<QToolButton *>("density_compact"),
                 "all three density buttons exist");
+        {
+            window.selectMessage("0"); // marks a non-anonymous recipient-channel message read
+            auto unreadFilter = window.findChild<QToolButton *>("filter_unread");
+            auto anonFilter = window.findChild<QToolButton *>("filter_anonymous");
+            require(unreadFilter && anonFilter, "both filter buttons exist");
+            auto countLabel = window.findChild<QLabel *>("listCountLabel");
+            require(countLabel, "list count label exists");
+            unreadFilter->click();
+            require(list->model()->rowCount() == 1500,
+                    "unread-only excludes the one message just read");
+            require(countLabel->text() == "1500 of 1501 total", "count label reflects the filter");
+            anonFilter->click();
+            require(list->model()->rowCount() == 1,
+                    "unread and anonymous combine as AND: narrows to the one unread anon post");
+            require(countLabel->text() == "1 of 1501 total",
+                    "count label reflects both filters combined");
+            unreadFilter->click();
+            require(list->model()->rowCount() == 1,
+                    "anonymous-only alone still isolates the one anon post");
+            anonFilter->click();
+            require(list->model()->rowCount() == 1501,
+                    "clearing both filters restores the full channel");
+            require(countLabel->text() == "1501 total",
+                    "count label drops the \"of\" qualifier once nothing is filtered");
+        }
         {
             const bool capturingDensity = app.arguments().contains("--capture-density");
             QString densityDir;
@@ -140,6 +178,14 @@ int main(int argc, char **argv) {
             window.findChild<QToolButton *>("density_comfortable")->click();
             require(list->sizeHintForRow(0) == comfortableHeight,
                     "switching back to comfortable restores the original row height");
+        }
+        {
+            // Comfortable density's icon is 34px, drawn at x=12; sample its center.
+            auto rowRect = list->visualRect(list->model()->index(0, 0));
+            auto shot = list->viewport()->grab(rowRect).toImage();
+            auto centerColor = shot.pixelColor(12 + 34 / 2, rowRect.height() / 2);
+            require(centerColor != window.palette().color(QPalette::Base),
+                    "message rows render a sender identicon, not a blank row");
         }
         if (app.arguments().contains("--capture-channels")) {
             auto n = app.arguments().indexOf("--capture-channels");
@@ -229,7 +275,7 @@ int main(int argc, char **argv) {
             injected.close();
             vault.lock();
             session.messageModel()->reload();
-            require(list->model()->rowCount() == 1501,
+            require(list->model()->rowCount() == 1502,
                     "new mail is counted after the model reload");
             require(readerBody->toPlainText() == beforeReset,
                     "new mail arriving does not blank the reader pane mid-read");
@@ -291,6 +337,7 @@ int main(int argc, char **argv) {
                 "separate window toolbar renders above the subject");
         popped->close();
         if (app.arguments().contains("--capture")) {
+            folders->setCurrentRow(0);
             window.selectMessage(acknowledged);
             QCoreApplication::processEvents();
             auto n = app.arguments().indexOf("--capture");
@@ -574,6 +621,35 @@ int main(int argc, char **argv) {
                     "the chan identity shows a Channel badge");
             require(window.findChildren<QPushButton *>("setDefaultButton").size() == 1,
                     "only the non-default identity offers Set as default");
+            auto identiconFor = [&](const QString &addr) -> QImage {
+                for (auto card : window.findChildren<QFrame *>("identityCard")) {
+                    auto addrLabel = card->findChild<QLabel *>("identityAddress");
+                    if (addrLabel && addrLabel->text() == addr) {
+                        auto icon = card->findChild<QLabel *>("identityIdenticon");
+                        return icon ? icon->pixmap().toImage() : QImage();
+                    }
+                }
+                return QImage();
+            };
+            require(window.findChildren<QLabel *>("identityIdenticon").size() == 2,
+                    "each identity card shows an identicon");
+            auto personalIcon = identiconFor(address);
+            auto chanIcon = identiconFor(emptyChannel);
+            require(!personalIcon.isNull() && !chanIcon.isNull(), "identicon pixmaps render");
+            require(personalIcon.size() == QSize(40, 40),
+                    "identicon scaled to the card avatar size");
+            require(personalIcon != chanIcon,
+                    "different addresses render different identicons (real MD5 seed, not a "
+                    "placeholder)");
+            bool hasOpaquePixel = false;
+            for (int y = 0; y < personalIcon.height() && !hasOpaquePixel; ++y)
+                for (int x = 0; x < personalIcon.width(); ++x)
+                    if (qAlpha(personalIcon.pixel(x, y)) > 0) {
+                        hasOpaquePixel = true;
+                        break;
+                    }
+            require(hasOpaquePixel,
+                    "identicon actually paints visible patches, not a blank transparent square");
             if (app.arguments().contains("--capture-identities")) {
                 auto n = app.arguments().indexOf("--capture-identities");
                 QString dir = n + 1 < app.arguments().size() ? app.arguments()[n + 1] : ".";
@@ -592,6 +668,8 @@ int main(int argc, char **argv) {
                 if (v.toMap()["address"].toString() == emptyChannel)
                     channelIsDefault = v.toMap()["default"].toBool();
             require(channelIsDefault, "Set as default promotes the chosen identity");
+            require(identiconFor(address) == personalIcon,
+                    "the same address renders the identical identicon after the cards rebuild");
 
             QTimer::singleShot(0, &window, [&] {
                 auto box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
