@@ -437,6 +437,29 @@ int main(int argc, char **argv) {
                 "double-click opens the correct letter");
         dPopped->close();
         QCoreApplication::processEvents();
+        folders->setCurrentRow(0);
+        QCoreApplication::processEvents();
+        QTimer::singleShot(30, &window, [&] {
+            auto dialog = window.findChild<QDialog *>("composer");
+            auto sigBody = dialog->findChild<QTextEdit *>("bodyField");
+            require(sigBody->toPlainText().contains("ynotbit"),
+                    "a brand-new letter is pre-filled with a default signature");
+            require(sigBody->toPlainText().startsWith("\n\n-- "),
+                    "two blank lines separate the cursor position from the signature");
+            require(sigBody->textCursor().position() == 0,
+                    "the cursor starts on the first blank line, not inside the signature");
+            dialog->reject();
+        });
+        window.findChild<QPushButton *>("writeButton")->click();
+        const auto existingDraft = session.saveLetter({}, address, address, "Existing draft",
+                                                       "Already written", "direct");
+        QTimer::singleShot(30, &window, [&] {
+            auto dialog = window.findChild<QDialog *>("composer");
+            require(!dialog->findChild<QTextEdit *>("bodyField")->toPlainText().contains("ynotbit"),
+                    "reopening an existing draft does not re-inject the signature");
+            dialog->reject();
+        });
+        window.compose({{"hash", existingDraft}});
         folders->setCurrentRow(1);
         QCoreApplication::processEvents();
         const auto draftToOpen =

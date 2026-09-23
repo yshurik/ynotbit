@@ -798,9 +798,19 @@ class Composer : public QDialog {
         body_->setDocument(doc);
         new AddressHighlighter(doc);
         original_ = reply ? QString() : letter["body"].toString();
+        const bool freshLetter = reply || letter["hash"].toString().isEmpty();
+        if (freshLetter)
+            original_ = "-- \nsent by ynotbit";
         doc->setMarkdown(original_,
                          QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
                                                          QTextDocument::MarkdownNoHTML));
+        if (freshLetter) {
+            // Leading blank lines in the markdown source get collapsed by the
+            // parser, so the separator has to be inserted as real blocks instead.
+            QTextCursor c(doc);
+            c.insertBlock();
+            c.insertBlock();
+        }
         doc->clearUndoRedoStacks();
         // QTextEdit otherwise inherits the final imported fragment's format,
         // which can be an image object rather than a text insertion format.
