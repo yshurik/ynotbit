@@ -105,7 +105,11 @@ IdenticonFields decodeIdenticon(quint64 code) {
     // PyBitmessage identicons from the same address, quirk included.
     f.swapCross = bits(43, 1);
     f.foreColor = QColor(red << 3, green << 3, blue << 3);
-    f.secondColor = QColor(red2 << 3, green2 << 3, blue2 << 3);
+    // Upstream builds this one as the tuple (second_blue, second_green,
+    // second_red) and feeds it positionally into QColor(r, g, b) -- so despite
+    // the variable names, the real R channel comes from the "second_blue"
+    // field and B from "second_red". Kept swapped here on purpose to match.
+    f.secondColor = QColor(blue2 << 3, green2 << 3, red2 << 3);
     return f;
 }
 void drawIdenticonPatch(QPainter &p, QPoint pos, int turn, bool invert, int patchType, int size,
