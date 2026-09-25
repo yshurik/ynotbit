@@ -47,6 +47,10 @@ int main(int argc, char **argv) {
         // signed by the chan's own shared key, not an individually-attributable member.
         mailbox.store("anon-in-recipient", "recipient", "recipient", "Anon post",
                       "Posted anonymously", 1601, "Channels");
+        // Decrypts fine but isn't text -- the reader should fall back to hex.
+        mailbox.store("cryptic", "sender", "recipient", "\x01\x02 raw \x03\x04",
+                      QString("\x01\x02\x03\x04 raw bytes \x05\x06\x07\x0e\x0f\x10\x11"), 1602,
+                      "Inbox");
         const auto acknowledged = mailbox.saveDraft({}, personal, emptyChannel,
                                                     "Delivery confirmed", "A delivered letter.");
         mailbox.queueDraft(acknowledged, "direct", QDateTime::currentSecsSinceEpoch() + 86400);
@@ -106,6 +110,13 @@ int main(int argc, char **argv) {
         require(channelChips[0]->icon().pixmap(18, 18).toImage() !=
                     channelChips[1]->icon().pixmap(18, 18).toImage(),
                 "different channels render different identicons");
+        // Captured here and compared again after a lock/unlock and a mailbox
+        // reopen: an identicon is seeded from the address alone, so nothing
+        // about the session, vault or mailbox may leak into it. Salting it
+        // per install (the way PyBitmessage's identiconsuffix does) would make
+        // the same address unrecognisable between machines.
+        const auto chipIdenticon = channelChips[0]->icon().pixmap(18, 18).toImage();
+        const auto chipAddress = channelChips[0]->toolTip();
         require(window.findChild<QWidget *>("channelRail")->isVisible(),
                 "the channel rail is shown on the Channels folder");
         require(!window.findChild<QLabel *>("listHeading")->isVisible(),
@@ -155,6 +166,38 @@ int main(int argc, char **argv) {
                     "count label drops the \"of\" qualifier once nothing is filtered");
         }
         {
+            auto stripe = window.findChild<QWidget *>("letterKindStripe");
+            require(stripe, "letter kind stripe exists");
+            require(stripe->layout()->contentsMargins().left() > 0,
+                    "the envelope frame always reserves a gap for its border");
+            auto borderTint = [&] {
+                QCoreApplication::processEvents();
+                return stripe->grab(QRect(0, 0, stripe->width(), 1)).toImage().pixelColor(2, 0);
+            };
+            window.selectMessage("0"); // a plain chan-personal message: from "sender", to "recipient"
+            auto chanPersonalTint = borderTint();
+            require(chanPersonalTint.blue() > chanPersonalTint.red() &&
+                        chanPersonalTint.blue() > chanPersonalTint.green(),
+                    "a chan-personal letter's border reads blue");
+            window.selectMessage("anon-in-recipient"); // from==to: posted with the chan's own key
+            window.selectMessage(acknowledged); // an ordinary Outbox letter, not in the Channels folder
+            auto personalTint = borderTint();
+            require(personalTint.green() > personalTint.red() &&
+                        personalTint.green() > personalTint.blue(),
+                    "a plain personal letter (Inbox/Outbox/...) also gets a border, tinted green "
+                    "instead of blue");
+            window.selectMessage("anon-in-recipient");
+            for (auto action : window.findChildren<QAction *>())
+                if (action->text() == "Open in new window")
+                    action->trigger();
+            auto popped = window.findChild<QDialog *>("messageWindow");
+            require(popped, "opens a separate message window");
+            auto poppedStripe = popped->findChild<QWidget *>("windowKindStripe");
+            require(poppedStripe && poppedStripe->layout()->contentsMargins().left() > 0,
+                    "a message opened in its own window still shows its envelope border");
+            popped->close();
+        }
+        {
             const bool capturingDensity = app.arguments().contains("--capture-density");
             QString densityDir;
             if (capturingDensity) {
@@ -180,11 +223,19 @@ int main(int argc, char **argv) {
                     "switching back to comfortable restores the original row height");
         }
         {
-            // Comfortable density's icon is 34px, drawn at x=12; sample its center.
+            // Comfortable density's icon is 34px, drawn at x=12. Scan the whole
+            // icon box rather than one pixel: the identicon is a generated 5x5
+            // grid, so any single cell -- the middle one included -- is legitimately
+            // empty for some addresses.
             auto rowRect = list->visualRect(list->model()->index(0, 0));
             auto shot = list->viewport()->grab(rowRect).toImage();
-            auto centerColor = shot.pixelColor(12 + 34 / 2, rowRect.height() / 2);
-            require(centerColor != window.palette().color(QPalette::Base),
+            const int top = (rowRect.height() - 34) / 2;
+            int painted = 0;
+            for (int x = 12; x < 12 + 34; ++x)
+                for (int y = top; y < top + 34; ++y)
+                    if (shot.pixelColor(x, y) != window.palette().color(QPalette::Base))
+                        ++painted;
+            require(painted > 34 * 34 / 10,
                     "message rows render a sender identicon, not a blank row");
         }
         if (app.arguments().contains("--capture-channels")) {
@@ -308,6 +359,41 @@ int main(int argc, char **argv) {
                     .value<QImage>()
                     .isNull(),
                 "reader blocks local resources");
+        {
+            auto mode = [&](const char *id) { return window.findChild<QToolButton *>(id); };
+            auto subjectLabel = window.findChild<QLabel *>("subjectLabel");
+            require(mode("view_plain") && mode("view_text") && mode("view_markdown") &&
+                        mode("view_hex"),
+                    "the reader offers all four view modes");
+            // The letter just selected is the markdown one, and it was detected
+            // as such -- that is what rendered the list above.
+            require(mode("view_markdown")->isChecked(),
+                    "a markdown body opens in markdown mode");
+            window.selectMessage("cryptic");
+            require(mode("view_hex")->isChecked(), "an unprintable body opens in hex mode");
+            require(reader->toPlainText().contains("00000000  01 02 03 04"),
+                    "hex mode dumps offsets and bytes");
+            require(mono(reader->font()) && mono(subjectLabel->font()),
+                    "hex mode puts body and subject in a fixed-width font");
+            window.selectMessage(acknowledged); // "A delivered letter." -- neither, so plain
+            require(mode("view_plain")->isChecked(),
+                    "an ordinary body opens in plain mode, not markdown");
+            require(reader->toPlainText() == "A delivered letter.",
+                    "plain mode shows the body verbatim");
+            require(mono(reader->font()) && mono(subjectLabel->font()),
+                    "plain mode is the fixed-width one");
+            mode("view_text")->click();
+            require(!mono(reader->font()), "switching to text mode drops the fixed-width font");
+            require(reader->toPlainText() == "A delivered letter.",
+                    "text mode still shows the body verbatim");
+            mode("view_hex")->click();
+            require(reader->toPlainText().startsWith("00000000  41 20 64 65"),
+                    "the reader can be switched to hex by hand");
+            mode("view_markdown")->click();
+            require(reader->toPlainText() == "A delivered letter.",
+                    "and back out of hex again");
+            window.selectMessage(formatted); // leave the markdown letter open for what follows
+        }
         for (auto action : window.findChildren<QAction *>())
             if (action->text() == "Open in new window")
                 action->trigger();
@@ -787,6 +873,19 @@ int main(int argc, char **argv) {
             QTest::qWait(50);
             require(subjectLabel && !subjectLabel->isVisible(),
                     "locked state hides the reader's subject label");
+            require(window.findChild<QWidget *>("letterKindStripe") &&
+                        !window.findChild<QWidget *>("letterKindStripe")->isVisible(),
+                    "locked state hides the reader's envelope frame too, so the "
+                    "vault password screen isn't split with an empty stretch");
+            // Focus itself isn't checked here: QT_QPA_PLATFORM=offscreen (this
+            // test's environment) never marks a window active, and
+            // QApplication::focusWidget() depends on that -- confirmed by
+            // spiking the assertion and finding it always false regardless of
+            // whether setFocus() was actually called. The fix is in
+            // DesktopWindow::updateState(): setFocus() is called on
+            // vaultPasswordField_ only after welcomeStack_->setCurrentWidget()
+            // makes the locked page current, not before (a hidden widget can't
+            // hold focus), verified visually via --capture-states.
             if (capturingStates)
                 window.grab().save(dir + "/state1-locked.png");
             QTimer once;
@@ -815,6 +914,17 @@ int main(int argc, char **argv) {
                     "full-mailbox state shows the reader's subject label again");
             if (capturingStates)
                 window.grab().save(dir + "/state3-full.png");
+            folders->setCurrentRow(4);
+            QTest::qWait(50);
+            bool rechecked = false;
+            for (auto chip : window.findChildren<QPushButton *>("channelChip"))
+                if (chip->toolTip() == chipAddress) {
+                    require(chip->icon().pixmap(18, 18).toImage() == chipIdenticon,
+                            "an address keeps the same identicon across a lock, unlock and "
+                            "mailbox reopen -- nothing per-session salts it");
+                    rechecked = true;
+                }
+            require(rechecked, "found the same channel chip again after reopening the mailbox");
         }
         session.lock();
         std::cout << "PASS Widgets mailbox selection, rendering and lock\n";

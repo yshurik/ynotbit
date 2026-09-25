@@ -34,130 +34,128 @@ class SafeDocument : public QTextDocument {
         return QVariant::fromValue(QImage());
     }
 };
-// Port of PyBitmessage's qidenticon.py (DonRenderer), reproduced field-for-field
-// so an address renders the same identicon here as in the reference client.
-// https://github.com/Bitmessage/PyBitmessage/blob/master/src/qidenticon.py
-const QVector<QVector<QPointF>> &identiconPathSet() {
-    static const QVector<QVector<QPointF>> paths = [] {
-        QVector<QVector<QPointF>> raw = {
-            {{0, 0}, {4, 0}, {4, 4}, {0, 4}},
-            {{0, 0}, {4, 0}, {0, 4}},
-            {{2, 0}, {4, 4}, {0, 4}},
-            {{0, 0}, {2, 0}, {2, 4}, {0, 4}},
-            {{2, 0}, {4, 2}, {2, 4}, {0, 2}},
-            {{0, 0}, {4, 2}, {4, 4}, {2, 4}},
-            {{2, 0}, {4, 4}, {2, 4}, {3, 2}, {1, 2}, {2, 4}, {0, 4}},
-            {{0, 0}, {4, 2}, {2, 4}},
-            {{1, 1}, {3, 1}, {3, 3}, {1, 3}},
-            {{2, 0}, {4, 0}, {0, 4}, {0, 2}, {2, 2}},
-            {{0, 0}, {2, 0}, {2, 2}, {0, 2}},
-            {{0, 2}, {4, 2}, {2, 4}},
-            {{2, 2}, {4, 4}, {0, 4}},
-            {{2, 0}, {2, 2}, {0, 2}},
-            {{0, 0}, {2, 0}, {0, 2}},
-            {},
-        };
-        for (auto &path : raw) {
-            if (path.isEmpty())
-                continue;
-            for (auto &pt : path)
-                pt = QPointF(pt.x() / 4.0, pt.y() / 4.0);
-            path.append(path.first());
-        }
-        return raw;
-    }();
-    return paths;
+// Perceived lightness runs very differently across the hue wheel -- a raw
+// 52% yellow glares while the same blue reads muddy -- so the fixed lightness
+// is nudged per hue the way jdenticon does it.
+QColor identiconColor(double hue) {
+    static const double correctors[] = {0.55, 0.5, 0.5, 0.46, 0.6, 0.55, 0.55};
+    const double corrector = correctors[int(hue * 6 + 0.5)];
+    const double lightness = corrector + (0.52 - 0.5) * (1 - corrector) * 2;
+    return QColor::fromHslF(hue, 0.55, qBound(0.0, lightness, 1.0));
 }
-// MD5(address), taking the low 64 bits the same way Python's int(hexdigest, 16)
-// would expose them to decodeIdenticon()'s shifts (only bits 0-46 are ever read).
-quint64 identiconSeed(const QString &address) {
-    auto digest = QCryptographicHash::hash(address.toUtf8(), QCryptographicHash::Md5);
-    quint64 seed = 0;
-    for (int i = 8; i < 16; ++i)
-        seed = (seed << 8) | quint8(digest.at(i));
-    return seed;
-}
-struct IdenticonFields {
-    int middleType, cornerType, sideType;
-    bool middleInvert, cornerInvert, sideInvert, swapCross;
-    int cornerTurn, sideTurn;
-    QColor foreColor, secondColor;
-};
-IdenticonFields decodeIdenticon(quint64 code) {
-    auto bits = [code](int shift, int width) {
-        return int((code >> shift) & ((quint64(1) << width) - 1));
-    };
-    static const int kMiddleSet[4] = {0, 4, 8, 15};
-    IdenticonFields f;
-    f.middleType = kMiddleSet[bits(0, 2)];
-    f.middleInvert = bits(2, 1);
-    f.cornerType = bits(3, 4);
-    f.cornerInvert = bits(7, 1);
-    f.cornerTurn = bits(8, 2);
-    f.sideType = bits(10, 4);
-    f.sideInvert = bits(14, 1);
-    f.sideTurn = bits(15, 2);
-    int blue = bits(17, 5), green = bits(22, 5), red = bits(27, 5);
-    int blue2 = bits(32, 5), green2 = bits(37, 5), red2 = bits(42, 5);
-    // Upstream advances the shift by only 1 (not 5) after reading second_red,
-    // so swap_cross reads that field's own second-lowest bit instead of an
-    // independent one. Kept verbatim for byte-for-byte parity with real
-    // PyBitmessage identicons from the same address, quirk included.
-    f.swapCross = bits(43, 1);
-    f.foreColor = QColor(red << 3, green << 3, blue << 3);
-    // Upstream builds this one as the tuple (second_blue, second_green,
-    // second_red) and feeds it positionally into QColor(r, g, b) -- so despite
-    // the variable names, the real R channel comes from the "second_blue"
-    // field and B from "second_red". Kept swapped here on purpose to match.
-    f.secondColor = QColor(blue2 << 3, green2 << 3, red2 << 3);
-    return f;
-}
-void drawIdenticonPatch(QPainter &p, QPoint pos, int turn, bool invert, int patchType, int size,
-                        QColor color) {
-    auto path = identiconPathSet()[patchType];
-    if (path.isEmpty()) {
-        invert = !invert;
-        path = {{0, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0}};
-    }
-    QPolygonF polygon;
-    for (const auto &pt : path)
-        polygon << QPointF(pt.x() * size, pt.y() * size);
-    const int rot = turn % 4;
-    const QPointF rect[4] = {{0, 0}, {qreal(size), 0}, {qreal(size), qreal(size)}, {0, qreal(size)}};
-    const int rotation[4] = {0, 90, 180, 270};
-    p.save();
-    p.translate(pos.x() * size, pos.y() * size);
-    p.translate(rect[rot]);
-    p.rotate(rotation[rot]);
-    if (invert) {
-        QPolygonF full({rect[0], rect[1], rect[2], rect[3]});
-        polygon = full.subtracted(polygon);
-    }
-    p.setPen(Qt::NoPen);
-    p.setBrush(color);
-    p.drawPolygon(polygon, Qt::WindingFill);
-    p.restore();
-}
-// size is the per-patch size; the returned pixmap is size*3 square, matching
-// qidenticon.render()'s "image size is 3 * size". Background is transparent
-// (PyBitmessage's default identiconlib "qidenticon_two_x" renders opacity=0).
+// A GitHub-style identicon: a 5x5 grid mirrored left to right, one colour per
+// address, on a transparent ground.
+//
+// Seeded from the address alone -- deliberately no per-install salt. The point
+// of showing a mark beside a letter is that you can recognise the sender's
+// address across clients and machines, which a salt (PyBitmessage's
+// "identiconsuffix", say) destroys by making every install draw the same
+// address differently.
+//
+// Cell edges are computed by integer division of the full size so neighbouring
+// cells always share a boundary exactly: no seams, no overlap, any size.
 QPixmap identiconPixmap(const QString &address, int size) {
-    auto f = decodeIdenticon(identiconSeed(address));
-    QPixmap pixmap(size * 3, size * 3);
+    const auto digest = QCryptographicHash::hash(address.toUtf8(), QCryptographicHash::Md5);
+    QPixmap pixmap(size, size);
     pixmap.fill(Qt::transparent);
     QPainter p(&pixmap);
-    drawIdenticonPatch(p, {1, 1}, 0, f.middleInvert, f.middleType, size,
-                       f.swapCross ? f.foreColor : f.secondColor);
-    static const QPoint sidePos[4] = {{1, 0}, {2, 1}, {1, 2}, {0, 1}};
-    for (int i = 0; i < 4; ++i)
-        drawIdenticonPatch(p, sidePos[i], f.sideTurn + 1 + i, f.sideInvert, f.sideType, size,
-                           f.foreColor);
-    static const QPoint cornerPos[4] = {{0, 0}, {2, 0}, {2, 2}, {0, 2}};
-    for (int i = 0; i < 4; ++i)
-        drawIdenticonPatch(p, cornerPos[i], f.cornerTurn + 1 + i, f.cornerInvert, f.cornerType, size,
-                           f.secondColor);
+    p.setPen(Qt::NoPen);
+    p.setBrush(identiconColor(((quint8(digest[0]) << 8) | quint8(digest[1])) / 65536.0));
+    const auto edge = [size](int i) { return i * size / 5; };
+    for (int x = 0; x < 3; ++x)
+        for (int y = 0; y < 5; ++y) {
+            if (quint8(digest[x * 5 + y]) % 2)
+                continue;
+            const QRect cell(edge(x), edge(y), edge(x + 1) - edge(x), edge(y + 1) - edge(y));
+            p.drawRect(cell);
+            if (x < 2)
+                p.drawRect(cell.translated(edge(4 - x) - edge(x), 0));
+        }
     p.end();
     return pixmap;
+}
+// A letter's trust class, the way a postal border once told you how a piece
+// of mail got to you before you read a word of it: plain domestic mail had
+// no border; airmail carried a red/blue diagonal stripe; special/urgent
+// service used green and yellow. Here: an ordinary direct letter, a chan
+// post signed by a known member, a chan post signed anonymously with the
+// chan's own shared key (delivery.cpp's chanBroadcast path -- sender ==
+// recipient is how that's recognized, matching MessageModel's anonymous
+// filter), and a public broadcast.
+enum class LetterKind { Personal, ChanPersonal, ChanAnonymous, Broadcast };
+LetterKind classifyLetter(const QString &folder, const QString &from, const QString &to) {
+    if (folder == "Broadcasts")
+        return LetterKind::Broadcast;
+    if (folder == "Channels")
+        return from == to ? LetterKind::ChanAnonymous : LetterKind::ChanPersonal;
+    return LetterKind::Personal;
+}
+struct KindColors {
+    QColor a, b;
+    bool diagonal;
+};
+// Solid accent for a chan-personal post; green/yellow diagonal for broadcast
+// (echoing old special-delivery markings). Chan-anonymous gets a translucent
+// gray diagonal rather than a loud color -- it should read as "unattributed"
+// rather than "urgent", and alpha over whatever's underneath keeps it legible
+// on both a dark and a light palette without a separate color per theme.
+KindColors kindColors(LetterKind kind, const QPalette &palette) {
+    switch (kind) {
+    case LetterKind::Personal:
+        // A direct letter (Inbox/Outbox/Sent/...), not a chan post -- a
+        // faint transparent green over whatever the pane's background is.
+        // A darker background already leans blue/teal, so this needs more
+        // saturation than a plain "seagreen" to still read as green rather
+        // than getting pulled toward the background's own hue.
+        return {QColor(30, 170, 60, 50), {}, false};
+    case LetterKind::ChanPersonal:
+        // Same treatment, blue, so a chan post from a known member reads
+        // differently from a direct letter at a glance without shouting.
+        return {QColor(60, 125, 217, 32), {}, false};
+    case LetterKind::ChanAnonymous: {
+        // Derived from the theme's own text color at low alpha, not a fixed
+        // gray -- a dark-on-light theme's ink at low alpha reads as a faint
+        // near-white watermark, and a light-on-dark theme's ink does the
+        // same in reverse, instead of one fixed gray looking like a dark
+        // smudge on a light theme and washing out on a dark one.
+        const auto ink = palette.color(QPalette::WindowText);
+        return {QColor(ink.red(), ink.green(), ink.blue(), 18),
+                QColor(ink.red(), ink.green(), ink.blue(), 7), true};
+    }
+    case LetterKind::Broadcast:
+        return {QColor("#2e8b57"), QColor("#e0b400"), true};
+    }
+    return {{}, {}, false};
+}
+// The diagonal stripes are one continuous pattern rotated about a single
+// shared origin, then revealed through whatever region is clipped in --
+// so the same lines keep running unbroken wherever they cross a clip edge.
+void paintDiagonalStripes(QPainter &p, QPoint origin, int span, KindColors c) {
+    p.setPen(Qt::NoPen);
+    p.setBrush(c.b);
+    p.translate(origin);
+    p.rotate(45);
+    for (int x = -span; x < span; x += 8)
+        p.drawRect(x, -span, 4, span * 2);
+}
+// Paints a full border ring around outer, bandWidth thick on all four sides,
+// for a letter's kind -- used for the reader pane and message window frames.
+// The diagonal pattern is drawn once from outer's own center and clipped to
+// the ring, so it continues seamlessly around each corner instead of the
+// four sides showing four unrelated, misaligned patterns.
+void paintKindBorder(QPainter &p, QRect outer, int bandWidth, LetterKind kind,
+                     const QPalette &palette) {
+    if (outer.isEmpty())
+        return;
+    const auto c = kindColors(kind, palette);
+    QRegion ring(outer);
+    ring -= outer.adjusted(bandWidth, bandWidth, -bandWidth, -bandWidth);
+    p.save();
+    p.setClipRegion(ring);
+    p.fillRect(outer, c.a);
+    if (c.diagonal)
+        paintDiagonalStripes(p, outer.center(), outer.width() + outer.height(), c);
+    p.restore();
 }
 class LetterDelegate : public QStyledItemDelegate {
   public:
@@ -182,8 +180,7 @@ class LetterDelegate : public QStyledItemDelegate {
         const auto identityAddress = i.data(Qt::UserRole + (useRecipient ? 3 : 2)).toString();
         const int iconSize = density_ == "compact" ? 20 : density_ == "cozy" ? 28 : 34;
         if (!identityAddress.isEmpty()) {
-            auto icon = identiconPixmap(identityAddress, 48)
-                            .scaled(iconSize, iconSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            auto icon = identiconPixmap(identityAddress, iconSize);
             p->drawPixmap(o.rect.left() + 12, o.rect.top() + (o.rect.height() - iconSize) / 2, icon);
         }
         const int textLeft = 12 + iconSize + 10;
@@ -226,6 +223,40 @@ class LetterDelegate : public QStyledItemDelegate {
   private:
     QString density_;
 };
+// The reader pane's own envelope border, echoing the selected letter's kind
+// on all four edges of the message content -- subject, metadata and body sit
+// inside it, the way a letter sits inside its envelope. A plain letter draws
+// no border and reserves no margin for one.
+class KindFrame : public QWidget {
+  public:
+    explicit KindFrame(QWidget *parent = nullptr) : QWidget(parent) {
+        layout_ = new QVBoxLayout(this);
+        layout_->setSpacing(14);
+        layout_->setContentsMargins(0, 0, 0, 0);
+    }
+    QVBoxLayout *contentLayout() const {
+        return layout_;
+    }
+    void setKind(LetterKind kind) {
+        kind_ = kind;
+        // A gap between the border and its content -- otherwise the toolbar
+        // sits flush against the inner edge of the stripe with no breathing
+        // room. Every kind now paints some border, so the inset is constant.
+        const int inset = kBand + 3;
+        layout_->setContentsMargins(inset, inset, inset, inset);
+        update();
+    }
+  protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        paintKindBorder(p, rect(), kBand, kind_, palette());
+    }
+
+  private:
+    static constexpr int kBand = 5;
+    QVBoxLayout *layout_;
+    LetterKind kind_ = LetterKind::Personal;
+};
 QPushButton *button(QString text, QBoxLayout *layout, std::function<void()> fn) {
     auto b = new QPushButton(text);
     layout->addWidget(b);
@@ -246,6 +277,92 @@ void renderMarkdown(QTextBrowser *body, const QString &text) {
         cursor.setBlockFormat(format);
     }
     body->document()->setLayoutEnabled(true);
+    body->moveCursor(QTextCursor::Start);
+    body->verticalScrollBar()->setValue(0);
+}
+// How a letter's body is shown. Detected per message, overridable per message
+// from the reader's view switch.
+enum class BodyView { Plain, Text, Markdown, Hex };
+// Headings, paired **bold**/__bold__, `code`, and [text](url) links are
+// specific enough that even one match is enough. A single dash line is not --
+// plenty of ordinary letters start a line with a dash -- so lists need two.
+bool looksLikeMarkdown(const QString &text) {
+    static const QRegularExpression heading("^#{1,6}[ \\t]+\\S.*$",
+                                            QRegularExpression::MultilineOption);
+    static const QRegularExpression bold("\\*\\*[^*\\n]+\\*\\*|__[^_\\n]+__");
+    static const QRegularExpression code("`[^`\\n]+`");
+    static const QRegularExpression link("\\[[^\\]\\n]+\\]\\([^)\\n]+\\)");
+    static const QRegularExpression listLine("^[ \\t]*[-*+][ \\t]+\\S.*$",
+                                             QRegularExpression::MultilineOption);
+    static const QRegularExpression numberedLine("^[ \\t]*\\d+\\.[ \\t]+\\S.*$",
+                                                 QRegularExpression::MultilineOption);
+    auto count = [&](const QRegularExpression &re) {
+        int n = 0;
+        auto it = re.globalMatch(text);
+        while (it.hasNext()) {
+            it.next();
+            ++n;
+        }
+        return n;
+    };
+    if (heading.match(text).hasMatch() || bold.match(text).hasMatch() ||
+        code.match(text).hasMatch() || link.match(text).hasMatch())
+        return true;
+    return count(listLine) >= 2 || count(numberedLine) >= 2;
+}
+// Not every object that decrypts for us holds text: a body can arrive as
+// binary, or as bytes that were never UTF-8 and so decoded to replacement
+// characters. Showing that as prose is just noise, so it goes to hex instead.
+// One stray control byte in a long letter is not enough -- it takes a body
+// that is substantially unprintable.
+bool looksCryptic(const QString &text) {
+    if (text.isEmpty())
+        return false;
+    int odd = 0;
+    for (const QChar c : text)
+        if (c == QChar::ReplacementCharacter ||
+            (c.category() == QChar::Other_Control && c != '\t' && c != '\n' && c != '\r'))
+            ++odd;
+    return odd * 20 > text.size();
+}
+BodyView detectBodyView(const QString &text) {
+    if (looksCryptic(text))
+        return BodyView::Hex;
+    if (looksLikeMarkdown(text))
+        return BodyView::Markdown;
+    return BodyView::Plain;
+}
+QString hexDump(const QByteArray &bytes) {
+    QString out;
+    for (int offset = 0; offset < bytes.size(); offset += 16) {
+        const auto line = bytes.mid(offset, 16);
+        QString hex, ascii;
+        for (int i = 0; i < 16; ++i) {
+            hex += i < line.size()
+                       ? QString("%1 ").arg(quint8(line[i]), 2, 16, QChar('0'))
+                       : QString("   ");
+            if (i == 7)
+                hex += ' ';
+            if (i < line.size()) {
+                const auto c = quint8(line[i]);
+                ascii += c >= 0x20 && c < 0x7f ? QChar(c) : QChar('.');
+            }
+        }
+        out += QString("%1  %2 |%3|\n").arg(offset, 8, 16, QChar('0')).arg(hex, ascii);
+    }
+    return out;
+}
+void renderBody(QTextBrowser *body, const QString &text, BodyView mode) {
+    body->setFont(mode == BodyView::Text || mode == BodyView::Markdown ? QApplication::font()
+                                                                       : addressFont());
+    // A hex dump's columns only line up if the lines are left alone; everything
+    // else wraps to the pane.
+    body->setLineWrapMode(mode == BodyView::Hex ? QTextEdit::NoWrap : QTextEdit::WidgetWidth);
+    if (mode == BodyView::Markdown) {
+        renderMarkdown(body, text);
+        return;
+    }
+    body->setPlainText(mode == BodyView::Hex ? hexDump(text.toUtf8()) : text);
     body->moveCursor(QTextCursor::Start);
     body->verticalScrollBar()->setValue(0);
 }
@@ -400,6 +517,24 @@ QIcon materialIcon(const QString &name, QColor color) {
     } else if (name == "densityCompact") {
         for (int y : {8, 14, 20, 26, 32})
             p.drawLine(6, y, 34, y);
+    } else if (name == "viewPlain") {
+        // Fixed-width cells: even dashes, evenly spaced.
+        for (int y : {13, 20, 27})
+            for (int x : {6, 17, 28})
+                p.drawLine(x, y, x + 6, y);
+    } else if (name == "viewText") {
+        // Prose: ragged line endings.
+        p.drawLine(6, 13, 34, 13);
+        p.drawLine(6, 20, 27, 20);
+        p.drawLine(6, 27, 31, 27);
+    } else if (name == "viewMarkdown") {
+        p.setFont(QFont(QApplication::font().family(), 15, QFont::Bold));
+        p.setPen(color);
+        p.drawText(QRectF(0, 0, 40, 40), Qt::AlignCenter, "M↓");
+    } else if (name == "viewHex") {
+        p.setFont(QFont(QApplication::font().family(), 14, QFont::Bold));
+        p.setPen(color);
+        p.drawText(QRectF(0, 0, 40, 40), Qt::AlignCenter, "0x");
     } else if (name == "inbox") {
         p.drawLine(8, 18, 8, 30);
         p.drawLine(8, 30, 32, 30);
@@ -501,34 +636,6 @@ class MarkdownEdit : public QTextEdit {
     }
 
   private:
-    // A single dash-/number-prefixed line is common in ordinary prose (a note,
-    // an address); only a real multi-line list counts as a markdown signal.
-    // Headings, paired **bold**/__bold__, `code`, and [text](url) links are
-    // specific enough that even one match is enough.
-    static bool looksLikeMarkdown(const QString &text) {
-        static const QRegularExpression heading("^#{1,6}[ \\t]+\\S.*$",
-                                                QRegularExpression::MultilineOption);
-        static const QRegularExpression bold("\\*\\*[^*\\n]+\\*\\*|__[^_\\n]+__");
-        static const QRegularExpression code("`[^`\\n]+`");
-        static const QRegularExpression link("\\[[^\\]\\n]+\\]\\([^)\\n]+\\)");
-        static const QRegularExpression listLine("^[ \\t]*[-*+][ \\t]+\\S.*$",
-                                                  QRegularExpression::MultilineOption);
-        static const QRegularExpression numberedLine("^[ \\t]*\\d+\\.[ \\t]+\\S.*$",
-                                                      QRegularExpression::MultilineOption);
-        auto count = [&](const QRegularExpression &re) {
-            int n = 0;
-            auto it = re.globalMatch(text);
-            while (it.hasNext()) {
-                it.next();
-                ++n;
-            }
-            return n;
-        };
-        if (heading.match(text).hasMatch() || bold.match(text).hasMatch() ||
-            code.match(text).hasMatch() || link.match(text).hasMatch())
-            return true;
-        return count(listLine) >= 2 || count(numberedLine) >= 2;
-    }
     void insertMarkdown(const QString &text) {
         QTextDocument doc;
         doc.setMarkdown(text, QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
@@ -1032,12 +1139,16 @@ class MessageWindow : public QDialog {
         setWindowTitle(singleLine(letter_["subject"].toString()).left(80));
         resize(640, 560);
         auto layout = new QVBoxLayout(this);
-        layout->setContentsMargins(3, 3, 3, 3);
+        layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(12);
+        auto letterFrame = new KindFrame;
+        letterFrame->setObjectName("windowKindStripe");
+        layout->addWidget(letterFrame, 1);
+        auto frame = letterFrame->contentLayout();
         auto toolbar = new QToolBar;
         toolbar->setObjectName("windowActionsToolbar");
         toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
-        toolbar->setIconSize(QSize(40, 40));
+        toolbar->setIconSize(QSize(22, 22));
         auto replyAction = toolbar->addAction(materialIcon("reply", iconColor(dark)), "Reply");
         connect(replyAction, &QAction::triggered, this, [this] {
             Composer dialog(session_, letter_, true, dark_, this);
@@ -1070,8 +1181,8 @@ class MessageWindow : public QDialog {
         menu->addAction("Cancel delivery", this,
                         [this] { session_.cancelLetter(letter_["hash"].toString()); })
             ->setVisible(outgoing);
-        layout->addWidget(toolbar);
-        auto subject = subjectArea(layout, "windowSubjectLabel", "windowSubjectScroll");
+        frame->addWidget(toolbar);
+        auto subject = subjectArea(frame, "windowSubjectLabel", "windowSubjectScroll");
         const auto subjectText = singleLine(letter_["subject"].toString());
         subject->setText(subjectText);
         subject->setFont(subjectText.contains("BM-") ? addressFont() : QApplication::font());
@@ -1082,7 +1193,7 @@ class MessageWindow : public QDialog {
         addresses->setTextFormat(Qt::PlainText);
         addresses->setWordWrap(true);
         addresses->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        layout->addWidget(addresses);
+        frame->addWidget(addresses);
         auto body = new QTextBrowser;
         body->setObjectName("windowBody");
         body->setDocument(new SafeDocument(body));
@@ -1097,8 +1208,10 @@ class MessageWindow : public QDialog {
                                           url.toDisplayString()) == QMessageBox::Yes)
                 QDesktopServices::openUrl(url);
         });
-        layout->addWidget(body, 1);
+        frame->addWidget(body, 1);
         renderMarkdown(body, letter_["body"].toString());
+        letterFrame->setKind(classifyLetter(letter_["folder"].toString(),
+                                            letter_["from"].toString(), letter_["to"].toString()));
     }
 
   private:
@@ -1335,13 +1448,12 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     split->addWidget(middle);
     reader_ = new QWidget;
     auto read = new QVBoxLayout(reader_);
-    read->setContentsMargins(2, 3, 3, 3);
+    read->setContentsMargins(0, 0, 0, 0);
     read->setSpacing(14);
     auto toolbar = new QToolBar;
     toolbar->setObjectName("actionsToolbar");
     toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    toolbar->setIconSize(QSize(40, 40));
-    actions_ = toolbar;
+    toolbar->setIconSize(QSize(22, 22));
     auto editAction =
         toolbar->addAction(materialIcon("edit", iconColor(appearance_.dark())), "Edit / Send");
     editAction->setObjectName("editAction");
@@ -1400,8 +1512,49 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             dialog.setFont(addressFont());
         dialog.exec();
     });
-    read->addWidget(actions_);
-    subject_ = subjectArea(read, "subjectLabel", "subjectScroll");
+    auto letterFrame = new KindFrame;
+    letterFrame->setObjectName("letterKindStripe");
+    letterStripe_ = letterFrame;
+    auto frame = letterFrame->contentLayout();
+    // The letter's own actions on the left, how it is rendered on the right.
+    auto toolRow = new QWidget;
+    auto toolRowLayout = new QHBoxLayout(toolRow);
+    toolRowLayout->setContentsMargins(0, 0, 0, 0);
+    toolRowLayout->addWidget(toolbar);
+    toolRowLayout->addStretch();
+    auto viewSwitch = new QWidget;
+    viewSwitch->setObjectName("viewSwitch");
+    auto viewSwitchLayout = new QHBoxLayout(viewSwitch);
+    viewSwitchLayout->setContentsMargins(0, 0, 0, 0);
+    viewSwitchLayout->setSpacing(0);
+    auto viewGroup = new QButtonGroup(this);
+    viewGroup->setExclusive(true);
+    const struct { const char *id, *icon, *label; } views[] = {
+        {"plain", "viewPlain", "Plain text, fixed width"},
+        {"text", "viewText", "Text"},
+        {"markdown", "viewMarkdown", "Markdown"},
+        {"hex", "viewHex", "Hex"},
+    };
+    for (const auto &v : views) {
+        auto btn = new QToolButton;
+        btn->setObjectName(QString("view_") + v.id);
+        btn->setCheckable(true);
+        btn->setFixedSize(28, 28); // matches the actions pill's height beside it
+        btn->setIconSize(QSize(14, 14));
+        btn->setIcon(materialIcon(v.icon, iconColor(appearance_.dark())));
+        btn->setToolTip(v.label);
+        btn->setCursor(Qt::PointingHandCursor);
+        viewGroup->addButton(btn);
+        // clicked(), not toggled(): selectMessage() checks a button itself once
+        // it has detected the mode, and that must not bounce back as a re-render.
+        connect(btn, &QToolButton::clicked, this, &DesktopWindow::renderSelectedBody);
+        viewSwitchLayout->addWidget(btn);
+    }
+    toolRowLayout->addWidget(viewSwitch);
+    actions_ = toolRow;
+    frame->addWidget(actions_);
+    read->addWidget(letterFrame, 1);
+    subject_ = subjectArea(frame, "subjectLabel", "subjectScroll");
     subject_->setText("No letter selected");
     details_ = new QWidget;
     auto metadata = new QGridLayout(details_);
@@ -1440,7 +1593,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
                           "peers is a relay offer, not a read receipt.");
     metadata->addWidget(timeline_, 4, 0, 1, 2);
     details_->hide();
-    read->addWidget(details_);
+    frame->addWidget(details_);
     body_ = new QTextBrowser;
     body_->setObjectName("readerBody");
     body_->setDocument(new SafeDocument(body_));
@@ -1448,7 +1601,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     body_->setOpenLinks(false);
     body_->setFrameShape(QFrame::NoFrame);
     body_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
-    read->addWidget(body_, 1);
+    frame->addWidget(body_, 1);
     connect(body_, &QTextBrowser::anchorClicked, this, [this](QUrl url) {
         if (url.scheme() == "https" &&
             QMessageBox::question(this, "Open link",
@@ -1777,6 +1930,24 @@ void DesktopWindow::updateTheme() {
             "border-top-left-radius:6px;border-bottom-left-radius:6px;"
             "border-right:1px solid %4;} "
             "QWidget#filterSwitch QToolButton#filter_anonymous{"
+            "border-top-right-radius:6px;border-bottom-right-radius:6px;} "
+            "QToolBar#actionsToolbar,QToolBar#windowActionsToolbar{"
+            "border:1px solid %4;border-radius:8px;background:transparent;"
+            "spacing:0;padding:1px;} "
+            "QToolBar#actionsToolbar QToolButton,QToolBar#windowActionsToolbar QToolButton{"
+            "border:0;border-radius:0;background:transparent;padding:2px;} "
+            "QToolBar#actionsToolbar QToolButton:hover,"
+            "QToolBar#windowActionsToolbar QToolButton:hover{background:%3;} "
+            "QWidget#viewSwitch{border:1px solid %4;border-radius:7px;background:transparent;} "
+            "QWidget#viewSwitch QToolButton{border:0;border-radius:0;"
+            "background:transparent;padding:0;} "
+            "QWidget#viewSwitch QToolButton:hover{background:%3;} "
+            "QWidget#viewSwitch QToolButton:checked{background:%5;} "
+            "QWidget#viewSwitch QToolButton#view_plain{"
+            "border-top-left-radius:6px;border-bottom-left-radius:6px;} "
+            "QWidget#viewSwitch QToolButton#view_plain,QWidget#viewSwitch QToolButton#view_text,"
+            "QWidget#viewSwitch QToolButton#view_markdown{border-right:1px solid %4;} "
+            "QWidget#viewSwitch QToolButton#view_hex{"
             "border-top-right-radius:6px;border-bottom-right-radius:6px;}")
             .arg(dark ? "#141b23" : "#f5f7fa", dark ? "#17212b" : "#f1f5f7",
                  dark ? "#1b2530" : "#ffffff", dark ? "#354553" : "#dbe3e8",
@@ -1790,6 +1961,11 @@ void DesktopWindow::updateTheme() {
     findChild<QAction *>("trashAction")->setIcon(materialIcon("delete", color));
     findChild<QToolButton *>("moreActionsButton")->setIcon(materialIcon("more", color));
     findChild<QPushButton *>("writeButton")->setIcon(materialIcon("edit", color));
+    for (const auto &[id, icon] : {std::pair{"view_plain", "viewPlain"},
+                                   {"view_text", "viewText"},
+                                   {"view_markdown", "viewMarkdown"},
+                                   {"view_hex", "viewHex"}})
+        findChild<QToolButton *>(id)->setIcon(materialIcon(icon, color));
     for (const auto &[label, iconName] : kFolderIcons)
         findChild<QToolButton *>("folderIcon_" + label)->setIcon(materialIcon(iconName, color));
 }
@@ -1800,6 +1976,7 @@ void DesktopWindow::clearDetails() {
     deliveryError_->clear();
     timeline_->clear();
     details_->hide();
+    static_cast<KindFrame *>(letterStripe_)->setKind(LetterKind::Personal);
 }
 void DesktopWindow::updateDeliveryStatus() {
     const auto state = selected_.value("state").toString();
@@ -1908,15 +2085,23 @@ void DesktopWindow::updateState() {
             welcomeStack_->setCurrentWidget(noMailboxPage_);
             refreshRecentMailboxes();
         } else {
-            if (targetVaultPath_.isEmpty() && !session_.vaultPath().isEmpty())
+            const bool justFoundTarget =
+                targetVaultPath_.isEmpty() && !session_.vaultPath().isEmpty();
+            if (justFoundTarget)
                 targetVaultPath_ = session_.vaultPath();
             welcomeStack_->setCurrentWidget(lockedPage_);
             updateLockedScreen();
+            if (justFoundTarget)
+                // A remembered vault is found on startup without going through
+                // showVaultPasswordFor() -- focus the password field here too, once
+                // it's actually the visible page, so typing can start immediately.
+                vaultPasswordField_->setFocus();
         }
     }
     subject_->setVisible(mailboxState && !identityPage);
     findChild<QScrollArea *>("subjectScroll")->setVisible(mailboxState && !identityPage);
     body_->setVisible(mailboxState && !identityPage);
+    letterStripe_->setVisible(mailboxState && !identityPage);
     identities_->setVisible(identityPage);
     status_->setText(
         !session_.unlocked()
@@ -1951,8 +2136,7 @@ void DesktopWindow::refreshChannels() {
         chip->setObjectName("channelChip");
         chip->setCheckable(true);
         chip->setChecked(chipAddress == activeChannelAddress_);
-        chip->setIcon(QIcon(identiconPixmap(chipAddress, 48).scaled(
-            18, 18, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+        chip->setIcon(QIcon(identiconPixmap(chipAddress, 18)));
         chip->setIconSize(QSize(18, 18));
         if (session_.channelUnread(chipAddress)) {
             auto f = chip->font();
@@ -2005,7 +2189,9 @@ void DesktopWindow::selectMessage(const QString &id) {
     }
     const auto fullSubject = singleLine(selected_["subject"].toString());
     subject_->setText(fullSubject);
-    subject_->setFont(fullSubject.contains("BM-") ? addressFont() : QApplication::font());
+    static_cast<KindFrame *>(letterStripe_)
+        ->setKind(classifyLetter(selected_["folder"].toString(), selected_["from"].toString(),
+                                 selected_["to"].toString()));
     fromAddress_->setText(selected_["from"].toString());
     toAddress_->setText(selected_["to"].toString());
     deliveryError_->setText(selected_["deliveryError"].toString());
@@ -2013,7 +2199,12 @@ void DesktopWindow::selectMessage(const QString &id) {
     updateDeliveryStatus();
     details_->show();
     updateTimeline();
-    renderMarkdown(body_, selected_["body"].toString());
+    // Each letter opens in the mode its own content calls for; the switch is
+    // then free for the reader to override on this letter.
+    static const char *kViewIds[] = {"plain", "text", "markdown", "hex"};
+    const auto detected = detectBodyView(selected_["body"].toString());
+    findChild<QToolButton *>(QString("view_") + kViewIds[int(detected)])->setChecked(true);
+    renderSelectedBody();
     actions_->show();
     findChild<QAction *>("editAction")->setVisible(selected_["folder"] == "Drafts");
     findChild<QAction *>("replyAction")->setVisible(selected_["folder"] != "Drafts");
@@ -2024,6 +2215,24 @@ void DesktopWindow::selectMessage(const QString &id) {
     findChild<QAction *>("retryAction")->setVisible(outgoing);
     findChild<QAction *>("cancelDeliveryAction")->setVisible(outgoing);
     session_.readLetter(id);
+}
+void DesktopWindow::renderSelectedBody() {
+    static const struct { const char *id; BodyView mode; } kViews[] = {
+        {"view_plain", BodyView::Plain},
+        {"view_text", BodyView::Text},
+        {"view_markdown", BodyView::Markdown},
+        {"view_hex", BodyView::Hex},
+    };
+    auto mode = BodyView::Plain;
+    for (const auto &v : kViews)
+        if (findChild<QToolButton *>(v.id)->isChecked())
+            mode = v.mode;
+    renderBody(body_, selected_["body"].toString(), mode);
+    // Plain and hex are the fixed-width modes, and the subject rides along:
+    // if a body needed a monospace grid to make sense, its subject does too.
+    const bool fixed = mode == BodyView::Plain || mode == BodyView::Hex;
+    subject_->setFont(fixed || subject_->text().contains("BM-") ? addressFont()
+                                                                : QApplication::font());
 }
 void DesktopWindow::compose(QVariantMap letter, bool reply) {
     if (!session_.mailboxOpen())
@@ -2100,7 +2309,7 @@ void DesktopWindow::refreshIdentities() {
         identicon->setObjectName("identityIdenticon");
         identicon->setFixedSize(40, 40);
         identicon->setPixmap(
-            identiconPixmap(address, 48).scaled(40, 40, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            identiconPixmap(address, 40));
         cardRow->addWidget(identicon);
 
         auto infoCol = new QVBoxLayout;
