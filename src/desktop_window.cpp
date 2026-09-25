@@ -1130,6 +1130,68 @@ class Composer : public QDialog {
             QDialog::reject();
     }
 };
+// The plain / text / markdown / hex switch. Owns its buttons rather than
+// having them found by name, because the pop-out window is a child of the
+// main window: two sets of identically named buttons would otherwise make
+// every findChild lookup ambiguous.
+class ViewSwitch : public QWidget {
+  public:
+    ViewSwitch(QColor iconColor, std::function<void(BodyView)> changed) {
+        setProperty("viewSwitch", true); // styled by property: both instances share the rules
+        auto layout = new QHBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
+        auto group = new QButtonGroup(this);
+        group->setExclusive(true);
+        for (int i = 0; i < 4; ++i) {
+            auto btn = buttons_[i] = new QToolButton;
+            btn->setObjectName(QString("view_") + kViews[i].id);
+            btn->setCheckable(true);
+            btn->setFixedSize(28, 28); // matches the actions pill's height beside it
+            btn->setIconSize(QSize(14, 14));
+            btn->setToolTip(kViews[i].label);
+            btn->setCursor(Qt::PointingHandCursor);
+            group->addButton(btn);
+            // clicked(), not toggled(): setMode() checks a button itself after
+            // detection, and that must not bounce back as a second render.
+            QObject::connect(btn, &QToolButton::clicked, this, [this, changed] { changed(mode()); });
+            layout->addWidget(btn);
+        }
+        setIconColor(iconColor);
+    }
+    BodyView mode() const {
+        for (int i = 0; i < 4; ++i)
+            if (buttons_[i]->isChecked())
+                return BodyView(i);
+        return BodyView::Plain;
+    }
+    void setMode(BodyView mode) {
+        buttons_[int(mode)]->setChecked(true);
+    }
+    void setIconColor(QColor color) {
+        for (int i = 0; i < 4; ++i)
+            buttons_[i]->setIcon(materialIcon(kViews[i].icon, color));
+    }
+
+  private:
+    // Indexed by BodyView.
+    static constexpr struct { const char *id, *icon, *label; } kViews[] = {
+        {"plain", "viewPlain", "Plain text, fixed width"},
+        {"text", "viewText", "Text"},
+        {"markdown", "viewMarkdown", "Markdown"},
+        {"hex", "viewHex", "Hex"},
+    };
+    QToolButton *buttons_[4];
+};
+// Shows a letter in the given mode. Plain and hex are the fixed-width modes,
+// and the subject rides along: if a body needed a monospace grid to make
+// sense, its subject does too.
+void showLetterBody(QTextBrowser *body, QLabel *subject, const QString &text, BodyView mode) {
+    renderBody(body, text, mode);
+    const bool fixed = mode == BodyView::Plain || mode == BodyView::Hex;
+    subject->setFont(fixed || subject->text().contains("BM-") ? addressFont()
+                                                               : QApplication::font());
+}
 class MessageWindow : public QDialog {
   public:
     MessageWindow(Session &session, QVariantMap letter, bool dark, QWidget *parent)
@@ -1181,11 +1243,13 @@ class MessageWindow : public QDialog {
         menu->addAction("Cancel delivery", this,
                         [this] { session_.cancelLetter(letter_["hash"].toString()); })
             ->setVisible(outgoing);
-        frame->addWidget(toolbar);
+        auto toolRow = new QHBoxLayout;
+        toolRow->setContentsMargins(0, 0, 0, 0);
+        toolRow->addWidget(toolbar);
+        toolRow->addStretch();
+        frame->addLayout(toolRow);
         auto subject = subjectArea(frame, "windowSubjectLabel", "windowSubjectScroll");
-        const auto subjectText = singleLine(letter_["subject"].toString());
-        subject->setText(subjectText);
-        subject->setFont(subjectText.contains("BM-") ? addressFont() : QApplication::font());
+        subject->setText(singleLine(letter_["subject"].toString()));
         auto addresses =
             new QLabel(letter_["from"].toString() + "  →  " + letter_["to"].toString());
         addresses->setObjectName("windowAddresses");
@@ -1209,7 +1273,14 @@ class MessageWindow : public QDialog {
                 QDesktopServices::openUrl(url);
         });
         frame->addWidget(body, 1);
-        renderMarkdown(body, letter_["body"].toString());
+        const auto text = letter_["body"].toString();
+        auto views = new ViewSwitch(iconColor(dark), [body, subject, text](BodyView mode) {
+            showLetterBody(body, subject, text, mode);
+        });
+        views->setObjectName("windowViewSwitch");
+        toolRow->addWidget(views);
+        views->setMode(detectBodyView(text));
+        showLetterBody(body, subject, text, views->mode());
         letterFrame->setKind(classifyLetter(letter_["folder"].toString(),
                                             letter_["from"].toString(), letter_["to"].toString()));
     }
@@ -1522,34 +1593,9 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     toolRowLayout->setContentsMargins(0, 0, 0, 0);
     toolRowLayout->addWidget(toolbar);
     toolRowLayout->addStretch();
-    auto viewSwitch = new QWidget;
+    auto viewSwitch = new ViewSwitch(iconColor(appearance_.dark()), [this](BodyView) { renderSelectedBody(); });
     viewSwitch->setObjectName("viewSwitch");
-    auto viewSwitchLayout = new QHBoxLayout(viewSwitch);
-    viewSwitchLayout->setContentsMargins(0, 0, 0, 0);
-    viewSwitchLayout->setSpacing(0);
-    auto viewGroup = new QButtonGroup(this);
-    viewGroup->setExclusive(true);
-    const struct { const char *id, *icon, *label; } views[] = {
-        {"plain", "viewPlain", "Plain text, fixed width"},
-        {"text", "viewText", "Text"},
-        {"markdown", "viewMarkdown", "Markdown"},
-        {"hex", "viewHex", "Hex"},
-    };
-    for (const auto &v : views) {
-        auto btn = new QToolButton;
-        btn->setObjectName(QString("view_") + v.id);
-        btn->setCheckable(true);
-        btn->setFixedSize(28, 28); // matches the actions pill's height beside it
-        btn->setIconSize(QSize(14, 14));
-        btn->setIcon(materialIcon(v.icon, iconColor(appearance_.dark())));
-        btn->setToolTip(v.label);
-        btn->setCursor(Qt::PointingHandCursor);
-        viewGroup->addButton(btn);
-        // clicked(), not toggled(): selectMessage() checks a button itself once
-        // it has detected the mode, and that must not bounce back as a re-render.
-        connect(btn, &QToolButton::clicked, this, &DesktopWindow::renderSelectedBody);
-        viewSwitchLayout->addWidget(btn);
-    }
+    viewSwitch_ = viewSwitch;
     toolRowLayout->addWidget(viewSwitch);
     actions_ = toolRow;
     frame->addWidget(actions_);
@@ -1938,16 +1984,16 @@ void DesktopWindow::updateTheme() {
             "border:0;border-radius:0;background:transparent;padding:2px;} "
             "QToolBar#actionsToolbar QToolButton:hover,"
             "QToolBar#windowActionsToolbar QToolButton:hover{background:%3;} "
-            "QWidget#viewSwitch{border:1px solid %4;border-radius:7px;background:transparent;} "
-            "QWidget#viewSwitch QToolButton{border:0;border-radius:0;"
+            "QWidget[viewSwitch=\"true\"]{border:1px solid %4;border-radius:7px;background:transparent;} "
+            "QWidget[viewSwitch=\"true\"] QToolButton{border:0;border-radius:0;"
             "background:transparent;padding:0;} "
-            "QWidget#viewSwitch QToolButton:hover{background:%3;} "
-            "QWidget#viewSwitch QToolButton:checked{background:%5;} "
-            "QWidget#viewSwitch QToolButton#view_plain{"
+            "QWidget[viewSwitch=\"true\"] QToolButton:hover{background:%3;} "
+            "QWidget[viewSwitch=\"true\"] QToolButton:checked{background:%5;} "
+            "QWidget[viewSwitch=\"true\"] QToolButton#view_plain{"
             "border-top-left-radius:6px;border-bottom-left-radius:6px;} "
-            "QWidget#viewSwitch QToolButton#view_plain,QWidget#viewSwitch QToolButton#view_text,"
-            "QWidget#viewSwitch QToolButton#view_markdown{border-right:1px solid %4;} "
-            "QWidget#viewSwitch QToolButton#view_hex{"
+            "QWidget[viewSwitch=\"true\"] QToolButton#view_plain,QWidget[viewSwitch=\"true\"] QToolButton#view_text,"
+            "QWidget[viewSwitch=\"true\"] QToolButton#view_markdown{border-right:1px solid %4;} "
+            "QWidget[viewSwitch=\"true\"] QToolButton#view_hex{"
             "border-top-right-radius:6px;border-bottom-right-radius:6px;}")
             .arg(dark ? "#141b23" : "#f5f7fa", dark ? "#17212b" : "#f1f5f7",
                  dark ? "#1b2530" : "#ffffff", dark ? "#354553" : "#dbe3e8",
@@ -1961,11 +2007,7 @@ void DesktopWindow::updateTheme() {
     findChild<QAction *>("trashAction")->setIcon(materialIcon("delete", color));
     findChild<QToolButton *>("moreActionsButton")->setIcon(materialIcon("more", color));
     findChild<QPushButton *>("writeButton")->setIcon(materialIcon("edit", color));
-    for (const auto &[id, icon] : {std::pair{"view_plain", "viewPlain"},
-                                   {"view_text", "viewText"},
-                                   {"view_markdown", "viewMarkdown"},
-                                   {"view_hex", "viewHex"}})
-        findChild<QToolButton *>(id)->setIcon(materialIcon(icon, color));
+    static_cast<ViewSwitch *>(viewSwitch_)->setIconColor(color);
     for (const auto &[label, iconName] : kFolderIcons)
         findChild<QToolButton *>("folderIcon_" + label)->setIcon(materialIcon(iconName, color));
 }
@@ -2201,9 +2243,7 @@ void DesktopWindow::selectMessage(const QString &id) {
     updateTimeline();
     // Each letter opens in the mode its own content calls for; the switch is
     // then free for the reader to override on this letter.
-    static const char *kViewIds[] = {"plain", "text", "markdown", "hex"};
-    const auto detected = detectBodyView(selected_["body"].toString());
-    findChild<QToolButton *>(QString("view_") + kViewIds[int(detected)])->setChecked(true);
+    static_cast<ViewSwitch *>(viewSwitch_)->setMode(detectBodyView(selected_["body"].toString()));
     renderSelectedBody();
     actions_->show();
     findChild<QAction *>("editAction")->setVisible(selected_["folder"] == "Drafts");
@@ -2217,22 +2257,8 @@ void DesktopWindow::selectMessage(const QString &id) {
     session_.readLetter(id);
 }
 void DesktopWindow::renderSelectedBody() {
-    static const struct { const char *id; BodyView mode; } kViews[] = {
-        {"view_plain", BodyView::Plain},
-        {"view_text", BodyView::Text},
-        {"view_markdown", BodyView::Markdown},
-        {"view_hex", BodyView::Hex},
-    };
-    auto mode = BodyView::Plain;
-    for (const auto &v : kViews)
-        if (findChild<QToolButton *>(v.id)->isChecked())
-            mode = v.mode;
-    renderBody(body_, selected_["body"].toString(), mode);
-    // Plain and hex are the fixed-width modes, and the subject rides along:
-    // if a body needed a monospace grid to make sense, its subject does too.
-    const bool fixed = mode == BodyView::Plain || mode == BodyView::Hex;
-    subject_->setFont(fixed || subject_->text().contains("BM-") ? addressFont()
-                                                                : QApplication::font());
+    showLetterBody(body_, subject_, selected_["body"].toString(),
+                   static_cast<ViewSwitch *>(viewSwitch_)->mode());
 }
 void DesktopWindow::compose(QVariantMap letter, bool reply) {
     if (!session_.mailboxOpen())

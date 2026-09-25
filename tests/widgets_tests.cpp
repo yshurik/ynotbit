@@ -360,7 +360,10 @@ int main(int argc, char **argv) {
                     .isNull(),
                 "reader blocks local resources");
         {
-            auto mode = [&](const char *id) { return window.findChild<QToolButton *>(id); };
+            // Scoped to the reader's own switch: a pop-out window carries an
+            // identical one, and it is a child of this window too.
+            auto readerViews = window.findChild<QWidget *>("viewSwitch");
+            auto mode = [&](const char *id) { return readerViews->findChild<QToolButton *>(id); };
             auto subjectLabel = window.findChild<QLabel *>("subjectLabel");
             require(mode("view_plain") && mode("view_text") && mode("view_markdown") &&
                         mode("view_hex"),
@@ -392,6 +395,27 @@ int main(int argc, char **argv) {
             mode("view_markdown")->click();
             require(reader->toPlainText() == "A delivered letter.",
                     "and back out of hex again");
+            // The pop-out window detects and switches on its own.
+            window.selectMessage("cryptic");
+            for (auto action : window.findChildren<QAction *>())
+                if (action->text() == "Open in new window")
+                    action->trigger();
+            auto popout = window.findChildren<QDialog *>("messageWindow").last();
+            auto popViews = popout->findChild<QWidget *>("windowViewSwitch");
+            require(popViews, "the pop-out window has its own view switch");
+            auto popMode = [&](const char *id) { return popViews->findChild<QToolButton *>(id); };
+            auto popBody = popout->findChild<QTextBrowser *>("windowBody");
+            require(popMode("view_hex")->isChecked() &&
+                        popBody->toPlainText().contains("00000000  01 02 03 04"),
+                    "the pop-out opens an unprintable body in hex too");
+            popMode("view_text")->click();
+            require(popBody->toPlainText().startsWith("\x01\x02\x03\x04 raw bytes"),
+                    "the pop-out can be switched by hand");
+            require(mode("view_hex")->isChecked(),
+                    "switching the pop-out leaves the reader's own mode alone");
+            popout->close(); // WA_DeleteOnClose only schedules it; flush so later
+                             // findChild("messageWindow") lookups don't find it
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
             window.selectMessage(formatted); // leave the markdown letter open for what follows
         }
         for (auto action : window.findChildren<QAction *>())

@@ -41,6 +41,7 @@ class DesktopWindow : public QMainWindow {
     QTextBrowser *body_;
     QWidget *actions_, *reader_, *identities_;
     QWidget *letterStripe_;
+    QWidget *viewSwitch_;
     QWidget *sidebarWidget_, *listColumn_;
     QStackedWidget *welcomeStack_;
     QWidget *lockedPage_, *noMailboxPage_;
