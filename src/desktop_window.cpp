@@ -319,31 +319,16 @@ void renderMarkdown(QTextBrowser *body, const QString &text) {
 // from the reader's view switch.
 enum class BodyView { Plain, Text, Markdown, Hex };
 // Headings, paired **bold**/__bold__, `code`, and [text](url) links are
-// specific enough that even one match is enough. A single dash line is not --
-// plenty of ordinary letters start a line with a dash -- so lists need two.
+// specific enough that even one match is enough. Dash and numbered lists are
+// not counted at all: plain-text letters use them all the time.
 bool looksLikeMarkdown(const QString &text) {
     static const QRegularExpression heading("^#{1,6}[ \\t]+\\S.*$",
                                             QRegularExpression::MultilineOption);
     static const QRegularExpression bold("\\*\\*[^*\\n]+\\*\\*|__[^_\\n]+__");
     static const QRegularExpression code("`[^`\\n]+`");
     static const QRegularExpression link("\\[[^\\]\\n]+\\]\\([^)\\n]+\\)");
-    static const QRegularExpression listLine("^[ \\t]*[-*+][ \\t]+\\S.*$",
-                                             QRegularExpression::MultilineOption);
-    static const QRegularExpression numberedLine("^[ \\t]*\\d+\\.[ \\t]+\\S.*$",
-                                                 QRegularExpression::MultilineOption);
-    auto count = [&](const QRegularExpression &re) {
-        int n = 0;
-        auto it = re.globalMatch(text);
-        while (it.hasNext()) {
-            it.next();
-            ++n;
-        }
-        return n;
-    };
-    if (heading.match(text).hasMatch() || bold.match(text).hasMatch() ||
-        code.match(text).hasMatch() || link.match(text).hasMatch())
-        return true;
-    return count(listLine) >= 2 || count(numberedLine) >= 2;
+    return heading.match(text).hasMatch() || bold.match(text).hasMatch() ||
+           code.match(text).hasMatch() || link.match(text).hasMatch();
 }
 BodyView detectBodyView(const QString &subject, const QString &text) {
     if (looksCryptic(subject, text))

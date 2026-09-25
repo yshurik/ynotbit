@@ -469,6 +469,15 @@ int main(int argc, char **argv) {
                     "switching out of hex shows the raw subject again");
             window.selectMessage("signed");
             require(!mode("view_hex")->isChecked(), "the rule-line letter does not open in hex");
+            window.selectMessage(session.saveLetter(
+                {}, address, address, "Notes",
+                "- Structure prevent fund military station wonder report.\n"
+                "- Through hot hard industry kind.\n"
+                "- Join rather west table political huge grow.\n\n"
+                "1. first\n2. second\n",
+                "direct"));
+            require(mode("view_plain")->isChecked(),
+                    "a dash or numbered list alone is not a markdown signal");
             window.selectMessage(acknowledged); // "A delivered letter." -- neither, so plain
             require(mode("view_plain")->isChecked(),
                     "an ordinary body opens in plain mode, not markdown");
