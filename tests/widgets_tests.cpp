@@ -169,6 +169,22 @@ int main(int argc, char **argv) {
                         a->trigger();
             };
             themeTo("light");
+            // A stroke thinner than one pixel at the button's icon size only
+            // ever renders as antialiased gray, which reads as a disabled
+            // control. Every icon needs at least one fully-inked pixel.
+            for (const char *id : {"filter_unread", "filter_anonymous", "density_comfortable",
+                                   "density_cozy", "density_compact"}) {
+                auto btn = window.findChild<QToolButton *>(id);
+                const auto img = btn->icon().pixmap(btn->iconSize()).toImage().convertToFormat(
+                    QImage::Format_ARGB32);
+                int solid = 0;
+                for (int y = 0; y < img.height(); ++y)
+                    for (int x = 0; x < img.width(); ++x)
+                        if (qAlpha(img.pixel(x, y)) >= 200)
+                            ++solid;
+                require(solid > 0,
+                        "list column switch icons render solid strokes, not disabled-looking gray");
+            }
             const auto lightDensity = iconOf("density_compact");
             const auto lightFilter = iconOf("filter_unread");
             themeTo("dark");
@@ -420,6 +436,9 @@ int main(int argc, char **argv) {
             require(mode("view_plain") && mode("view_text") && mode("view_markdown") &&
                         mode("view_hex"),
                     "the reader offers all four view modes");
+            for (auto btn : readerViews->findChildren<QToolButton *>())
+                require(btn->iconSize().width() * 3 >= btn->width() * 2,
+                        "view mode icons fill most of their button, not a small glyph in a big box");
             // The letter just selected is the markdown one, and it was detected
             // as such -- that is what rendered the list above.
             require(mode("view_markdown")->isChecked(),

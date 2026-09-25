@@ -1168,7 +1168,7 @@ class ViewSwitch : public QWidget {
             btn->setObjectName(QString("view_") + kViews[i].id);
             btn->setCheckable(true);
             btn->setFixedSize(28, 28); // matches the actions pill's height beside it
-            btn->setIconSize(QSize(14, 14));
+            btn->setIconSize(QSize(20, 20));
             btn->setToolTip(kViews[i].label);
             btn->setCursor(Qt::PointingHandCursor);
             group->addButton(btn);
@@ -1491,7 +1491,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         btn->setObjectName(QString("filter_") + f.id);
         btn->setCheckable(true);
         btn->setFixedSize(26, 26);
-        btn->setIconSize(QSize(12, 12));
+        btn->setIconSize(QSize(16, 16));
         btn->setIcon(materialIcon(f.icon, iconColor(appearance_.dark())));
         btn->setToolTip(f.label);
         btn->setCursor(Qt::PointingHandCursor);
@@ -1529,7 +1529,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         btn->setCheckable(true);
         btn->setChecked(listDensity_ == d.id);
         btn->setFixedSize(26, 26);
-        btn->setIconSize(QSize(12, 12));
+        btn->setIconSize(QSize(16, 16));
         btn->setIcon(materialIcon(d.icon, iconColor(appearance_.dark())));
         btn->setToolTip(d.label);
         btn->setCursor(Qt::PointingHandCursor);
