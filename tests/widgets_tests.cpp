@@ -47,6 +47,23 @@ int main(int argc, char **argv) {
         // signed by the chan's own shared key, not an individually-attributable member.
         mailbox.store("anon-in-recipient", "recipient", "recipient", "Anon post",
                       "Posted anonymously", 1601, "Channels");
+        // The shape of the garbage actually seen on the public chan: uniformly
+        // random printable ASCII with the odd control byte, not mostly control
+        // characters. Deterministic so a failure reproduces.
+        const auto noise = [](quint32 seed, int length) {
+            QString out;
+            for (int i = 0; i < length; ++i) {
+                seed = seed * 1103515245u + 12345u;
+                const auto r = (seed >> 16) % 100;
+                out += r < 2 ? QChar(0x0b) : QChar(0x21 + int((seed >> 8) % 94));
+            }
+            return out;
+        };
+        const auto noiseSubject = noise(7, 60), noiseBody = noise(11, 900);
+        mailbox.store("noise", "sender", "recipient", noiseSubject, noiseBody, 1603, "Inbox");
+        const QString signed_ = "Nigh on.\n\n" + QString(60, '-') + "\nsig line one\n" +
+                                QString(60, '-') + "\n" + QString(60, '=');
+        mailbox.store("signed", "sender", "recipient", "Re: rule lines", signed_, 1604, "Inbox");
         // Decrypts fine but isn't text -- the reader should fall back to hex.
         mailbox.store("cryptic", "sender", "recipient", "\x01\x02 raw \x03\x04",
                       QString("\x01\x02\x03\x04 raw bytes \x05\x06\x07\x0e\x0f\x10\x11"), 1602,
@@ -413,6 +430,26 @@ int main(int argc, char **argv) {
                     "hex mode dumps offsets and bytes");
             require(mono(reader->font()) && mono(subjectLabel->font()),
                     "hex mode puts body and subject in a fixed-width font");
+            require(bm::crypticLabel("7687d8a1b2c3") == "<cryptic-7687d8>",
+                    "the list labels a cryptic letter by the first six hex digits of its hash");
+            require(bm::looksCryptic(noiseSubject, noiseBody),
+                    "random printable noise is cryptic even with only ~2% control bytes");
+            require(bm::looksCryptic(noiseSubject.left(240), noiseBody.left(240)),
+                    "and the 240-char list preview reaches the same verdict");
+            require(!bm::looksCryptic("Re: rule lines", signed_) &&
+                        !bm::looksCryptic("Re: rule lines", signed_.left(240)),
+                    "a short letter with a long rule-line signature is not cryptic");
+            window.selectMessage("noise");
+            require(mode("view_hex")->isChecked(), "real-shaped noise opens in hex mode");
+            require(QRegularExpression("^[0-9a-f]{2}( [0-9a-f]{2}){5}")
+                        .match(subjectLabel->text()).hasMatch(),
+                    "a cryptic letter's subject is shown as hex too");
+            mode("view_text")->click();
+            require(subjectLabel->text() == noiseSubject.simplified() ||
+                        subjectLabel->text().startsWith(noiseSubject.left(10)),
+                    "switching out of hex shows the raw subject again");
+            window.selectMessage("signed");
+            require(!mode("view_hex")->isChecked(), "the rule-line letter does not open in hex");
             window.selectMessage(acknowledged); // "A delivered letter." -- neither, so plain
             require(mode("view_plain")->isChecked(),
                     "an ordinary body opens in plain mode, not markdown");

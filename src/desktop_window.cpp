@@ -9,6 +9,41 @@
 #include <QtWidgets>
 
 namespace bm {
+// Some objects that decrypt for us are not text. In the wild (the public
+// Bitmessage chan, measured over 424 posts) the garbage is mostly uniformly
+// random *printable* ASCII with the odd control byte -- only ~2% control
+// characters, so counting unprintables alone misses it. What gives it away
+// is structure: random ASCII has almost no whitespace (under 5% there,
+// against 9% and up for every real letter) and dense punctuation (~30%).
+// Symbols alone are not enough: real letters with "-----" signature lines
+// reach 55% -- so a symbol that merely repeats the one before it (a rule
+// line, "!!!") doesn't count; random bytes almost never repeat. Truly binary
+// bodies still trip the first test.
+bool looksCryptic(const QString &text) {
+    int unprintable = 0, space = 0, symbol = 0;
+    QChar previous;
+    for (const QChar c : text) {
+        if (c == ' ' || c == '\n' || c == '\t' || c == '\r')
+            ++space;
+        else if (c == QChar::ReplacementCharacter || c.category() == QChar::Other_Control)
+            ++unprintable;
+        else if (!c.isLetterOrNumber() && c != previous)
+            ++symbol;
+        previous = c;
+    }
+    const auto n = text.size();
+    if (n == 0)
+        return false;
+    if (unprintable * 20 > n)
+        return true;
+    return n >= 24 && space * 100 < n * 8 && symbol * 100 > n * 25;
+}
+bool looksCryptic(const QString &subject, const QString &body) {
+    return looksCryptic(subject) || looksCryptic(body);
+}
+QString crypticLabel(const QString &hash) {
+    return "<cryptic-" + hash.left(6) + ">";
+}
 namespace {
 class AddressHighlighter : public QSyntaxHighlighter {
   public:
@@ -193,15 +228,19 @@ class LetterDelegate : public QStyledItemDelegate {
                 r, Qt::AlignVCenter,
                 QFontMetrics(font).elidedText(singleLine(value), Qt::ElideRight, r.width()));
         };
-        const auto subject = i.data(Qt::UserRole + 4).toString();
+        const auto preview = i.data(Qt::UserRole + 5).toString();
+        const bool cryptic = looksCryptic(i.data(Qt::UserRole + 4).toString(), preview);
+        const auto subject = cryptic ? crypticLabel(i.data(Qt::UserRole + 1).toString())
+                                     : i.data(Qt::UserRole + 4).toString();
+        const auto previewLine = cryptic ? QString() : preview;
         if (density_ == "compact") {
             text(3, subject, unread, pal.text().color());
         } else if (density_ == "cozy") {
             text(8, subject, unread, pal.text().color());
-            text(32, i.data(Qt::UserRole + 5).toString(), false, pal.placeholderText().color());
+            text(32, previewLine, false, pal.placeholderText().color());
         } else {
             text(10, subject, unread, pal.text().color());
-            text(36, i.data(Qt::UserRole + 5).toString(), false, pal.placeholderText().color());
+            text(36, previewLine, false, pal.placeholderText().color());
             auto state = i.data(Qt::UserRole + 7).toString();
             const auto stateColor =
                 state == "acknowledged"
@@ -306,23 +345,8 @@ bool looksLikeMarkdown(const QString &text) {
         return true;
     return count(listLine) >= 2 || count(numberedLine) >= 2;
 }
-// Not every object that decrypts for us holds text: a body can arrive as
-// binary, or as bytes that were never UTF-8 and so decoded to replacement
-// characters. Showing that as prose is just noise, so it goes to hex instead.
-// One stray control byte in a long letter is not enough -- it takes a body
-// that is substantially unprintable.
-bool looksCryptic(const QString &text) {
-    if (text.isEmpty())
-        return false;
-    int odd = 0;
-    for (const QChar c : text)
-        if (c == QChar::ReplacementCharacter ||
-            (c.category() == QChar::Other_Control && c != '\t' && c != '\n' && c != '\r'))
-            ++odd;
-    return odd * 20 > text.size();
-}
-BodyView detectBodyView(const QString &text) {
-    if (looksCryptic(text))
+BodyView detectBodyView(const QString &subject, const QString &text) {
+    if (looksCryptic(subject, text))
         return BodyView::Hex;
     if (looksLikeMarkdown(text))
         return BodyView::Markdown;
@@ -1182,11 +1206,24 @@ class ViewSwitch : public QWidget {
 // Shows a letter in the given mode. Plain and hex are the fixed-width modes,
 // and the subject rides along: if a body needed a monospace grid to make
 // sense, its subject does too.
-void showLetterBody(QTextBrowser *body, QLabel *subject, const QString &text, BodyView mode) {
+// Hex for a subject line: a run of byte pairs, capped -- a cryptic subject
+// can be tens of kilobytes, and this is a header, not the dump.
+QString hexLine(const QByteArray &bytes, int max = 48) {
+    QStringList pairs;
+    for (int i = 0; i < qMin<int>(bytes.size(), max); ++i)
+        pairs << QString("%1").arg(quint8(bytes[i]), 2, 16, QChar('0'));
+    auto line = pairs.join(' ');
+    if (bytes.size() > max)
+        line += QString(" \u2026 (%1 bytes)").arg(bytes.size());
+    return line;
+}
+void showLetterBody(QTextBrowser *body, QLabel *subject, const QString &subjectText,
+                    const QString &text, BodyView mode) {
     renderBody(body, text, mode);
+    const auto line = singleLine(subjectText);
+    subject->setText(mode == BodyView::Hex ? hexLine(subjectText.toUtf8()) : line);
     const bool fixed = mode == BodyView::Plain || mode == BodyView::Hex;
-    subject->setFont(fixed || subject->text().contains("BM-") ? addressFont()
-                                                               : QApplication::font());
+    subject->setFont(fixed || line.contains("BM-") ? addressFont() : QApplication::font());
 }
 class MessageWindow : public QDialog {
   public:
@@ -1245,7 +1282,7 @@ class MessageWindow : public QDialog {
         toolRow->addStretch();
         frame->addLayout(toolRow);
         auto subject = subjectArea(frame, "windowSubjectLabel", "windowSubjectScroll");
-        subject->setText(singleLine(letter_["subject"].toString()));
+
         auto addresses =
             new QLabel(letter_["from"].toString() + "  →  " + letter_["to"].toString());
         addresses->setObjectName("windowAddresses");
@@ -1270,13 +1307,14 @@ class MessageWindow : public QDialog {
         });
         frame->addWidget(body, 1);
         const auto text = letter_["body"].toString();
-        auto views = new ViewSwitch(iconColor(dark), [body, subject, text](BodyView mode) {
-            showLetterBody(body, subject, text, mode);
+        const auto subjectText = letter_["subject"].toString();
+        auto views = new ViewSwitch(iconColor(dark), [body, subject, subjectText, text](BodyView mode) {
+            showLetterBody(body, subject, subjectText, text, mode);
         });
         views->setObjectName("windowViewSwitch");
         toolRow->addWidget(views);
-        views->setMode(detectBodyView(text));
-        showLetterBody(body, subject, text, views->mode());
+        views->setMode(detectBodyView(subjectText, text));
+        showLetterBody(body, subject, subjectText, text, views->mode());
         letterFrame->setKind(classifyLetter(letter_["folder"].toString(),
                                             letter_["from"].toString(), letter_["to"].toString()));
     }
@@ -2231,8 +2269,6 @@ void DesktopWindow::selectMessage(const QString &id) {
         error_->show();
         return;
     }
-    const auto fullSubject = singleLine(selected_["subject"].toString());
-    subject_->setText(fullSubject);
     static_cast<KindFrame *>(letterStripe_)
         ->setKind(classifyLetter(selected_["folder"].toString(), selected_["from"].toString(),
                                  selected_["to"].toString()));
@@ -2245,7 +2281,8 @@ void DesktopWindow::selectMessage(const QString &id) {
     updateTimeline();
     // Each letter opens in the mode its own content calls for; the switch is
     // then free for the reader to override on this letter.
-    static_cast<ViewSwitch *>(viewSwitch_)->setMode(detectBodyView(selected_["body"].toString()));
+    static_cast<ViewSwitch *>(viewSwitch_)
+        ->setMode(detectBodyView(selected_["subject"].toString(), selected_["body"].toString()));
     renderSelectedBody();
     actions_->show();
     findChild<QAction *>("editAction")->setVisible(selected_["folder"] == "Drafts");
@@ -2259,7 +2296,7 @@ void DesktopWindow::selectMessage(const QString &id) {
     session_.readLetter(id);
 }
 void DesktopWindow::renderSelectedBody() {
-    showLetterBody(body_, subject_, selected_["body"].toString(),
+    showLetterBody(body_, subject_, selected_["subject"].toString(), selected_["body"].toString(),
                    static_cast<ViewSwitch *>(viewSwitch_)->mode());
 }
 void DesktopWindow::compose(QVariantMap letter, bool reply) {

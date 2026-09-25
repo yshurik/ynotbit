@@ -14,6 +14,9 @@ class QStackedWidget;
 class QAbstractItemDelegate;
 namespace bm {
 class Session;
+bool looksCryptic(const QString &text);
+bool looksCryptic(const QString &subject, const QString &body);
+QString crypticLabel(const QString &hash);
 class DesktopWindow : public QMainWindow {
     Q_OBJECT
   public:
