@@ -100,28 +100,24 @@ struct KindColors {
 // rather than "urgent", and alpha over whatever's underneath keeps it legible
 // on both a dark and a light palette without a separate color per theme.
 KindColors kindColors(LetterKind kind, const QPalette &palette) {
+    // Every letter's border shares one faint ground -- the theme's own text
+    // colour at low alpha, so it reads as a near-white watermark on a light
+    // theme and the reverse on a dark one -- and only the stripes laid over
+    // it say what kind of letter this is. A fixed gray would look like a
+    // smudge on light themes and vanish on dark ones.
+    const auto ink = palette.color(QPalette::WindowText);
+    const QColor ground(ink.red(), ink.green(), ink.blue(), 18);
     switch (kind) {
     case LetterKind::Personal:
-        // A direct letter (Inbox/Outbox/Sent/...), not a chan post -- a
-        // faint transparent green over whatever the pane's background is.
-        // A darker background already leans blue/teal, so this needs more
-        // saturation than a plain "seagreen" to still read as green rather
-        // than getting pulled toward the background's own hue.
-        return {QColor(30, 170, 60, 50), {}, false};
+        // A direct letter (Inbox/Outbox/Sent/...). Saturated enough to still
+        // read as green over a dark pane that already leans blue/teal.
+        return {ground, QColor(30, 170, 60, 60), true};
     case LetterKind::ChanPersonal:
-        // Same treatment, blue, so a chan post from a known member reads
-        // differently from a direct letter at a glance without shouting.
-        return {QColor(60, 125, 217, 32), {}, false};
-    case LetterKind::ChanAnonymous: {
-        // Derived from the theme's own text color at low alpha, not a fixed
-        // gray -- a dark-on-light theme's ink at low alpha reads as a faint
-        // near-white watermark, and a light-on-dark theme's ink does the
-        // same in reverse, instead of one fixed gray looking like a dark
-        // smudge on a light theme and washing out on a dark one.
-        const auto ink = palette.color(QPalette::WindowText);
-        return {QColor(ink.red(), ink.green(), ink.blue(), 18),
-                QColor(ink.red(), ink.green(), ink.blue(), 7), true};
-    }
+        // A chan post from a known member.
+        return {ground, QColor(60, 125, 217, 60), true};
+    case LetterKind::ChanAnonymous:
+        // No colour at all: nobody vouches for it.
+        return {ground, QColor(ink.red(), ink.green(), ink.blue(), 7), true};
     case LetterKind::Broadcast:
         return {QColor("#2e8b57"), QColor("#e0b400"), true};
     }
@@ -2008,6 +2004,12 @@ void DesktopWindow::updateTheme() {
     findChild<QToolButton *>("moreActionsButton")->setIcon(materialIcon("more", color));
     findChild<QPushButton *>("writeButton")->setIcon(materialIcon("edit", color));
     static_cast<ViewSwitch *>(viewSwitch_)->setIconColor(color);
+    for (const auto &[id, icon] : {std::pair{"density_comfortable", "densityComfortable"},
+                                   {"density_cozy", "densityCozy"},
+                                   {"density_compact", "densityCompact"},
+                                   {"filter_unread", "filterUnread"},
+                                   {"filter_anonymous", "filterAnonymous"}})
+        findChild<QToolButton *>(id)->setIcon(materialIcon(icon, color));
     for (const auto &[label, iconName] : kFolderIcons)
         findChild<QToolButton *>("folderIcon_" + label)->setIcon(materialIcon(iconName, color));
 }

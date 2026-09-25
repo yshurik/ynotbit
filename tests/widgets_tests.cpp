@@ -141,6 +141,27 @@ int main(int argc, char **argv) {
                     window.findChild<QToolButton *>("density_compact"),
                 "all three density buttons exist");
         {
+            // Every icon in the list column must follow a theme switch, not
+            // keep the colour it was drawn with at startup.
+            auto iconOf = [&](const char *id) {
+                return window.findChild<QToolButton *>(id)->icon().pixmap(12, 12).toImage();
+            };
+            auto themeTo = [&](const char *mode) {
+                for (auto a : window.findChildren<QAction *>())
+                    if (a->text() == mode)
+                        a->trigger();
+            };
+            themeTo("light");
+            const auto lightDensity = iconOf("density_compact");
+            const auto lightFilter = iconOf("filter_unread");
+            themeTo("dark");
+            require(iconOf("density_compact") != lightDensity,
+                    "density icons recolour on a theme switch");
+            require(iconOf("filter_unread") != lightFilter,
+                    "filter icons recolour on a theme switch");
+            themeTo("system");
+        }
+        {
             window.selectMessage("0"); // marks a non-anonymous recipient-channel message read
             auto unreadFilter = window.findChild<QToolButton *>("filter_unread");
             auto anonFilter = window.findChild<QToolButton *>("filter_anonymous");
@@ -170,22 +191,36 @@ int main(int argc, char **argv) {
             require(stripe, "letter kind stripe exists");
             require(stripe->layout()->contentsMargins().left() > 0,
                     "the envelope frame always reserves a gap for its border");
-            auto borderTint = [&] {
+            // The border is a striped band: a faint gray ground with coloured
+            // stripes over it. Sample along its top edge and look for both --
+            // a pixel where the kind's colour dominates, and variation along
+            // the row (a solid fill would be the same colour all the way).
+            struct Band { bool greenStripe = false, blueStripe = false; int shades = 0; };
+            auto band = [&] {
                 QCoreApplication::processEvents();
-                return stripe->grab(QRect(0, 0, stripe->width(), 1)).toImage().pixelColor(2, 0);
+                const auto row = stripe->grab(QRect(0, 1, stripe->width(), 1)).toImage();
+                Band b;
+                QSet<QRgb> seen;
+                for (int x = 0; x < row.width(); ++x) {
+                    const auto c = row.pixelColor(x, 0);
+                    seen.insert(c.rgb());
+                    b.greenStripe |= c.green() > c.red() && c.green() > c.blue();
+                    b.blueStripe |= c.blue() > c.red() && c.blue() > c.green();
+                }
+                b.shades = seen.size();
+                return b;
             };
             window.selectMessage("0"); // a plain chan-personal message: from "sender", to "recipient"
-            auto chanPersonalTint = borderTint();
-            require(chanPersonalTint.blue() > chanPersonalTint.red() &&
-                        chanPersonalTint.blue() > chanPersonalTint.green(),
-                    "a chan-personal letter's border reads blue");
-            window.selectMessage("anon-in-recipient"); // from==to: posted with the chan's own key
+            const auto chanPersonal = band();
+            require(chanPersonal.blueStripe, "a chan-personal letter's border has blue stripes");
+            require(chanPersonal.shades > 1,
+                    "a chan-personal border is striped over the gray ground, not a solid fill");
             window.selectMessage(acknowledged); // an ordinary Outbox letter, not in the Channels folder
-            auto personalTint = borderTint();
-            require(personalTint.green() > personalTint.red() &&
-                        personalTint.green() > personalTint.blue(),
-                    "a plain personal letter (Inbox/Outbox/...) also gets a border, tinted green "
-                    "instead of blue");
+            const auto personal = band();
+            require(personal.greenStripe,
+                    "a plain personal letter (Inbox/Outbox/...) gets green stripes, not blue");
+            require(personal.shades > 1,
+                    "a personal border is striped over the gray ground, not a solid fill");
             window.selectMessage("anon-in-recipient");
             for (auto action : window.findChildren<QAction *>())
                 if (action->text() == "Open in new window")
