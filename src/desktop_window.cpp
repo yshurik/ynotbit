@@ -1594,14 +1594,6 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         }
         QMessageBox::information(this, "Delivery history", text);
     });
-    menu->addAction("Full subject", this, [this] {
-        QMessageBox dialog(QMessageBox::Information, "Full subject",
-                           selected_["subject"].toString(), QMessageBox::Ok, this);
-        dialog.setTextFormat(Qt::PlainText);
-        if (selected_["subject"].toString().contains("BM-"))
-            dialog.setFont(addressFont());
-        dialog.exec();
-    });
     auto letterFrame = new KindFrame;
     letterFrame->setObjectName("letterKindStripe");
     letterStripe_ = letterFrame;
