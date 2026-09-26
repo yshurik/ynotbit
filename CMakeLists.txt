@@ -64,6 +64,8 @@ if(APPLE)
  set_target_properties(ynotbit PROPERTIES MACOSX_BUNDLE_ICON_FILE "ynotbit.icns")
 endif()
 target_link_libraries(ynotbit PRIVATE bmcore Qt6::Widgets Qt6::Network)
+# A windowed app on Windows: no console window opens alongside it.
+set_target_properties(ynotbit PROPERTIES WIN32_EXECUTABLE TRUE)
 if(UNIX)
  target_sources(ynotbit PRIVATE src/relay_bridge.cpp)
  target_link_libraries(ynotbit PRIVATE notbit_engine)
