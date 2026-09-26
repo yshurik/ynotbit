@@ -76,7 +76,10 @@ with tempfile.TemporaryDirectory() as temporary:
             if command==b"getdata":
                 assert object_hash in data
                 break
-        if len(sys.argv)>2 and os.environ.get("YNOTBIT_TEST_NODE_FLAG","--node")=="--node":
+        # --node is the notbit engine only on Unix; Windows builds run the
+        # Qt-native relay for it (see main.cpp), which is out of scope here.
+        if (len(sys.argv)>2 and os.environ.get("YNOTBIT_TEST_NODE_FLAG","--node")=="--node"
+                and sys.platform!="win32"):
             # Only checked in the verack-first ordering (handshake, and so
             # connection_established() which sends getaddr, is guaranteed
             # complete before this point -- in the other ordering our own
@@ -85,15 +88,6 @@ with tempfile.TemporaryDirectory() as temporary:
             # real notbit engine specifically: the Qt-native relay's address
             # sharing is a separate, more minimal implementation that doesn't
             # send real addr lists either way, so it's out of scope here.
-            # The handshake's getaddr and the inv's getdata can arrive in
-            # either order (seen on Windows CI): keep listening briefly.
-            deadline=time.monotonic()+5
-            while not saw_getaddr and time.monotonic()<deadline:
-                try:
-                    command,_=receive(peer)
-                except socket.timeout:
-                    break
-                saw_getaddr=command==b"getaddr"
             assert saw_getaddr,("ynotbit should actively request the peer's known addresses "
                                 "once connected, not only wait for unsolicited addr gossip")
         # The node has sent getdata but we (the test) haven't answered yet --
