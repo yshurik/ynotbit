@@ -44,6 +44,26 @@ bool looksCryptic(const QString &subject, const QString &body) {
 QString crypticLabel(const QString &hash) {
     return "<cryptic-" + hash.left(6) + ">";
 }
+QString hexDump(const QByteArray &bytes) {
+    QString out;
+    for (int offset = 0; offset < bytes.size(); offset += 16) {
+        const auto line = bytes.mid(offset, 16);
+        QString hex, ascii;
+        for (int i = 0; i < 16; ++i) {
+            hex += i < line.size()
+                       ? QString("%1 ").arg(quint8(line[i]), 2, 16, QChar('0'))
+                       : QString("   ");
+            if (i == 7)
+                hex += ' ';
+            if (i < line.size()) {
+                const auto c = quint8(line[i]);
+                ascii += c >= 0x20 && c < 0x7f ? QChar(c) : QChar('.');
+            }
+        }
+        out += QString("%1  %2 |%3|\n").arg(offset, 8, 16, QChar('0')).arg(hex, ascii);
+    }
+    return out;
+}
 namespace {
 class AddressHighlighter : public QSyntaxHighlighter {
   public:
@@ -337,26 +357,6 @@ BodyView detectBodyView(const QString &subject, const QString &text) {
         return BodyView::Markdown;
     return BodyView::Plain;
 }
-QString hexDump(const QByteArray &bytes) {
-    QString out;
-    for (int offset = 0; offset < bytes.size(); offset += 16) {
-        const auto line = bytes.mid(offset, 16);
-        QString hex, ascii;
-        for (int i = 0; i < 16; ++i) {
-            hex += i < line.size()
-                       ? QString("%1 ").arg(quint8(line[i]), 2, 16, QChar('0'))
-                       : QString("   ");
-            if (i == 7)
-                hex += ' ';
-            if (i < line.size()) {
-                const auto c = quint8(line[i]);
-                ascii += c >= 0x20 && c < 0x7f ? QChar(c) : QChar('.');
-            }
-        }
-        out += QString("%1  %2 |%3|\n").arg(offset, 8, 16, QChar('0')).arg(hex, ascii);
-    }
-    return out;
-}
 void renderBody(QTextBrowser *body, const QString &text, BodyView mode) {
     body->setFont(mode == BodyView::Text || mode == BodyView::Markdown ? QApplication::font()
                                                                        : addressFont());
@@ -371,22 +371,45 @@ void renderBody(QTextBrowser *body, const QString &text, BodyView mode) {
     body->moveCursor(QTextCursor::Start);
     body->verticalScrollBar()->setValue(0);
 }
-QLabel *subjectArea(QBoxLayout *layout, const QString &labelName, const QString &scrollName) {
-    auto label = new QLabel;
-    label->setObjectName(labelName);
-    label->setWordWrap(true);
-    label->setTextFormat(Qt::PlainText);
-    label->setStyleSheet("font-size:15px;font-weight:600;");
-    auto scroll = new QScrollArea;
-    scroll->setObjectName(scrollName);
-    scroll->setWidget(label);
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
-    scroll->setMaximumHeight(112); // 20% of the 560px initial dialog height
-    layout->addWidget(scroll);
-    return label;
+// The subject is a read-only text area like the body, so any part of it can be
+// selected and copied. Four lines tall; longer subjects scroll.
+QTextEdit *subjectArea(QBoxLayout *layout, const QString &name) {
+    auto subject = new QTextEdit;
+    subject->setObjectName(name);
+    subject->setReadOnly(true);
+    subject->setAcceptRichText(false);
+    subject->setFrameShape(QFrame::NoFrame);
+    subject->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    subject->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    layout->addWidget(subject);
+    return subject;
+}
+// Bold headline type normally; in hex mode, exactly the body's dump (same
+// font, same offset / bytes / text columns) and not bold.
+void setSubject(QTextEdit *subject, const QString &text, BodyView mode = BodyView::Text) {
+    QFont font;
+    int pixels = 13; // the window-wide QSS size, which the body gets too
+    if (mode == BodyView::Hex) {
+        font = addressFont();
+    } else {
+        font = mode == BodyView::Plain || text.contains("BM-") ? addressFont()
+                                                                : QApplication::font();
+        font.setWeight(QFont::DemiBold);
+        pixels = 15;
+    }
+    // The window's "QWidget{font-size}" rule beats setFont(), so the size has
+    // to be set as a style rule of the subject's own as well.
+    const auto rule = QString("QTextEdit{font-size:%1px;}").arg(pixels);
+    if (subject->styleSheet() != rule)
+        subject->setStyleSheet(rule);
+    font.setPixelSize(pixels);
+    subject->setFont(font);
+    subject->setLineWrapMode(mode == BodyView::Hex ? QTextEdit::NoWrap : QTextEdit::WidgetWidth);
+    subject->setPlainText(mode == BodyView::Hex ? hexDump(text.toUtf8()) : text);
+    subject->moveCursor(QTextCursor::Start);
+    subject->setFixedHeight(QFontMetrics(font).lineSpacing() * 4 +
+                            int(2 * subject->document()->documentMargin()) +
+                            2 * subject->frameWidth());
 }
 QColor iconColor(bool dark) {
     return dark ? QColor("#c1cdd7") : QColor("#435867");
@@ -439,11 +462,37 @@ QIcon materialIcon(const QString &name, QColor color) {
         head.lineTo(30, 10);
         head.lineTo(30, 18);
         p.drawPath(head);
-    } else if (name == "more") {
-        p.setBrush(color);
-        p.setPen(Qt::NoPen);
-        for (int y : {10, 20, 30})
-            p.drawEllipse(QPointF(20, y), 2.6, 2.6);
+    } else if (name == "restore") {
+        // An undo arrow: back out of the Trash.
+        QPainterPath path;
+        path.moveTo(14, 16);
+        path.lineTo(25, 16);
+        path.cubicTo(33, 16, 33, 30, 25, 30);
+        path.lineTo(15, 30);
+        p.drawPath(path);
+        QPainterPath head;
+        head.moveTo(19, 11);
+        head.lineTo(14, 16);
+        head.lineTo(19, 21);
+        p.drawPath(head);
+    } else if (name == "deleteForever") {
+        // The trash can, crossed out.
+        p.drawLine(10, 12, 30, 12);
+        p.drawRect(16, 8, 8, 4);
+        p.drawRect(12, 12, 16, 20);
+        p.drawLine(17, 18, 23, 26);
+        p.drawLine(23, 18, 17, 26);
+    } else if (name == "retry") {
+        // A circular arrow, open at the top right.
+        p.drawArc(QRectF(10, 10, 20, 20), 60 * 16, 300 * 16);
+        QPainterPath head;
+        head.moveTo(24.4, 6.2); // a chevron on the arc's clockwise tangent at 60 degrees
+        head.lineTo(26, 12);
+        head.lineTo(20.2, 13.6);
+        p.drawPath(head);
+    } else if (name == "cancel") {
+        p.drawEllipse(QRectF(10, 10, 20, 20));
+        p.drawLine(QPointF(13, 13), QPointF(27, 27));
     } else if (name == "bold") {
         p.setFont(QFont(QApplication::font().family(), 17, QFont::Bold));
         p.setPen(color);
@@ -1209,24 +1258,10 @@ class ViewSwitch : public QWidget {
 // Shows a letter in the given mode. Plain and hex are the fixed-width modes,
 // and the subject rides along: if a body needed a monospace grid to make
 // sense, its subject does too.
-// Hex for a subject line: a run of byte pairs, capped -- a cryptic subject
-// can be tens of kilobytes, and this is a header, not the dump.
-QString hexLine(const QByteArray &bytes, int max = 48) {
-    QStringList pairs;
-    for (int i = 0; i < qMin<int>(bytes.size(), max); ++i)
-        pairs << QString("%1").arg(quint8(bytes[i]), 2, 16, QChar('0'));
-    auto line = pairs.join(' ');
-    if (bytes.size() > max)
-        line += QString(" \u2026 (%1 bytes)").arg(bytes.size());
-    return line;
-}
-void showLetterBody(QTextBrowser *body, QLabel *subject, const QString &subjectText,
+void showLetterBody(QTextBrowser *body, QTextEdit *subject, const QString &subjectText,
                     const QString &text, BodyView mode) {
     renderBody(body, text, mode);
-    const auto line = singleLine(subjectText);
-    subject->setText(mode == BodyView::Hex ? hexLine(subjectText.toUtf8()) : line);
-    const bool fixed = mode == BodyView::Plain || mode == BodyView::Hex;
-    subject->setFont(fixed || line.contains("BM-") ? addressFont() : QApplication::font());
+    setSubject(subject, subjectText, mode);
 }
 class MessageWindow : public QDialog {
   public:
@@ -1258,33 +1293,25 @@ class MessageWindow : public QDialog {
         auto trashAction = toolbar->addAction(materialIcon("delete", iconColor(dark)), "Trash");
         connect(trashAction, &QAction::triggered, this,
                 [this] { session_.moveLetter(letter_["hash"].toString(), "Trash"); });
-        auto more = new QToolButton;
-        more->setIcon(materialIcon("more", iconColor(dark)));
-        more->setToolTip("More");
-        more->setPopupMode(QToolButton::InstantPopup);
-        auto menu = new QMenu(more);
-        more->setMenu(menu);
-        toolbar->addWidget(more);
-        menu->addAction("Copy subject", this,
-                        [this] { QApplication::clipboard()->setText(letter_["subject"].toString()); });
         const bool trashed = letter_["folder"] == "Trash";
         const bool outgoing = letter_["folder"] == "Outbox";
-        menu->addAction("Restore", this, [this] { session_.restoreLetter(letter_["hash"].toString()); })
-            ->setVisible(trashed);
-        menu->addAction("Delete permanently", this,
-                        [this] { session_.deleteLetter(letter_["hash"].toString()); })
-            ->setVisible(trashed);
-        menu->addAction("Retry", this, [this] { session_.retryLetter(letter_["hash"].toString()); })
-            ->setVisible(outgoing);
-        menu->addAction("Cancel delivery", this,
-                        [this] { session_.cancelLetter(letter_["hash"].toString()); })
-            ->setVisible(outgoing);
+        auto folderAction = [&](const char *icon, const char *text, bool visible,
+                                void (Session::*act)(QString)) {
+            auto action = toolbar->addAction(materialIcon(icon, iconColor(dark)), text);
+            action->setVisible(visible);
+            connect(action, &QAction::triggered, this,
+                    [this, act] { (session_.*act)(letter_["hash"].toString()); });
+        };
+        folderAction("restore", "Restore", trashed, &Session::restoreLetter);
+        folderAction("deleteForever", "Delete permanently", trashed, &Session::deleteLetter);
+        folderAction("retry", "Retry", outgoing, &Session::retryLetter);
+        folderAction("cancel", "Cancel delivery", outgoing, &Session::cancelLetter);
         auto toolRow = new QHBoxLayout;
         toolRow->setContentsMargins(0, 0, 0, 0);
         toolRow->addWidget(toolbar);
         toolRow->addStretch();
         frame->addLayout(toolRow);
-        auto subject = subjectArea(frame, "windowSubjectLabel", "windowSubjectScroll");
+        auto subject = subjectArea(frame, "windowSubject");
 
         auto addresses =
             new QLabel(letter_["from"].toString() + "  →  " + letter_["to"].toString());
@@ -1578,33 +1605,28 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     trashAction->setObjectName("trashAction");
     connect(trashAction, &QAction::triggered, this,
             [this] { session_.moveLetter(selected_["hash"].toString(), "Trash"); });
+    // Trash- and Outbox-only actions; selectMessage shows the ones
+    // that apply to the selected letter.
+    const struct { const char *name, *icon, *text; void (Session::*act)(QString); }
+        folderActions[] = {
+            {"restoreAction", "restore", "Restore", &Session::restoreLetter},
+            {"deletePermanentlyAction", "deleteForever", "Delete permanently", &Session::deleteLetter},
+            {"retryAction", "retry", "Retry", &Session::retryLetter},
+            {"cancelDeliveryAction", "cancel", "Cancel delivery", &Session::cancelLetter},
+        };
+    for (const auto &f : folderActions) {
+        auto action = toolbar->addAction(materialIcon(f.icon, iconColor(appearance_.dark())), f.text);
+        action->setObjectName(f.name);
+        action->setVisible(false);
+        connect(action, &QAction::triggered, this,
+                [this, act = f.act] { (session_.*act)(selected_["hash"].toString()); });
+    }
     auto openWindowAction = toolbar->addAction(
         materialIcon("openWindow", iconColor(appearance_.dark())), "Open in new window");
     openWindowAction->setObjectName("openWindowAction");
     connect(openWindowAction, &QAction::triggered, this, [this] {
         (new MessageWindow(session_, selected_, appearance_.dark(), this))->show();
     });
-    auto more = new QToolButton;
-    more->setObjectName("moreActionsButton");
-    more->setIcon(materialIcon("more", iconColor(appearance_.dark())));
-    more->setToolTip("More");
-    more->setPopupMode(QToolButton::InstantPopup);
-    auto menu = new QMenu(more);
-    more->setMenu(menu);
-    toolbar->addWidget(more);
-    menu->addAction("Copy subject", this,
-                    [this] { QApplication::clipboard()->setText(selected_["subject"].toString()); });
-    menu->addAction("Restore", this,
-                    [this] { session_.restoreLetter(selected_["hash"].toString()); })
-        ->setObjectName("restoreAction");
-    menu->addAction("Delete permanently", this,
-                    [this] { session_.deleteLetter(selected_["hash"].toString()); })
-        ->setObjectName("deletePermanentlyAction");
-    menu->addAction("Retry", this, [this] { session_.retryLetter(selected_["hash"].toString()); })
-        ->setObjectName("retryAction");
-    menu->addAction("Cancel delivery", this,
-                    [this] { session_.cancelLetter(selected_["hash"].toString()); })
-        ->setObjectName("cancelDeliveryAction");
     auto letterFrame = new KindFrame;
     letterFrame->setObjectName("letterKindStripe");
     letterStripe_ = letterFrame;
@@ -1622,8 +1644,8 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     actions_ = toolRow;
     frame->addWidget(actions_);
     read->addWidget(letterFrame, 1);
-    subject_ = subjectArea(frame, "subjectLabel", "subjectScroll");
-    subject_->setText("No letter selected");
+    subject_ = subjectArea(frame, "subject");
+    setSubject(subject_, "No letter selected");
     details_ = new QWidget;
     auto metadata = new QGridLayout(details_);
     metadata->setContentsMargins(0, 0, 0, 0);
@@ -1897,7 +1919,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     connect(&session_, &Session::aboutToCloseMailbox, this, [this] {
         selected_.clear();
         body_->clear();
-        subject_->setText("No letter selected");
+        setSubject(subject_, "No letter selected");
         clearDetails();
         actions_->hide();
     });
@@ -1908,7 +1930,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
                 else {
                     selected_.clear();
                     body_->clear();
-                    subject_->setText("No letter selected");
+                    setSubject(subject_, "No letter selected");
                     clearDetails();
                     actions_->hide();
                 }
@@ -1936,7 +1958,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         }
         selected_.clear();
         body_->clear();
-        subject_->setText("No letter selected");
+        setSubject(subject_, "No letter selected");
         clearDetails();
         actions_->hide();
     });
@@ -1949,7 +1971,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         session_.messageModel()->setFolder(folder);
         selected_.clear();
         body_->clear();
-        subject_->setText(folder == "Identities" ? "Identities & chans" : "No letter selected");
+        setSubject(subject_, folder == "Identities" ? "Identities & chans" : "No letter selected");
         clearDetails();
         actions_->hide();
         if (folder == "Identities")
@@ -2029,7 +2051,10 @@ void DesktopWindow::updateTheme() {
     findChild<QAction *>("archiveAction")->setIcon(materialIcon("archive", color));
     findChild<QAction *>("trashAction")->setIcon(materialIcon("delete", color));
     findChild<QAction *>("openWindowAction")->setIcon(materialIcon("openWindow", color));
-    findChild<QToolButton *>("moreActionsButton")->setIcon(materialIcon("more", color));
+    findChild<QAction *>("restoreAction")->setIcon(materialIcon("restore", color));
+    findChild<QAction *>("deletePermanentlyAction")->setIcon(materialIcon("deleteForever", color));
+    findChild<QAction *>("retryAction")->setIcon(materialIcon("retry", color));
+    findChild<QAction *>("cancelDeliveryAction")->setIcon(materialIcon("cancel", color));
     findChild<QPushButton *>("writeButton")->setIcon(materialIcon("edit", color));
     static_cast<ViewSwitch *>(viewSwitch_)->setIconColor(color);
     for (const auto &[id, icon] : {std::pair{"density_comfortable", "densityComfortable"},
@@ -2171,7 +2196,6 @@ void DesktopWindow::updateState() {
         }
     }
     subject_->setVisible(mailboxState && !identityPage);
-    findChild<QScrollArea *>("subjectScroll")->setVisible(mailboxState && !identityPage);
     body_->setVisible(mailboxState && !identityPage);
     letterStripe_->setVisible(mailboxState && !identityPage);
     identities_->setVisible(identityPage);

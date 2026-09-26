@@ -6,6 +6,7 @@ class QListView;
 class QListWidget;
 class QLabel;
 class QTextBrowser;
+class QTextEdit;
 class QWidget;
 class QVBoxLayout;
 class QLineEdit;
@@ -17,6 +18,8 @@ class Session;
 bool looksCryptic(const QString &text);
 bool looksCryptic(const QString &subject, const QString &body);
 QString crypticLabel(const QString &hash);
+// Offset / 16 byte pairs / printable text, as the hex view shows a body.
+QString hexDump(const QByteArray &bytes);
 class DesktopWindow : public QMainWindow {
     Q_OBJECT
   public:
@@ -37,7 +40,8 @@ class DesktopWindow : public QMainWindow {
     QLabel *listCountLabel_;
     QLineEdit *search_;
     QVariantList channelIdentities_;
-    QLabel *heading_, *status_, *error_, *subject_;
+    QLabel *heading_, *status_, *error_;
+    QTextEdit *subject_;
     QLabel *fromAddress_, *toAddress_, *deliveryStatus_, *deliveryError_;
     QLabel *timeline_;
     QWidget *details_;

@@ -257,12 +257,17 @@ int main(int argc, char **argv) {
             {
                 auto openWindow = window.findChild<QAction *>("openWindowAction");
                 auto actionsBar = window.findChild<QToolBar *>("actionsToolbar");
-                auto moreMenu = window.findChild<QToolButton *>("moreActionsButton")->menu();
                 require(openWindow && actionsBar->actions().contains(openWindow),
                         "open-in-new-window is a toolbar button");
-                for (auto action : moreMenu->actions())
-                    require(action->text() != "Open in new window",
-                            "and no longer sits in the More menu");
+                require(!window.findChild<QToolButton *>("moreActionsButton"),
+                        "there is no More button any more");
+                for (auto name : {"restoreAction", "deletePermanentlyAction", "retryAction",
+                                  "cancelDeliveryAction"}) {
+                    auto action = window.findChild<QAction *>(name);
+                    require(action && actionsBar->actions().contains(action) &&
+                                !action->icon().isNull(),
+                            "Trash / Outbox actions are toolbar icons");
+                }
             }
             window.selectMessage("anon-in-recipient");
             for (auto action : window.findChildren<QAction *>())
@@ -442,7 +447,7 @@ int main(int argc, char **argv) {
             // identical one, and it is a child of this window too.
             auto readerViews = window.findChild<QWidget *>("viewSwitch");
             auto mode = [&](const char *id) { return readerViews->findChild<QToolButton *>(id); };
-            auto subjectLabel = window.findChild<QLabel *>("subjectLabel");
+            auto subjectLabel = window.findChild<QTextEdit *>("subject");
             require(mode("view_plain") && mode("view_text") && mode("view_markdown") &&
                         mode("view_hex"),
                     "the reader offers all four view modes");
@@ -470,13 +475,17 @@ int main(int argc, char **argv) {
                     "a short letter with a long rule-line signature is not cryptic");
             window.selectMessage("noise");
             require(mode("view_hex")->isChecked(), "real-shaped noise opens in hex mode");
-            require(QRegularExpression("^[0-9a-f]{2}( [0-9a-f]{2}){5}")
-                        .match(subjectLabel->text()).hasMatch(),
-                    "a cryptic letter's subject is shown as hex too");
+            require(subjectLabel->toPlainText() == bm::hexDump(noiseSubject.toUtf8()),
+                    "a cryptic letter's subject is dumped in exactly the body's hex format");
+            require(subjectLabel->font().weight() == reader->font().weight() &&
+                        subjectLabel->font().family() == reader->font().family() &&
+                        subjectLabel->font().pixelSize() == reader->font().pixelSize(),
+                    "and in the body's font, not bold");
             mode("view_text")->click();
-            require(subjectLabel->text() == noiseSubject.simplified() ||
-                        subjectLabel->text().startsWith(noiseSubject.left(10)),
+            require(subjectLabel->toPlainText() == noiseSubject,
                     "switching out of hex shows the raw subject again");
+            require(subjectLabel->font().weight() > QFont::Normal,
+                    "and the subject is bold again outside hex");
             window.selectMessage("signed");
             require(!mode("view_hex")->isChecked(), "the rule-line letter does not open in hex");
             window.selectMessage(session.saveLetter(
@@ -538,20 +547,14 @@ int main(int argc, char **argv) {
                 "separate window renders the same markdown body");
         require(reader->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
                 "main window body always shows its scrollbar");
-        require(window.findChild<QScrollArea *>("subjectScroll")->verticalScrollBarPolicy() ==
-                    Qt::ScrollBarAlwaysOn,
-                "main window subject always shows its scrollbar");
         require(popped->findChild<QTextBrowser *>("windowBody")->verticalScrollBarPolicy() ==
                     Qt::ScrollBarAlwaysOn,
                 "separate window body always shows its scrollbar");
-        require(popped->findChild<QScrollArea *>("windowSubjectScroll")->verticalScrollBarPolicy() ==
-                    Qt::ScrollBarAlwaysOn,
-                "separate window subject always shows its scrollbar");
         require(window.findChild<QToolBar *>("actionsToolbar")->mapTo(&window, QPoint()).y() <
-                    window.findChild<QScrollArea *>("subjectScroll")->mapTo(&window, QPoint()).y(),
+                    window.findChild<QTextEdit *>("subject")->mapTo(&window, QPoint()).y(),
                 "main window toolbar renders above the subject");
         require(popped->findChild<QToolBar *>("windowActionsToolbar")->mapTo(popped, QPoint()).y() <
-                    popped->findChild<QScrollArea *>("windowSubjectScroll")
+                    popped->findChild<QTextEdit *>("windowSubject")
                         ->mapTo(popped, QPoint())
                         .y(),
                 "separate window toolbar renders above the subject");
@@ -607,26 +610,48 @@ int main(int argc, char **argv) {
         const auto longSubject = session.saveLetter({}, address, address, QString(500, 'L'),
                                                     "Long subject body", "direct");
         window.selectMessage(longSubject);
-        auto subjectLabel = window.findChild<QLabel *>("subjectLabel");
-        require(subjectLabel && subjectLabel->text() == QString(500, 'L'),
+        auto subjectLabel = window.findChild<QTextEdit *>("subject");
+        require(subjectLabel && subjectLabel->toPlainText() == QString(500, 'L'),
                 "long subjects show the full text, not truncated");
-        require(window.findChild<QScrollArea *>("subjectScroll")->height() <= 120,
-                "long subject stays within a bounded, scrollable area in the reader header");
+        {
+            const auto lines = subjectLabel->height() / QFontMetrics(subjectLabel->font()).lineSpacing();
+            require(lines == 4, "the subject area is four lines tall");
+            require(subjectLabel->verticalScrollBar()->maximum() > 0,
+                    "and a longer subject scrolls inside it");
+            require(subjectLabel->isReadOnly() &&
+                        subjectLabel->textInteractionFlags() & Qt::TextSelectableByMouse,
+                    "the subject is a read-only, selectable text area");
+            subjectLabel->selectAll();
+            subjectLabel->copy();
+            require(QApplication::clipboard()->text() == QString(500, 'L'),
+                    "selecting and copying the subject yields the full text");
+        }
         for (auto action : window.findChildren<QAction *>())
             if (action->text() == "Open in new window")
                 action->trigger();
         auto longPopped = window.findChild<QDialog *>("messageWindow");
         require(longPopped, "opens a separate window for the long-subject letter too");
-        auto subjectScroll = longPopped->findChild<QScrollArea *>("windowSubjectScroll");
-        require(subjectScroll && subjectScroll->height() <= 120,
-                "long subject stays within a bounded, scrollable area in the separate window");
+        auto subjectScroll = longPopped->findChild<QTextEdit *>("windowSubject");
+        require(subjectScroll && subjectScroll->height() == subjectLabel->height(),
+                "the separate window's subject area is four lines tall too");
         longPopped->close();
         QCoreApplication::processEvents();
         for (auto action : window.findChildren<QAction *>())
-            if (action->text() == "Copy subject")
-                action->trigger();
-        require(QApplication::clipboard()->text() == QString(500, 'L'),
-                "Copy subject action copies the full untruncated subject");
+            require(action->text() != "Copy subject", "no Copy subject menu item any more");
+        {
+            const auto binned = session.saveLetter({}, address, address, "Binned", "x", "direct");
+            session.moveLetter(binned, "Trash");
+            window.selectMessage(binned);
+            auto restore = window.findChild<QAction *>("restoreAction");
+            require(restore->isVisible() &&
+                        window.findChild<QAction *>("deletePermanentlyAction")->isVisible() &&
+                        !window.findChild<QAction *>("retryAction")->isVisible(),
+                    "a trashed letter shows Restore and Delete permanently on the toolbar");
+            restore->trigger();
+            QCoreApplication::processEvents();
+            window.selectMessage(binned);
+            require(!restore->isVisible(), "Restore takes the letter back out of the Trash");
+        }
         const auto longBody =
             session.saveLetter({}, address, address, "Long body letter", QString(3000, 'z'), "direct");
         window.selectMessage(longBody);
@@ -653,7 +678,7 @@ int main(int argc, char **argv) {
         QCoreApplication::processEvents();
         auto dPopped = window.findChild<QDialog *>("messageWindow");
         require(dPopped, "double-clicking a letter opens it in a separate window");
-        require(dPopped->findChild<QLabel *>("windowSubjectLabel")->text() == expectedSubject,
+        require(dPopped->findChild<QTextEdit *>("windowSubject")->toPlainText() == expectedSubject,
                 "double-click opens the correct letter");
         dPopped->close();
         QCoreApplication::processEvents();
@@ -846,11 +871,8 @@ int main(int argc, char **argv) {
                     "identities screen uses the full width, no message list column");
             require(window.findChild<QWidget *>("identitiesPane")->isVisible(),
                     "identities pane shown");
-            require(!window.findChild<QLabel *>("subjectLabel")->isVisible(),
-                    "the reader's subject label does not float above the identities pane");
-            require(!window.findChild<QScrollArea *>("subjectScroll")->isVisible(),
-                    "the subject label's empty scroll chrome does not float above the identities "
-                    "pane either");
+            require(!window.findChild<QTextEdit *>("subject")->isVisible(),
+                    "the reader's subject does not float above the identities pane");
             auto addressLabels = window.findChildren<QLabel *>("identityAddress");
             require(addressLabels.size() == 2, "one card per identity");
             QStringList shown;
@@ -1001,7 +1023,7 @@ int main(int argc, char **argv) {
                 auto n = app.arguments().indexOf("--capture-states");
                 dir = n + 1 < app.arguments().size() ? app.arguments()[n + 1] : ".";
             }
-            auto subjectLabel = window.findChild<QLabel *>("subjectLabel");
+            auto subjectLabel = window.findChild<QTextEdit *>("subject");
             const auto mailboxPath = session.mailPath();
             session.lock();
             QTest::qWait(50);
