@@ -424,6 +424,21 @@ QIcon materialIcon(const QString &name, QColor color) {
         p.drawLine(11, 29, 25, 15);
         p.setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         p.drawLine(25, 15, 29, 11);
+    } else if (name == "openWindow") {
+        // A box with an arrow leaving through its top-right corner.
+        QPainterPath box;
+        box.moveTo(18, 10);
+        box.lineTo(10, 10);
+        box.lineTo(10, 30);
+        box.lineTo(30, 30);
+        box.lineTo(30, 22);
+        p.drawPath(box);
+        p.drawLine(19, 21, 30, 10);
+        QPainterPath head;
+        head.moveTo(22, 10);
+        head.lineTo(30, 10);
+        head.lineTo(30, 18);
+        p.drawPath(head);
     } else if (name == "more") {
         p.setBrush(color);
         p.setPen(Qt::NoPen);
@@ -1143,6 +1158,9 @@ class ViewSwitch : public QWidget {
   public:
     ViewSwitch(QColor iconColor, std::function<void(BodyView)> changed) {
         setProperty("viewSwitch", true); // styled by property: both instances share the rules
+        // Hug the buttons: stretched by a taller row, the rounded border would
+        // leave a gap around them.
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto layout = new QHBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(0);
@@ -1560,6 +1578,12 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     trashAction->setObjectName("trashAction");
     connect(trashAction, &QAction::triggered, this,
             [this] { session_.moveLetter(selected_["hash"].toString(), "Trash"); });
+    auto openWindowAction = toolbar->addAction(
+        materialIcon("openWindow", iconColor(appearance_.dark())), "Open in new window");
+    openWindowAction->setObjectName("openWindowAction");
+    connect(openWindowAction, &QAction::triggered, this, [this] {
+        (new MessageWindow(session_, selected_, appearance_.dark(), this))->show();
+    });
     auto more = new QToolButton;
     more->setObjectName("moreActionsButton");
     more->setIcon(materialIcon("more", iconColor(appearance_.dark())));
@@ -1570,10 +1594,6 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     toolbar->addWidget(more);
     menu->addAction("Copy subject", this,
                     [this] { QApplication::clipboard()->setText(selected_["subject"].toString()); });
-    menu->addAction("Open in new window", this,
-                    [this] {
-                        (new MessageWindow(session_, selected_, appearance_.dark(), this))->show();
-                    });
     menu->addAction("Restore", this,
                     [this] { session_.restoreLetter(selected_["hash"].toString()); })
         ->setObjectName("restoreAction");
@@ -1585,15 +1605,6 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     menu->addAction("Cancel delivery", this,
                     [this] { session_.cancelLetter(selected_["hash"].toString()); })
         ->setObjectName("cancelDeliveryAction");
-    menu->addAction("Delivery history", this, [this] {
-        QString text;
-        for (auto v : session_.deliveryHistory(selected_["hash"].toString())) {
-            auto m = v.toMap();
-            text += m["time"].toString() + " · " + m["state"].toString() + "\n" +
-                    m["detail"].toString() + "\n\n";
-        }
-        QMessageBox::information(this, "Delivery history", text);
-    });
     auto letterFrame = new KindFrame;
     letterFrame->setObjectName("letterKindStripe");
     letterStripe_ = letterFrame;
@@ -2001,8 +2012,9 @@ void DesktopWindow::updateTheme() {
             "QWidget[viewSwitch=\"true\"] QToolButton:hover{background:%3;} "
             "QWidget[viewSwitch=\"true\"] QToolButton:checked{background:%5;} "
             "QWidget[viewSwitch=\"true\"] QToolButton#view_plain{"
-            "border-top-left-radius:6px;border-bottom-left-radius:6px;} "
-            "QWidget[viewSwitch=\"true\"] QToolButton#view_plain,QWidget[viewSwitch=\"true\"] QToolButton#view_text,"
+            "border-top-left-radius:6px;border-bottom-left-radius:6px;"
+            "border-right:1px solid %4;} "
+            "QWidget[viewSwitch=\"true\"] QToolButton#view_text{border-right:1px solid %4;} "
             "QWidget[viewSwitch=\"true\"] QToolButton#view_markdown{border-right:1px solid %4;} "
             "QWidget[viewSwitch=\"true\"] QToolButton#view_hex{"
             "border-top-right-radius:6px;border-bottom-right-radius:6px;}")
@@ -2016,6 +2028,7 @@ void DesktopWindow::updateTheme() {
     findChild<QAction *>("replyAction")->setIcon(materialIcon("reply", color));
     findChild<QAction *>("archiveAction")->setIcon(materialIcon("archive", color));
     findChild<QAction *>("trashAction")->setIcon(materialIcon("delete", color));
+    findChild<QAction *>("openWindowAction")->setIcon(materialIcon("openWindow", color));
     findChild<QToolButton *>("moreActionsButton")->setIcon(materialIcon("more", color));
     findChild<QPushButton *>("writeButton")->setIcon(materialIcon("edit", color));
     static_cast<ViewSwitch *>(viewSwitch_)->setIconColor(color);

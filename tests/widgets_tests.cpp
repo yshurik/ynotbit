@@ -254,6 +254,16 @@ int main(int argc, char **argv) {
                     "a plain personal letter (Inbox/Outbox/...) gets green stripes, not blue");
             require(personal.shades > 1,
                     "a personal border is striped over the gray ground, not a solid fill");
+            {
+                auto openWindow = window.findChild<QAction *>("openWindowAction");
+                auto actionsBar = window.findChild<QToolBar *>("actionsToolbar");
+                auto moreMenu = window.findChild<QToolButton *>("moreActionsButton")->menu();
+                require(openWindow && actionsBar->actions().contains(openWindow),
+                        "open-in-new-window is a toolbar button");
+                for (auto action : moreMenu->actions())
+                    require(action->text() != "Open in new window",
+                            "and no longer sits in the More menu");
+            }
             window.selectMessage("anon-in-recipient");
             for (auto action : window.findChildren<QAction *>())
                 if (action->text() == "Open in new window")
