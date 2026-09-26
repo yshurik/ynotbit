@@ -505,7 +505,10 @@ int main(int argc, char **argv) {
             require(mono(reader->font()) && mono(subjectLabel->font()),
                     "plain mode is the fixed-width one");
             mode("view_text")->click();
-            require(!mono(reader->font()), "switching to text mode drops the fixed-width font");
+            // Compared by family, not measured: offscreen Windows has no real
+            // font files, so every font measures as fixed-pitch there.
+            require(reader->font().family() != bm::addressFont().family(),
+                    "switching to text mode drops the fixed-width font");
             require(reader->toPlainText() == "A delivered letter.",
                     "text mode still shows the body verbatim");
             mode("view_hex")->click();
