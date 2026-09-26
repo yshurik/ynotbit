@@ -65,13 +65,13 @@ jobs:
       - name: Package
         run: |
           scripts/package-linux.sh "${{ github.workspace }}/build" \
-            "${{ github.workspace }}/ynotbit-linux-x86_64.tar.gz" \
+            "${{ github.workspace }}/ynotbit-linux-x86_64.AppImage" \
             "${{ steps.qt.outputs.prefix }}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: ynotbit-linux
-          path: ynotbit-linux-x86_64.tar.gz
+          path: ynotbit-linux-x86_64.AppImage
 
   build-macos:
     runs-on: macos-14
