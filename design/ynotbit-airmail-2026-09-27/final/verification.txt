@@ -1,0 +1,5 @@
+34 PNG optical exports: dimensions, alpha and transparent corners verified.
+application ICO: 16, 20, 24, 32, 40, 48, 64, 96, 128, 256 px, all 10 embedded images decoded.
+window ICO: 16, 20, 24, 32, 40, 48, 64, 96, 128, 256 px, all 10 embedded images decoded.
+ICNS: valid container length and 11 resource blocks; built by Apple's iconutil.
+Independent validation: all 20 ICO frames decoded with Pillow; ICNS round-tripped through iconutil and all 10 extracted PNGs decoded with Pillow.

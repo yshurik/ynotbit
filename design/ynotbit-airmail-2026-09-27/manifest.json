@@ -1,0 +1,920 @@
+[
+  {
+    "file": "paper/application/universal/16.png",
+    "width": 16,
+    "height": 16,
+    "logicalSize": 16,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/application/universal/20.png",
+    "width": 20,
+    "height": 20,
+    "logicalSize": 20,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/application/universal/24.png",
+    "width": 24,
+    "height": 24,
+    "logicalSize": 24,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/application/universal/32.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 32,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/application/universal/40.png",
+    "width": 40,
+    "height": 40,
+    "logicalSize": 40,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/application/universal/48.png",
+    "width": 48,
+    "height": 48,
+    "logicalSize": 48,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/application/universal/64.png",
+    "width": 64,
+    "height": 64,
+    "logicalSize": 64,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/application/universal/96.png",
+    "width": 96,
+    "height": 96,
+    "logicalSize": 96,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/application/universal/128.png",
+    "width": 128,
+    "height": 128,
+    "logicalSize": 128,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/application/universal/256.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 256,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/application/universal/512.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 512,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/application/universal/1024.png",
+    "width": 1024,
+    "height": 1024,
+    "logicalSize": 1024,
+    "variant": "paper",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/16.png",
+    "width": 16,
+    "height": 16,
+    "logicalSize": 16,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/20.png",
+    "width": 20,
+    "height": 20,
+    "logicalSize": 20,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/24.png",
+    "width": 24,
+    "height": 24,
+    "logicalSize": 24,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/32.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 32,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/40.png",
+    "width": 40,
+    "height": 40,
+    "logicalSize": 40,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/48.png",
+    "width": 48,
+    "height": 48,
+    "logicalSize": 48,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/64.png",
+    "width": 64,
+    "height": 64,
+    "logicalSize": 64,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/96.png",
+    "width": 96,
+    "height": 96,
+    "logicalSize": 96,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/128.png",
+    "width": 128,
+    "height": 128,
+    "logicalSize": 128,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/256.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 256,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/512.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 512,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/window/universal/1024.png",
+    "width": 1024,
+    "height": 1024,
+    "logicalSize": 1024,
+    "variant": "paper",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "paper/macos/ynotbit.iconset/icon_16x16.png",
+    "width": 16,
+    "height": 16,
+    "logicalSize": 16,
+    "variant": "paper",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "paper/macos/ynotbit.iconset/icon_16x16@2x.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 16,
+    "variant": "paper",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "paper/macos/ynotbit.iconset/icon_32x32.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 32,
+    "variant": "paper",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "paper/macos/ynotbit.iconset/icon_32x32@2x.png",
+    "width": 64,
+    "height": 64,
+    "logicalSize": 32,
+    "variant": "paper",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "paper/macos/ynotbit.iconset/icon_128x128.png",
+    "width": 128,
+    "height": 128,
+    "logicalSize": 128,
+    "variant": "paper",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "paper/macos/ynotbit.iconset/icon_128x128@2x.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 128,
+    "variant": "paper",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "paper/macos/ynotbit.iconset/icon_256x256.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 256,
+    "variant": "paper",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "paper/macos/ynotbit.iconset/icon_256x256@2x.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 256,
+    "variant": "paper",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "paper/macos/ynotbit.iconset/icon_512x512.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 512,
+    "variant": "paper",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "paper/macos/ynotbit.iconset/icon_512x512@2x.png",
+    "width": 1024,
+    "height": 1024,
+    "logicalSize": 512,
+    "variant": "paper",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "night/application/universal/16.png",
+    "width": 16,
+    "height": 16,
+    "logicalSize": 16,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/application/universal/20.png",
+    "width": 20,
+    "height": 20,
+    "logicalSize": 20,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/application/universal/24.png",
+    "width": 24,
+    "height": 24,
+    "logicalSize": 24,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/application/universal/32.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 32,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/application/universal/40.png",
+    "width": 40,
+    "height": 40,
+    "logicalSize": 40,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/application/universal/48.png",
+    "width": 48,
+    "height": 48,
+    "logicalSize": 48,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/application/universal/64.png",
+    "width": 64,
+    "height": 64,
+    "logicalSize": 64,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/application/universal/96.png",
+    "width": 96,
+    "height": 96,
+    "logicalSize": 96,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/application/universal/128.png",
+    "width": 128,
+    "height": 128,
+    "logicalSize": 128,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/application/universal/256.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 256,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/application/universal/512.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 512,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/application/universal/1024.png",
+    "width": 1024,
+    "height": 1024,
+    "logicalSize": 1024,
+    "variant": "night",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/16.png",
+    "width": 16,
+    "height": 16,
+    "logicalSize": 16,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/20.png",
+    "width": 20,
+    "height": 20,
+    "logicalSize": 20,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/24.png",
+    "width": 24,
+    "height": 24,
+    "logicalSize": 24,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/32.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 32,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/40.png",
+    "width": 40,
+    "height": 40,
+    "logicalSize": 40,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/48.png",
+    "width": 48,
+    "height": 48,
+    "logicalSize": 48,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/64.png",
+    "width": 64,
+    "height": 64,
+    "logicalSize": 64,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/96.png",
+    "width": 96,
+    "height": 96,
+    "logicalSize": 96,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/128.png",
+    "width": 128,
+    "height": 128,
+    "logicalSize": 128,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/256.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 256,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/512.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 512,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/window/universal/1024.png",
+    "width": 1024,
+    "height": 1024,
+    "logicalSize": 1024,
+    "variant": "night",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "night/macos/ynotbit.iconset/icon_16x16.png",
+    "width": 16,
+    "height": 16,
+    "logicalSize": 16,
+    "variant": "night",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "night/macos/ynotbit.iconset/icon_16x16@2x.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 16,
+    "variant": "night",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "night/macos/ynotbit.iconset/icon_32x32.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 32,
+    "variant": "night",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "night/macos/ynotbit.iconset/icon_32x32@2x.png",
+    "width": 64,
+    "height": 64,
+    "logicalSize": 32,
+    "variant": "night",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "night/macos/ynotbit.iconset/icon_128x128.png",
+    "width": 128,
+    "height": 128,
+    "logicalSize": 128,
+    "variant": "night",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "night/macos/ynotbit.iconset/icon_128x128@2x.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 128,
+    "variant": "night",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "night/macos/ynotbit.iconset/icon_256x256.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 256,
+    "variant": "night",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "night/macos/ynotbit.iconset/icon_256x256@2x.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 256,
+    "variant": "night",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "night/macos/ynotbit.iconset/icon_512x512.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 512,
+    "variant": "night",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "night/macos/ynotbit.iconset/icon_512x512@2x.png",
+    "width": 1024,
+    "height": 1024,
+    "logicalSize": 512,
+    "variant": "night",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "signal/application/universal/16.png",
+    "width": 16,
+    "height": 16,
+    "logicalSize": 16,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/application/universal/20.png",
+    "width": 20,
+    "height": 20,
+    "logicalSize": 20,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/application/universal/24.png",
+    "width": 24,
+    "height": 24,
+    "logicalSize": 24,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/application/universal/32.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 32,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/application/universal/40.png",
+    "width": 40,
+    "height": 40,
+    "logicalSize": 40,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/application/universal/48.png",
+    "width": 48,
+    "height": 48,
+    "logicalSize": 48,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/application/universal/64.png",
+    "width": 64,
+    "height": 64,
+    "logicalSize": 64,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/application/universal/96.png",
+    "width": 96,
+    "height": 96,
+    "logicalSize": 96,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/application/universal/128.png",
+    "width": 128,
+    "height": 128,
+    "logicalSize": 128,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/application/universal/256.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 256,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/application/universal/512.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 512,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/application/universal/1024.png",
+    "width": 1024,
+    "height": 1024,
+    "logicalSize": 1024,
+    "variant": "signal",
+    "role": "application",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/16.png",
+    "width": 16,
+    "height": 16,
+    "logicalSize": 16,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/20.png",
+    "width": 20,
+    "height": 20,
+    "logicalSize": 20,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/24.png",
+    "width": 24,
+    "height": 24,
+    "logicalSize": 24,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/32.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 32,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/40.png",
+    "width": 40,
+    "height": 40,
+    "logicalSize": 40,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/48.png",
+    "width": 48,
+    "height": 48,
+    "logicalSize": 48,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/64.png",
+    "width": 64,
+    "height": 64,
+    "logicalSize": 64,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/96.png",
+    "width": 96,
+    "height": 96,
+    "logicalSize": 96,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/128.png",
+    "width": 128,
+    "height": 128,
+    "logicalSize": 128,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/256.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 256,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/512.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 512,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/window/universal/1024.png",
+    "width": 1024,
+    "height": 1024,
+    "logicalSize": 1024,
+    "variant": "signal",
+    "role": "window",
+    "platform": "universal"
+  },
+  {
+    "file": "signal/macos/ynotbit.iconset/icon_16x16.png",
+    "width": 16,
+    "height": 16,
+    "logicalSize": 16,
+    "variant": "signal",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "signal/macos/ynotbit.iconset/icon_16x16@2x.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 16,
+    "variant": "signal",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "signal/macos/ynotbit.iconset/icon_32x32.png",
+    "width": 32,
+    "height": 32,
+    "logicalSize": 32,
+    "variant": "signal",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "signal/macos/ynotbit.iconset/icon_32x32@2x.png",
+    "width": 64,
+    "height": 64,
+    "logicalSize": 32,
+    "variant": "signal",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "signal/macos/ynotbit.iconset/icon_128x128.png",
+    "width": 128,
+    "height": 128,
+    "logicalSize": 128,
+    "variant": "signal",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "signal/macos/ynotbit.iconset/icon_128x128@2x.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 128,
+    "variant": "signal",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "signal/macos/ynotbit.iconset/icon_256x256.png",
+    "width": 256,
+    "height": 256,
+    "logicalSize": 256,
+    "variant": "signal",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "signal/macos/ynotbit.iconset/icon_256x256@2x.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 256,
+    "variant": "signal",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "signal/macos/ynotbit.iconset/icon_512x512.png",
+    "width": 512,
+    "height": 512,
+    "logicalSize": 512,
+    "variant": "signal",
+    "role": "application",
+    "platform": "macos"
+  },
+  {
+    "file": "signal/macos/ynotbit.iconset/icon_512x512@2x.png",
+    "width": 1024,
+    "height": 1024,
+    "logicalSize": 512,
+    "variant": "signal",
+    "role": "application",
+    "platform": "macos"
+  }
+]
