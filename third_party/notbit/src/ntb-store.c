@@ -595,47 +595,35 @@ static void
 handle_save_addr_list(struct ntb_store *store,
                       struct ntb_store_task *task)
 {
-        struct ntb_store_addr *addrs;
-        char *address;
-        FILE *out;
-        int i;
-
-        ntb_log("Saving addr list");
-
-        store->filename_buf.length = store->directory_len;
-        ntb_buffer_append_string(&store->filename_buf,
-                                 "addr-list.txt.tmp");
-
-        addrs = task->save_addr_list.addrs;
-
-        out = fopen((char *) store->filename_buf.data, "w");
-
-        if (out == NULL) {
-                ntb_log("Error opening %s: %s",
-                        (char *) store->filename_buf.data,
-                        strerror(errno));
-                return;
+        struct ntb_store_addr *addrs = task->save_addr_list.addrs;
+        for (int metadata = 0; metadata < 2; metadata++) {
+                store->filename_buf.length = store->directory_len;
+                ntb_buffer_append_string(&store->filename_buf,
+                    metadata ? "peer-state-v1.txt.tmp" : "addr-list.txt.tmp");
+                FILE *out = fopen((char *) store->filename_buf.data, "w");
+                if (!out) {
+                        ntb_log("Error opening peer cache: %s", strerror(errno));
+                        continue;
+                }
+                for (int i = 0; i < task->save_addr_list.n_addrs; i++) {
+                        char *address = ntb_netaddress_to_string(&addrs[i].address);
+                        fprintf(out, "%" PRIi64 ",%" PRIu32 ",%" PRIu64 ",%s",
+                            addrs[i].timestamp, addrs[i].stream, addrs[i].services, address);
+                        if (metadata)
+                                fprintf(out, ",%" PRIi64 ",%" PRIi64 ",%" PRIi64 ",%u",
+                                    addrs[i].last_success, addrs[i].last_attempt,
+                                    addrs[i].retry, addrs[i].failures);
+                        fputc('\n', out);
+                        ntb_free(address);
+                }
+                bool failed = ferror(out);
+                if (fclose(out) == EOF)
+                        failed = true;
+                if (!failed)
+                        rename_tmp_file(store);
+                else
+                        ntb_log("Error writing peer cache");
         }
-
-        for (i = 0; i < task->save_addr_list.n_addrs; i++) {
-                address = ntb_netaddress_to_string(&addrs[i].address);
-                fprintf(out,
-                        "%" PRIi64 ",%" PRIu32 ",%" PRIu64 ",%s\n",
-                        addrs[i].timestamp,
-                        addrs[i].stream,
-                        addrs[i].services,
-                        address);
-                ntb_free(address);
-        }
-
-        if (fclose(out) == EOF) {
-                ntb_log("Error writing to %s: %s",
-                        (char *) store->filename_buf.data,
-                        strerror(errno));
-                return;
-        }
-
-        rename_tmp_file(store);
 }
 
 static void
@@ -1743,7 +1731,7 @@ process_addr_line(struct ntb_store *store,
                   ntb_store_for_each_addr_func func,
                   void *user_data)
 {
-        struct ntb_store_addr addr;
+        struct ntb_store_addr addr = {0};
         int address_length;
         char *tail;
 
@@ -1794,24 +1782,32 @@ ntb_store_for_each_addr(struct ntb_store *store,
          * shouldn't really matter */
 
         ntb_log("Loading saved address list");
-
-        store->filename_buf.length = store->directory_len;
-        ntb_buffer_append_string(&store->filename_buf, "addr-list.txt");
-
-        file = fopen((char *) store->filename_buf.data, "r");
-
-        if (file == NULL) {
-                if (errno != ENOENT)
-                        ntb_log("Error opening %s: %s",
-                                (char *) store->filename_buf.data,
-                                strerror(errno));
-                return;
+        for (int metadata = 0; metadata < 2; metadata++) {
+                store->filename_buf.length = store->directory_len;
+                ntb_buffer_append_string(&store->filename_buf,
+                    metadata ? "peer-state-v1.txt" : "addr-list.txt");
+                file = fopen((char *) store->filename_buf.data, "r");
+                if (!file)
+                        continue;
+                unsigned rows = 0;
+                while (rows++ < 8192 && fgets(line, sizeof line, file)) {
+                        if (!metadata) {
+                                process_addr_line(store, line, func, user_data);
+                                continue;
+                        }
+                        struct ntb_store_addr addr = {0};
+                        char endpoint[128], extra;
+                        int fields = sscanf(line,
+                            "%" SCNi64 ",%" SCNu32 ",%" SCNu64 ",%127[^,],%" SCNi64 ",%" SCNi64 ",%" SCNi64 ",%u %c",
+                            &addr.timestamp, &addr.stream, &addr.services, endpoint,
+                            &addr.last_success, &addr.last_attempt, &addr.retry, &addr.failures, &extra);
+                        if (fields == 8 && addr.timestamp >= 0 && addr.last_success >= 0 &&
+                            addr.last_attempt >= 0 && addr.retry >= 0 && addr.failures <= 32 &&
+                            ntb_netaddress_from_string(&addr.address, endpoint, NTB_PROTO_DEFAULT_PORT))
+                                func(&addr, user_data);
+                }
+                fclose(file);
         }
-
-        while(fgets(line, sizeof line, file))
-                process_addr_line(store, line, func, user_data);
-
-        fclose(file);
 }
 
 void

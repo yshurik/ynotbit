@@ -1,0 +1,20 @@
+[
+  {
+    "cache_age_seconds": 0,
+    "accepted": 5,
+    "status": {
+      "peers": 5,
+      "pending": 0,
+      "time": 1790493340
+    }
+  },
+  {
+    "cache_age_seconds": 7500,
+    "accepted": 0,
+    "status": {
+      "peers": 0,
+      "pending": 0,
+      "time": 1790493345
+    }
+  }
+]

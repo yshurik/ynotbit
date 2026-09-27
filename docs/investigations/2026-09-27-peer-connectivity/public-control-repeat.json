@@ -1,0 +1,88 @@
+{
+  "endpoints": [
+    "194.164.163.84:8444",
+    "187.193.132.82:8444",
+    "188.54.15.227:8444",
+    "85.25.46.168:8444",
+    "83.251.141.124:8444"
+  ],
+  "samples": [
+    {
+      "seconds": 0.0,
+      "status": null
+    },
+    {
+      "seconds": 1.002,
+      "status": {
+        "peers": 2,
+        "pending": 0,
+        "time": 1790493694
+      }
+    },
+    {
+      "seconds": 2.005,
+      "status": {
+        "peers": 2,
+        "pending": 12396,
+        "time": 1790493695
+      }
+    },
+    {
+      "seconds": 3.007,
+      "status": {
+        "peers": 2,
+        "pending": 12396,
+        "time": 1790493695
+      }
+    },
+    {
+      "seconds": 4.009,
+      "status": {
+        "peers": 3,
+        "pending": 12396,
+        "time": 1790493696
+      }
+    },
+    {
+      "seconds": 5.011,
+      "status": {
+        "peers": 3,
+        "pending": 12396,
+        "time": 1790493697
+      }
+    },
+    {
+      "seconds": 6.013,
+      "status": {
+        "peers": 3,
+        "pending": 12396,
+        "time": 1790493698
+      }
+    },
+    {
+      "seconds": 7.017,
+      "status": {
+        "peers": 3,
+        "pending": 12396,
+        "time": 1790493699
+      }
+    },
+    {
+      "seconds": 8.018,
+      "status": {
+        "peers": 3,
+        "pending": 12396,
+        "time": 1790493700
+      }
+    },
+    {
+      "seconds": 9.02,
+      "status": {
+        "peers": 3,
+        "pending": 12396,
+        "time": 1790493701
+      }
+    }
+  ],
+  "log": "[2026-09-27T07:21:33Z] Loading saved object store\n[2026-09-27T07:21:33Z] Finished loading object store\n[2026-09-27T07:21:33Z] Loading saved address list\n[2026-09-27T07:21:33Z] Connected to 85.25.46.168:8444\n[2026-09-27T07:21:33Z] Connected to 83.251.141.124:8444\n[2026-09-27T07:21:33Z] Connected to 194.164.163.84:8444\n[2026-09-27T07:21:33Z] Connected to 188.54.15.227:8444\n[2026-09-27T07:21:33Z] Connected to 187.193.132.82:8444\n[2026-09-27T07:21:33Z] Received version command from 83.251.141.124:8444 with user agent /MiNode:0.3.3/\n[2026-09-27T07:21:34Z] Received version command from 194.164.163.84:8444 with user agent /PyBitmessage:0.6.3.2/\n[2026-09-27T07:21:35Z] Received version command from 187.193.132.82:8444 with user agent /PyBitmessage:0.6.3.2/\n[2026-09-27T07:21:43Z] Exiting...\n"
+}

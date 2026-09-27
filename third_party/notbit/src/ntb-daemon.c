@@ -543,6 +543,7 @@ run_main_loop(struct ntb_network *nw,
         quit_source = ntb_main_context_add_quit(NULL, quit_cb, &quit);
 
         do {
+                ntb_network_tick(nw);
                 ynotbit_relay_tick(nw, option_store_directory);
                 ntb_main_context_poll(NULL);
         } while(!quit);

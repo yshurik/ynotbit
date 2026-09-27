@@ -100,3 +100,77 @@ ntb_dns_bootstrap(ntb_dns_bootstrap_func callback,
                        callback,
                        user_data);
 }
+
+#include <pthread.h>
+#include <stdlib.h>
+
+struct ntb_dns_bootstrap_job {
+        pthread_t thread;
+        pthread_mutex_t mutex;
+        bool done;
+        unsigned count;
+        struct ntb_netaddress addresses[128];
+};
+
+static void
+collect_address(const struct ntb_netaddress *address, void *data)
+{
+        struct ntb_dns_bootstrap_job *job = data;
+        if (job->count < 128)
+                job->addresses[job->count++] = *address;
+}
+
+static void *
+resolve_bootstrap(void *data)
+{
+        struct ntb_dns_bootstrap_job *job = data;
+        ntb_dns_bootstrap(collect_address, job);
+        pthread_mutex_lock(&job->mutex);
+        job->done = true;
+        pthread_mutex_unlock(&job->mutex);
+        return NULL;
+}
+
+struct ntb_dns_bootstrap_job *
+ntb_dns_bootstrap_start(void)
+{
+        struct ntb_dns_bootstrap_job *job = calloc(1, sizeof *job);
+        if (!job)
+                return NULL;
+        if (pthread_mutex_init(&job->mutex, NULL)) {
+                free(job);
+                return NULL;
+        }
+        if (pthread_create(&job->thread, NULL, resolve_bootstrap, job)) {
+                pthread_mutex_destroy(&job->mutex);
+                free(job);
+                return NULL;
+        }
+        return job;
+}
+
+bool
+ntb_dns_bootstrap_poll(struct ntb_dns_bootstrap_job *job,
+                       ntb_dns_bootstrap_func callback, void *data)
+{
+        pthread_mutex_lock(&job->mutex);
+        bool done = job->done;
+        pthread_mutex_unlock(&job->mutex);
+        if (!done)
+                return false;
+        for (unsigned i = 0; i < job->count; i++)
+                callback(&job->addresses[i], data);
+        return true;
+}
+
+void
+ntb_dns_bootstrap_free(struct ntb_dns_bootstrap_job *job)
+{
+        if (!job)
+                return;
+        /* getaddrinfo owns its resources until it returns; never detach a worker
+         * that might still log through a destroyed logger or access this job. */
+        pthread_join(job->thread, NULL);
+        pthread_mutex_destroy(&job->mutex);
+        free(job);
+}

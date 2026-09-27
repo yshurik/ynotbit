@@ -1,0 +1,297 @@
+{
+  "samples": [
+    {
+      "seconds": 0.0,
+      "status": null
+    },
+    {
+      "seconds": 5.011,
+      "status": {
+        "peers": 5,
+        "pending": 12294,
+        "time": 1790493199
+      }
+    },
+    {
+      "seconds": 10.03,
+      "status": {
+        "peers": 5,
+        "pending": 11921,
+        "time": 1790493205
+      }
+    },
+    {
+      "seconds": 15.04,
+      "status": {
+        "peers": 5,
+        "pending": 11592,
+        "time": 1790493210
+      }
+    },
+    {
+      "seconds": 20.05,
+      "status": {
+        "peers": 5,
+        "pending": 11300,
+        "time": 1790493215
+      }
+    },
+    {
+      "seconds": 25.063,
+      "status": {
+        "peers": 5,
+        "pending": 11038,
+        "time": 1790493220
+      }
+    },
+    {
+      "seconds": 30.075,
+      "status": {
+        "peers": 5,
+        "pending": 10798,
+        "time": 1790493225
+      }
+    },
+    {
+      "seconds": 35.085,
+      "status": {
+        "peers": 5,
+        "pending": 10471,
+        "time": 1790493230
+      }
+    },
+    {
+      "seconds": 40.091,
+      "status": {
+        "peers": 5,
+        "pending": 10150,
+        "time": 1790493235
+      }
+    },
+    {
+      "seconds": 45.097,
+      "status": {
+        "peers": 5,
+        "pending": 9834,
+        "time": 1790493240
+      }
+    },
+    {
+      "seconds": 50.105,
+      "status": {
+        "peers": 5,
+        "pending": 9560,
+        "time": 1790493245
+      }
+    },
+    {
+      "seconds": 55.111,
+      "status": {
+        "peers": 5,
+        "pending": 9312,
+        "time": 1790493250
+      }
+    },
+    {
+      "seconds": 60.116,
+      "status": {
+        "peers": 5,
+        "pending": 9135,
+        "time": 1790493255
+      }
+    },
+    {
+      "seconds": 65.122,
+      "status": {
+        "peers": 5,
+        "pending": 8781,
+        "time": 1790493260
+      }
+    },
+    {
+      "seconds": 70.124,
+      "status": {
+        "peers": 5,
+        "pending": 8486,
+        "time": 1790493265
+      }
+    },
+    {
+      "seconds": 75.13,
+      "status": {
+        "peers": 5,
+        "pending": 8155,
+        "time": 1790493270
+      }
+    },
+    {
+      "seconds": 80.132,
+      "status": {
+        "peers": 5,
+        "pending": 7850,
+        "time": 1790493275
+      }
+    },
+    {
+      "seconds": 85.138,
+      "status": {
+        "peers": 5,
+        "pending": 7534,
+        "time": 1790493280
+      }
+    },
+    {
+      "seconds": 90.142,
+      "status": {
+        "peers": 5,
+        "pending": 7219,
+        "time": 1790493285
+      }
+    },
+    {
+      "seconds": 95.159,
+      "status": {
+        "peers": 5,
+        "pending": 7014,
+        "time": 1790493289
+      }
+    },
+    {
+      "seconds": 100.166,
+      "status": {
+        "peers": 5,
+        "pending": 6675,
+        "time": 1790493295
+      }
+    },
+    {
+      "seconds": 105.169,
+      "status": {
+        "peers": 5,
+        "pending": 6399,
+        "time": 1790493300
+      }
+    },
+    {
+      "seconds": 110.173,
+      "status": {
+        "peers": 5,
+        "pending": 6150,
+        "time": 1790493305
+      }
+    },
+    {
+      "seconds": 115.179,
+      "status": {
+        "peers": 5,
+        "pending": 5814,
+        "time": 1790493310
+      }
+    },
+    {
+      "seconds": 120.185,
+      "status": {
+        "peers": 5,
+        "pending": 5492,
+        "time": 1790493315
+      }
+    },
+    {
+      "seconds": 125.197,
+      "status": {
+        "peers": 5,
+        "pending": 5177,
+        "time": 1790493320
+      }
+    },
+    {
+      "seconds": 130.218,
+      "status": {
+        "peers": 5,
+        "pending": 4869,
+        "time": 1790493325
+      }
+    },
+    {
+      "seconds": 135.224,
+      "status": {
+        "peers": 5,
+        "pending": 4574,
+        "time": 1790493330
+      }
+    },
+    {
+      "seconds": 140.23,
+      "status": {
+        "peers": 5,
+        "pending": 4287,
+        "time": 1790493335
+      }
+    },
+    {
+      "seconds": 145.233,
+      "status": {
+        "peers": 5,
+        "pending": 4020,
+        "time": 1790493340
+      }
+    },
+    {
+      "seconds": 150.234,
+      "status": {
+        "peers": 5,
+        "pending": 3743,
+        "time": 1790493345
+      }
+    },
+    {
+      "seconds": 155.236,
+      "status": {
+        "peers": 5,
+        "pending": 3475,
+        "time": 1790493350
+      }
+    },
+    {
+      "seconds": 160.242,
+      "status": {
+        "peers": 5,
+        "pending": 3177,
+        "time": 1790493355
+      }
+    },
+    {
+      "seconds": 165.247,
+      "status": {
+        "peers": 5,
+        "pending": 2994,
+        "time": 1790493360
+      }
+    },
+    {
+      "seconds": 170.253,
+      "status": {
+        "peers": 5,
+        "pending": 2715,
+        "time": 1790493365
+      }
+    },
+    {
+      "seconds": 175.258,
+      "status": {
+        "peers": 5,
+        "pending": 2431,
+        "time": 1790493370
+      }
+    },
+    {
+      "seconds": 180.263,
+      "status": {
+        "peers": 5,
+        "pending": 2146,
+        "time": 1790493375
+      }
+    }
+  ],
+  "log": "[2026-09-27T07:13:15Z] Loading saved object store\n[2026-09-27T07:13:15Z] Finished loading object store\n[2026-09-27T07:13:15Z] Loading saved address list\n[2026-09-27T07:13:15Z] Connected to 85.25.46.168:8444\n[2026-09-27T07:13:15Z] Connected to 83.251.141.124:8444\n[2026-09-27T07:13:15Z] Connected to 194.164.163.84:8444\n[2026-09-27T07:13:15Z] Connected to 188.54.15.227:8444\n[2026-09-27T07:13:15Z] Connected to 187.193.132.82:8444\n[2026-09-27T07:13:15Z] Received version command from 83.251.141.124:8444 with user agent /MiNode:0.3.3/\n[2026-09-27T07:13:15Z] Received version command from 85.25.46.168:8444 with user agent /PyBitmessage:0.6.3.2/\n[2026-09-27T07:13:16Z] Received version command from 188.54.15.227:8444 with user agent /PyBitmessage:0.6.3.2/\n[2026-09-27T07:13:16Z] Received version command from 187.193.132.82:8444 with user agent /PyBitmessage:0.6.3.2/\n[2026-09-27T07:13:16Z] Received version command from 194.164.163.84:8444 with user agent /PyBitmessage:0.6.3.2/\n[2026-09-27T07:15:58Z] Rejecting object from 83.251.141.124:8444 because the proof-of-work is too low\n[2026-09-27T07:16:16Z] Rejecting object from 83.251.141.124:8444 because the proof-of-work is too low\n[2026-09-27T07:16:20Z] Exiting...\n"
+}

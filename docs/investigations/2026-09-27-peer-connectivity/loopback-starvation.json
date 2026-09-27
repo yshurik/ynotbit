@@ -1,0 +1,676 @@
+{
+  "backend": "--node",
+  "samples": [
+    {
+      "seconds": 2.11,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493169
+      }
+    },
+    {
+      "seconds": 3.11,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493170
+      }
+    },
+    {
+      "seconds": 4.11,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493171
+      }
+    },
+    {
+      "seconds": 5.12,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493172
+      }
+    },
+    {
+      "seconds": 6.12,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493173
+      }
+    },
+    {
+      "seconds": 7.12,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493174
+      }
+    },
+    {
+      "seconds": 8.12,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493175
+      }
+    },
+    {
+      "seconds": 9.12,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493176
+      }
+    },
+    {
+      "seconds": 10.13,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493177
+      }
+    },
+    {
+      "seconds": 11.13,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493178
+      }
+    },
+    {
+      "seconds": 12.13,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493179
+      }
+    },
+    {
+      "seconds": 13.13,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493180
+      }
+    },
+    {
+      "seconds": 14.13,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493181
+      }
+    },
+    {
+      "seconds": 15.14,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493182
+      }
+    },
+    {
+      "seconds": 16.14,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493183
+      }
+    },
+    {
+      "seconds": 17.14,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493184
+      }
+    },
+    {
+      "seconds": 18.14,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493185
+      }
+    },
+    {
+      "seconds": 19.15,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493186
+      }
+    },
+    {
+      "seconds": 20.15,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493187
+      }
+    },
+    {
+      "seconds": 21.15,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493188
+      }
+    },
+    {
+      "seconds": 22.15,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493189
+      }
+    },
+    {
+      "seconds": 23.15,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493190
+      }
+    },
+    {
+      "seconds": 24.16,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493191
+      }
+    },
+    {
+      "seconds": 25.16,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493192
+      }
+    },
+    {
+      "seconds": 26.16,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493193
+      }
+    },
+    {
+      "seconds": 27.16,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493194
+      }
+    },
+    {
+      "seconds": 28.17,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493195
+      }
+    },
+    {
+      "seconds": 29.17,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493196
+      }
+    },
+    {
+      "seconds": 30.17,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493197
+      }
+    },
+    {
+      "seconds": 31.17,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493198
+      }
+    },
+    {
+      "seconds": 32.18,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493199
+      }
+    },
+    {
+      "seconds": 33.18,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493200
+      }
+    },
+    {
+      "seconds": 34.18,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493201
+      }
+    },
+    {
+      "seconds": 35.19,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493202
+      }
+    },
+    {
+      "seconds": 36.19,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493203
+      }
+    },
+    {
+      "seconds": 37.19,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493204
+      }
+    },
+    {
+      "seconds": 38.19,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493205
+      }
+    },
+    {
+      "seconds": 39.19,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493206
+      }
+    },
+    {
+      "seconds": 40.2,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493207
+      }
+    },
+    {
+      "seconds": 41.2,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493208
+      }
+    },
+    {
+      "seconds": 42.2,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493209
+      }
+    },
+    {
+      "seconds": 43.21,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493210
+      }
+    },
+    {
+      "seconds": 44.21,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493211
+      }
+    },
+    {
+      "seconds": 45.21,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493212
+      }
+    },
+    {
+      "seconds": 46.21,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493213
+      }
+    },
+    {
+      "seconds": 47.22,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493214
+      }
+    },
+    {
+      "seconds": 48.22,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493215
+      }
+    },
+    {
+      "seconds": 49.22,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493216
+      }
+    },
+    {
+      "seconds": 50.23,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493217
+      }
+    },
+    {
+      "seconds": 51.23,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493218
+      }
+    },
+    {
+      "seconds": 52.23,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493219
+      }
+    },
+    {
+      "seconds": 53.23,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493220
+      }
+    },
+    {
+      "seconds": 54.24,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493221
+      }
+    },
+    {
+      "seconds": 55.24,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493222
+      }
+    },
+    {
+      "seconds": 56.24,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493223
+      }
+    }
+  ],
+  "log": "[2026-09-27T07:12:48Z] Loading saved object store\n[2026-09-27T07:12:48Z] Finished loading object store\n[2026-09-27T07:12:48Z] Loading saved address list\n[2026-09-27T07:12:48Z] Connected to 127.0.0.1:64352\n[2026-09-27T07:12:48Z] Connected to 127.0.0.1:64354\n[2026-09-27T07:12:48Z] Connected to 127.0.0.1:64362\n[2026-09-27T07:12:48Z] Connected to 127.0.0.1:64358\n[2026-09-27T07:12:48Z] Connected to 127.0.0.1:64359\n[2026-09-27T07:12:48Z] Connected to 127.0.0.1:64355\n[2026-09-27T07:12:48Z] Connected to 127.0.0.1:64353\n[2026-09-27T07:12:48Z] Connected to 127.0.0.1:64363\n[2026-09-27T07:12:48Z] Received version command from 127.0.0.1:64352 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:34Z] Connection closed for 127.0.0.1:64354\n[2026-09-27T07:13:34Z] Connected to 127.0.0.1:64361\n[2026-09-27T07:13:34Z] Connection closed for 127.0.0.1:64363\n[2026-09-27T07:13:34Z] Connection closed for 127.0.0.1:64353\n[2026-09-27T07:13:34Z] Connection closed for 127.0.0.1:64355\n[2026-09-27T07:13:34Z] Connection closed for 127.0.0.1:64359\n[2026-09-27T07:13:34Z] Connection closed for 127.0.0.1:64358\n[2026-09-27T07:13:34Z] Connection closed for 127.0.0.1:64362\n[2026-09-27T07:13:34Z] Connected to 127.0.0.1:64364\n[2026-09-27T07:13:34Z] Connected to 127.0.0.1:64357\n[2026-09-27T07:13:34Z] Connected to 127.0.0.1:64360\n[2026-09-27T07:13:34Z] Connected to 127.0.0.1:64356\n[2026-09-27T07:13:34Z] Received version command from 127.0.0.1:64361 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:34Z] Received version command from 127.0.0.1:64357 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:34Z] Received version command from 127.0.0.1:64364 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:34Z] Received version command from 127.0.0.1:64356 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:34Z] Received version command from 127.0.0.1:64360 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:44Z] Exiting...\n"
+}

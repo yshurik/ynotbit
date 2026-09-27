@@ -34,4 +34,11 @@ void
 ntb_dns_bootstrap(ntb_dns_bootstrap_func callback,
                   void *user_data);
 
+
+/* Resolver work stays off the network loop. Poll and free on the owning thread. */
+struct ntb_dns_bootstrap_job;
+struct ntb_dns_bootstrap_job *ntb_dns_bootstrap_start(void);
+bool ntb_dns_bootstrap_poll(struct ntb_dns_bootstrap_job *, ntb_dns_bootstrap_func, void *);
+void ntb_dns_bootstrap_free(struct ntb_dns_bootstrap_job *);
+
 #endif /* NTB_DNS_BOOTSTRAP_H */
