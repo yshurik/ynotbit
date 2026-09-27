@@ -36,6 +36,7 @@ class DesktopWindow : public QMainWindow {
     QVBoxLayout *channelChipLayout_;
     QString activeChannelAddress_;
     QString listDensity_;
+    bool channelRailCollapsed_ = false;
     QAbstractItemDelegate *letterDelegate_ = nullptr;
     QLabel *listCountLabel_;
     QLineEdit *search_;
@@ -69,6 +70,7 @@ class DesktopWindow : public QMainWindow {
     void refreshIdentities();
     void refreshChannels();
     void setListDensity(QString density);
+    void setChannelRailCollapsed(bool collapsed);
     void updateListCount();
     void showVaultPasswordFor(QString path, bool create);
     void updateLockedScreen();

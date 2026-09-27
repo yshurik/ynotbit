@@ -133,7 +133,10 @@ int main(int argc, char **argv) {
         // per install (the way PyBitmessage's identiconsuffix does) would make
         // the same address unrecognisable between machines.
         const auto chipIdenticon = channelChips[0]->icon().pixmap(18, 18).toImage();
-        const auto chipAddress = channelChips[0]->toolTip();
+        // The <pre> address part only: the tooltip also carries the chan's
+        // name, which is renamed later on.
+        const auto chipAddress =
+            channelChips[0]->toolTip().mid(channelChips[0]->toolTip().indexOf("<pre>"));
         require(window.findChild<QWidget *>("channelRail")->isVisible(),
                 "the channel rail is shown on the Channels folder");
         require(!window.findChild<QLabel *>("listHeading")->isVisible(),
@@ -153,6 +156,53 @@ int main(int argc, char **argv) {
                 require(chip->isChecked() && chip->styleSheet().contains(":checked"),
                         "the active channel's chip is checked and visually distinct");
         require(list->model()->rowCount() == 1501, "all channel rows available");
+        {
+            // The search box names the chan it searches, as its chip shows it.
+            auto searchBox = window.findChild<QLineEdit *>("messageSearch");
+            auto placeholderFor = [&](const QString &address) {
+                selectChannel(address);
+                QString label;
+                for (auto chip : window.findChildren<QPushButton *>("channelChip"))
+                    if (chip->isChecked())
+                        label = chip->text();
+                return std::make_pair(searchBox->placeholderText(), label);
+            };
+            auto [second, secondLabel] = placeholderFor("second-recipient");
+            require(second == "Search " + secondLabel,
+                    "the chan search box says which chan it searches");
+            auto [first, firstLabel] = placeholderFor("recipient");
+            require(first == "Search " + firstLabel && first != second,
+                    "and follows the selected chan");
+        }
+        {
+            // Collapsing the chan rail leaves a narrow column of identicons.
+            auto rail = window.findChild<QWidget *>("channelRail");
+            auto toggle = window.findChild<QPushButton *>("channelRailToggle");
+            auto heading = window.findChild<QLabel *>("channelRailHeading");
+            auto join = window.findChild<QPushButton *>("joinOrCreateChannelButton");
+            require(toggle && toggle->text() == "<<<" && heading->text() == "CHANNELS",
+                    "the rail starts expanded, with a collapse button");
+            const int wide = rail->width();
+            toggle->click();
+            QCoreApplication::processEvents();
+            const auto chips = window.findChildren<QPushButton *>("channelChip");
+            bool iconsOnly = !chips.isEmpty();
+            for (auto chip : chips)
+                iconsOnly = iconsOnly && chip->text().isEmpty() && !chip->icon().isNull();
+            require(rail->width() < wide / 3 && heading->text() == "#" && join->text() == "+" &&
+                        toggle->text() == ">>>",
+                    "collapsed: narrow rail, '#' heading, '+' join and '>>>' expand");
+            require(iconsOnly, "collapsed chips show only their identicons");
+            bool activeKept = false;
+            for (auto chip : chips)
+                activeKept = activeKept || chip->isChecked();
+            require(activeKept, "the active chan stays selected while collapsed");
+            toggle->click();
+            QCoreApplication::processEvents();
+            require(rail->width() == wide && heading->text() == "CHANNELS" &&
+                        !window.findChildren<QPushButton *>("channelChip").first()->text().isEmpty(),
+                    "expanding restores the named list");
+        }
         require(window.findChild<QToolButton *>("density_comfortable") &&
                     window.findChild<QToolButton *>("density_cozy") &&
                     window.findChild<QToolButton *>("density_compact"),
@@ -1077,7 +1127,7 @@ int main(int argc, char **argv) {
             QTest::qWait(50);
             bool rechecked = false;
             for (auto chip : window.findChildren<QPushButton *>("channelChip"))
-                if (chip->toolTip() == chipAddress) {
+                if (chip->toolTip().endsWith(chipAddress)) {
                     require(chip->icon().pixmap(18, 18).toImage() == chipIdenticon,
                             "an address keeps the same identicon across a lock, unlock and "
                             "mailbox reopen -- nothing per-session salts it");

@@ -1358,6 +1358,7 @@ class MessageWindow : public QDialog {
 DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     setObjectName("desktopWindow");
     listDensity_ = QSettings().value("listDensity", "comfortable").toString();
+    channelRailCollapsed_ = QSettings().value("channelRailCollapsed", false).toBool();
     if (listDensity_ != "compact" && listDensity_ != "cozy" && listDensity_ != "comfortable")
         listDensity_ = "comfortable";
     resize(1160, 780);
@@ -1467,6 +1468,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     railOuter->setContentsMargins(10, 5, 2, 12);
     railOuter->setSpacing(4);
     auto railHead = new QLabel("CHANNELS");
+    railHead->setObjectName("channelRailHeading");
     railHead->setStyleSheet("font-size:11px;font-weight:700;color:palette(mid);");
     railOuter->addWidget(railHead);
     auto railScroll = new QScrollArea;
@@ -1484,7 +1486,10 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         session_.joinChannel();
         refreshChannels();
     })->setObjectName("joinOrCreateChannelButton");
+    button({}, railOuter, [this] { setChannelRailCollapsed(!channelRailCollapsed_); })
+        ->setObjectName("channelRailToggle");
     split->addWidget(rail);
+    setChannelRailCollapsed(channelRailCollapsed_);
     auto middle = listColumn_ = new QWidget;
     middle->setObjectName("listColumn");
     middle->setFixedWidth(300);
@@ -1496,6 +1501,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     heading_->setStyleSheet("font-size:11px;font-weight:700;color:palette(mid);");
     mid->addWidget(heading_);
     auto search = search_ = new QLineEdit;
+    search->setObjectName("messageSearch");
     search->setPlaceholderText("Search this folder");
     mid->addWidget(search);
     auto debounce = new QTimer(this);
@@ -2166,13 +2172,21 @@ void DesktopWindow::updateState() {
     channelRail_->setVisible(mailboxState && channelPage);
     heading_->setVisible(!channelPage);
     channelRail_->setEnabled(session_.unlocked());
-    search_->setPlaceholderText(channelPage ? "Search this channel" : "Search this folder");
     updateListCount();
     const auto identities = session_.unlocked() ? session_.identities() : QVariantList();
     if (identities != channelIdentities_) {
         channelIdentities_ = identities;
         refreshChannels();
     }
+    // After refreshChannels(), which may have picked a different active chan.
+    QString searchScope = "this folder";
+    if (channelPage) {
+        searchScope = "this channel";
+        for (auto v : session_.channels())
+            if (v.toMap()["address"].toString() == activeChannelAddress_)
+                searchScope = v.toMap()["label"].toString();
+    }
+    search_->setPlaceholderText("Search " + searchScope);
     const bool identityPage = folders_->currentRow() == 8 && mailboxState;
     sidebarWidget_->setVisible(mailboxState);
     listColumn_->setVisible(mailboxState && !identityPage);
@@ -2228,7 +2242,9 @@ void DesktopWindow::refreshChannels() {
         auto item = v.toMap();
         auto chipAddress = item["address"].toString();
         auto label = item["label"].toString();
-        auto chip = new QPushButton(label);
+        // Collapsed, the rail is a column of identicons; the name moves to
+        // the tooltip.
+        auto chip = new QPushButton(channelRailCollapsed_ ? QString() : label);
         chip->setObjectName("channelChip");
         chip->setCheckable(true);
         chip->setChecked(chipAddress == activeChannelAddress_);
@@ -2239,11 +2255,19 @@ void DesktopWindow::refreshChannels() {
             f.setBold(true);
             chip->setFont(f);
         }
-        chip->setStyleSheet("QPushButton{text-align:left;padding:8px 10px;border:0;"
-                            "border-radius:6px;} QPushButton:checked{background:palette(highlight);"
-                            "color:palette(highlighted-text);}");
+        // Collapsed there is no bold name to show unread mail, so the chip
+        // gets an accent edge instead.
+        const bool unreadMark = channelRailCollapsed_ && session_.channelUnread(chipAddress);
+        chip->setStyleSheet(QString("QPushButton{text-align:%1;padding:8px %2px;border:0;"
+                                    "border-radius:6px;%3} QPushButton:checked{"
+                                    "background:palette(highlight);"
+                                    "color:palette(highlighted-text);}")
+                                .arg(channelRailCollapsed_ ? "center" : "left")
+                                .arg(channelRailCollapsed_ ? 6 : 10)
+                                .arg(unreadMark ? "border-left:3px solid palette(highlight);" : ""));
         chip->setCursor(Qt::PointingHandCursor);
-        chip->setToolTip("<pre>" + chipAddress.toHtmlEscaped() + "</pre>");
+        chip->setToolTip((label != chipAddress ? "<b>" + label.toHtmlEscaped() + "</b>" : QString()) +
+                         "<pre>" + chipAddress.toHtmlEscaped() + "</pre>");
         connect(chip, &QPushButton::clicked, this, [this, chipAddress] {
             activeChannelAddress_ = chipAddress;
             session_.messageModel()->setChannel(chipAddress);
@@ -2256,6 +2280,23 @@ void DesktopWindow::refreshChannels() {
     session_.messageModel()->setChannel(activeChannelAddress_);
     if (folders_->currentRow() == 4)
         heading_->setText("Channels");
+}
+void DesktopWindow::setChannelRailCollapsed(bool collapsed) {
+    channelRailCollapsed_ = collapsed;
+    QSettings().setValue("channelRailCollapsed", collapsed);
+    channelRail_->setFixedWidth(collapsed ? 50 : 190);
+    static_cast<QVBoxLayout *>(channelRail_->layout())
+        ->setContentsMargins(collapsed ? 6 : 10, 5, collapsed ? 4 : 2, 12);
+    auto heading = channelRail_->findChild<QLabel *>("channelRailHeading");
+    heading->setText(collapsed ? "#" : "CHANNELS");
+    heading->setAlignment(collapsed ? Qt::AlignHCenter : Qt::AlignLeft);
+    auto join = channelRail_->findChild<QPushButton *>("joinOrCreateChannelButton");
+    join->setText(collapsed ? "+" : "+ Join or create…");
+    join->setToolTip(collapsed ? "Join or create a chan" : QString());
+    auto toggle = channelRail_->findChild<QPushButton *>("channelRailToggle");
+    toggle->setText(collapsed ? ">>>" : "<<<");
+    toggle->setToolTip(collapsed ? "Expand the channel list" : "Collapse the channel list");
+    refreshChannels();
 }
 void DesktopWindow::setListDensity(QString density) {
     if (density == listDensity_)
