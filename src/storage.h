@@ -69,6 +69,7 @@ class Vault {
         return identities_;
     }
     QString addIdentity(const QString &label);
+    // label empty: "[chan] <phrase>", as PyBitmessage names a joined chan.
     QString addChannel(const QString &phrase, const QString &label,
                        const QString &expectedAddress = {});
     void importKeys(const QString &path);

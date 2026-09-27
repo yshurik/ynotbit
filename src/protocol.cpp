@@ -365,7 +365,9 @@ QString Vault::addChannel(const QString &phrase, const QString &label,
                 "Invalid expected chan address");
         version = a.version;
     }
-    auto channel = Protocol::channel(phrase, label, version);
+    // An empty label gets PyBitmessage's default, "[chan] <phrase>".
+    auto channel =
+        Protocol::channel(phrase, label.isEmpty() ? "[chan] " + phrase : label, version);
     require(expectedAddress.isEmpty() || channel.address == expectedAddress,
             "The shared phrase does not match that chan address");
     for (const auto &i : identities_)

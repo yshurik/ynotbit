@@ -464,7 +464,7 @@ void Session::joinChannel() {
             phrase.fill(QChar(0));
             return;
         }
-        vault_.addChannel(phrase, "Chan", expected.trimmed());
+        vault_.addChannel(phrase, {}, expected.trimmed());
         phrase.fill(QChar(0));
         if (mailboxOpen())
             mailbox_.advance(0);

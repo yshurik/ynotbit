@@ -20,6 +20,9 @@ int main(int argc, char **argv) {
         const auto vp = d.filePath("vault.bmvault");
         vault.create(vp, "testing password");
         vault.addChannel("general", "General");
+        vault.addChannel("notbit", {});
+        require(vault.identities().back().label == "[chan] notbit",
+                "a chan joined without a label is named \"[chan] <phrase>\", as in PyBitmessage");
         auto key = vault.addMailboxKey();
         auto mp = d.filePath("mail.bmmail");
         Mailbox mailbox;
