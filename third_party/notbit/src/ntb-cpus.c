@@ -22,6 +22,7 @@
  */
 
 #include "config.h"
+#include "ntb-win32.h"
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -72,6 +73,10 @@ ntb_cpus_count(void)
         if (n_cpus)
                 return n_cpus;
 
+#ifdef _WIN32
+        (void) file;
+        n_cpus = ntb_win32_cpu_count();
+#else
         file = fopen("/proc/cpuinfo", "r");
         if (file == NULL) {
                 n_cpus = 1;
@@ -79,6 +84,7 @@ ntb_cpus_count(void)
                 n_cpus = get_n_cpus_from_file(file);
                 fclose(file);
         }
+#endif
 
         return n_cpus;
 }

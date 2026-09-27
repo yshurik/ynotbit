@@ -55,8 +55,10 @@ ntb_file_error_from_errno(int errnum)
                 return NTB_FILE_ERROR_INTR;
         case EPERM:
                 return NTB_FILE_ERROR_PERM;
+#ifdef EPFNOSUPPORT /* not in the Windows C runtime */
         case EPFNOSUPPORT:
                 return NTB_FILE_ERROR_PFNOSUPPORT;
+#endif
         case EAFNOSUPPORT:
                 return NTB_FILE_ERROR_AFNOSUPPORT;
         }

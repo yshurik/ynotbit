@@ -7,21 +7,14 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <iostream>
-#ifdef Q_OS_UNIX
 extern "C" {
 int ntb_daemon(int argc, char **argv);
 }
-#endif
 int main(int argc, char **argv) {
     if (argc > 1 && std::string(argv[1]) == "--qt-node")
         return bm::runPortableRelay(argc, argv);
-#ifdef Q_OS_UNIX
     if (argc > 1 && std::string(argv[1]) == "--node")
         return ntb_daemon(argc - 1, argv + 1);
-#else
-    if (argc > 1 && std::string(argv[1]) == "--node")
-        return bm::runPortableRelay(argc, argv);
-#endif
     QApplication app(argc, argv);
     app.setOrganizationName("NotbitDesktop");
     app.setApplicationName("Notbit Desktop");

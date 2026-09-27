@@ -25,15 +25,31 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#ifndef _WIN32
 #include <unistd.h>
 #include <fcntl.h>
+#endif
 #include <string.h>
 #include <errno.h>
+#ifndef _WIN32
 #include <arpa/inet.h>
+#endif
 #include <assert.h>
 #include <stdlib.h>
 #include <openssl/rand.h>
 #include <inttypes.h>
+#ifdef _WIN32
+#include "ntb-win32.h"
+#define socket(d, t, p) ntb_win32_socket(d, t, p)
+#define connect(s, a, l) ntb_win32_connect(s, a, l)
+#define accept(s, a, l) ntb_win32_accept(s, a, l)
+#define bind(s, a, l) ntb_win32_bind(s, a, l)
+#define listen(s, b) ntb_win32_listen(s, b)
+#define getsockopt(s, lv, n, v, l) ntb_win32_getsockopt(s, lv, n, v, l)
+#define setsockopt(s, lv, n, v, l) ntb_win32_setsockopt(s, lv, n, v, l)
+#define read(s, b, n) ntb_win32_recv(s, b, n)
+#define write(s, b, n) ntb_win32_send(s, b, n)
+#endif
 
 #include "ntb-util.h"
 #include "ntb-slice.h"

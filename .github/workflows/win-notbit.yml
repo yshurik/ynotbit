@@ -1,0 +1,68 @@
+name: Windows notbit engine
+
+# Port-in-progress check for the win-notbit branch: builds and tests the
+# Windows app with the real notbit engine. Never packages or releases.
+on:
+  push:
+    branches: [win-notbit]
+  workflow_dispatch:
+
+env:
+  QT_VERSION: "6.8.3"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          dir: ${{ github.workspace }}/qt
+          cache: true
+
+      - name: Resolve Qt prefix
+        id: qt
+        run: |
+          $prefix = Get-ChildItem -Directory "${{ github.workspace }}\qt\Qt\${{ env.QT_VERSION }}" | Select-Object -First 1 -ExpandProperty FullName
+          echo "prefix=$prefix" >> $env:GITHUB_OUTPUT
+
+      - name: Install pkg-config
+        run: choco install pkgconfiglite -y
+
+      # Restore and save separately: a plain actions/cache only saves when
+      # the whole job succeeds, so every failing round rebuilt vcpkg (~16 min).
+      - name: Restore vcpkg packages
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}\build\vcpkg_installed
+          key: windows-vcpkg-${{ hashFiles('vcpkg.json') }}
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.prefix }}"
+
+      - name: Save vcpkg packages
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}\build\vcpkg_installed
+          key: windows-vcpkg-${{ hashFiles('vcpkg.json') }}
+
+      - name: Build
+        run: cmake --build build --parallel -- -k 0 # report every error, not just the first
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

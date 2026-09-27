@@ -24,6 +24,10 @@
 #include "config.h"
 
 #include <sys/stat.h>
+#ifdef _WIN32
+#include "ntb-win32.h"
+#define mkdir(name, mode) ntb_win32_mkdir(name)
+#endif
 #include <errno.h>
 #include <string.h>
 

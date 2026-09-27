@@ -12,3 +12,5 @@ ynotbit-data/
 *.AppImage
 *.exe
 .env
+*.obj
+*.o

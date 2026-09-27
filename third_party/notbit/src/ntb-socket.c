@@ -23,7 +23,11 @@
 
 #include "config.h"
 
+#ifdef _WIN32
+#include "ntb-win32.h"
+#else
 #include <fcntl.h>
+#endif
 #include <errno.h>
 #include <string.h>
 
@@ -34,11 +38,15 @@ bool
 ntb_socket_set_nonblock(int sock,
                         struct ntb_error **error)
 {
+#ifdef _WIN32
+        if (!ntb_win32_set_nonblock(sock)) {
+#else
         int flags;
 
         flags = fcntl(sock, F_GETFL, 0);
 
         if (flags == -1 || fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
+#endif
                 ntb_file_error_set(error,
                                    errno,
                                    "Error setting non-blocking mode: %s",

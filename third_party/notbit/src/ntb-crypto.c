@@ -22,6 +22,7 @@
  */
 
 #include "config.h"
+#include "ntb-win32.h"
 
 #include <stdbool.h>
 #include <string.h>

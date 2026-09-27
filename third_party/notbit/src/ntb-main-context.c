@@ -25,8 +25,10 @@
 
 #include <errno.h>
 #include <string.h>
+#ifndef _WIN32
 #include <poll.h>
 #include <unistd.h>
+#endif
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +38,13 @@
 #include <time.h>
 #include <pthread.h>
 #include <assert.h>
+#ifdef _WIN32
+#include "ntb-win32.h"
+#define pipe(fds) ntb_win32_pipe(fds)
+#define read(s, b, n) ntb_win32_recv(s, b, n)
+#define write(s, b, n) ntb_win32_send(s, b, n)
+#define poll(fds, n, timeout) ntb_win32_poll(fds, n, timeout)
+#endif
 
 #include "ntb-main-context.h"
 #include "ntb-list.h"
@@ -671,9 +680,14 @@ ntb_main_context_get_monotonic_clock(struct ntb_main_context *mc)
            That way we can cache the clock value instead of having to
            do a system call every time we need it */
         if (!mc->monotonic_time_valid) {
+#ifdef _WIN32
+                (void) ts;
+                mc->monotonic_time = ntb_win32_monotonic_us();
+#else
                 clock_gettime(CLOCK_MONOTONIC, &ts);
                 mc->monotonic_time = (ts.tv_sec * UINT64_C(1000000) +
                                       ts.tv_nsec / UINT64_C(1000));
+#endif
                 mc->monotonic_time_valid = true;
         }
 

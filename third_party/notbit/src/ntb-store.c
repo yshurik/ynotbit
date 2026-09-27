@@ -29,13 +29,26 @@
 #include <sys/stat.h>
 #include <pthread.h>
 #include <stdio.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #include <sys/types.h>
 #include <dirent.h>
 #include <assert.h>
 #include <inttypes.h>
-#include <sys/time.h>
 #include <fcntl.h>
+#ifdef _WIN32
+#include "ntb-win32.h"
+#include <time.h>
+/* Replace an existing target, as POSIX rename() does. */
+#define rename(from, to) ntb_win32_rename(from, to)
+#ifndef S_IRUSR
+#define S_IRUSR _S_IREAD
+#define S_IWUSR _S_IWRITE
+#endif
+#else
+#include <sys/time.h>
+#endif
 
 #include "ntb-store.h"
 #include "ntb-util.h"
@@ -243,7 +256,15 @@ static void
 append_absolute_path(struct ntb_buffer *buffer,
                      const char *path)
 {
-        if (path[0] != '/' && append_cwd(buffer))
+        bool absolute = path[0] == '/';
+
+#ifdef _WIN32
+        /* C:\... or C:/..., and \\server\share or \rooted paths */
+        absolute = absolute || path[0] == '\\' ||
+                (path[0] != '\0' && path[1] == ':');
+#endif
+
+        if (!absolute && append_cwd(buffer))
                 ntb_buffer_append_c(buffer, '/');
 
         ntb_buffer_append_string(buffer, path);
@@ -863,7 +884,14 @@ generate_maildir_name(struct ntb_store *store,
         struct timeval tv;
         int hostname_length = 2;
 
+#ifdef _WIN32
+        struct timespec ts;
+        timespec_get(&ts, TIME_UTC);
+        tv.tv_sec = (long) ts.tv_sec;
+        tv.tv_usec = ts.tv_nsec / 1000;
+#else
         gettimeofday(&tv, NULL /* tz */);
+#endif
 
         ntb_buffer_append_printf(buffer,
                                  "%li.M%liQ%u.",

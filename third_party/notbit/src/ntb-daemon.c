@@ -27,12 +27,19 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#ifdef _WIN32
+#include "ntb-win32.h"
+#include <getopt.h>
+#else
 #include <unistd.h>
+#endif
 #include <string.h>
 #include <errno.h>
 #include <sys/stat.h>
+#ifndef _WIN32
 #include <pwd.h>
 #include <grp.h>
+#endif
 #include <sys/types.h>
 #include <signal.h>
 
@@ -44,7 +51,9 @@
 #include "ntb-proto.h"
 #include "ntb-file-error.h"
 #include "ntb-keyring.h"
+#ifndef _WIN32
 #include "ntb-ipc.h"
+#endif
 
 static struct ntb_error_domain
 arguments_error;
@@ -307,6 +316,13 @@ error:
         return false;
 }
 
+#ifdef _WIN32
+/* No fork, setsid or user switching on Windows: -d, -u and -g are refused
+ * when the arguments are processed. */
+static void daemonize(void) {}
+static void set_user(const char *user_name) {}
+static void set_group(const char *group_name) {}
+#else
 static void
 daemonize(void)
 {
@@ -379,6 +395,8 @@ set_group(const char *group_name)
                 exit(EXIT_FAILURE);
         }
 }
+
+#endif /* _WIN32 */
 
 static void
 quit_cb(struct ntb_main_context_source *source,
@@ -510,7 +528,9 @@ run_main_loop(struct ntb_network *nw,
         if (option_daemonize)
                 daemonize();
 
+#ifndef _WIN32
         signal(SIGPIPE, SIG_IGN);
+#endif
 
         /* Desktop relay never constructs or receives an identity keyring. */
         ntb_log_start();
@@ -538,7 +558,6 @@ run_network(void)
         struct ntb_store *store = NULL;
         struct ntb_network *nw;
         struct ntb_keyring *keyring;
-        struct ntb_ipc *ipc;
         int ret = EXIT_SUCCESS;
         struct ntb_error *error = NULL;
 
@@ -598,6 +617,18 @@ ntb_daemon(int argc, char **argv)
                 fprintf(stderr, "%s\n", error->message);
                 return EXIT_FAILURE;
         }
+
+#ifdef _WIN32
+        if (option_daemonize || option_user || option_group) {
+                fprintf(stderr, "-d, -u and -g are not supported on Windows\n");
+                return EXIT_FAILURE;
+        }
+
+        if (!ntb_win32_init()) {
+                fprintf(stderr, "Winsock failed to start\n");
+                return EXIT_FAILURE;
+        }
+#endif
 
         mc = ntb_main_context_get_default();
 

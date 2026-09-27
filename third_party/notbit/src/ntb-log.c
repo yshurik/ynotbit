@@ -22,9 +22,12 @@
  */
 
 #include "config.h"
+#include "ntb-win32.h"
 
+#ifndef _WIN32
 #include <unistd.h>
 #include <fcntl.h>
+#endif
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
@@ -91,6 +94,7 @@ ntb_log(const char *format, ...)
 static void
 block_sigint(void)
 {
+#ifndef _WIN32
         sigset_t sigset;
 
         sigemptyset(&sigset);
@@ -99,6 +103,7 @@ block_sigint(void)
 
         if (pthread_sigmask(SIG_BLOCK, &sigset, NULL) == -1)
                 ntb_warning("pthread_sigmask failed: %s", strerror(errno));
+#endif
 }
 
 static void *
@@ -163,6 +168,12 @@ ntb_log_set_file(const char *filename, struct ntb_error **error)
 {
         FILE *file;
 
+#ifdef _WIN32
+        /* No /dev on Windows; the parent reads our stdout pipe. */
+        if (!strcmp(filename, "/dev/stdout"))
+                file = stdout;
+        else
+#endif
         file = fopen(filename, "a");
 
         if (file == NULL) {

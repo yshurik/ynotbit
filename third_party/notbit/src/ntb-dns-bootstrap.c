@@ -23,7 +23,11 @@
 
 #include "config.h"
 
+#ifdef _WIN32
+#include "ntb-win32.h"
+#else
 #include <netdb.h>
+#endif
 #include <string.h>
 
 #include "ntb-dns-bootstrap.h"

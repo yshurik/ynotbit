@@ -4,6 +4,9 @@
   "dependencies": [
     "openssl",
     "libsodium",
-    "sqlcipher"
+    "sqlcipher",
+    "pthreads",
+    "getopt",
+    "dirent"
   ]
 }
