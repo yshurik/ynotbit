@@ -2248,23 +2248,43 @@ void DesktopWindow::refreshChannels() {
         chip->setObjectName("channelChip");
         chip->setCheckable(true);
         chip->setChecked(chipAddress == activeChannelAddress_);
-        chip->setIcon(QIcon(identiconPixmap(chipAddress, 18)));
-        chip->setIconSize(QSize(18, 18));
-        if (session_.channelUnread(chipAddress)) {
+        const bool unread = session_.channelUnread(chipAddress);
+        if (channelRailCollapsed_) {
+            // No name to embolden when collapsed: unread mail is a dot on the
+            // identicon's corner instead.
+            QPixmap badge(24, 24);
+            badge.fill(Qt::transparent);
+            QPainter p(&badge);
+            p.drawPixmap(3, 3, identiconPixmap(chipAddress, 18));
+            if (unread) {
+                p.setRenderHint(QPainter::Antialiasing);
+                // On the selected chip the background is the highlight colour
+                // itself, so the dot takes the text colour drawn on it.
+                const bool selected = chipAddress == activeChannelAddress_;
+                p.setPen(QPen(palette().color(selected ? QPalette::Highlight : QPalette::Window),
+                              1.5));
+                p.setBrush(palette().color(selected ? QPalette::HighlightedText
+                                                    : QPalette::Highlight));
+                p.drawEllipse(QRectF(16.5, 0.75, 7, 7));
+            }
+            p.end();
+            chip->setIcon(QIcon(badge));
+            chip->setIconSize(QSize(24, 24));
+        } else {
+            chip->setIcon(QIcon(identiconPixmap(chipAddress, 18)));
+            chip->setIconSize(QSize(18, 18));
+        }
+        if (unread) {
             auto f = chip->font();
             f.setBold(true);
             chip->setFont(f);
         }
-        // Collapsed there is no bold name to show unread mail, so the chip
-        // gets an accent edge instead.
-        const bool unreadMark = channelRailCollapsed_ && session_.channelUnread(chipAddress);
-        chip->setStyleSheet(QString("QPushButton{text-align:%1;padding:8px %2px;border:0;"
-                                    "border-radius:6px;%3} QPushButton:checked{"
+        chip->setStyleSheet(QString("QPushButton{text-align:%1;padding:%2;border:0;"
+                                    "border-radius:6px;} QPushButton:checked{"
                                     "background:palette(highlight);"
                                     "color:palette(highlighted-text);}")
-                                .arg(channelRailCollapsed_ ? "center" : "left")
-                                .arg(channelRailCollapsed_ ? 6 : 10)
-                                .arg(unreadMark ? "border-left:3px solid palette(highlight);" : ""));
+                                .arg(channelRailCollapsed_ ? "center" : "left",
+                                     channelRailCollapsed_ ? "5px 4px" : "8px 10px"));
         chip->setCursor(Qt::PointingHandCursor);
         chip->setToolTip((label != chipAddress ? "<b>" + label.toHtmlEscaped() + "</b>" : QString()) +
                          "<pre>" + chipAddress.toHtmlEscaped() + "</pre>");
