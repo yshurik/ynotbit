@@ -1394,8 +1394,8 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     auto top = new QHBoxLayout(header);
     top->setContentsMargins(24, 18, 24, 18);
     auto logo = new QLabel;
-    logo->setPixmap(appLogo().pixmap(40, 40));
-    logo->setFixedSize(40, 40);
+    logo->setPixmap(appLogo().pixmap(64, 64));
+    logo->setFixedSize(64, 64);
     top->addWidget(logo);
     auto brand = new QLabel(
         "<b style='font-size:20px'>ynotbit</b><br><span "
