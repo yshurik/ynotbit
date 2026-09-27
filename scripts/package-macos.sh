@@ -13,6 +13,8 @@ stage_dir="$(mktemp -d /tmp/ynotbit-package.XXXXXX)"
 trap 'rm -rf "$stage_dir"' EXIT
 app_dir="$stage_dir/ynotbit.app"
 ditto --norsrc "$build_dir/ynotbit.app" "$app_dir"
+mkdir -p "$app_dir/Contents/Resources"
+cp "$project_dir/assets/ynotbit.icns" "$app_dir/Contents/Resources/ynotbit.icns"
 "$qt_prefix/bin/macdeployqt" "$app_dir" -always-overwrite
 mkdir -p "$app_dir/Contents/Resources/licenses"
 cp "$project_dir"/licenses/* "$app_dir/Contents/Resources/licenses/"

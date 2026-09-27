@@ -20,7 +20,11 @@ int main(int argc, char **argv) {
     app.setApplicationName("Notbit Desktop");
     app.setApplicationDisplayName("ynotbit");
     app.setApplicationVersion(YNOTBIT_VERSION);
+    app.setDesktopFileName("ynotbit");
+#ifndef Q_OS_MACOS
     app.setWindowIcon(bm::appLogo());
+#endif
+    // macOS uses the bundled ICNS, including its separate Retina optical masters.
     try {
         auto args = app.arguments();
         QString root =

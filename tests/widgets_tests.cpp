@@ -30,6 +30,25 @@ int main(int argc, char **argv) {
             throw std::runtime_error(message);
     };
     try {
+        for (const auto &icon : {bm::appLogo(), bm::windowLogo()}) {
+            for (int size : {16, 20, 24, 32, 40, 48, 64, 96, 128, 256, 512, 1024}) {
+                require(icon.availableSizes().contains(QSize(size, size)),
+                        "brand icon embeds every authored optical size");
+                const auto image = icon.pixmap(QSize(size, size), 1.0).toImage();
+                require(!image.isNull() && image.pixelColor(0, 0).alpha() == 0,
+                        "brand icon decodes with transparent corners");
+                bool red = false, blue = false;
+                for (int y = 0; y < image.height(); ++y)
+                    for (int x = 0; x < image.width(); ++x) {
+                        const auto color = image.pixelColor(x, y);
+                        if (color.alpha() < 128)
+                            continue;
+                        red |= color.red() > color.blue() + 60;
+                        blue |= color.blue() > color.red() + 60;
+                    }
+                require(red && blue, "airmail stripes survive at every icon size");
+            }
+        }
         bm::Vault vault;
         vault.create(temp.filePath("vault"), "test password");
         const auto personal = vault.addIdentity("Personal");

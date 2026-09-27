@@ -889,6 +889,7 @@ class Composer : public QDialog {
     Composer(Session &session, QVariantMap letter, bool reply, bool dark, QWidget *parent)
         : QDialog(parent), session_(session) {
         setObjectName("composer");
+        setWindowIcon(windowLogo());
         setWindowTitle(reply ? "Reply" : "Write a letter");
         resize(740, 650);
         setModal(true);
@@ -1286,6 +1287,7 @@ class MessageWindow : public QDialog {
     MessageWindow(Session &session, QVariantMap letter, bool dark, QWidget *parent)
         : QDialog(parent), session_(session), letter_(std::move(letter)), dark_(dark) {
         setObjectName("messageWindow");
+        setWindowIcon(windowLogo());
         setAttribute(Qt::WA_DeleteOnClose);
         setWindowTitle(singleLine(letter_["subject"].toString()).left(80));
         resize(640, 560);
@@ -1375,6 +1377,7 @@ class MessageWindow : public QDialog {
 } // namespace
 DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     setObjectName("desktopWindow");
+    setWindowIcon(windowLogo());
     listDensity_ = QSettings().value("listDensity", "comfortable").toString();
     channelRailCollapsed_ = QSettings().value("channelRailCollapsed", false).toBool();
     if (listDensity_ != "compact" && listDensity_ != "cozy" && listDensity_ != "comfortable")

@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(ynotbit VERSION 0.4.8 LANGUAGES C CXX) # the one place the version is set
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Network Test)
 # Qt 6.8 references AGL, which Apple removed from the macOS 26 SDK.
 # The Widgets desktop does not use this obsolete framework.
@@ -77,6 +78,7 @@ else()
  target_compile_options(notbit_engine PRIVATE -Wno-deprecated-declarations -include sys/types.h)
 endif()
 qt_add_executable(ynotbit MACOSX_BUNDLE src/main.cpp src/session.cpp src/session.h
+ assets/icons.qrc
  src/portable_relay.cpp src/portable_relay.h src/appearance.cpp src/appearance.h
  src/desktop_window.cpp src/desktop_window.h src/message_model.cpp src/message_model.h
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
@@ -86,6 +88,13 @@ if(APPLE)
  target_sources(ynotbit PRIVATE assets/ynotbit.icns)
  set_target_properties(ynotbit PROPERTIES MACOSX_BUNDLE_ICON_FILE "ynotbit.icns")
 endif()
+if(WIN32)
+ enable_language(RC)
+ configure_file(assets/ynotbit.rc.in ${CMAKE_CURRENT_BINARY_DIR}/ynotbit.rc @ONLY)
+ target_sources(ynotbit PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/ynotbit.rc)
+ set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/ynotbit.rc PROPERTIES
+  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/ynotbit.ico")
+endif()
 target_link_libraries(ynotbit PRIVATE bmcore Qt6::Widgets Qt6::Network)
 # A windowed app on Windows: no console window opens alongside it.
 set_target_properties(ynotbit PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -94,6 +103,15 @@ target_link_libraries(ynotbit PRIVATE notbit_engine)
 set_target_properties(ynotbit PROPERTIES MACOSX_BUNDLE_BUNDLE_NAME "ynotbit" MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.yshurik.ynotbit" MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}" MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
 target_compile_definitions(ynotbit PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
 install(TARGETS ynotbit BUNDLE DESTINATION . RUNTIME DESTINATION bin)
+if(UNIX AND NOT APPLE)
+ include(GNUInstallDirs)
+ install(FILES assets/ynotbit.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+ foreach(size 16 20 24 32 40 48 64 96 128 256 512 1024)
+  install(FILES assets/icons/application/${size}.png
+   DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps RENAME ynotbit.png)
+ endforeach()
+ install(FILES assets/ynotbit.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+endif()
 add_executable(lifecycle_tests tests/lifecycle_tests.cpp)
 target_link_libraries(lifecycle_tests PRIVATE bmcore)
 add_test(NAME lifecycle COMMAND lifecycle_tests)
@@ -113,6 +131,7 @@ endif()
 add_test(NAME gui-smoke COMMAND ynotbit --offline --data-dir ${CMAKE_CURRENT_BINARY_DIR}/smoke-node --smoke-test)
 set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 qt_add_executable(desktop_tests tests/widgets_tests.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/appearance.cpp src/appearance.h
+ assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(desktop_tests PRIVATE third_party/qrcodegen)
 target_link_libraries(desktop_tests PRIVATE bmcore Qt6::Widgets Qt6::Network Qt6::Test)

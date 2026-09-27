@@ -1,0 +1,28 @@
+<RCC>
+  <qresource prefix="/icons">
+    <file alias="application/16.png">icons/application/16.png</file>
+    <file alias="application/20.png">icons/application/20.png</file>
+    <file alias="application/24.png">icons/application/24.png</file>
+    <file alias="application/32.png">icons/application/32.png</file>
+    <file alias="application/40.png">icons/application/40.png</file>
+    <file alias="application/48.png">icons/application/48.png</file>
+    <file alias="application/64.png">icons/application/64.png</file>
+    <file alias="application/96.png">icons/application/96.png</file>
+    <file alias="application/128.png">icons/application/128.png</file>
+    <file alias="application/256.png">icons/application/256.png</file>
+    <file alias="application/512.png">icons/application/512.png</file>
+    <file alias="application/1024.png">icons/application/1024.png</file>
+    <file alias="window/16.png">icons/window/16.png</file>
+    <file alias="window/20.png">icons/window/20.png</file>
+    <file alias="window/24.png">icons/window/24.png</file>
+    <file alias="window/32.png">icons/window/32.png</file>
+    <file alias="window/40.png">icons/window/40.png</file>
+    <file alias="window/48.png">icons/window/48.png</file>
+    <file alias="window/64.png">icons/window/64.png</file>
+    <file alias="window/96.png">icons/window/96.png</file>
+    <file alias="window/128.png">icons/window/128.png</file>
+    <file alias="window/256.png">icons/window/256.png</file>
+    <file alias="window/512.png">icons/window/512.png</file>
+    <file alias="window/1024.png">icons/window/1024.png</file>
+  </qresource>
+</RCC>
