@@ -49,7 +49,10 @@ enum ntb_network_object_location {
         NTB_NETWORK_OBJECT_LOCATION_MEMORY
 };
 
+#include "ntb-peer-stats.h"
 struct ntb_network;
+void ntb_network_tick(struct ntb_network *);
+void ntb_network_get_peer_stats(struct ntb_network *, struct ntb_network_peer_stats *);
 
 struct ntb_network *
 ntb_network_new(void);

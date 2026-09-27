@@ -1,0 +1,376 @@
+{
+  "backend": "--node",
+  "samples": [
+    {
+      "seconds": 2.11,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493197
+      }
+    },
+    {
+      "seconds": 3.11,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493198
+      }
+    },
+    {
+      "seconds": 4.11,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493199
+      }
+    },
+    {
+      "seconds": 5.12,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493200
+      }
+    },
+    {
+      "seconds": 6.12,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493201
+      }
+    },
+    {
+      "seconds": 7.12,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493202
+      }
+    },
+    {
+      "seconds": 8.12,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493203
+      }
+    },
+    {
+      "seconds": 9.13,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493204
+      }
+    },
+    {
+      "seconds": 10.13,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493205
+      }
+    },
+    {
+      "seconds": 11.13,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493206
+      }
+    },
+    {
+      "seconds": 12.13,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493207
+      }
+    },
+    {
+      "seconds": 13.14,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493208
+      }
+    },
+    {
+      "seconds": 14.14,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493209
+      }
+    },
+    {
+      "seconds": 15.14,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493210
+      }
+    },
+    {
+      "seconds": 16.15,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493211
+      }
+    },
+    {
+      "seconds": 17.15,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493212
+      }
+    },
+    {
+      "seconds": 18.15,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493213
+      }
+    },
+    {
+      "seconds": 19.15,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493214
+      }
+    },
+    {
+      "seconds": 20.15,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493215
+      }
+    },
+    {
+      "seconds": 21.16,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493216
+      }
+    },
+    {
+      "seconds": 22.16,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493217
+      }
+    },
+    {
+      "seconds": 23.16,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493218
+      }
+    },
+    {
+      "seconds": 24.16,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493219
+      }
+    },
+    {
+      "seconds": 25.17,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493220
+      }
+    },
+    {
+      "seconds": 26.17,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493221
+      }
+    },
+    {
+      "seconds": 27.17,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493222
+      }
+    },
+    {
+      "seconds": 28.17,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493223
+      }
+    },
+    {
+      "seconds": 29.18,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493224
+      }
+    },
+    {
+      "seconds": 30.18,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493225
+      }
+    },
+    {
+      "seconds": 31.18,
+      "released": true,
+      "accepted": {
+        "silent": 8,
+        "healthy": 5
+      },
+      "status": {
+        "peers": 6,
+        "pending": 0,
+        "time": 1790493226
+      }
+    }
+  ],
+  "log": "[2026-09-27T07:13:16Z] Loading saved object store\n[2026-09-27T07:13:16Z] Finished loading object store\n[2026-09-27T07:13:16Z] Loading saved address list\n[2026-09-27T07:13:16Z] Connected to 127.0.0.1:64382\n[2026-09-27T07:13:16Z] Connected to 127.0.0.1:64392\n[2026-09-27T07:13:16Z] Connected to 127.0.0.1:64384\n[2026-09-27T07:13:16Z] Connected to 127.0.0.1:64388\n[2026-09-27T07:13:16Z] Connected to 127.0.0.1:64389\n[2026-09-27T07:13:16Z] Connected to 127.0.0.1:64385\n[2026-09-27T07:13:16Z] Connected to 127.0.0.1:64393\n[2026-09-27T07:13:16Z] Connected to 127.0.0.1:64383\n[2026-09-27T07:13:16Z] Received version command from 127.0.0.1:64382 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:37Z] Connection closed for 127.0.0.1:64384\n[2026-09-27T07:13:37Z] Connected to 127.0.0.1:64391\n[2026-09-27T07:13:37Z] Connection closed for 127.0.0.1:64393\n[2026-09-27T07:13:37Z] Connection closed for 127.0.0.1:64383\n[2026-09-27T07:13:37Z] Connection closed for 127.0.0.1:64385\n[2026-09-27T07:13:37Z] Connection closed for 127.0.0.1:64389\n[2026-09-27T07:13:37Z] Connection closed for 127.0.0.1:64388\n[2026-09-27T07:13:37Z] Connection closed for 127.0.0.1:64392\n[2026-09-27T07:13:37Z] Connected to 127.0.0.1:64394\n[2026-09-27T07:13:37Z] Connected to 127.0.0.1:64387\n[2026-09-27T07:13:37Z] Connected to 127.0.0.1:64390\n[2026-09-27T07:13:37Z] Connected to 127.0.0.1:64386\n[2026-09-27T07:13:37Z] Received version command from 127.0.0.1:64391 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:37Z] Received version command from 127.0.0.1:64394 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:37Z] Received version command from 127.0.0.1:64387 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:37Z] Received version command from 127.0.0.1:64390 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:37Z] Received version command from 127.0.0.1:64386 with user agent /ynotbit-diagnostic:1/\n[2026-09-27T07:13:47Z] Exiting...\n"
+}

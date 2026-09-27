@@ -102,6 +102,7 @@ class Relay : public QObject {
     bool allowPrivate_=false, explicitOnly_=false;
     QNetworkProxy proxy_{QNetworkProxy::NoProxy};
     qint64 lastCleanup_=0;
+    int rejections_=0;
 
     bool send(const std::shared_ptr<Peer> &p,const QByteArray &command,const QByteArray &payload={}) {
         if(!p->socket || p->socket->state()!=QAbstractSocket::ConnectedState)return false;
@@ -123,6 +124,9 @@ class Relay : public QObject {
     }
     void ready(const std::shared_ptr<Peer> &p) {
         if(p->ready || !p->gotVersion || !p->gotVerack)return;
+        int established=0;
+        for(const auto &other:peers_) if(other->ready) ++established;
+        if(established >= MaxPeers) { if(p->socket) p->socket->abort(); return; }
         p->ready=true;p->announcing=inventory_.keys();
         QByteArray b;varint(b,0);send(p,"addr",b);
     }
@@ -178,6 +182,18 @@ class Relay : public QObject {
                 if(port && stream==1 && time>=quint64(now()-3*3600) && time<=quint64(now()+600))addAddress(e);
             }
         } else if(command=="ping")send(p,"pong",b.left(8));
+        else if(command=="error") {
+            Reader r{b};
+            auto severity=r.var();
+            auto retry=r.var();
+            auto inventory=r.var();
+            require(inventory <= 32 && r.take(inventory).size() == inventory);
+            auto reason=r.var();
+            require(reason <= 512 && r.take(reason).size() == reason);
+            require(r.pos == b.size());
+            if(severity >= 2) { ++rejections_; if(p->socket) p->socket->abort(); }
+            Q_UNUSED(retry);
+        }
     }
     void receive(const std::shared_ptr<Peer> &p) {
         if(!p->socket)return;
@@ -238,9 +254,10 @@ class Relay : public QObject {
     }
     void tick() {
         recover();publish();int readyPeers=0,pending=0;
-        for(auto p:peers_) {
+        const auto snapshot = peers_;
+        for(const auto &p:snapshot) {
             if(!p->socket)continue;
-            if((!p->ready && now()-p->connectedAt>30) || now()-p->lastActivity>600) {p->socket->abort();continue;}
+            if((!p->ready && now()-p->connectedAt>20) || now()-p->lastActivity>600) {p->socket->abort();continue;}
             readyPeers+=p->ready;pending+=p->wanted.size()+p->requested.size();
             if(p->ready && !p->announcing.isEmpty() && p->socket->bytesToWrite()<MaxPendingWrite-33000) {
                 QList<QByteArray> batch;
@@ -253,15 +270,18 @@ class Relay : public QObject {
                 if(f.open(QIODevice::ReadOnly))send(p,"object",f.read(MaxObject));else inventory_.remove(hash);
             }
         }
-        writeFile(root_+"/status.json",QJsonDocument(QJsonObject{{"peers",readyPeers},{"pending",pending},{"time",now()},{"backend","qt"},{"inventory",inventory_.size()}}).toJson());
+        int pendingPeers=0;
+        for(const auto &p:peers_) if(p->socket && !p->ready) ++pendingPeers;
+        writeFile(root_+"/status.json",QJsonDocument(QJsonObject{{"peers",readyPeers},{"pending",pending},{"pending_outgoing",pendingPeers},{"established_outgoing",readyPeers},{"rejections",rejections_},{"time",now()},{"backend","qt"},{"inventory",inventory_.size()}}).toJson());
         if(now()-lastCleanup_>60) {
             for(auto it=inventory_.begin();it!=inventory_.end();)if(it.value()<now() || !QFile::exists(root_+"/objects/"+QString::fromLatin1(it.key().toHex())))it=inventory_.erase(it);else ++it;
             QJsonArray addresses;for(const auto &e:addresses_)addresses.append(name(e));writeFile(root_+"/qt-peers.json",QJsonDocument(addresses).toJson());lastCleanup_=now();
         }
-        if(peers_.size()<MaxPeers) for(auto it=addresses_.begin();it!=addresses_.end();++it) {
+        int dials=0;
+        if(peers_.size()<MaxPeers) for(auto it=addresses_.begin();it!=addresses_.end() && dials<4;++it) {
             bool connected=false;for(auto p:peers_)connected|=p->address==it.key();
             if(connected || now()-attempted_.value(it.key())<60)continue;
-            attempted_[it.key()]=now();auto socket=new QTcpSocket;socket->setProxy(proxy_);attach(socket,it.key());socket->connectToHost(it->host,it->port);break;
+            attempted_[it.key()]=now();auto socket=new QTcpSocket;socket->setProxy(proxy_);attach(socket,it.key());socket->connectToHost(it->host,it->port);++dials;
         }
     }
   public:
@@ -274,6 +294,10 @@ class Relay : public QObject {
         for(int i=0;i<args.size()-1;++i)if(args[i]=="-P") {auto e=endpoint(args[i+1]);require(bool(e));addresses_.insert(name(*e),*e);}
         if(!explicitOnly_) {
             QFile saved(root_+"/qt-peers.json");if(saved.open(QIODevice::ReadOnly))for(auto value:QJsonDocument::fromJson(saved.read(256*1024)).array())if(auto e=endpoint(value.toString()))addAddress(*e);
+            QFile history(root_+"/qt-peer-state-v1.json");
+            if(history.open(QIODevice::ReadOnly))
+                for(const auto &value:QJsonDocument::fromJson(history.read(256*1024)).array())
+                    if(auto e=endpoint(value.toObject().value("endpoint").toString())) addAddress(*e);
             if(!args.contains("-b"))for(auto text:{"176.31.246.114:8444","109.229.197.133:8444","184.75.69.2:8444"})if(auto e=endpoint(text))addAddress(*e);
             if(!args.contains("-b") && !args.contains("-B") && proxy.isEmpty())for(int port:{8080,8444})
                 QHostInfo::lookupHost(QString("bootstrap%1.bitmessage.org").arg(port),this,[this,port](const QHostInfo &info){for(auto address:info.addresses())addAddress({address,quint16(port)});});

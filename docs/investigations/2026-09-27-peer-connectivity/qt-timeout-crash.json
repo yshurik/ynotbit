@@ -1,0 +1,357 @@
+{
+  "backend": "--qt-node",
+  "returncode": -11,
+  "samples": [
+    {
+      "seconds": 8.88,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493371
+      }
+    },
+    {
+      "seconds": 9.88,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493372
+      }
+    },
+    {
+      "seconds": 10.88,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493373
+      }
+    },
+    {
+      "seconds": 11.88,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493374
+      }
+    },
+    {
+      "seconds": 12.89,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493375
+      }
+    },
+    {
+      "seconds": 13.89,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493376
+      }
+    },
+    {
+      "seconds": 14.89,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493377
+      }
+    },
+    {
+      "seconds": 15.89,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493378
+      }
+    },
+    {
+      "seconds": 16.89,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493379
+      }
+    },
+    {
+      "seconds": 17.89,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493380
+      }
+    },
+    {
+      "seconds": 18.9,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493381
+      }
+    },
+    {
+      "seconds": 19.9,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493382
+      }
+    },
+    {
+      "seconds": 20.9,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493383
+      }
+    },
+    {
+      "seconds": 21.9,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493384
+      }
+    },
+    {
+      "seconds": 22.9,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493385
+      }
+    },
+    {
+      "seconds": 23.91,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493386
+      }
+    },
+    {
+      "seconds": 24.91,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493387
+      }
+    },
+    {
+      "seconds": 25.91,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493388
+      }
+    },
+    {
+      "seconds": 26.91,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493389
+      }
+    },
+    {
+      "seconds": 27.91,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493390
+      }
+    },
+    {
+      "seconds": 28.91,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493391
+      }
+    },
+    {
+      "seconds": 29.92,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493392
+      }
+    },
+    {
+      "seconds": 30.92,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493393
+      }
+    },
+    {
+      "seconds": 31.92,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493393
+      }
+    },
+    {
+      "seconds": 32.92,
+      "accepted": {
+        "silent": 8,
+        "healthy": 0
+      },
+      "status": {
+        "backend": "qt",
+        "inventory": 0,
+        "peers": 1,
+        "pending": 0,
+        "time": 1790493393
+      }
+    }
+  ],
+  "log": ""
+}

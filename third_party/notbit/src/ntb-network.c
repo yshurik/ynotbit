@@ -47,6 +47,7 @@
 #include "ntb-file-error.h"
 #include "ntb-socket.h"
 #include "ntb-dns-bootstrap.h"
+#include "ntb-peer-policy.h"
 
 struct ntb_error_domain
 ntb_network_error;
@@ -72,7 +73,8 @@ ntb_network_error;
 #define NTB_NETWORK_MAX_STUB_INVENTORY_AGE (5 * 60)
 
 /* Time in seconds after which we'll stop advertising an addr */
-#define NTB_NETWORK_MAX_ADDR_AGE (2 * 60 * 60)
+#define NTB_NETWORK_MAX_ADDR_AGE (3 * 60 * 60)
+#define NTB_NETWORK_MAX_ADDRESSES 4096
 
 /* Time in seconds before we'll retry connecting to an addr */
 #define NTB_NETWORK_MIN_RECONNECT_TIME 60
@@ -138,6 +140,9 @@ struct ntb_network_addr {
         uint64_t services;
 
         uint64_t last_connect_time;
+        uint64_t next_attempt_us;
+        int64_t last_success_wall, last_attempt_wall, retry_wall;
+        unsigned consecutive_failures;
 
         bool connected;
 
@@ -155,6 +160,8 @@ struct ntb_network_peer {
 
         enum ntb_network_peer_state state;
         bool received_version;
+        uint64_t setup_started_us;
+        bool neutral_close;
         enum ntb_network_direction direction;
 };
 
@@ -180,8 +187,9 @@ struct ntb_network {
         bool only_use_explicit_addresses;
         bool allow_private_addresses;
 
-        struct ntb_main_context_source *connect_queue_source;
-        bool connect_queue_source_is_idle;
+        uint64_t dial_refill_us;
+        unsigned dial_tokens;
+        uint64_t attempts, setup_timeouts, rejections;
 
         uint64_t nonce;
 
@@ -196,12 +204,17 @@ struct ntb_network {
 
         struct ntb_signal new_object_signal;
 
-        struct ntb_main_context_source *save_addr_list_source;
+        bool addr_dirty;
+        uint64_t last_save_us;
 
         struct ntb_list delayed_broadcasts;
 
         struct ntb_netaddress proxy_address;
         bool use_proxy;
+        bool bootstrap_enabled;
+        struct ntb_dns_bootstrap_job *bootstrap_job;
+        uint64_t next_bootstrap_us;
+        unsigned bootstrap_backoff;
 };
 
 enum ntb_network_inv_state {
@@ -276,11 +289,9 @@ NTB_SLICE_ALLOCATOR(struct ntb_network_addr,
  * burned a multi-second TCP connect timeout before trying a live one.
  * Discovery now relies on DNS bootstrap (self-updating -- whoever controls
  * the DNS records can rotate them without a client update), the persisted
- * addr-list.txt from previous runs, and active getaddr requests to peers
- * once connected (see connection_established()) instead. */
+ * peer history from previous runs, and unsolicited addr gossip from peers. */
 
-static void
-maybe_queue_connect(struct ntb_network *nw, bool use_idle);
+static void dns_bootstrap_cb(const struct ntb_netaddress *, void *);
 
 static void
 update_all_listen_socket_sources(struct ntb_network *nw);
@@ -304,9 +315,8 @@ save_addr_list_cb(struct ntb_main_context_source *source,
         ntb_buffer_init(&buffer);
 
         ntb_list_for_each(addr, &nw->addrs, link) {
-                age = now - addr->advertise_time;
-
-                if (age > NTB_NETWORK_MAX_ADDR_AGE)
+                if (!ntb_peer_retained(now, addr->advertise_time, addr->last_success_wall) &&
+                    addr->type == NTB_NETWORK_ADDR_DISCOVERED)
                         continue;
 
                 ntb_buffer_ensure_size(&buffer,
@@ -317,6 +327,10 @@ save_addr_list_cb(struct ntb_main_context_source *source,
                 store_addr->stream = addr->stream;
                 store_addr->services = addr->services;
                 store_addr->address = addr->address;
+                store_addr->last_success = addr->last_success_wall;
+                store_addr->last_attempt = addr->last_attempt_wall;
+                store_addr->retry = addr->retry_wall;
+                store_addr->failures = addr->consecutive_failures;
                 buffer.length += sizeof *store_addr;
                 n_addrs++;
         }
@@ -326,17 +340,8 @@ save_addr_list_cb(struct ntb_main_context_source *source,
                                  (struct ntb_store_addr *) buffer.data,
                                  n_addrs);
 
-        ntb_main_context_remove_source(source);
-        nw->save_addr_list_source = NULL;
-}
-
-static void
-remove_connect_queue_source(struct ntb_network *nw)
-{
-        if (nw->connect_queue_source) {
-                ntb_main_context_remove_source(nw->connect_queue_source);
-                nw->connect_queue_source = NULL;
-        }
+        nw->addr_dirty = false;
+        nw->last_save_us = ntb_main_context_get_monotonic_clock(NULL);
 }
 
 static void
@@ -359,6 +364,19 @@ free_inventory(struct ntb_network_inventory *inv)
 }
 
 static void
+address_failed(struct ntb_network *nw, struct ntb_network_addr *addr, unsigned retry)
+{
+        unsigned delay;
+        if (addr->consecutive_failures < 32)
+                addr->consecutive_failures++;
+        delay = ntb_peer_backoff(addr->consecutive_failures, (unsigned) rand());
+        delay = MAX(delay, MIN(retry, 3600));
+        addr->next_attempt_us = ntb_main_context_get_monotonic_clock(NULL) + delay * UINT64_C(1000000);
+        addr->retry_wall = ntb_main_context_get_wall_clock(NULL) + delay;
+        nw->addr_dirty = true;
+}
+
+static void
 remove_peer(struct ntb_network *nw,
             struct ntb_network_peer *peer)
 {
@@ -371,6 +389,8 @@ remove_peer(struct ntb_network *nw,
                 free_inventory(inventory);
         }
 
+        if (peer->addr && !peer->neutral_close)
+                address_failed(nw, peer->addr, 0);
         ntb_connection_free(peer->connection);
 
         if (peer->addr) {
@@ -389,7 +409,6 @@ remove_peer(struct ntb_network *nw,
         ntb_list_remove(&peer->link);
         ntb_slice_free(&ntb_network_peer_allocator, peer);
 
-        maybe_queue_connect(nw, true /* use_idle */);
         update_all_listen_socket_sources(nw);
 }
 
@@ -412,9 +431,16 @@ can_connect_to_addr(struct ntb_network *nw,
 
         if (addr->connected)
                 return false;
+        if (!nw->allow_private_addresses) {
+                struct ntb_network_peer *peer;
+                ntb_list_for_each(peer, &nw->peers, link) {
+                        const struct ntb_netaddress *remote = ntb_connection_get_remote_address(peer->connection);
+                        if (!memcmp(remote->host, addr->address.host, sizeof remote->host))
+                                return false;
+                }
+        }
 
-        if (now - addr->last_connect_time <
-            NTB_NETWORK_MIN_RECONNECT_TIME * UINT64_C(1000000))
+        if (now < addr->next_attempt_us)
                 return false;
 
         if (nw->only_use_explicit_addresses &&
@@ -455,6 +481,8 @@ add_peer(struct ntb_network *nw,
 
         peer->state = NTB_NETWORK_PEER_STATE_AWAITING_VERACK_OUT;
         peer->received_version = false;
+        peer->setup_started_us = ntb_main_context_get_monotonic_clock(NULL);
+        peer->neutral_close = false;
 
         command_signal = ntb_connection_get_event_signal(conn);
         ntb_signal_add(command_signal, &peer->event_listener);
@@ -482,6 +510,9 @@ connect_to_addr(struct ntb_network *nw,
         struct ntb_error *error = NULL;
 
         addr->last_connect_time = ntb_main_context_get_monotonic_clock(NULL);
+        nw->attempts++;
+        addr->last_attempt_wall = ntb_main_context_get_wall_clock(NULL);
+        nw->addr_dirty = true;
 
         if (nw->use_proxy) {
                 connection = ntb_connection_connect_proxy(&nw->proxy_address,
@@ -494,7 +525,7 @@ connect_to_addr(struct ntb_network *nw,
         if (connection == NULL) {
                 ntb_log("%s", error->message);
                 ntb_error_clear(&error);
-
+                address_failed(nw, addr, 0);
                 return false;
         }
 
@@ -511,84 +542,99 @@ connect_to_addr(struct ntb_network *nw,
         return true;
 }
 
-static void
-connect_queue_cb(struct ntb_main_context_source *source,
-                 void *user_data)
+void
+ntb_network_get_peer_stats(struct ntb_network *nw,
+                           struct ntb_network_peer_stats *stats)
 {
-        struct ntb_network *nw = user_data;
+        struct ntb_network_peer *peer;
         struct ntb_network_addr *addr;
-        int n_addrs = 0;
-        int addr_num;
-
-        /* If we've reached the number of outgoing peers then we can
-         * stop trying to connect any more. There's also no point in
-         * continuing if we've run out of unconnected addrs */
-        if (nw->n_outgoing_peers >= NTB_NETWORK_NUM_OUTGOING_PEERS ||
-            nw->n_unconnected_addrs <= 0) {
-                remove_connect_queue_source(nw);
-                return;
+        memset(stats, 0, sizeof *stats);
+        ntb_list_for_each(peer, &nw->peers, link) {
+                if (peer->direction == NTB_NETWORK_OUTGOING) {
+                        if (peer->state == NTB_NETWORK_PEER_STATE_CONNECTED)
+                                stats->established_outgoing++;
+                        else
+                                stats->pending_outgoing++;
+                } else if (peer->state == NTB_NETWORK_PEER_STATE_CONNECTED) {
+                        stats->established_incoming++;
+                }
         }
-
-        /* Count the number of addrs we can connect to */
         ntb_list_for_each(addr, &nw->addrs, link) {
-                if (can_connect_to_addr(nw, addr))
-                        n_addrs++;
+                stats->known_addresses++;
+                stats->eligible_addresses += can_connect_to_addr(nw, addr);
         }
-
-        if (n_addrs <= 0) {
-                /* Switch to a timeout source */
-                maybe_queue_connect(nw, false /* use_idle */);
-                return;
-        }
-
-        /* Pick a random addr so that we don't accidentally favour the
-         * list we retrieve from any particular peer */
-        addr_num = (uint64_t) rand() * n_addrs / RAND_MAX;
-
-        ntb_list_for_each(addr, &nw->addrs, link) {
-                if (can_connect_to_addr(nw, addr) && addr_num-- <= 0)
-                        break;
-        }
-
-        if (connect_to_addr(nw, addr)) {
-                addr->connected = true;
-                nw->n_unconnected_addrs--;
-        }
+        stats->attempts = nw->attempts;
+        stats->setup_timeouts = nw->setup_timeouts;
+        stats->rejections = nw->rejections;
 }
 
-static void
-maybe_queue_connect(struct ntb_network *nw,
-                    bool use_idle)
+void
+ntb_network_tick(struct ntb_network *nw)
 {
-        /* If we've already got enough outgoing peers then we don't
-         * need to do anything */
-        if (nw->n_outgoing_peers >= NTB_NETWORK_NUM_OUTGOING_PEERS)
-                return;
+        uint64_t now = ntb_main_context_get_monotonic_clock(NULL);
+        struct ntb_network_peer *peer, *tmp;
+        struct ntb_network_addr *addr, *selected;
+        struct ntb_network_peer_stats stats;
+        unsigned pending_limit = nw->use_proxy ? 4 : 16;
 
-        /* Or if we don't have any addrs to connect to */
-        if (nw->n_unconnected_addrs <= 0)
-                return;
-
-        if (nw->connect_queue_source) {
-                if (nw->connect_queue_source_is_idle == use_idle)
-                        return;
-
-                ntb_main_context_remove_source(nw->connect_queue_source);
+        if (nw->bootstrap_job && ntb_dns_bootstrap_poll(nw->bootstrap_job, dns_bootstrap_cb, nw)) {
+                ntb_dns_bootstrap_free(nw->bootstrap_job);
+                nw->bootstrap_job = NULL;
         }
-
-        if (use_idle) {
-                nw->connect_queue_source =
-                        ntb_main_context_add_idle(NULL,
-                                                  connect_queue_cb,
-                                                  nw);
-                nw->connect_queue_source_is_idle = true;
-        } else {
-                nw->connect_queue_source =
-                        ntb_main_context_add_timer(NULL,
-                                                   1, /* minutes */
-                                                   connect_queue_cb,
-                                                   nw);
-                nw->connect_queue_source_is_idle = false;
+        ntb_network_get_peer_stats(nw, &stats);
+        if (nw->bootstrap_enabled && !nw->bootstrap_job && stats.established_outgoing < 5 &&
+            now >= nw->next_bootstrap_us) {
+                nw->bootstrap_job = ntb_dns_bootstrap_start();
+                nw->next_bootstrap_us = now + (nw->bootstrap_backoff + (unsigned) rand() % 16) * UINT64_C(1000000);
+                nw->bootstrap_backoff = MIN(nw->bootstrap_backoff * 2, 900);
+        }
+        ntb_list_for_each_safe(peer, tmp, &nw->peers, link) {
+                if (peer->state == NTB_NETWORK_PEER_STATE_CONNECTED)
+                        continue;
+                if (peer->direction == NTB_NETWORK_OUTGOING &&
+                    stats.established_outgoing >= NTB_NETWORK_NUM_OUTGOING_PEERS) {
+                        peer->neutral_close = true;
+                        remove_peer(nw, peer);
+                } else if (ntb_peer_setup_expired(now, peer->setup_started_us, nw->use_proxy)) {
+                        nw->setup_timeouts++;
+                        ntb_log("Peer setup timed out: %s",
+                                ntb_connection_get_remote_address_string(peer->connection));
+                        remove_peer(nw, peer);
+                }
+        }
+        if (nw->addr_dirty && now - nw->last_save_us >= UINT64_C(2000000))
+                save_addr_list_cb(NULL, nw);
+        ntb_network_get_peer_stats(nw, &stats);
+        if (now - nw->dial_refill_us >= UINT64_C(1000000)) {
+                nw->dial_tokens = 4;
+                nw->dial_refill_us = now;
+        }
+        while (stats.established_outgoing < NTB_NETWORK_NUM_OUTGOING_PEERS &&
+               stats.pending_outgoing < pending_limit && nw->dial_tokens) {
+                /* Reservoir sampling is uniform and never indexes past the list. */
+                unsigned count = 0;
+                struct ntb_network_addr *preferred = NULL;
+                unsigned preferred_count = 0;
+                selected = NULL;
+                ntb_list_for_each(addr, &nw->addrs, link) {
+                        if (!can_connect_to_addr(nw, addr))
+                                continue;
+                        if ((unsigned) rand() % ++count == 0)
+                                selected = addr;
+                        if (addr->last_success_wall &&
+                            (unsigned) rand() % ++preferred_count == 0)
+                                preferred = addr;
+                }
+                if (preferred && nw->attempts % 4 != 3)
+                        selected = preferred;
+                if (!selected)
+                        break;
+                nw->dial_tokens--;
+                if (connect_to_addr(nw, selected)) {
+                        selected->connected = true;
+                        nw->n_unconnected_addrs--;
+                        stats.pending_outgoing++;
+                }
         }
 }
 
@@ -598,6 +644,7 @@ new_addr(struct ntb_network *nw)
         struct ntb_network_addr *addr;
 
         addr = ntb_slice_alloc(&ntb_network_addr_allocator);
+        memset(addr, 0, sizeof *addr);
 
         ntb_list_insert(&nw->addrs, &addr->link);
         addr->connected = false;
@@ -631,14 +678,7 @@ broadcast_addr(struct ntb_network *nw,
 static void
 queue_save_addr_list(struct ntb_network *nw)
 {
-        if (nw->save_addr_list_source)
-                return;
-
-        nw->save_addr_list_source =
-                ntb_main_context_add_timer(NULL,
-                                           NTB_NETWORK_SAVE_ADDR_LIST_TIMEOUT,
-                                           save_addr_list_cb,
-                                           nw);
+        nw->addr_dirty = true;
 }
 
 static struct ntb_network_addr *
@@ -668,8 +708,9 @@ add_addr(struct ntb_network *nw,
         int64_t now = ntb_main_context_get_wall_clock(NULL);
         struct ntb_network_addr *addr;
 
-        /* Ignore old addresses */
-        if (now - timestamp >= NTB_NETWORK_MAX_ADDR_AGE)
+        /* Keep dialing history longer than the gossip advertisement window. */
+        if (timestamp <= 0 || stream != 1 || !address->port ||
+            (timestamp <= now && now - timestamp >= 86400))
                 return NULL;
 
         /* Don't let addresses be advertised in the future */
@@ -687,6 +728,8 @@ add_addr(struct ntb_network *nw,
                 return addr;
         }
 
+        if (ntb_list_length(&nw->addrs) >= NTB_NETWORK_MAX_ADDRESSES)
+                return NULL;
         addr = new_addr(nw);
         addr->advertise_time = timestamp;
         addr->stream = stream;
@@ -697,7 +740,6 @@ add_addr(struct ntb_network *nw,
 
         broadcast_addr(nw, addr);
 
-        maybe_queue_connect(nw, true /* use_idle */);
 
         return addr;
 }
@@ -757,18 +799,32 @@ send_inventory(struct ntb_network *nw,
         ntb_connection_end_inv(peer->connection);
 }
 
-static void
+static bool
 connection_established(struct ntb_network *nw,
                        struct ntb_network_peer *peer)
 {
+        struct ntb_network_peer_stats stats;
+        ntb_network_get_peer_stats(nw, &stats);
+        if (peer->direction == NTB_NETWORK_OUTGOING &&
+            stats.established_outgoing >= NTB_NETWORK_NUM_OUTGOING_PEERS) {
+                peer->neutral_close = true;
+                remove_peer(nw, peer);
+                return false;
+        }
         peer->state = NTB_NETWORK_PEER_STATE_CONNECTED;
+        if (peer->addr && peer->direction == NTB_NETWORK_OUTGOING) {
+                peer->addr->last_success_wall = ntb_main_context_get_wall_clock(NULL);
+                peer->addr->consecutive_failures = 0;
+                peer->addr->next_attempt_us = 0;
+                peer->addr->retry_wall = 0;
+                queue_save_addr_list(nw);
+        }
         send_addresses(nw, peer);
         send_inventory(nw, peer);
-        /* Ask for theirs too, rather than only waiting for unsolicited addr
-         * gossip -- meaningfully speeds up discovering enough peers to reach
-         * NTB_NETWORK_NUM_OUTGOING_PEERS when the hard-coded seed list and
-         * DNS bootstrap alone don't hand out many live candidates. */
+        /* Optional extension. PyBitmessage sends addr unsolicited after the
+         * handshake and does not implement getaddr. */
         ntb_connection_send_getaddr(peer->connection);
+        return true;
 }
 
 static bool
@@ -848,8 +904,7 @@ handle_version(struct ntb_network *nw,
                 break;
 
         case NTB_NETWORK_PEER_STATE_AWAITING_VERSION_OUT:
-                connection_established(nw, peer);
-                break;
+                return connection_established(nw, peer);
 
         case NTB_NETWORK_PEER_STATE_AWAITING_VERSION_IN:
                 send_version_to_peer(nw, peer);
@@ -867,14 +922,13 @@ handle_verack(struct ntb_network *nw,
         switch (peer->state) {
         case NTB_NETWORK_PEER_STATE_AWAITING_VERACK_OUT:
                 if (peer->received_version)
-                        connection_established(nw, peer);
+                        return connection_established(nw, peer);
                 else
                         peer->state = NTB_NETWORK_PEER_STATE_AWAITING_VERSION_OUT;
                 break;
 
         case NTB_NETWORK_PEER_STATE_AWAITING_VERACK_IN:
-                connection_established(nw, peer);
-                break;
+                return connection_established(nw, peer);
 
         case NTB_NETWORK_PEER_STATE_AWAITING_VERSION_OUT:
         case NTB_NETWORK_PEER_STATE_AWAITING_VERSION_IN:
@@ -1230,6 +1284,16 @@ connection_event_cb(struct ntb_listener *listener,
         struct ntb_network *nw = peer->network;
 
         switch (event->type) {
+        case NTB_CONNECTION_EVENT_REJECTED:
+                nw->rejections++;
+                if (peer->addr) {
+                        address_failed(nw, peer->addr,
+                            ((struct ntb_connection_rejected_event *) event)->retry_seconds);
+                        peer->neutral_close = true;
+                }
+                remove_peer(nw, peer);
+                return false;
+
         case NTB_CONNECTION_EVENT_ERROR:
         case NTB_CONNECTION_EVENT_CONNECT_FAILED:
                 remove_peer(nw, peer);
@@ -1320,7 +1384,7 @@ gc_addrs(struct ntb_network *nw)
         int64_t now = ntb_main_context_get_wall_clock(NULL);
 
         ntb_list_for_each_safe(addr, tmp, &nw->addrs, link) {
-                if (now - addr->advertise_time >= NTB_NETWORK_MAX_ADDR_AGE &&
+                if (!ntb_peer_retained(now, addr->advertise_time, addr->last_success_wall) &&
                     addr->type == NTB_NETWORK_ADDR_DISCOVERED &&
                     !addr->connected)
                         remove_addr(nw, addr);
@@ -1404,11 +1468,33 @@ store_for_each_addr_cb(const struct ntb_store_addr *addr,
 {
         struct ntb_network *nw = user_data;
 
-        add_addr(nw,
-                 addr->timestamp,
-                 addr->stream,
-                 addr->services,
-                 &addr->address);
+        int64_t now = ntb_main_context_get_wall_clock(NULL);
+        int64_t advertised = MIN(addr->timestamp, now);
+        int64_t success = MIN(addr->last_success, now);
+        struct ntb_network_addr *entry;
+        if (addr->stream != 1 || !addr->address.port ||
+            !ntb_peer_retained(now, advertised, success))
+                return;
+        /* Legacy local test stores can contain loopback endpoints under -L. */
+        if (!nw->allow_private_addresses && !ntb_netaddress_is_allowed(&addr->address, false))
+                return;
+        entry = find_address(nw, &addr->address);
+        if (!entry) {
+                if (ntb_list_length(&nw->addrs) >= NTB_NETWORK_MAX_ADDRESSES)
+                        return;
+                entry = new_addr(nw);
+                entry->address = addr->address;
+        }
+        entry->advertise_time = MAX(entry->advertise_time, advertised);
+        entry->stream = 1;
+        entry->services = addr->services;
+        entry->last_success_wall = MAX(entry->last_success_wall, success);
+        entry->last_attempt_wall = MIN(addr->last_attempt, now);
+        entry->consecutive_failures = MIN(addr->failures, 32);
+        entry->retry_wall = MIN(addr->retry, now + 3600);
+        if (entry->retry_wall > now)
+                entry->next_attempt_us = ntb_main_context_get_monotonic_clock(NULL) +
+                    (entry->retry_wall - now) * UINT64_C(1000000);
 }
 
 static void
@@ -1420,7 +1506,8 @@ dns_bootstrap_cb(const struct ntb_netaddress *net_address,
 
         if (!ntb_netaddress_is_allowed(net_address,
                                        nw->allow_private_addresses) ||
-            find_address(nw, net_address) != NULL)
+            find_address(nw, net_address) != NULL ||
+            ntb_list_length(&nw->addrs) >= NTB_NETWORK_MAX_ADDRESSES)
                 return;
 
         addr = new_addr(nw);
@@ -1430,6 +1517,7 @@ dns_bootstrap_cb(const struct ntb_netaddress *net_address,
         addr->stream = 1;
         addr->services = NTB_PROTO_SERVICES;
         addr->type = NTB_NETWORK_ADDR_DEFAULT;
+        nw->bootstrap_backoff = 60;
 }
 
 void
@@ -1437,9 +1525,8 @@ ntb_network_load_store(struct ntb_network *nw, bool bootstrap)
 {
         ntb_store_for_each_blob(NULL, store_for_each_blob_cb, nw);
         ntb_store_for_each_addr(NULL, store_for_each_addr_cb, nw);
-        if (bootstrap)
-                ntb_dns_bootstrap(dns_bootstrap_cb, nw);
-        maybe_queue_connect(nw, true /* use_idle */);
+        nw->bootstrap_enabled = bootstrap && !nw->use_proxy && !nw->only_use_explicit_addresses;
+        nw->bootstrap_backoff = 60;
 }
 
 static void
@@ -1547,6 +1634,7 @@ struct ntb_network *
 ntb_network_new(void)
 {
         struct ntb_network *nw = ntb_alloc(sizeof *nw);
+        memset(nw, 0, sizeof *nw);
         size_t hash_offset;
 
         ntb_list_init(&nw->listen_sockets);
@@ -1564,11 +1652,12 @@ ntb_network_new(void)
         nw->n_outgoing_peers = 0;
         nw->n_incoming_peers = 0;
         nw->n_unconnected_addrs = 0;
-        nw->connect_queue_source = NULL;
+        nw->dial_refill_us = ntb_main_context_get_monotonic_clock(NULL);
+        nw->dial_tokens = 4;
         nw->only_use_explicit_addresses = false;
         nw->allow_private_addresses = false;
 
-        nw->save_addr_list_source = NULL;
+        nw->addr_dirty = false;
 
         nw->use_proxy = false;
 
@@ -1584,7 +1673,6 @@ ntb_network_new(void)
         memset(&nw->nonce, 0, sizeof nw->nonce);
         RAND_bytes((unsigned char *) &nw->nonce, sizeof nw->nonce);
 
-        maybe_queue_connect(nw, true /* use idle */);
 
         nw->gc_source = ntb_main_context_add_timer(NULL,
                                                    NTB_NETWORK_GC_TIMEOUT,
@@ -1696,7 +1784,6 @@ ntb_network_set_only_use_explicit_addresses(struct ntb_network *nw,
                                             bool value)
 {
         nw->only_use_explicit_addresses = value;
-        maybe_queue_connect(nw, true /* use idle */);
 }
 
 void
@@ -1704,7 +1791,6 @@ ntb_network_set_allow_private_addresses(struct ntb_network *nw,
                                         bool value)
 {
         nw->allow_private_addresses = value;
-        maybe_queue_connect(nw, true /* use idle*/);
 }
 
 void
@@ -1756,8 +1842,10 @@ free_peers(struct ntb_network *nw)
 {
         struct ntb_network_peer *peer, *tmp;
 
-        ntb_list_for_each_safe(peer, tmp, &nw->peers, link)
+        ntb_list_for_each_safe(peer, tmp, &nw->peers, link) {
+                peer->neutral_close = true;
                 remove_peer(nw, peer);
+        }
 }
 
 static void
@@ -1790,12 +1878,9 @@ free_delayed_broadcasts(struct ntb_list *list)
 void
 ntb_network_free(struct ntb_network *nw)
 {
-        if (nw->save_addr_list_source) {
-                /* Make sure the list is saved before we quit. This
-                 * will also remove the source */
-                save_addr_list_cb(nw->save_addr_list_source, nw);
-                assert(nw->save_addr_list_source == NULL);
-        }
+        ntb_dns_bootstrap_free(nw->bootstrap_job);
+        if (nw->addr_dirty)
+                save_addr_list_cb(NULL, nw);
 
         ntb_main_context_remove_source(nw->gc_source);
 
@@ -1810,7 +1895,6 @@ ntb_network_free(struct ntb_network *nw)
 
         ntb_hash_table_free(nw->inventory_hash);
 
-        remove_connect_queue_source(nw);
 
         assert(nw->n_outgoing_peers == 0);
         assert(nw->n_incoming_peers == 0);

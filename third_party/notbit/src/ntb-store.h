@@ -52,6 +52,8 @@ struct ntb_store_addr {
         uint32_t stream;
         uint64_t services;
         struct ntb_netaddress address;
+        int64_t last_success, last_attempt, retry;
+        unsigned failures;
 };
 
 struct ntb_store_outgoing {
