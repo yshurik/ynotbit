@@ -447,6 +447,24 @@ QIcon materialIcon(const QString &name, QColor color) {
         p.drawLine(11, 29, 25, 15);
         p.setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         p.drawLine(25, 15, 29, 11);
+    } else if (name == "compose") {
+        // Envelope with a "+" badge on its bottom-right corner; the corner is
+        // cleared first so the badge doesn't collide with the envelope outline.
+        p.drawRoundedRect(QRectF(5, 9, 25, 18), 2.5, 2.5);
+        QPainterPath flap;
+        flap.moveTo(6, 10.5);
+        flap.lineTo(17.5, 19);
+        flap.lineTo(29, 10.5);
+        p.drawPath(flap);
+        p.setCompositionMode(QPainter::CompositionMode_Clear);
+        p.setPen(Qt::NoPen);
+        p.setBrush(Qt::black);
+        p.drawEllipse(QPointF(30, 27), 9.5, 9.5);
+        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        p.setPen(QPen(color, 2.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setBrush(Qt::NoBrush);
+        p.drawLine(QPointF(30, 21), QPointF(30, 33));
+        p.drawLine(QPointF(24, 27), QPointF(36, 27));
     } else if (name == "openWindow") {
         // A box with an arrow leaving through its top-right corner.
         QPainterPath box;
@@ -1419,7 +1437,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     write->setObjectName("writeButton");
     write->setFixedSize(38, 38);
     write->setIconSize(QSize(24, 24));
-    write->setIcon(materialIcon("edit", iconColor(appearance_.dark())));
+    write->setIcon(materialIcon("compose", iconColor(appearance_.dark())));
     write->setCursor(Qt::PointingHandCursor);
     connect(write, &QPushButton::clicked, this, [this] {
         if (folders_->currentRow() == 4 && !activeChannelAddress_.isEmpty())
@@ -2061,7 +2079,7 @@ void DesktopWindow::updateTheme() {
     findChild<QAction *>("deletePermanentlyAction")->setIcon(materialIcon("deleteForever", color));
     findChild<QAction *>("retryAction")->setIcon(materialIcon("retry", color));
     findChild<QAction *>("cancelDeliveryAction")->setIcon(materialIcon("cancel", color));
-    findChild<QPushButton *>("writeButton")->setIcon(materialIcon("edit", color));
+    findChild<QPushButton *>("writeButton")->setIcon(materialIcon("compose", color));
     static_cast<ViewSwitch *>(viewSwitch_)->setIconColor(color);
     for (const auto &[id, icon] : {std::pair{"density_comfortable", "densityComfortable"},
                                    {"density_cozy", "densityCozy"},
