@@ -223,7 +223,7 @@ class Relay : public QObject {
         auto greet=[this,p] {
             QByteArray b;number(b,3,4);number(b,1,8);number(b,now(),8);
             wireAddress(b,{p->socket->peerAddress(),p->socket->peerPort()});wireAddress(b,{QHostAddress::AnyIPv4,8444});number(b,nonce_,8);
-            QByteArray agent="/ynotbit:0.3/";varint(b,agent.size());b+=agent;varint(b,1);varint(b,1);send(p,"version",b);
+            QByteArray agent="/ynotbit:" YNOTBIT_VERSION "/";varint(b,agent.size());b+=agent;varint(b,1);varint(b,1);send(p,"version",b);
         };
         connect(socket,&QTcpSocket::connected,this,greet);if(connected)greet();
     }

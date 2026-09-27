@@ -1102,7 +1102,11 @@ ntb_connection_send_version(struct ntb_connection *conn,
                               nonce,
 
                               NTB_PROTO_ARGUMENT_VAR_STR,
+#ifdef YNOTBIT_VERSION
+                              "/ynotbit:" YNOTBIT_VERSION "/",
+#else
                               "/notbit:" VERSION "/",
+#endif
 
                               /* Number of streams */
                               NTB_PROTO_ARGUMENT_VAR_INT,

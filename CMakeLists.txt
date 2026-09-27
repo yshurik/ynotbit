@@ -57,6 +57,8 @@ if(WIN32)
 endif()
 add_library(notbit_engine STATIC ${NTB_ENGINE_SOURCES})
 set_target_properties(notbit_engine PROPERTIES C_STANDARD 11)
+# The network user agent, "/ynotbit:<version>/".
+target_compile_definitions(notbit_engine PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
 target_link_libraries(notbit_engine PUBLIC notbit_codec)
 if(WIN32)
  find_package(PThreads4W REQUIRED)

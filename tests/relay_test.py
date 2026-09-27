@@ -2,6 +2,7 @@
 import hashlib
 import os
 import json
+import re
 import uuid
 import pathlib
 import socket
@@ -61,8 +62,11 @@ with tempfile.TemporaryDirectory() as temporary:
     process=subprocess.Popen([sys.argv[1],os.environ.get("YNOTBIT_TEST_NODE_FLAG","--node"),"-D",str(root),"-b","-B","-e","-L","-i","-P",f"127.0.0.1:{port}"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     try:
         peer,_=listener.accept();peer.settimeout(8)
-        command,_=receive(peer)
+        command,data=receive(peer)
         assert command==b"version",command
+        # 80 fixed bytes, then the user agent as a var_str (short: 1-byte length)
+        agent=data[81:81+data[80]]
+        assert re.fullmatch(rb"/ynotbit:\d+\.\d+\.\d+/",agent),("identifies as ynotbit and its release version",agent)
         address=struct.pack(">Q",1)+b"\0"*10+b"\xff\xff\x7f\0\0\x01"+struct.pack(">H",port)
         agent=b"/relay-test:/"
         version=struct.pack(">IQQ",3,1,int(time.time()))+address+address+struct.pack(">Q",123456)+bytes([len(agent)])+agent+b"\x01\x01"
