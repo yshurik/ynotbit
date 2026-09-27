@@ -417,6 +417,34 @@ ping_command_handler(struct ntb_connection *conn,
         return true;
 }
 
+static bool
+error_command_handler(struct ntb_connection *conn,
+                      const uint8_t *data,
+                      uint32_t length)
+{
+        uint64_t severity, retry;
+        struct ntb_proto_var_str inventory, reason;
+        struct ntb_connection_rejected_event event;
+        char text[513];
+        unsigned i;
+        if (!ntb_proto_get_var_int(&data, &length, &severity) || severity > 2 ||
+            !ntb_proto_get_var_int(&data, &length, &retry) ||
+            !ntb_proto_get_var_str(&data, &length, &inventory) || inventory.length > 32 ||
+            !ntb_proto_get_var_str(&data, &length, &reason) || reason.length > 512 || length) {
+                ntb_log("Malformed error from %s", conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+        for (i = 0; i < reason.length; i++)
+                text[i] = reason.data[i] >= 32 && reason.data[i] < 127 ? reason.data[i] : '?';
+        text[i] = 0;
+        ntb_log("Peer error %" PRIu64 " from %s: %s", severity, conn->remote_address_string, text);
+        if (severity != 2)
+                return true;
+        event.retry_seconds = MIN(retry, 3600);
+        return emit_event(conn, NTB_CONNECTION_EVENT_REJECTED, &event.base);
+}
+
 static const struct {
         const char *command_name;
         bool (* func)(struct ntb_connection *conn,
@@ -429,7 +457,8 @@ static const struct {
         { "addr", addr_command_handler },
         { "getdata", getdata_command_handler },
         { "verack", verack_command_handler },
-        { "ping", ping_command_handler }
+        { "ping", ping_command_handler },
+        { "error", error_command_handler }
 };
 
 static bool

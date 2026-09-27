@@ -38,6 +38,7 @@
 enum ntb_connection_event_type {
         NTB_CONNECTION_EVENT_CONNECT_FAILED,
         NTB_CONNECTION_EVENT_ERROR,
+        NTB_CONNECTION_EVENT_REJECTED,
 
         NTB_CONNECTION_EVENT_PROXY_CONNECTED,
         NTB_CONNECTION_EVENT_VERSION,
@@ -51,6 +52,11 @@ enum ntb_connection_event_type {
 struct ntb_connection_event {
         enum ntb_connection_event_type type;
         struct ntb_connection *connection;
+};
+
+struct ntb_connection_rejected_event {
+        struct ntb_connection_event base;
+        uint64_t retry_seconds;
 };
 
 struct ntb_connection_version_event {
