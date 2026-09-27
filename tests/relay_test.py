@@ -76,7 +76,10 @@ with tempfile.TemporaryDirectory() as temporary:
             if command==b"getdata":
                 assert object_hash in data
                 break
-        if len(sys.argv)>2 and os.environ.get("YNOTBIT_TEST_NODE_FLAG","--node")=="--node":
+        # --node is the notbit engine only on Unix; Windows builds run the
+        # Qt-native relay for it (see main.cpp), which is out of scope here.
+        if (len(sys.argv)>2 and os.environ.get("YNOTBIT_TEST_NODE_FLAG","--node")=="--node"
+                and sys.platform!="win32"):
             # Only checked in the verack-first ordering (handshake, and so
             # connection_established() which sends getaddr, is guaranteed
             # complete before this point -- in the other ordering our own

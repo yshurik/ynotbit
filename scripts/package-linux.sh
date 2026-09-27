@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
-build_dir="${1:?Usage: package-linux.sh BUILD_DIR OUTPUT_TARBALL QT_PREFIX}"
-output_tar="${2:?An absolute output tar.gz path is required}"
+build_dir="${1:?Usage: package-linux.sh BUILD_DIR OUTPUT_APPIMAGE QT_PREFIX}"
+output="${2:?An absolute output .AppImage path is required}"
 qt_prefix="${3:?Qt installation prefix is required}"
-case "$output_tar" in /*) ;; *) echo 'Use an absolute output path' >&2; exit 1;; esac
+case "$output" in /*) ;; *) echo 'Use an absolute output path' >&2; exit 1;; esac
 
 stage_dir="$(mktemp -d /tmp/ynotbit-package.XXXXXX)"
 trap 'rm -rf "$stage_dir"' EXIT
@@ -43,6 +43,8 @@ cp "$project_dir"/licenses/* "$app_dir/usr/share/licenses/"
 cp "$project_dir/third_party/notbit/COPYING" "$app_dir/usr/share/licenses/notbit.txt"
 cp "$project_dir/LICENSE" "$project_dir/THIRD_PARTY.md" "$app_dir/usr/share/licenses/"
 
-mkdir -p "$(dirname "$output_tar")"
-tar -C "$stage_dir" -czf "$output_tar" AppDir
-echo "$output_tar"
+# Second pass: the AppDir is complete (licenses included), so squash it into
+# one self-contained, directly runnable file.
+mkdir -p "$(dirname "$output")"
+(cd "$stage_dir" && OUTPUT="$output" linuxdeploy-x86_64.AppImage --appdir "$app_dir" --output appimage)
+echo "$output"

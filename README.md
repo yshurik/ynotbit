@@ -1,7 +1,7 @@
 # ynotbit — why not bit?
 
 A compact desktop Bitmessage client based on [notbit](https://github.com/bpeel/notbit),
-by [yshurik](https://github.com/yshurik). **Development version: 0.4.7.**
+by [yshurik](https://github.com/yshurik). **Development version: 0.4.8.**
 
 ynotbit keeps identity keys in a password-protected vault and correspondence in a
 separate encrypted mailbox document. Its keyless relay continues collecting
@@ -12,7 +12,7 @@ and saves matching letters to the mailbox.
 
 ## Download
 
-[**v0.4.7 release**](https://github.com/yshurik/ynotbit/releases/tag/v0.4.7) — prebuilt,
+[**v0.4.8 release**](https://github.com/yshurik/ynotbit/releases/tag/v0.4.8) — prebuilt,
 CI-tested downloads for Linux (x86_64), macOS (Apple Silicon), and Windows (x86_64).
 See [Current boundaries](#current-boundaries) below for what each build does and doesn't
 guarantee.
@@ -106,8 +106,8 @@ To package a build for redistribution, with Qt's runtime libraries bundled in:
 ```sh
 # macOS
 scripts/package-macos.sh /absolute/build /absolute/ynotbit-macos-arm64.zip /absolute/Qt/6.8.3/macos
-# Linux — builds a self-contained AppDir with linuxdeploy
-scripts/package-linux.sh /absolute/build /absolute/ynotbit-linux-x86_64.tar.gz /absolute/Qt/6.8.3/gcc_64
+# Linux — builds a single self-contained AppImage with linuxdeploy
+scripts/package-linux.sh /absolute/build /absolute/ynotbit-linux-x86_64.AppImage /absolute/Qt/6.8.3/gcc_64
 ```
 ```powershell
 # Windows
