@@ -104,6 +104,9 @@ int main(int argc, char **argv) {
         footprint("Mailbox open");
         auto list = window.findChild<QListView *>("letters");
         require(list, "list exists");
+        require(window.findChild<QPushButton *>("writeButton")->icon().pixmap(24, 24).toImage() !=
+                    window.findChild<QAction *>("editAction")->icon().pixmap(24, 24).toImage(),
+                "the write button has its own new-letter icon, not the draft edit pencil");
         const auto mono = [](const QFont &font) {
             QFontMetricsF metrics(font);
             return qAbs(metrics.horizontalAdvance("iiii") - metrics.horizontalAdvance("WWWW")) <
