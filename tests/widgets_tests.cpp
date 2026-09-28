@@ -1,5 +1,6 @@
 #include "desktop_window.h"
 #include "session.h"
+#include "protocol.h"
 #include <QElapsedTimer>
 #include <QTest>
 #include <QtWidgets>
@@ -726,6 +727,130 @@ int main(int argc, char **argv) {
             QCoreApplication::processEvents();
             window.selectMessage(binned);
             require(!restore->isVisible(), "Restore takes the letter back out of the Trash");
+        }
+        {
+            // --- Address book ---
+            const auto alice = bm::Protocol::identity("Alice for the address book").address;
+            require(!session.contactProblem("BM-not-an-address").isEmpty(),
+                    "an invalid address cannot be a contact");
+            require(!session.contactProblem(address).isEmpty(),
+                    "your own identity cannot be a contact");
+            require(session.contactProblem(alice).isEmpty(), "a foreign address can be one");
+            // A draft to Alice: the reader offers to save the unknown recipient.
+            const auto toAlice =
+                session.saveLetter({}, address, alice, "Hello Alice", "hi", "direct");
+            window.selectMessage(toAlice);
+            QCoreApplication::processEvents();
+            auto addRecipient = window.findChild<QToolButton *>("addRecipientContact");
+            auto addSender = window.findChild<QToolButton *>("addSenderContact");
+            auto toName = window.findChild<QLabel *>("toName");
+            auto fromName = window.findChild<QLabel *>("fromName");
+            require(addRecipient->isVisible() && !toName->isVisible(),
+                    "an unknown recipient shows an add-to-contacts button and no name");
+            require(!addSender->isVisible() && fromName->isVisible() && !fromName->text().isEmpty(),
+                    "your own address shows its identity name and no add button");
+            QTimer::singleShot(30, &window, [&] {
+                auto dialog = window.findChild<QDialog *>("contactDialog");
+                require(dialog && dialog->findChild<QLineEdit *>("contactAddressField")->text() == alice,
+                        "the add dialog arrives with the address filled in");
+                auto save = dialog->findChild<QPushButton *>("contactSaveButton");
+                require(save->isEnabled(), "a valid new address can be saved straight away");
+                dialog->findChild<QLineEdit *>("contactNameField")->setText("Alice");
+                save->click();
+            });
+            addRecipient->click();
+            QCoreApplication::processEvents();
+            require(session.nameFor(alice) == "Alice" && toName->isVisible() &&
+                        toName->text() == "Alice" && !addRecipient->isVisible(),
+                    "once saved, the reader names the recipient and the button goes away");
+            require(window.findChild<QLabel *>("toAddress")->text() == alice,
+                    "the full address stays visible beside the name");
+            {
+                const auto row = list->model()->index(session.messageModel()->rowForHash(toAlice), 0);
+                require(!row.isValid() || row.data(Qt::UserRole + 13).toString() == "Alice",
+                        "list rows carry the correspondent's name");
+            }
+            // An address already in the book: the dialog says so, and saving renames.
+            QTimer::singleShot(30, &window, [&] {
+                auto dialog = window.findChild<QDialog *>("contactDialog");
+                auto addressField = dialog->findChild<QLineEdit *>("contactAddressField");
+                addressField->setText("BM-garbage");
+                require(!dialog->findChild<QPushButton *>("contactSaveButton")->isEnabled() &&
+                            !dialog->findChild<QLabel *>("contactProblem")->text().isEmpty(),
+                        "an invalid address is explained and cannot be saved");
+                addressField->setText(alice);
+                require(dialog->findChild<QLabel *>("contactProblem")->text().contains("Alice"),
+                        "a known address shows its current name");
+                dialog->findChild<QPushButton *>("contactCancelButton")->click();
+            });
+            window.findChild<QPushButton *>("addContactButton")->click();
+            // The Contacts page.
+            folders->setCurrentRow(9);
+            QCoreApplication::processEvents();
+            require(window.findChild<QWidget *>("contactsPane")->isVisible() &&
+                        !window.findChild<QWidget *>("listColumn")->isVisible() &&
+                        !window.findChild<QWidget *>("identitiesPane")->isVisible(),
+                    "Contacts is a whole-pane page");
+            auto cards = [&] { return window.findChildren<QFrame *>("contactCard"); };
+            require(cards().size() == 1 &&
+                        cards()[0]->findChild<QLabel *>("contactName")->text() == "Alice" &&
+                        cards()[0]->findChild<QLabel *>("contactAddress")->text() == alice,
+                    "the contact is listed with its name and address");
+            auto filter = window.findChild<QLineEdit *>("contactsFilter");
+            filter->setText("nobody-matches");
+            require(cards().isEmpty() && window.findChild<QLabel *>("contactsEmpty"),
+                    "a filter with no match says so");
+            filter->setText(alice.mid(5, 6));
+            require(cards().size() == 1, "the filter matches addresses too");
+            filter->clear();
+            // Write opens the composer to the contact, with the address book wired in.
+            QTimer::singleShot(30, &window, [&] {
+                auto dialog = window.findChild<QDialog *>("composer");
+                auto to = dialog->findChild<QLineEdit *>("recipientField");
+                require(to->text() == alice, "Write addresses the letter to the contact");
+                require(dialog->findChild<QLabel *>("recipientName")->text() == "To Alice",
+                        "the composer names a known recipient");
+                require(dialog->findChild<QToolButton *>("contactsPickerButton")->isVisibleTo(dialog),
+                        "the composer offers the contacts picker");
+                auto completion = to->completer()->model();
+                require(completion->rowCount() == 1 &&
+                            completion->index(0, 0).data().toString().startsWith("Alice"),
+                        "the recipient field completes on contact names");
+                to->clear();
+                dialog->findChild<QMenu *>("contactsPickerMenu")->actions().first()->trigger();
+                require(to->text() == alice, "picking a contact fills in the address");
+                dialog->reject();
+            });
+            cards()[0]->findChild<QPushButton *>("writeToContactButton")->click();
+            // Rename, then delete (confirmed).
+            QTimer::singleShot(30, &window, [&] {
+                auto dialog = window.findChild<QDialog *>("contactDialog");
+                require(dialog->findChild<QLineEdit *>("contactAddressField")->isReadOnly(),
+                        "renaming keeps the address");
+                dialog->findChild<QLineEdit *>("contactNameField")->setText("Alice Liddell");
+                dialog->findChild<QPushButton *>("contactSaveButton")->click();
+            });
+            cards()[0]->findChild<QToolButton *>("renameContactButton")->click();
+            QTest::qWait(20);
+            require(session.nameFor(alice) == "Alice Liddell" &&
+                        cards()[0]->findChild<QLabel *>("contactName")->text() == "Alice Liddell",
+                    "rename updates the book and the card");
+            // The confirmation is a message box on the window; answer Yes once it shows.
+            QTimer confirm;
+            QObject::connect(&confirm, &QTimer::timeout, &window, [&] {
+                for (auto box : window.findChildren<QMessageBox *>())
+                    if (box->isVisible())
+                        box->button(QMessageBox::Yes)->click();
+            });
+            confirm.start(10);
+            cards()[0]->findChild<QToolButton *>("deleteContactButton")->click();
+            confirm.stop();
+            QTest::qWait(20);
+            require(cards().isEmpty() && session.contacts().isEmpty() && session.nameFor(alice).isEmpty(),
+                    "delete removes the contact");
+            folders->setCurrentRow(0);
+            session.moveLetter(toAlice, "Trash");
+            QCoreApplication::processEvents();
         }
         const auto longBody =
             session.saveLetter({}, address, address, "Long body letter", QString(3000, 'z'), "direct");

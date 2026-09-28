@@ -41,13 +41,18 @@ class DesktopWindow : public QMainWindow {
     QLabel *listCountLabel_;
     QLineEdit *search_;
     QVariantList channelIdentities_;
+    QVariantList shownContacts_; // the address book the views were last drawn with
     QLabel *heading_, *status_, *error_;
     QTextEdit *subject_;
     QLabel *fromAddress_, *toAddress_, *deliveryStatus_, *deliveryError_;
+    QLabel *fromName_, *toName_;
+    QWidget *addFromContact_, *addToContact_;
     QLabel *timeline_;
     QWidget *details_;
     QTextBrowser *body_;
-    QWidget *actions_, *reader_, *identities_;
+    QWidget *actions_, *reader_, *identities_, *contacts_;
+    QVBoxLayout *contactLayout_;
+    QLineEdit *contactsFilter_;
     QWidget *letterStripe_;
     QWidget *viewSwitch_;
     QWidget *sidebarWidget_, *listColumn_;
@@ -67,7 +72,11 @@ class DesktopWindow : public QMainWindow {
     void renderSelectedBody();
     void updateDeliveryStatus();
     void updateTimeline();
+    void updateCorrespondents();
+    // Add (or, with a label, rename) an address-book entry; true when saved.
+    bool editContact(QString address, QString label = {});
     void refreshIdentities();
+    void refreshContacts();
     void refreshChannels();
     void setListDensity(QString density);
     void setChannelRailCollapsed(bool collapsed);

@@ -118,6 +118,7 @@ class Session : public QObject {
     Q_INVOKABLE void deleteLetter(QString id);
     Q_INVOKABLE void readLetter(QString id);
     Q_INVOKABLE QVariantMap message(QString id) const;
+    QHash<QString, QString> names() const;
     QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const;
     int messageCount(const QString &folder, const QString &search, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messageCount(folder, search, recipient, unreadOnly, anonymousOnly) : 0; }
     QVariantList channels() const;
@@ -133,6 +134,18 @@ class Session : public QObject {
     Q_INVOKABLE void copyAddress(QString address);
     Q_INVOKABLE void closeMailbox();
     QVariantList subscriptions() const;
+    // The address book (kept in the open mailbox). Names are local and private.
+    QVariantList contacts() const;
+    // Why the address cannot be added as a contact, or empty when it can.
+    QString contactProblem(QString address) const;
+    // Adds or renames a contact; an empty name falls back to the address.
+    // Returns false (with error() set) when the address is refused.
+    Q_INVOKABLE bool addContact(QString address, QString label);
+    Q_INVOKABLE void removeContact(QString address);
+    bool isContact(QString address) const;
+    // Best local name for an address -- own identity or chan, then contact,
+    // then subscription -- or empty when it has none.
+    Q_INVOKABLE QString nameFor(QString address) const;
     Q_INVOKABLE void clearError() {
         error_.clear();
         emit changed();

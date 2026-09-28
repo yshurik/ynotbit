@@ -56,6 +56,8 @@ void Mailbox::migrate() {
         "NULL,encryption BLOB NOT NULL,trials INTEGER NOT NULL,extra INTEGER NOT NULL,behaviors "
         "INTEGER NOT NULL,expires INTEGER NOT NULL);"
         "CREATE TABLE IF NOT EXISTS subscriptions(address TEXT PRIMARY KEY,label TEXT NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS contacts(address TEXT PRIMARY KEY,label TEXT NOT NULL,added "
+        "INTEGER NOT NULL);"
         "CREATE TABLE IF NOT EXISTS settings(name TEXT PRIMARY KEY,value TEXT NOT NULL);"
         "CREATE INDEX IF NOT EXISTS delivery_events_id ON delivery_events(id,seq); PRAGMA "
         "user_version=2;");
@@ -395,6 +397,27 @@ void Mailbox::subscribe(const QString &address, const QString &label) {
 }
 void Mailbox::unsubscribe(const QString &address) {
     Statement s(db_, "DELETE FROM subscriptions WHERE address=?");
+    s.text(1, address);
+    s.row();
+}
+QVector<Contact> Mailbox::contacts() const {
+    Statement s(db_, "SELECT address,label,added FROM contacts ORDER BY label COLLATE NOCASE,address");
+    QVector<Contact> r;
+    while (s.row())
+        r << Contact{s.text(0), s.text(1), s.number(2)};
+    return r;
+}
+void Mailbox::saveContact(const QString &address, const QString &label) {
+    require(!address.isEmpty() && !label.trimmed().isEmpty(), "A contact needs an address and a name");
+    Statement s(db_, "INSERT INTO contacts VALUES(?,?,?) ON CONFLICT(address) DO UPDATE SET "
+                     "label=excluded.label");
+    s.text(1, address);
+    s.text(2, label.trimmed());
+    s.number(3, QDateTime::currentSecsSinceEpoch());
+    s.row();
+}
+void Mailbox::removeContact(const QString &address) {
+    Statement s(db_, "DELETE FROM contacts WHERE address=?");
     s.text(1, address);
     s.row();
 }

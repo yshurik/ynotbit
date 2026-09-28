@@ -84,6 +84,7 @@ struct OutboxItem;
 struct NetworkJob;
 struct StoredPublicKey;
 struct Subscription;
+struct Contact;
 struct DeliveryEvent;
 class Mailbox {
     sqlite3 *db_ = nullptr;
@@ -150,6 +151,11 @@ class Mailbox {
     QVector<Subscription> subscriptions() const;
     void subscribe(const QString &address, const QString &label);
     void unsubscribe(const QString &address);
+    // The address book: private names for correspondents, ordered by name.
+    QVector<Contact> contacts() const;
+    // Adds the address, or renames it if it is already a contact.
+    void saveContact(const QString &address, const QString &label);
+    void removeContact(const QString &address);
     void moveMessage(const QString &id, const QString &folder);
     void restoreMessage(const QString &id);
     void deleteMessage(const QString &id);
@@ -183,6 +189,10 @@ struct StoredPublicKey {
 };
 struct Subscription {
     QString address, label;
+};
+struct Contact {
+    QString address, label;
+    qint64 added = 0;
 };
 struct DeliveryEvent {
     qint64 timestamp;

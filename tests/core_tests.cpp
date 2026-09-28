@@ -125,6 +125,22 @@ int main(int argc, char **argv) {
         box.open(mail, vault.mailboxKey(keyId));
         require(box.messages().size() == 1, "reopen persisted mailbox");
         require(box.messages()[0].body == "secret message marker", "decrypted message");
+        box.saveContact("BM-2cZebraAddressForTestOnly", "zebra");
+        box.saveContact("BM-2cAliceAddressForTestOnly", "Alice");
+        require(box.contacts().size() == 2 && box.contacts()[0].label == "Alice" &&
+                    box.contacts()[1].label == "zebra" && box.contacts()[0].added > 0,
+                "contacts are listed by name, case-insensitively, with their add time");
+        box.saveContact("BM-2cAliceAddressForTestOnly", "  Alice W.  ");
+        require(box.contacts().size() == 2 && box.contacts()[0].label == "Alice W.",
+                "saving a known address renames it (trimmed) rather than duplicating it");
+        rejects([&] { box.saveContact("BM-2cAliceAddressForTestOnly", "   "); });
+        box.close();
+        box.open(mail, vault.mailboxKey(keyId));
+        require(box.contacts().size() == 2, "contacts persist in the encrypted mailbox");
+        box.removeContact("BM-2cZebraAddressForTestOnly");
+        require(box.contacts().size() == 1 && box.contacts()[0].address ==
+                    "BM-2cAliceAddressForTestOnly", "removing a contact deletes only that one");
+        box.removeContact("BM-2cAliceAddressForTestOnly");
         auto second = vault.addMailboxKey();
         Mailbox wrong;
         rejects([&] { wrong.open(mail, vault.mailboxKey(second)); });

@@ -35,7 +35,8 @@ QHash<int, QByteArray> MessageModel::roleNames() const {
         {Qt::UserRole + 5, "preview"},  {Qt::UserRole + 6, "folder"},
         {Qt::UserRole + 7, "state"},    {Qt::UserRole + 8, "deliveryError"},
         {Qt::UserRole + 9, "unread"},   {Qt::UserRole + 10, "kind"},
-        {Qt::UserRole + 11, "received"}};
+        {Qt::UserRole + 11, "received"}, {Qt::UserRole + 12, "fromName"},
+        {Qt::UserRole + 13, "toName"}};
     return roles;
 }
 void MessageModel::setFolder(const QString &folder) {

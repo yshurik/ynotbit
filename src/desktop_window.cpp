@@ -229,6 +229,16 @@ class LetterDelegate : public QStyledItemDelegate {
         const auto folder = i.data(Qt::UserRole + 6).toString();
         const bool useRecipient = folder == "Drafts" || folder == "Outbox" || folder == "Sent";
         const auto identityAddress = i.data(Qt::UserRole + (useRecipient ? 3 : 2)).toString();
+        // The correspondent's local name (contact, subscription or own
+        // identity), when there is one.
+        // An anonymous chan post is "from" the chan itself, whose name the
+        // chan page already shows.
+        const bool anonymousPost = i.data(Qt::UserRole + 2) == i.data(Qt::UserRole + 3);
+        const auto name =
+            anonymousPost ? QString() : i.data(Qt::UserRole + (useRecipient ? 13 : 12)).toString();
+        const auto withName = [&](const QString &line) {
+            return name.isEmpty() ? line : line.isEmpty() ? name : name + " · " + line;
+        };
         const int iconSize = density_ == "compact" ? 20 : density_ == "cozy" ? 28 : 34;
         if (!identityAddress.isEmpty()) {
             auto icon = identiconPixmap(identityAddress, iconSize);
@@ -257,7 +267,7 @@ class LetterDelegate : public QStyledItemDelegate {
             text(3, subject, unread, pal.text().color());
         } else if (density_ == "cozy") {
             text(8, subject, unread, pal.text().color());
-            text(32, previewLine, false, pal.placeholderText().color());
+            text(32, withName(previewLine), false, pal.placeholderText().color());
         } else {
             text(10, subject, unread, pal.text().color());
             text(36, previewLine, false, pal.placeholderText().color());
@@ -267,7 +277,8 @@ class LetterDelegate : public QStyledItemDelegate {
                     ? QColor(pal.base().color().lightness() < 128 ? "#8ce0b2" : "#17643b")
                     : pal.placeholderText().color();
             text(62,
-                 state.isEmpty() ? i.data(Qt::UserRole + 11).toString() : state.replace('_', ' '),
+                 withName(state.isEmpty() ? i.data(Qt::UserRole + 11).toString()
+                                          : state.replace('_', ' ')),
                  false, stateColor);
         }
         p->setPen(pal.mid().color());
@@ -690,6 +701,29 @@ QIcon materialIcon(const QString &name, QColor color) {
         body.cubicTo(9, 24, 15, 21, 20, 21);
         body.cubicTo(25, 21, 31, 24, 31, 32);
         p.drawPath(body);
+    } else if (name == "personAdd") {
+        // The identities person, shifted left, with a plus beside it.
+        p.drawEllipse(QPointF(16, 14), 5.5, 5.5);
+        QPainterPath body;
+        body.moveTo(6, 31);
+        body.cubicTo(6, 24, 11, 21, 16, 21);
+        body.cubicTo(21, 21, 26, 24, 26, 31);
+        p.drawPath(body);
+        p.drawLine(QPointF(31, 12), QPointF(31, 22));
+        p.drawLine(QPointF(26, 17), QPointF(36, 17));
+    } else if (name == "contacts") {
+        // An address book: a bound cover with a person on it and index tabs.
+        p.drawRoundedRect(QRectF(9, 6, 21, 28), 3, 3);
+        p.drawLine(QPointF(13, 6), QPointF(13, 34));
+        p.drawEllipse(QPointF(21.5, 16), 3.5, 3.5);
+        QPainterPath body;
+        body.moveTo(16, 27);
+        body.cubicTo(16, 22.5, 19, 21.5, 21.5, 21.5);
+        body.cubicTo(24, 21.5, 27, 22.5, 27, 27);
+        p.drawPath(body);
+        p.drawLine(QPointF(30, 11), QPointF(33, 11));
+        p.drawLine(QPointF(30, 18), QPointF(33, 18));
+        p.drawLine(QPointF(30, 25), QPointF(33, 25));
     }
     return QIcon(pixmap);
 }
@@ -697,6 +731,7 @@ const QVector<QPair<QString, QString>> kFolderIcons = {
     {"Inbox", "inbox"},         {"Drafts", "drafts"},       {"Outbox", "outbox"},
     {"Sent", "sent"},           {"Channels", "channels"},   {"Broadcasts", "broadcasts"},
     {"Archive", "archive"},     {"Trash", "delete"},        {"Identities", "identities"},
+    {"Contacts", "contacts"},
 };
 QTextCharFormat headingCharFormat(int level) {
     QTextCharFormat t;
@@ -977,7 +1012,57 @@ class Composer : public QDialog {
         to_->setPlaceholderText("Recipient · BM-address");
         to_->setText(reply ? letter[letter["folder"] == "Channels" ? "to" : "from"].toString()
                            : letter["to"].toString());
-        layout->addWidget(to_);
+        // The address book, three ways: completion on name or address, a
+        // picker listing every contact, and a line naming the recipient.
+        const auto contacts = session.contacts();
+        auto completions = new QStandardItemModel(this);
+        auto picker = new QMenu(this);
+        picker->setObjectName("contactsPickerMenu");
+        for (auto v : contacts) {
+            const auto c = v.toMap();
+            const auto address = c["address"].toString(), label = c["label"].toString();
+            auto item = new QStandardItem(label + " — " + address);
+            item->setData(address, Qt::UserRole);
+            completions->appendRow(item);
+            picker->addAction(QIcon(identiconPixmap(address, 18)), label, this,
+                              [this, address] { to_->setText(address); });
+        }
+        auto completer = new QCompleter(completions, this);
+        completer->setObjectName("recipientCompleter");
+        completer->setCaseSensitivity(Qt::CaseInsensitive);
+        completer->setFilterMode(Qt::MatchContains);
+        to_->setCompleter(completer);
+        // Choosing "Name — BM-…" leaves just the address in the field.
+        connect(completer, qOverload<const QModelIndex &>(&QCompleter::activated), this,
+                [this](const QModelIndex &index) {
+                    const auto address = index.data(Qt::UserRole).toString();
+                    QTimer::singleShot(0, this, [this, address] { to_->setText(address); });
+                });
+        auto toRow = new QHBoxLayout;
+        toRow->setSpacing(6);
+        toRow->addWidget(to_, 1);
+        auto pickerButton = new QToolButton;
+        pickerButton->setObjectName("contactsPickerButton");
+        pickerButton->setIcon(materialIcon("contacts", iconColor(dark)));
+        pickerButton->setIconSize(QSize(22, 22));
+        pickerButton->setToolTip("Choose from contacts");
+        pickerButton->setPopupMode(QToolButton::InstantPopup);
+        pickerButton->setMenu(picker);
+        pickerButton->setVisible(!contacts.isEmpty());
+        toRow->addWidget(pickerButton);
+        layout->addLayout(toRow);
+        auto recipientName = new QLabel;
+        recipientName->setObjectName("recipientName");
+        recipientName->setStyleSheet("color:palette(mid);font-size:12px;");
+        recipientName->setTextFormat(Qt::PlainText);
+        layout->addWidget(recipientName);
+        auto nameRecipient = [this, recipientName] {
+            const auto name = session_.nameFor(to_->text().trimmed());
+            recipientName->setText(name.isEmpty() ? QString() : "To " + name);
+            recipientName->setVisible(!name.isEmpty());
+        };
+        connect(to_, &QLineEdit::textChanged, this, nameRecipient);
+        nameRecipient();
         subject_ = new QLineEdit;
         subject_->setObjectName("subjectField");
         subject_->setPlaceholderText("Subject");
@@ -1282,6 +1367,82 @@ void showLetterBody(QTextBrowser *body, QTextEdit *subject, const QString &subje
     renderBody(body, text, mode);
     setSubject(subject, subjectText, mode);
 }
+// Add or rename an address-book entry. With no address given, a valid one on
+// the clipboard is offered; validation is live and Save only enables for an
+// address the book will take.
+class ContactDialog : public QDialog {
+  public:
+    ContactDialog(Session &session, QString address, QString label, QWidget *parent)
+        : QDialog(parent), session_(session) {
+        setObjectName("contactDialog");
+        setWindowTitle(label.isEmpty() ? "Add contact" : "Rename contact");
+        setMinimumWidth(460);
+        if (address.isEmpty()) {
+            const auto clip = QApplication::clipboard()->text().trimmed();
+            if (session_.contactProblem(clip).isEmpty())
+                address = clip;
+        }
+        auto layout = new QVBoxLayout(this);
+        layout->setSpacing(8);
+        layout->addWidget(new QLabel("Name"));
+        name_ = new QLineEdit(label);
+        name_->setObjectName("contactNameField");
+        name_->setPlaceholderText("How this person appears in ynotbit");
+        layout->addWidget(name_);
+        layout->addWidget(new QLabel("Address"));
+        address_ = new QLineEdit(address);
+        address_->setObjectName("contactAddressField");
+        address_->setFont(addressFont());
+        address_->setPlaceholderText("BM-…");
+        // A rename keeps the address; changing it would be a different contact.
+        address_->setReadOnly(!label.isEmpty());
+        layout->addWidget(address_);
+        note_ = new QLabel;
+        note_->setObjectName("contactProblem");
+        note_->setWordWrap(true);
+        note_->setStyleSheet("color:palette(mid);font-size:12px;");
+        layout->addWidget(note_);
+        auto private_ = new QLabel("Names are private to this mailbox and never sent to anyone.");
+        private_->setWordWrap(true);
+        private_->setStyleSheet("color:palette(mid);font-size:11px;");
+        layout->addWidget(private_);
+        auto buttons = new QHBoxLayout;
+        buttons->addStretch();
+        auto cancel = new QPushButton("Cancel");
+        cancel->setObjectName("contactCancelButton");
+        connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
+        buttons->addWidget(cancel);
+        save_ = new QPushButton("Save");
+        save_->setObjectName("contactSaveButton");
+        save_->setDefault(true);
+        connect(save_, &QPushButton::clicked, this, [this] {
+            if (session_.addContact(address_->text(), name_->text()))
+                accept();
+            else
+                note_->setText(session_.error());
+        });
+        buttons->addWidget(save_);
+        layout->addLayout(buttons);
+        connect(address_, &QLineEdit::textChanged, this, [this] { validate(); });
+        validate();
+        (address.isEmpty() ? address_ : name_)->setFocus();
+    }
+
+  private:
+    void validate() {
+        const auto address = address_->text().trimmed();
+        const auto problem = address.isEmpty() ? QString() : session_.contactProblem(address);
+        auto note = problem;
+        if (problem.isEmpty() && !address_->isReadOnly() && session_.isContact(address))
+            note = "Already a contact, as “" + session_.nameFor(address) + "”. Saving renames it.";
+        note_->setText(note);
+        save_->setEnabled(!address.isEmpty() && problem.isEmpty());
+    }
+    Session &session_;
+    QLineEdit *name_, *address_;
+    QLabel *note_;
+    QPushButton *save_;
+};
 class MessageWindow : public QDialog {
   public:
     MessageWindow(Session &session, QVariantMap letter, bool dark, QWidget *parent)
@@ -1333,8 +1494,13 @@ class MessageWindow : public QDialog {
         frame->addLayout(toolRow);
         auto subject = subjectArea(frame, "windowSubject");
 
-        auto addresses =
-            new QLabel(letter_["from"].toString() + "  →  " + letter_["to"].toString());
+        // Each side as "Name BM-…" when it has a local name; the address stays.
+        const auto party = [this](const QString &address) {
+            const auto name = session_.nameFor(address);
+            return name.isEmpty() ? address : name + "  " + address;
+        };
+        auto addresses = new QLabel(party(letter_["from"].toString()) + "  →  " +
+                                    party(letter_["to"].toString()));
         addresses->setObjectName("windowAddresses");
         addresses->setFont(addressFont());
         addresses->setTextFormat(Qt::PlainText);
@@ -1461,7 +1627,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     folders_ = new QListWidget(side);
     folders_->setObjectName("folders");
     folders_->addItems({"Inbox", "Drafts", "Outbox", "Sent", "Channels", "Broadcasts", "Archive",
-                        "Trash", "Identities"});
+                        "Trash", "Identities", "Contacts"});
     folders_->hide();
     auto folderGroup = new QButtonGroup(this);
     folderGroup->setExclusive(true);
@@ -1679,28 +1845,61 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     metadata->setHorizontalSpacing(14);
     metadata->setVerticalSpacing(6);
     metadata->setColumnStretch(1, 1);
+    // From / To: the correspondent's local name (when there is one), then the
+    // address itself -- always shown, so a name can never stand in for a
+    // different sender -- then a button to save an unknown address.
     fromAddress_ = new QLabel;
     toAddress_ = new QLabel;
     fromAddress_->setObjectName("messageAddresses");
     toAddress_->setObjectName("toAddress");
+    fromName_ = new QLabel;
+    toName_ = new QLabel;
+    fromName_->setObjectName("fromName");
+    toName_->setObjectName("toName");
+    metadata->setColumnStretch(1, 0);
+    metadata->setColumnStretch(2, 1);
     int addressRow = 0;
-    for (auto field : {fromAddress_, toAddress_}) {
+    for (auto [name, field] : {std::pair{fromName_, fromAddress_}, {toName_, toAddress_}}) {
         field->setFont(addressFont());
         field->setTextFormat(Qt::PlainText);
         field->setWordWrap(true);
         field->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        name->setTextFormat(Qt::PlainText);
+        name->setStyleSheet("font-weight:600;");
+        name->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        name->hide();
+        auto add = new QToolButton;
+        add->setObjectName(addressRow == 0 ? "addSenderContact" : "addRecipientContact");
+        add->setIcon(materialIcon("personAdd", iconColor(appearance_.dark())));
+        add->setIconSize(QSize(16, 16));
+        add->setAutoRaise(true);
+        add->setCursor(Qt::PointingHandCursor);
+        add->setToolTip("Add to contacts");
+        add->hide();
+        connect(add, &QToolButton::clicked, this, [this, field] {
+            if (editContact(field->text()))
+                updateCorrespondents();
+        });
+        (addressRow == 0 ? addFromContact_ : addToContact_) = add;
         auto label = new QLabel(addressRow == 0 ? "From" : "To");
         metadata->addWidget(label, addressRow, 0, Qt::AlignTop);
-        metadata->addWidget(field, addressRow++, 1);
+        metadata->addWidget(name, addressRow, 1, Qt::AlignTop);
+        auto addressCell = new QHBoxLayout;
+        addressCell->setContentsMargins(0, 0, 0, 0);
+        addressCell->setSpacing(4);
+        addressCell->addWidget(field);
+        addressCell->addWidget(add, 0, Qt::AlignTop);
+        addressCell->addStretch();
+        metadata->addLayout(addressCell, addressRow++, 2);
     }
     deliveryStatus_ = new QLabel;
     deliveryStatus_->setObjectName("deliveryStatus");
     deliveryStatus_->setTextFormat(Qt::PlainText);
-    metadata->addWidget(deliveryStatus_, 2, 1, Qt::AlignLeft);
+    metadata->addWidget(deliveryStatus_, 2, 1, 1, 2, Qt::AlignLeft);
     deliveryError_ = new QLabel;
     deliveryError_->setTextFormat(Qt::PlainText);
     deliveryError_->setWordWrap(true);
-    metadata->addWidget(deliveryError_, 3, 1);
+    metadata->addWidget(deliveryError_, 3, 1, 1, 2);
     timeline_ = new QLabel;
     timeline_->setObjectName("messageTimeline");
     timeline_->setTextFormat(Qt::RichText);
@@ -1708,7 +1907,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     timeline_->setToolTip("Times are local. Received in mailbox is when the object was decrypted "
                           "and saved, which may be after network arrival while locked. Sent to "
                           "peers is a relay offer, not a read receipt.");
-    metadata->addWidget(timeline_, 4, 0, 1, 2);
+    metadata->addWidget(timeline_, 4, 0, 1, 3);
     details_->hide();
     frame->addWidget(details_);
     body_ = new QTextBrowser;
@@ -1869,6 +2068,46 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     identitiesScroll->setWidget(identitiesListContainer);
     identitiesOuter->addWidget(identitiesScroll, 1);
     read->addWidget(identities_);
+    // The address book: same card layout as identities, for other people.
+    contacts_ = new QWidget;
+    contacts_->setObjectName("contactsPane");
+    auto contactsOuter = new QVBoxLayout(contacts_);
+    contactsOuter->setContentsMargins(4, 4, 4, 0);
+    contactsOuter->setSpacing(8);
+    auto contactsHeadRow = new QHBoxLayout;
+    auto contactsTitleCol = new QVBoxLayout;
+    auto contactsHeading = new QLabel("Contacts");
+    contactsHeading->setObjectName("contactsHeading");
+    contactsHeading->setStyleSheet("font-size:20px;font-weight:600;");
+    contactsTitleCol->addWidget(contactsHeading);
+    auto contactsSub = new QLabel("People you write to. Names are private to this mailbox.");
+    contactsSub->setStyleSheet("color:palette(mid);font-size:12px;");
+    contactsTitleCol->addWidget(contactsSub);
+    contactsHeadRow->addLayout(contactsTitleCol);
+    contactsHeadRow->addStretch();
+    button("Add contact…", contactsHeadRow, [this] {
+        if (editContact({}))
+            refreshContacts();
+    })->setObjectName("addContactButton");
+    contactsOuter->addLayout(contactsHeadRow);
+    contactsFilter_ = new QLineEdit;
+    contactsFilter_->setObjectName("contactsFilter");
+    contactsFilter_->setPlaceholderText("Filter by name or address");
+    contactsFilter_->setClearButtonEnabled(true);
+    connect(contactsFilter_, &QLineEdit::textChanged, this, [this] { refreshContacts(); });
+    contactsOuter->addWidget(contactsFilter_);
+    auto contactsScroll = new QScrollArea;
+    contactsScroll->setObjectName("contactsScroll");
+    contactsScroll->setWidgetResizable(true);
+    contactsScroll->setFrameShape(QFrame::NoFrame);
+    contactsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto contactsListContainer = new QWidget;
+    contactLayout_ = new QVBoxLayout(contactsListContainer);
+    contactLayout_->setContentsMargins(0, 4, 4, 16);
+    contactLayout_->setSpacing(10);
+    contactsScroll->setWidget(contactsListContainer);
+    contactsOuter->addWidget(contactsScroll, 1);
+    read->addWidget(contacts_);
     split->addWidget(reader_, 1);
     status_ = new QLabel;
     status_->setObjectName("statusBar");
@@ -1998,11 +2237,15 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         session_.messageModel()->setFolder(folder);
         selected_.clear();
         body_->clear();
-        setSubject(subject_, folder == "Identities" ? "Identities & chans" : "No letter selected");
+        setSubject(subject_, folder == "Identities" ? "Identities & chans"
+                             : folder == "Contacts" ? "Contacts"
+                                                    : "No letter selected");
         clearDetails();
         actions_->hide();
         if (folder == "Identities")
             refreshIdentities();
+        if (folder == "Contacts")
+            refreshContacts();
         updateState();
     });
     folders_->setCurrentRow(0);
@@ -2092,10 +2335,15 @@ void DesktopWindow::updateTheme() {
         findChild<QToolButton *>(id)->setIcon(materialIcon(icon, color));
     for (const auto &[label, iconName] : kFolderIcons)
         findChild<QToolButton *>("folderIcon_" + label)->setIcon(materialIcon(iconName, color));
+    for (auto add : {addFromContact_, addToContact_})
+        static_cast<QToolButton *>(add)->setIcon(materialIcon("personAdd", color));
+    if (contacts_->isVisible())
+        refreshContacts();
 }
 void DesktopWindow::clearDetails() {
     fromAddress_->clear();
     toAddress_->clear();
+    updateCorrespondents();
     deliveryStatus_->clear();
     deliveryError_->clear();
     timeline_->clear();
@@ -2208,7 +2456,16 @@ void DesktopWindow::updateState() {
                 searchScope = v.toMap()["label"].toString();
     }
     search_->setPlaceholderText("Search " + searchScope);
-    const bool identityPage = folders_->currentRow() == 8 && mailboxState;
+    // A contact added, renamed or removed anywhere redraws every view of names.
+    if (const auto contacts = session_.contacts(); contacts != shownContacts_) {
+        shownContacts_ = contacts;
+        updateCorrespondents();
+        if (folders_->currentRow() == 9)
+            refreshContacts();
+    }
+    // Identities and Contacts are whole-pane pages: no letter list, no reader.
+    const bool contactsPage = folders_->currentRow() == 9 && mailboxState;
+    const bool identityPage = (folders_->currentRow() == 8 && mailboxState) || contactsPage;
     sidebarWidget_->setVisible(mailboxState);
     listColumn_->setVisible(mailboxState && !identityPage);
     welcomeStack_->setVisible(!mailboxState);
@@ -2233,7 +2490,8 @@ void DesktopWindow::updateState() {
     subject_->setVisible(mailboxState && !identityPage);
     body_->setVisible(mailboxState && !identityPage);
     letterStripe_->setVisible(mailboxState && !identityPage);
-    identities_->setVisible(identityPage);
+    identities_->setVisible(identityPage && !contactsPage);
+    contacts_->setVisible(contactsPage);
     status_->setText(
         !session_.unlocked()
             ? "Vault locked" +
@@ -2370,6 +2628,7 @@ void DesktopWindow::selectMessage(const QString &id) {
                                  selected_["to"].toString()));
     fromAddress_->setText(selected_["from"].toString());
     toAddress_->setText(selected_["to"].toString());
+    updateCorrespondents();
     deliveryError_->setText(selected_["deliveryError"].toString());
     deliveryError_->setVisible(!deliveryError_->text().isEmpty());
     updateDeliveryStatus();
@@ -2390,6 +2649,23 @@ void DesktopWindow::selectMessage(const QString &id) {
     findChild<QAction *>("retryAction")->setVisible(outgoing);
     findChild<QAction *>("cancelDeliveryAction")->setVisible(outgoing);
     session_.readLetter(id);
+}
+void DesktopWindow::updateCorrespondents() {
+    for (auto [name, field, add] : {std::tuple{fromName_, fromAddress_, addFromContact_},
+                                    {toName_, toAddress_, addToContact_}}) {
+        const auto address = field->text();
+        const auto known = session_.nameFor(address);
+        name->setText(known);
+        name->setVisible(!known.isEmpty());
+        // Offered for any foreign address not yet in the book -- including a
+        // subscription, whose label is not a contact.
+        add->setVisible(!address.isEmpty() && session_.contactProblem(address).isEmpty() &&
+                        !session_.isContact(address));
+    }
+}
+bool DesktopWindow::editContact(QString address, QString label) {
+    ContactDialog dialog(session_, address, label, this);
+    return dialog.exec() == QDialog::Accepted;
 }
 void DesktopWindow::renderSelectedBody() {
     showLetterBody(body_, subject_, selected_["subject"].toString(), selected_["body"].toString(),
@@ -2590,5 +2866,107 @@ void DesktopWindow::refreshIdentities() {
         identityLayout_->addWidget(card);
     }
     identityLayout_->addStretch();
+}
+void DesktopWindow::refreshContacts() {
+    while (auto item = contactLayout_->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    const auto color = iconColor(appearance_.dark());
+    const auto filter = contactsFilter_->text().trimmed();
+    const auto all = session_.contacts();
+    int shown = 0;
+    for (auto v : all) {
+        auto m = v.toMap();
+        const auto address = m["address"].toString();
+        const auto label = m["label"].toString();
+        if (!filter.isEmpty() && !label.contains(filter, Qt::CaseInsensitive) &&
+            !address.contains(filter, Qt::CaseInsensitive))
+            continue;
+        ++shown;
+        auto card = new QFrame;
+        card->setObjectName("contactCard");
+        card->setStyleSheet("QFrame#contactCard{border:1px solid palette(mid);border-radius:8px;}");
+        auto cardRow = new QHBoxLayout(card);
+        cardRow->setContentsMargins(14, 12, 14, 12);
+        cardRow->setSpacing(10);
+        auto identicon = new QLabel;
+        identicon->setFixedSize(40, 40);
+        identicon->setPixmap(identiconPixmap(address, 40));
+        cardRow->addWidget(identicon);
+        auto infoCol = new QVBoxLayout;
+        auto nameLabel = new QLabel(label);
+        nameLabel->setObjectName("contactName");
+        nameLabel->setStyleSheet("font-weight:700;");
+        nameLabel->setTextFormat(Qt::PlainText);
+        if (label.contains("BM-"))
+            nameLabel->setFont(addressFont());
+        infoCol->addWidget(nameLabel);
+        auto addressRow = new QHBoxLayout;
+        auto addressLabel = new QLabel(address);
+        addressLabel->setObjectName("contactAddress");
+        addressLabel->setFont(addressFont());
+        addressLabel->setStyleSheet("color:palette(mid);font-size:12px;");
+        addressLabel->setTextFormat(Qt::PlainText);
+        addressLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        addressRow->addWidget(addressLabel);
+        auto copyButton = new QToolButton;
+        copyButton->setIcon(materialIcon("copy", color));
+        copyButton->setIconSize(QSize(14, 14));
+        copyButton->setAutoRaise(true);
+        copyButton->setCursor(Qt::PointingHandCursor);
+        copyButton->setToolTip("Copy address");
+        connect(copyButton, &QToolButton::clicked, this,
+                [this, address] { session_.copyAddress(address); });
+        addressRow->addWidget(copyButton);
+        addressRow->addStretch();
+        infoCol->addLayout(addressRow);
+        cardRow->addLayout(infoCol, 1);
+        auto write = new QPushButton("Write");
+        write->setObjectName("writeToContactButton");
+        write->setIcon(materialIcon("compose", color));
+        write->setCursor(Qt::PointingHandCursor);
+        connect(write, &QPushButton::clicked, this, [this, address] { compose({{"to", address}}); });
+        cardRow->addWidget(write);
+        auto rename = new QToolButton;
+        rename->setObjectName("renameContactButton");
+        rename->setIcon(materialIcon("edit", color));
+        rename->setAutoRaise(true);
+        rename->setCursor(Qt::PointingHandCursor);
+        rename->setToolTip("Rename");
+        connect(rename, &QToolButton::clicked, this, [this, address, label] {
+            if (editContact(address, label))
+                QTimer::singleShot(0, this, [this] { refreshContacts(); });
+        });
+        cardRow->addWidget(rename);
+        auto remove = new QToolButton;
+        remove->setObjectName("deleteContactButton");
+        remove->setIcon(materialIcon("delete", color));
+        remove->setAutoRaise(true);
+        remove->setCursor(Qt::PointingHandCursor);
+        remove->setToolTip("Delete");
+        connect(remove, &QToolButton::clicked, this, [this, address, label] {
+            if (QMessageBox::question(this, "Delete contact",
+                                      "Remove “" + label + "” from contacts? Letters to and from "
+                                      "this address are kept.") != QMessageBox::Yes)
+                return;
+            session_.removeContact(address);
+            QTimer::singleShot(0, this, [this] { refreshContacts(); });
+        });
+        cardRow->addWidget(remove);
+        contactLayout_->addWidget(card);
+    }
+    if (shown == 0) {
+        auto empty = new QLabel(
+            all.isEmpty() ? "No contacts yet.\n\nAdd one with “Add contact…” above, or with the "
+                            "person-plus button beside an address in a letter you are reading."
+                          : "No contact matches “" + filter + "”.");
+        empty->setObjectName("contactsEmpty");
+        empty->setWordWrap(true);
+        empty->setAlignment(Qt::AlignHCenter);
+        empty->setStyleSheet("color:palette(mid);padding:24px;");
+        contactLayout_->addWidget(empty);
+    }
+    contactLayout_->addStretch();
 }
 } // namespace bm

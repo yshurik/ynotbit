@@ -553,6 +553,7 @@ QVariantList Session::messagePage(const QString &folder, const QString &search, 
     QVariantList result;
     if (!mailboxOpen())
         return result;
+    const auto names = this->names();
     for (const auto &m : mailbox_.messageSummaries(folder, search, offset, limit, recipient,
                                                    unreadOnly, anonymousOnly)) {
         OutboxItem out;
@@ -566,6 +567,8 @@ QVariantList Session::messagePage(const QString &folder, const QString &search, 
             {"hash", m.hash},
             {"from", m.from},
             {"to", m.to},
+            {"fromName", names.value(m.from) == m.from ? QString() : names.value(m.from)},
+            {"toName", names.value(m.to) == m.to ? QString() : names.value(m.to)},
             {"subject", m.subject},
             {"preview", m.body},
             {"folder", m.folder},
@@ -745,6 +748,73 @@ QVariantList Session::subscriptions() const {
         for (const auto &s : mailbox_.subscriptions())
             result << QVariantMap{{"address", s.address}, {"label", s.label}};
     return result;
+}
+QVariantList Session::contacts() const {
+    QVariantList result;
+    if (mailboxOpen())
+        for (const auto &c : mailbox_.contacts())
+            result << QVariantMap{{"address", c.address}, {"label", c.label}};
+    return result;
+}
+QString Session::contactProblem(QString address) const {
+    address = address.trimmed();
+    if (!mailboxOpen())
+        return "Open a mailbox first";
+    if (address.isEmpty())
+        return "Enter a BM- address";
+    if (!Wire::validAddress(address))
+        return "That is not a valid Bitmessage address";
+    for (const auto &i : vault_.identities())
+        if (i.address == address)
+            return i.chan ? "That is one of your chans" : "That is one of your own identities";
+    return {};
+}
+bool Session::addContact(QString address, QString label) {
+    attempt([&] {
+        address = address.trimmed();
+        const auto problem = contactProblem(address);
+        if (!problem.isEmpty())
+            throw std::runtime_error(problem.toStdString());
+        label = label.trimmed();
+        mailbox_.saveContact(address, label.isEmpty() ? address : label);
+        messageModel()->reload(); // list rows carry correspondents' names
+        activity_ = "Contact saved.";
+    });
+    return error_.isEmpty();
+}
+void Session::removeContact(QString address) {
+    attempt([&] {
+        check(mailboxOpen(), "Open a mailbox first");
+        mailbox_.removeContact(address);
+        messageModel()->reload();
+    });
+}
+bool Session::isContact(QString address) const {
+    if (mailboxOpen())
+        for (const auto &c : mailbox_.contacts())
+            if (c.address == address)
+                return true;
+    return false;
+}
+QHash<QString, QString> Session::names() const {
+    // Lowest precedence first, so later inserts win.
+    QHash<QString, QString> result;
+    if (mailboxOpen()) {
+        for (const auto &s : mailbox_.subscriptions())
+            if (!s.label.trimmed().isEmpty())
+                result[s.address] = s.label.trimmed();
+        for (const auto &c : mailbox_.contacts())
+            result[c.address] = c.label;
+    }
+    if (unlocked())
+        for (const auto &i : vault_.identities())
+            if (!i.label.isEmpty())
+                result[i.address] = i.label;
+    return result;
+}
+QString Session::nameFor(QString address) const {
+    const auto name = names().value(address);
+    return name == address ? QString() : name;
 }
 void Session::subscribe() {
     attempt([&] {
