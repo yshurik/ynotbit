@@ -137,6 +137,14 @@ target_include_directories(desktop_tests PRIVATE third_party/qrcodegen)
 target_link_libraries(desktop_tests PRIVATE bmcore Qt6::Widgets Qt6::Network Qt6::Test)
 add_test(NAME desktop COMMAND desktop_tests)
 set_tests_properties(desktop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 240)
+# README screenshots from demo data; built only on request:
+#   cmake --build build --target readme_screenshots && build/readme_screenshots docs/images
+qt_add_executable(readme_screenshots EXCLUDE_FROM_ALL tools/readme_screenshots.cpp
+ src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp
+ src/desktop_window.h src/appearance.cpp src/appearance.h assets/icons.qrc
+ third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
+target_include_directories(readme_screenshots PRIVATE third_party/qrcodegen)
+target_link_libraries(readme_screenshots PRIVATE bmcore Qt6::Widgets Qt6::Network Qt6::Test)
 add_executable(outbox_tests tests/outbox_tests.cpp)
 target_link_libraries(outbox_tests PRIVATE bmcore)
 add_test(NAME outbox COMMAND outbox_tests)

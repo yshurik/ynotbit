@@ -1,14 +1,18 @@
 # ynotbit — why not bit?
 
 A compact desktop Bitmessage client based on [notbit](https://github.com/bpeel/notbit),
-by [yshurik](https://github.com/yshurik). **Development version: 0.5.0.**
+by [yshurik](https://github.com/yshurik). **Current release: 0.5.0.**
 
 ynotbit keeps identity keys in a password-protected vault and correspondence in a
 separate encrypted mailbox document. Its keyless relay continues collecting
 network objects while the vault is locked. Unlocking inspects retained objects
 and saves matching letters to the mailbox.
 
-![ynotbit desktop with an editable encrypted draft](docs/images/desktop.png)
+![ynotbit reading a Markdown letter from a named contact](docs/images/desktop.png)
+
+| Chans | Contacts | Writing to a contact |
+|---|---|---|
+| ![A chan with member posts](docs/images/channels.png) | ![The address book](docs/images/contacts.png) | ![The composer naming the recipient](docs/images/composer.png) |
 
 ## Download
 
@@ -22,19 +26,24 @@ guarantee.
 1. Create or open a `.bmvault` file. Create an identity, import `keys.dat`, or join
    a chan using its shared phrase and expected address.
 2. Create or open a `.bmmail` document in Documents or another writable folder.
-3. Choose **Write a letter**, select the sender, enter a recipient BM-address,
-   and write. Changes automatically save in the encrypted mailbox.
+3. Choose **Write a letter**, select the sender, and pick a recipient: type a
+   contact's name or a BM-address, or use the contacts button beside **To**.
+   Changes automatically save in the encrypted mailbox.
 4. Choose **Send letter**. Existing drafts have an **Edit / Send** control.
 5. Follow progress in **Outbox**. Key lookup and proof of work can take time;
    recipient acknowledgment is asynchronous and is not a read receipt.
 6. Lock the vault when finished. Preparation pauses, the mailbox closes, and
    the relay continues handling already submitted encrypted network objects.
 
+To name someone, click the person-plus button beside their address in a letter,
+or use **Contacts → Add contact…**. Names then appear in the message list, the
+reader and the composer, always next to the full address.
+
 **File → Back up mailbox and vault** saves both documents. Keep both: a mailbox
 alone cannot recover its encryption key. Changing a password does not invalidate
 old vault copies or backups. Import preserves the original plaintext `keys.dat`.
 
-## Available in this development version
+## Features
 
 - Portable vault: Argon2id (64 MiB, 3 passes) and XChaCha20-Poly1305; guarded key
   allocations; password changes; identity labels; deterministic v3/v4 chans.
@@ -46,19 +55,29 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
 - Direct-message decryption and sender verification; acknowledgments; bounded
   automatic expiry retries; manual retry and cancellation; reply using the
   authenticated sender key. Cancellation cannot recall objects already relayed.
-- Channels have a named selector, separate message lists and search, and a
-  Write to channel action. BM-addresses use a fixed-width font.
+- Address book: contacts with local, private names, kept in the encrypted
+  mailbox and never sent. One-click add from any letter; names in the list,
+  reader and composer (completion by name and a contacts picker); the full
+  address always stays visible beside a name.
+- Channels have a named selector (joined chans are named `[chan] <phrase>`, as in
+  PyBitmessage), separate message lists and search, and a Write to channel
+  action. The chan list collapses to a column of identicons with unread dots.
+  BM-addresses use a fixed-width font; each address has a GitHub-style identicon.
+- The reader frames each letter by kind (personal, chan personal, anonymous chan
+  post, broadcast) and offers plain, text, Markdown and hex views, detecting
+  Markdown and unreadable binary automatically.
 - Message details align sender and recipient addresses, color successful
   acknowledgment, and show the recorded delivery timeline: prepared, key
   available, sent to peers, acknowledged, or received in the mailbox.
 - Broadcast publishing/subscriptions (v4/v5 objects), shared chans, folder search,
   read state, archive, trash/restore, and explicit permanent deletion.
-- A separate notbit relay receives no vault or mailbox keys. Its bounded local
+- A separate notbit relay, on Linux, macOS and Windows, receives no vault or
+  mailbox keys. It identifies itself to peers as `/ynotbit:<version>/`. Its bounded local
   queue accepts network objects, validates proof of work, and records acceptance,
   rejection, and offers to connected peers. Receipt state survives restarts.
-- A Qt-native bounded relay is also available for non-Unix builds (`--qt-node`),
-  with the same object limits, persistence, SOCKS5 support, peer admission rules,
-  and publication receipts. Unix builds continue to use the mature notbit engine.
+- A Qt-native bounded relay remains available as a fallback (`--qt-node`), with
+  the same object limits, persistence, SOCKS5 support, peer admission rules, and
+  publication receipts.
 - The desktop uses Qt Widgets, without QML or Qt Quick. A painted list keeps at
   most three pages of 100 message summaries, loading only the selected body.
 - The composer is a visual Markdown editor. Rendered messages use a safe Markdown
@@ -101,6 +120,10 @@ triplet) instead of `build-dependencies.sh`, and pass
 `.github/workflows/release.yml` for the exact, CI-verified sequence on all three
 platforms.
 
+The README screenshots come from demo data, not a real mailbox. Regenerate them
+with `cmake --build build --target readme_screenshots` and
+`QT_QPA_PLATFORM=offscreen build/readme_screenshots docs/images`.
+
 To package a build for redistribution, with Qt's runtime libraries bundled in:
 
 ```sh
@@ -140,9 +163,12 @@ are not guaranteed erased from all memory, swap, crash dumps or screenshots.
 
 The packaged macOS build targets **Apple Silicon, macOS 15.6+** and bundles its
 runtime dependencies. It is ad-hoc signed, not Developer ID signed or notarized.
-The Windows build uses the Qt-native relay path (`--qt-node`) rather than the
-notbit engine, which is Unix-only; both use the same wire protocol and storage.
-Attachment UI and configurable CPU parallelism are not implemented.
+Since 0.5.0 the Windows build runs the notbit engine too, through a small
+Winsock layer (`third_party/notbit/src/ntb-win32.c`). Windows has no signal the
+app can send the node to stop cleanly, so the node is terminated on exit; work
+the store had queued but not yet written is dropped, as the Qt relay's was.
+The Linux download is a single AppImage. Attachment UI and configurable CPU
+parallelism are not implemented.
 
 `.github/workflows/release.yml` builds, tests, and packages Linux, macOS, and
 Windows on every `v*` tag push (or manual dispatch), then attaches the three
