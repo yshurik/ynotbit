@@ -129,9 +129,13 @@ QString Session::status() const {
     if (node_.state() != QProcess::Running)
         return "Node stopped · outgoing objects stay queued";
     QFile f(root_ + "/status.json");
-    if (!f.open(QIODevice::ReadOnly))
+    // Windows refuses the open for the instant the relay atomically replaces
+    // the file; keep the last status read rather than flickering to "starting".
+    if (f.open(QIODevice::ReadOnly))
+        lastNodeStatus_ = QJsonDocument::fromJson(f.read(4096)).object();
+    else if (lastNodeStatus_.isEmpty())
         return "Node starting · connecting to peers";
-    auto status = QJsonDocument::fromJson(f.read(4096)).object();
+    const auto &status = lastNodeStatus_;
     if (QDateTime::currentSecsSinceEpoch() - status.value("time").toInteger() > 10)
         return "Node status unavailable";
     auto peers = status.value("peers").toInt();
@@ -891,6 +895,7 @@ void Session::startNode() {
     if (!proxy.isEmpty())
         args << "-r" << proxy << "-B";
     QFile::remove(root_ + "/status.json");
+    lastNodeStatus_ = {};
     node_.setProgram(QCoreApplication::applicationFilePath());
     node_.setArguments(args);
     node_.start();

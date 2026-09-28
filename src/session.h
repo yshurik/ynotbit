@@ -3,6 +3,7 @@
 #include "delivery.h"
 #include "message_model.h"
 #include "storage.h"
+#include <QJsonObject>
 #include <QLockFile>
 #include <QObject>
 #include <QProcess>
@@ -36,6 +37,7 @@ class Session : public QObject {
     std::unique_ptr<QLockFile> nodeLock_, vaultLock_, mailLock_;
     bool busy_ = false;
     bool offline_ = false;
+    mutable QJsonObject lastNodeStatus_; // last status.json read, see status()
     int retentionMB_ = 512, retentionDays_ = 90;
     void startNode();
     void attempt(const std::function<void()> &f);

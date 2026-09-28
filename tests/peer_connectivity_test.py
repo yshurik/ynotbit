@@ -87,7 +87,12 @@ class Connectivity(unittest.IsolatedAsyncioTestCase):
             self.log.seek(0)
             self.fail(f'relay exited {self.process.returncode}: {self.log.read().decode(errors="replace")}')
         p = self.root / 'status.json'
-        return json.loads(p.read_text()) if p.exists() else {}
+        try:
+            return json.loads(p.read_text()) if p.exists() else {}
+        except PermissionError:
+            # Windows refuses opens while the relay atomically replaces the
+            # file; the next poll reads the new one.
+            return {}
 
     async def until(self, predicate, seconds):
         end = time.monotonic() + seconds
