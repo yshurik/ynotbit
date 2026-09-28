@@ -159,8 +159,11 @@ jobs:
       - name: Install pkg-config
         run: choco install pkgconfiglite -y
 
-      - name: Cache vcpkg packages
-        uses: actions/cache@v4
+      # Restore and save separately: a plain actions/cache only saves when
+      # the whole job succeeds, so a failing run would rebuild vcpkg next time.
+      - name: Restore vcpkg packages
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}\build\vcpkg_installed
           key: windows-vcpkg-${{ hashFiles('vcpkg.json') }}
@@ -172,6 +175,13 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows `
             -DCMAKE_PREFIX_PATH="${{ steps.qt.outputs.prefix }}"
+
+      - name: Save vcpkg packages
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}\build\vcpkg_installed
+          key: windows-vcpkg-${{ hashFiles('vcpkg.json') }}
 
       - name: Build
         run: cmake --build build --parallel

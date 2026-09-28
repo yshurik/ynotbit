@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(ynotbit VERSION 0.4.8 LANGUAGES C CXX) # the one place the version is set
+project(ynotbit VERSION 0.5.0 LANGUAGES C CXX) # the one place the version is set
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
