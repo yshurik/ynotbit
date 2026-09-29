@@ -24,7 +24,7 @@ def messages():
     for path in sorted(glob.glob(str(ROOT / "src" / "*.cpp"))):
         if pathlib.Path(path).name in SKIP:
             continue
-        for match in CALL.finditer(pathlib.Path(path).read_text()):
+        for match in CALL.finditer(pathlib.Path(path).read_text(encoding="utf-8")):
             text = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', match.group(1)))
             if re.search(r"[A-Za-z]{3}", text) and text not in found:
                 found.append(text)
@@ -48,12 +48,12 @@ def render(found):
 def main():
     text = render(messages())
     if "--check" in sys.argv:
-        if not OUT.exists() or OUT.read_text() != text:
+        if not OUT.exists() or OUT.read_text(encoding="utf-8") != text:
             print(f"{OUT} is out of date; run scripts/update-error-catalog.py", file=sys.stderr)
             return 1
         return 0
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(text)
+    OUT.write_text(text, encoding="utf-8")
     print(OUT)
     return 0
 
