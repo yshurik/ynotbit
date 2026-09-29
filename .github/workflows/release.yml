@@ -197,6 +197,16 @@ jobs:
             -QtBinDir "${{ steps.qt.outputs.prefix }}\bin" `
             -VcpkgBinDir "${{ github.workspace }}\build\vcpkg_installed\x64-windows\bin"
 
+      # Start the app from the unpacked archive: a missing DLL makes Windows
+      # refuse to load it, which a build-tree test would never notice.
+      - name: Smoke-test the package
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "ynotbit-smoke"
+          Expand-Archive "${{ github.workspace }}\ynotbit-windows-x86_64.zip" $dir -Force
+          $data = Join-Path $env:RUNNER_TEMP "ynotbit-smoke-data"
+          $p = Start-Process -FilePath "$dir\ynotbit.exe" -ArgumentList "--offline","--data-dir",$data,"--smoke-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "packaged ynotbit.exe exited with $($p.ExitCode)" }
+
       - uses: actions/upload-artifact@v4
         with:
           name: ynotbit-windows
