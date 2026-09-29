@@ -429,11 +429,20 @@ void paintQuoteBars(QTextEdit *edit) {
         if (!level)
             continue;
         const auto rect = layout->blockBoundingRect(block).translated(offset);
-        if (!rect.intersects(visible))
+        const auto next = block.next();
+        const int nextLevel =
+            next.isValid() ? next.blockFormat().intProperty(QTextFormat::BlockQuoteLevel) : 0;
+        const qreal nextTop =
+            next.isValid() ? layout->blockBoundingRect(next).translated(offset).top() : rect.bottom();
+        if (!QRectF(rect.topLeft(), QPointF(rect.right(), nextTop)).intersects(visible))
             continue;
+        // A bar runs on through the gap to the next block while the quote at
+        // its level continues there, so a quote reads as one strip.
         for (int i = 1; i <= level; ++i)
             p.fillRect(QRectF(doc->documentMargin() + offset.x() + (i - 1) * kQuoteIndent + 2,
-                              rect.top(), 3, rect.height()),
+                              rect.top(), 3,
+                              (nextLevel >= i ? qMax(nextTop, rect.bottom()) : rect.bottom()) -
+                                  rect.top()),
                        quoteColor(i));
     }
 }
@@ -448,22 +457,66 @@ class LetterView : public QTextBrowser {
         paintQuoteBars(this);
     }
 };
+// Markdown with quoting. Qt's Markdown import drops the quote level of
+// headings ("> # Title" comes back as a plain heading), so each run of lines
+// at one quote level is parsed on its own, without its markers, and the level
+// is set on what it produced: quoted headings, lists and emphasis all survive.
 void renderMarkdown(QTextBrowser *body, const QString &text) {
-    body->document()->setLayoutEnabled(false);
-    body->document()->setMarkdown(
-        normalizeQuotes(text),
-        QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
-                                        QTextDocument::MarkdownNoHTML));
-    body->document()->clearUndoRedoStacks();
-    styleQuoteBlocks(body->document());
-    for (auto block = body->document()->begin(); block.isValid(); block = block.next()) {
-        QTextCursor cursor(block);
+    const auto features = QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
+                                                          QTextDocument::MarkdownNoHTML);
+    auto doc = body->document();
+    doc->setLayoutEnabled(false);
+    doc->clear();
+    QTextCursor cursor(doc);
+    bool first = true;
+    auto flush = [&](int level, QStringList &run) {
+        const auto markdown = run.join('\n');
+        run.clear();
+        if (markdown.trimmed().isEmpty())
+            return;
+        if (!first) {
+            cursor.movePosition(QTextCursor::End);
+            cursor.insertBlock(QTextBlockFormat(), QTextCharFormat());
+        }
+        // Parsed apart, then inserted. The run's first block merges into the
+        // (empty) block at the cursor and would take its format, so a
+        // leading heading is restored from the parsed copy.
+        QTextDocument part;
+        part.setMarkdown(toComposerMarkdown(markdown), features);
+        const auto firstFormat = part.begin().blockFormat();
+        const int start = cursor.block().blockNumber();
+        cursor.insertFragment(QTextDocumentFragment(&part));
+        QTextCursor(doc->findBlockByNumber(start)).setBlockFormat(firstFormat);
+        first = false;
+        for (auto block = doc->findBlockByNumber(start); block.isValid(); block = block.next())
+            setQuoteLevel(block, level);
+    };
+    QStringList run;
+    int runLevel = -1;
+    for (const auto &line : normalizeQuotes(text).split('\n')) {
+        int length = 0;
+        const int level = quoteLevel(line, &length);
+        // A blank line between two runs belongs to neither.
+        if (level == 0 && line.trimmed().isEmpty() && runLevel > 0) {
+            run << QString();
+            continue;
+        }
+        if (level != runLevel && runLevel >= 0)
+            flush(runLevel, run);
+        runLevel = level;
+        run << line.mid(length);
+    }
+    if (runLevel >= 0)
+        flush(runLevel, run);
+    doc->clearUndoRedoStacks();
+    for (auto block = doc->begin(); block.isValid(); block = block.next()) {
+        QTextCursor blockCursor(block);
         auto format = block.blockFormat();
         format.setLineHeight(130, QTextBlockFormat::ProportionalHeight);
         format.setBottomMargin(block.textList() ? 3 : 10);
-        cursor.setBlockFormat(format);
+        blockCursor.setBlockFormat(format);
     }
-    body->document()->setLayoutEnabled(true);
+    doc->setLayoutEnabled(true);
     body->moveCursor(QTextCursor::Start);
     body->verticalScrollBar()->setValue(0);
 }
@@ -473,7 +526,9 @@ enum class BodyView { Plain, Text, Markdown, Hex };
 // Headings, paired **bold**/__bold__, `code`, and [text](url) links are
 // specific enough that even one match is enough. Dash and numbered lists are
 // not counted at all: plain-text letters use them all the time.
-bool looksLikeMarkdown(const QString &text) {
+bool looksLikeMarkdown(const QString &source) {
+    // Quoted Markdown counts too: a plain answer to a Markdown letter.
+    const auto text = withoutQuoteMarkers(source);
     static const QRegularExpression heading("^#{1,6}[ \\t]+\\S.*$",
                                             QRegularExpression::MultilineOption);
     static const QRegularExpression bold("\\*\\*[^*\\n]+\\*\\*|__[^_\\n]+__");
@@ -1035,7 +1090,8 @@ class QrCodeView : public QWidget {
 };
 class Composer : public QDialog {
     Session &session_;
-    QString id_, original_;
+    QString id_, original_, quote_;
+    QWidget *quoteBox_ = nullptr;
     QComboBox *sender_;
     QLineEdit *to_, *subject_;
     QPushButton *modePrivate_, *modePublic_;
@@ -1048,6 +1104,11 @@ class Composer : public QDialog {
         if (!dirty_)
             return true;
         auto body = bodyEdited_ ? fromComposerMarkdown(body_->document()->toMarkdown()) : original_;
+        if (!quote_.isEmpty()) {
+            while (body.endsWith('\n'))
+                body.chop(1);
+            body += "\n\n" + quote_;
+        }
         auto id = session_.saveLetter(id_, sender_->currentData().toString(), to_->text(),
                                       subject_->text(), body,
                                       modePublic_->isChecked() ? "broadcast" : "direct");
@@ -1057,6 +1118,7 @@ class Composer : public QDialog {
             return false;
         }
         id_ = id;
+        session_.setDraftQuote(id_, quote_);
         dirty_ = false;
         status_->hide();
         return true;
@@ -1229,14 +1291,25 @@ class Composer : public QDialog {
             original_ = "-- \nsent by ynotbit";
         if (reply) {
             // Email style: room to write at the top, the signature, then the
-            // letter being answered, quoted with ">" under an attribution.
+            // letter being answered, quoted with ">" under an attribution. The
+            // quote is its own pane (below), appended verbatim when saved --
+            // Qt's Markdown export would rewrite it (quoted headings lost their
+            // ">", list items swallowed the next line).
             const auto from = letter["from"].toString();
             const auto name = session_.nameFor(from);
             const auto when = QDateTime::fromSecsSinceEpoch(letter["storedAt"].toLongLong());
-            original_ += "\n\n" +
-                         quoteForReply(letter["body"].toString(),
-                                       DesktopWindow::tr("On %1, %2 wrote:")
-                                           .arg(formatDateTime(when), name.isEmpty() ? from : name));
+            quote_ = quoteForReply(letter["body"].toString(),
+                                   DesktopWindow::tr("On %1, %2 wrote:")
+                                       .arg(formatDateTime(when), name.isEmpty() ? from : name));
+        } else if (!freshLetter) {
+            // A draft reply: split its stored quote back off the body.
+            const auto quote = session_.draftQuote(letter["hash"].toString());
+            if (!quote.isEmpty() && original_.endsWith(quote)) {
+                quote_ = quote;
+                original_.chop(quote.size());
+                while (original_.endsWith('\n'))
+                    original_.chop(1);
+            }
         }
         doc->setMarkdown(toComposerMarkdown(original_),
                          QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
@@ -1263,6 +1336,41 @@ class Composer : public QDialog {
         bodyRow->addWidget(gutter);
         bodyRow->addWidget(body_, 1);
         layout->addLayout(bodyRow, 1);
+        // The letter being answered: read-only, rendered like the reader
+        // (Markdown kept, quote bars), removable.
+        quoteBox_ = new QWidget;
+        quoteBox_->setObjectName("quotePane");
+        auto quoteLayout = new QVBoxLayout(quoteBox_);
+        quoteLayout->setContentsMargins(0, 0, 0, 0);
+        quoteLayout->setSpacing(4);
+        auto quoteHead = new QHBoxLayout;
+        auto quoteTitle = new QLabel(DesktopWindow::tr("Quoted below your reply"));
+        quoteTitle->setStyleSheet("color:palette(mid);font-size:12px;");
+        quoteHead->addWidget(quoteTitle);
+        quoteHead->addStretch();
+        auto removeQuote = new QPushButton(DesktopWindow::tr("Remove quote"));
+        removeQuote->setObjectName("removeQuoteButton");
+        connect(removeQuote, &QPushButton::clicked, this, [this] {
+            quote_.clear();
+            quoteBox_->hide();
+            dirty_ = true;
+            autosave_.start(800);
+        });
+        quoteHead->addWidget(removeQuote);
+        quoteLayout->addLayout(quoteHead);
+        auto quoteView = new LetterView;
+        quoteView->setObjectName("quoteView");
+        quoteView->setDocument(new SafeDocument(quoteView));
+        quoteView->setOpenLinks(false);
+        quoteView->setFrameShape(QFrame::NoFrame);
+        quoteView->setMaximumHeight(180);
+        renderBody(quoteView, quote_,
+                   looksLikeMarkdown(quote_) ? BodyView::Markdown : BodyView::Text);
+        quoteLayout->addWidget(quoteView);
+        quoteBox_->setVisible(!quote_.isEmpty());
+        layout->addWidget(quoteBox_);
+        if (!quote_.isEmpty())
+            resize(width(), height() + 200); // the quote pane gets its own room
         auto icon = [dark](QString name) { return materialIcon(name, iconColor(dark)); };
         auto format = [&](QString iconName, QString objName, QString tip,
                           std::function<void()> fn) {

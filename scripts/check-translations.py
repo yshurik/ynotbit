@@ -18,6 +18,22 @@ def placeholders(text):
     return sorted(re.findall(r"%\d", text or ""))
 
 
+LITERALS = r'("(?:[^"\\]|\\.)*"(?:\s*"(?:[^"\\]|\\.)*")*)'
+MARKED = re.compile(r'(?:\btr\(|QT_TRANSLATE_NOOP3?\("[^"]*",)\s*' + LITERALS, re.S)
+
+
+def source_strings():
+    """Every string the UI sources mark for translation."""
+    found = set()
+    for name in ("desktop_window.cpp", "session.cpp"):
+        text = (ROOT / "src" / name).read_text(encoding="utf-8")
+        for match in MARKED.finditer(text):
+            parts = re.findall(r'"((?:[^"\\]|\\.)*)"', match.group(1))
+            found.add("".join(parts).encode("utf-8").decode("unicode_escape")
+                      .encode("latin-1").decode("utf-8"))
+    return found
+
+
 def main():
     problems = []
     files = sorted((ROOT / "translations").glob("ynotbit_*.ts"))
@@ -35,6 +51,11 @@ def main():
                 problems.append(f"{where} changes placeholders")
             elif text.count("\n") != source.count("\n"):
                 problems.append(f"{where} changes line breaks")
+    # A string added to the code but never extracted would ship in English.
+    if files:
+        extracted = {m.find("source").text for m in ET.parse(files[0]).getroot().iter("message")}
+        for text in sorted(source_strings() - extracted):
+            problems.append(f"{text[:60]!r} is not in the .ts files; run the update_translations target")
     catalogue = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "update-error-catalog.py"), "--check"])
     if catalogue.returncode:

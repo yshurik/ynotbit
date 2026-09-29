@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE TS>
 <TS version="2.1" language="ko">
 <context>
@@ -96,7 +96,7 @@
         <translation>공개 편지</translation>
     </message>
     <message>
-        <source>Encrypted to the channel&apos;s shared address. Anyone who knows the channel phrase can read it.</source>
+        <source>Encrypted to the channel's shared address. Anyone who knows the channel phrase can read it.</source>
         <translation>채널의 공유 주소로 암호화됩니다. 채널 문구를 아는 사람은 누구나 읽을 수 있습니다.</translation>
     </message>
     <message>
@@ -104,7 +104,7 @@
         <translation>한 명의 받는 사람에게 암호화됩니다. 그 사람만 읽을 수 있습니다.</translation>
     </message>
     <message>
-        <source>Sent as the channel to everyone subscribed. Your own identity isn&apos;t revealed.</source>
+        <source>Sent as the channel to everyone subscribed. Your own identity isn't revealed.</source>
         <translation>채널 이름으로 모든 구독자에게 보냅니다. 내 신원은 드러나지 않습니다.</translation>
     </message>
     <message>
@@ -160,7 +160,7 @@
         <translation>https:// 주소</translation>
     </message>
     <message>
-        <source>Images aren&apos;t supported — remote images are never loaded, for privacy</source>
+        <source>Images aren't supported — remote images are never loaded, for privacy</source>
         <translation>이미지는 지원하지 않습니다 — 개인정보 보호를 위해 원격 이미지는 절대 불러오지 않습니다</translation>
     </message>
     <message>
@@ -753,6 +753,18 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Cancelled</source>
         <comment>delivery state</comment>
         <translation>취소됨</translation>
+    </message>
+    <message>
+        <source>On %1, %2 wrote:</source>
+        <translation>%1, %2 님이 작성:</translation>
+    </message>
+    <message>
+        <source>Quoted below your reply</source>
+        <translation>답장 아래에 인용됩니다</translation>
+    </message>
+    <message>
+        <source>Remove quote</source>
+        <translation>인용 삭제</translation>
     </message>
 </context>
 <context>

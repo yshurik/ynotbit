@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE TS>
 <TS version="2.1" language="ru">
 <context>
@@ -96,7 +96,7 @@
         <translation>Публичное письмо</translation>
     </message>
     <message>
-        <source>Encrypted to the channel&apos;s shared address. Anyone who knows the channel phrase can read it.</source>
+        <source>Encrypted to the channel's shared address. Anyone who knows the channel phrase can read it.</source>
         <translation>Зашифровано для общего адреса канала. Прочитать сможет любой, кто знает фразу канала.</translation>
     </message>
     <message>
@@ -104,7 +104,7 @@
         <translation>Зашифровано для одного получателя. Прочитать сможет только он.</translation>
     </message>
     <message>
-        <source>Sent as the channel to everyone subscribed. Your own identity isn&apos;t revealed.</source>
+        <source>Sent as the channel to everyone subscribed. Your own identity isn't revealed.</source>
         <translation>Отправляется от имени канала всем подписчикам. Ваша идентичность не раскрывается.</translation>
     </message>
     <message>
@@ -160,7 +160,7 @@
         <translation>Адрес https://</translation>
     </message>
     <message>
-        <source>Images aren&apos;t supported — remote images are never loaded, for privacy</source>
+        <source>Images aren't supported — remote images are never loaded, for privacy</source>
         <translation>Изображения не поддерживаются — удалённые картинки никогда не загружаются ради приватности</translation>
     </message>
     <message>
@@ -753,6 +753,18 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Cancelled</source>
         <comment>delivery state</comment>
         <translation>Отменено</translation>
+    </message>
+    <message>
+        <source>On %1, %2 wrote:</source>
+        <translation>%1, %2 пишет:</translation>
+    </message>
+    <message>
+        <source>Quoted below your reply</source>
+        <translation>Цитируется под вашим ответом</translation>
+    </message>
+    <message>
+        <source>Remove quote</source>
+        <translation>Убрать цитату</translation>
     </message>
 </context>
 <context>

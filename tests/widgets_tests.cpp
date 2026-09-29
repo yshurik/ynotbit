@@ -916,8 +916,13 @@ int main(int argc, char **argv) {
                         "the subject is not prefixed twice");
                 require(body->toPlainText().startsWith("\n\n--\nsent by ynotbit"),
                         "the reply starts with room to write, then the signature");
+                // The answered letter is its own read-only pane under the editor.
+                auto quotePane = dialog->findChild<QTextBrowser *>("quoteView");
+                require(quotePane && quotePane->isVisibleTo(dialog),
+                        "the quoted letter is shown below the reply");
                 QMap<QString, int> quotedLevels;
-                for (auto block = body->document()->begin(); block.isValid(); block = block.next())
+                for (auto block = quotePane->document()->begin(); block.isValid();
+                     block = block.next())
                     quotedLevels[block.text()] =
                         block.blockFormat().intProperty(QTextFormat::BlockQuoteLevel);
                 bool attributed = false;
@@ -939,10 +944,104 @@ int main(int argc, char **argv) {
                     replyBody = session.message(m.toMap()["hash"].toString())["body"].toString();
             require(replyBody.contains("-- \nsent by ynotbit") && !replyBody.contains("\\--"),
                     "the saved reply keeps a proper \"-- \" signature delimiter");
-            require(replyBody.contains("> go offline") && replyBody.contains("> > What happened?") &&
-                        replyBody.contains("> > > We have zero working bootstrap addresses."),
-                    "the saved reply quotes with \">\", nested per level");
+            require(replyBody.contains("\n> go offline") && replyBody.contains("\n>> What happened?") &&
+                        replyBody.contains("\n>>> We have zero working bootstrap addresses."),
+                    "the saved reply quotes with \">\", nested per level, exactly as shown");
             session.moveLetter(threaded, "Trash");
+            QCoreApplication::processEvents();
+        }
+        {
+            // --- A Markdown letter, answered in plain words: the quoted part
+            // keeps its Markdown (headings, bold, lists) on the quote tint. ---
+            const auto notes = session.saveLetter(
+                {}, address, address, "Release notes",
+                "# Release notes\n\n## What changed\n\nThe **address book** is here.\n\n"
+                "- contacts page\n- one-click add\n\nThanks!",
+                "direct");
+            QTimer::singleShot(30, &window, [&] {
+                auto dialog = window.findChild<QDialog *>("composer");
+                QTest::keyClicks(dialog->findChild<QTextEdit *>("bodyField"), "Thanks, noted.");
+                dialog->findChild<QPushButton *>("saveDraftButton")->click();
+            });
+            window.compose(session.message(notes), true);
+            QCoreApplication::processEvents();
+            QString replyId;
+            for (auto m : session.messagePage("Drafts", {}, 0, 100))
+                if (m.toMap()["preview"].toString().startsWith("Thanks, noted."))
+                    replyId = m.toMap()["hash"].toString();
+            require(!replyId.isEmpty(), "the reply to the Markdown letter was saved");
+            const auto replyBody = session.message(replyId)["body"].toString();
+            require(replyBody.contains("> # Release notes") && replyBody.contains("> ## What changed") &&
+                        replyBody.contains("> The **address book** is here.") &&
+                        replyBody.contains("> - contacts page"),
+                    "the reply quotes the Markdown source itself, every line behind \">\"");
+            window.selectMessage(replyId);
+            QCoreApplication::processEvents();
+            auto views = window.findChild<QWidget *>("viewSwitch");
+            require(views->findChild<QToolButton *>("view_markdown")->isChecked(),
+                    "a plain answer quoting a Markdown letter still opens as Markdown");
+            auto reader = window.findChild<QTextBrowser *>("readerBody");
+            auto blockFor = [&](const QString &text) {
+                for (auto block = reader->document()->begin(); block.isValid(); block = block.next())
+                    if (block.text() == text)
+                        return block;
+                return QTextBlock();
+            };
+            const auto level = [](const QTextBlock &block) {
+                return block.blockFormat().intProperty(QTextFormat::BlockQuoteLevel);
+            };
+            const auto own = blockFor("Thanks, noted.");
+            require(own.isValid() && level(own) == 0 && !own.blockFormat().background().style(),
+                    "the reply's own words are unquoted, on the plain background");
+            const auto h1 = blockFor("Release notes"), h2 = blockFor("What changed");
+            require(h1.isValid() && h1.blockFormat().headingLevel() == 1 && level(h1) == 1,
+                    "a quoted # heading is still a level-1 heading, inside the quote");
+            require(h2.isValid() && h2.blockFormat().headingLevel() == 2 && level(h2) == 1,
+                    "a quoted ## heading is still a level-2 heading, inside the quote");
+            require(h1.blockFormat().background().color().alpha() > 0,
+                    "quoted blocks sit on the quote tint");
+            const auto paragraph = blockFor("The address book is here.");
+            bool bold = false;
+            for (auto it = paragraph.begin(); !it.atEnd(); ++it)
+                if (it.fragment().text() == "address book")
+                    bold = it.fragment().charFormat().fontWeight() >= QFont::Bold;
+            require(paragraph.isValid() && level(paragraph) == 1 && bold,
+                    "quoted **bold** still renders bold");
+            const auto item = blockFor("contacts page");
+            require(item.isValid() && item.textList() && level(item) == 1,
+                    "a quoted list is still a list");
+            require(blockFor("Thanks!").isValid() && !blockFor("Thanks!").textList() &&
+                        level(blockFor("Thanks!")) == 1,
+                    "the quoted paragraph after the list stays a paragraph");
+            require(blockFor("sent by ynotbit").isValid() && blockFor("--").isValid(),
+                    "the signature keeps its delimiter line in the Markdown view");
+            // Reopening the draft: the quote goes back to its pane, untouched.
+            QTimer::singleShot(30, &window, [&] {
+                auto dialog = window.findChild<QDialog *>("composer");
+                auto editor = dialog->findChild<QTextEdit *>("bodyField");
+                auto pane = dialog->findChild<QTextBrowser *>("quoteView");
+                require(!editor->toPlainText().contains("Release notes") && pane &&
+                            pane->isVisibleTo(dialog) && pane->toPlainText().contains("Release notes"),
+                        "a reopened reply draft shows its quote in the quote pane, not the editor");
+                dialog->findChild<QPushButton *>("saveDraftButton")->click();
+            });
+            window.compose({{"hash", replyId}});
+            QCoreApplication::processEvents();
+            require(session.message(replyId)["body"].toString() == replyBody,
+                    "saving the reopened draft keeps the body byte for byte");
+            {
+                const auto rect = reader->document()->documentLayout()->blockBoundingRect(h1);
+                const auto image = reader->viewport()->grab().toImage();
+                const auto pixel = image.pixelColor(
+                    int(reader->document()->documentMargin()) + 3,
+                    int(rect.center().y()) - reader->verticalScrollBar()->value());
+                const QColor bar("#4a8fd6");
+                require(qAbs(pixel.red() - bar.red()) + qAbs(pixel.green() - bar.green()) +
+                                qAbs(pixel.blue() - bar.blue()) < 24,
+                        "the quote bar runs beside the quoted heading");
+            }
+            session.moveLetter(notes, "Trash");
+            session.moveLetter(replyId, "Trash");
             QCoreApplication::processEvents();
         }
         const auto longBody =

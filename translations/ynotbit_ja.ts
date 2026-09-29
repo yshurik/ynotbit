@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE TS>
 <TS version="2.1" language="ja">
 <context>
@@ -96,7 +96,7 @@
         <translation>公開メール</translation>
     </message>
     <message>
-        <source>Encrypted to the channel&apos;s shared address. Anyone who knows the channel phrase can read it.</source>
+        <source>Encrypted to the channel's shared address. Anyone who knows the channel phrase can read it.</source>
         <translation>チャンネルの共有アドレス宛てに暗号化されます。チャンネルのフレーズを知っている人なら誰でも読めます。</translation>
     </message>
     <message>
@@ -104,7 +104,7 @@
         <translation>1 人の受信者宛てに暗号化されます。その人だけが読めます。</translation>
     </message>
     <message>
-        <source>Sent as the channel to everyone subscribed. Your own identity isn&apos;t revealed.</source>
+        <source>Sent as the channel to everyone subscribed. Your own identity isn't revealed.</source>
         <translation>チャンネル名義で購読者全員に送信されます。あなた自身の ID は明かされません。</translation>
     </message>
     <message>
@@ -160,7 +160,7 @@
         <translation>https:// アドレス</translation>
     </message>
     <message>
-        <source>Images aren&apos;t supported — remote images are never loaded, for privacy</source>
+        <source>Images aren't supported — remote images are never loaded, for privacy</source>
         <translation>画像には対応していません — プライバシーのため、リモート画像は読み込まれません</translation>
     </message>
     <message>
@@ -753,6 +753,18 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Cancelled</source>
         <comment>delivery state</comment>
         <translation>キャンセル済み</translation>
+    </message>
+    <message>
+        <source>On %1, %2 wrote:</source>
+        <translation>%1、%2 さんは書きました:</translation>
+    </message>
+    <message>
+        <source>Quoted below your reply</source>
+        <translation>返信の下に引用されます</translation>
+    </message>
+    <message>
+        <source>Remove quote</source>
+        <translation>引用を削除</translation>
     </message>
 </context>
 <context>

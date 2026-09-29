@@ -11,6 +11,8 @@ bool isPyBitmessageSeparator(const QString &line);
 // count), and optionally how many characters they take, including the one
 // space after the last marker.
 int quoteLevel(const QString &line, int *markerLength = nullptr);
+// The body with every line's leading ">" markers removed.
+QString withoutQuoteMarkers(const QString &body);
 // Whether a letter quotes anything, either way.
 bool hasQuoting(const QString &body);
 // The body with PyBitmessage's separator-stacked history rewritten as ">"

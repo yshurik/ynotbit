@@ -24,6 +24,15 @@ int quoteLevel(const QString &line, int *markerLength) {
         *markerLength = end;
     return level;
 }
+QString withoutQuoteMarkers(const QString &body) {
+    auto lines = body.split('\n');
+    for (auto &line : lines) {
+        int length = 0;
+        if (quoteLevel(line, &length))
+            line = line.mid(length);
+    }
+    return lines.join('\n');
+}
 bool hasQuoting(const QString &body) {
     for (const auto &line : body.split('\n'))
         if (quoteLevel(line) > 0 || isPyBitmessageSeparator(line))

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_TW">
 <context>
@@ -96,7 +96,7 @@
         <translation>公開郵件</translation>
     </message>
     <message>
-        <source>Encrypted to the channel&apos;s shared address. Anyone who knows the channel phrase can read it.</source>
+        <source>Encrypted to the channel's shared address. Anyone who knows the channel phrase can read it.</source>
         <translation>使用頻道的共享地址加密。任何知道頻道通關密語的人都能閱讀。</translation>
     </message>
     <message>
@@ -104,7 +104,7 @@
         <translation>為單個收件人加密。只有對方能閱讀。</translation>
     </message>
     <message>
-        <source>Sent as the channel to everyone subscribed. Your own identity isn&apos;t revealed.</source>
+        <source>Sent as the channel to everyone subscribed. Your own identity isn't revealed.</source>
         <translation>以頻道名義傳送給所有訂閱者。不會暴露你自己的身分。</translation>
     </message>
     <message>
@@ -160,7 +160,7 @@
         <translation>https:// 地址</translation>
     </message>
     <message>
-        <source>Images aren&apos;t supported — remote images are never loaded, for privacy</source>
+        <source>Images aren't supported — remote images are never loaded, for privacy</source>
         <translation>不支援圖片——為保護隱私，從不載入遠端圖片</translation>
     </message>
     <message>
@@ -753,6 +753,18 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Cancelled</source>
         <comment>delivery state</comment>
         <translation>已取消</translation>
+    </message>
+    <message>
+        <source>On %1, %2 wrote:</source>
+        <translation>%2 於 %1 寫道：</translation>
+    </message>
+    <message>
+        <source>Quoted below your reply</source>
+        <translation>引用內容附在你的回覆下方</translation>
+    </message>
+    <message>
+        <source>Remove quote</source>
+        <translation>移除引用</translation>
     </message>
 </context>
 <context>
