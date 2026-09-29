@@ -862,6 +862,89 @@ int main(int argc, char **argv) {
             session.moveLetter(toAlice, "Trash");
             QCoreApplication::processEvents();
         }
+        {
+            // --- Quoting: reading ">" and PyBitmessage history, replying ---
+            const QString dashes(54, '-');
+            const auto threaded = session.saveLetter(
+                {}, address, address, "Re: bootstrap",
+                "go offline\n\n" + dashes + "\nWhat happened?\n\n" + dashes +
+                    "\nWe have zero working bootstrap addresses.",
+                "direct");
+            window.selectMessage(threaded);
+            QCoreApplication::processEvents();
+            auto reader = window.findChild<QTextBrowser *>("readerBody");
+            auto views = window.findChild<QWidget *>("viewSwitch");
+            require(views->findChild<QToolButton *>("view_text")->isChecked(),
+                    "a letter with quoted history opens in Text view, with quote bars");
+            QCoreApplication::processEvents();
+            QMap<QString, int> levels;
+            for (auto block = reader->document()->begin(); block.isValid(); block = block.next())
+                levels[block.text()] = block.blockFormat().intProperty(QTextFormat::BlockQuoteLevel);
+            require(levels.value("go offline") == 0 && levels.value("What happened?") == 1 &&
+                        levels.value("We have zero working bootstrap addresses.") == 2,
+                    "Text view shows PyBitmessage's dash-separated history as quote levels");
+            require(!reader->toPlainText().contains(dashes) && !reader->toPlainText().contains('>'),
+                    "separators and markers give way to the quote bars");
+            {
+                // The level-1 bar is painted in its colour beside the quoted line.
+                QTextBlock quoted;
+                for (auto block = reader->document()->begin(); block.isValid(); block = block.next())
+                    if (block.text() == "What happened?")
+                        quoted = block;
+                const auto rect = reader->document()->documentLayout()->blockBoundingRect(quoted);
+                const auto image = reader->viewport()->grab().toImage();
+                const int x = int(reader->document()->documentMargin()) + 3;
+                const int y = int(rect.center().y()) - reader->verticalScrollBar()->value();
+                const auto pixel = image.pixelColor(x * image.devicePixelRatio(),
+                                                    y * image.devicePixelRatio());
+                // Exactly the bar colour: a hue check alone also matches the dark
+                // theme's bluish background.
+                const QColor bar("#4a8fd6");
+                require(qAbs(pixel.red() - bar.red()) + qAbs(pixel.green() - bar.green()) +
+                                qAbs(pixel.blue() - bar.blue()) < 24,
+                        "a coloured bar marks the quoted block");
+            }
+            views->findChild<QToolButton *>("view_plain")->click();
+            QCoreApplication::processEvents();
+            require(reader->toPlainText().contains(dashes),
+                    "Plain view keeps the raw text, separators included");
+            // Replying quotes the letter email-style, one level deeper.
+            QTimer::singleShot(30, &window, [&] {
+                auto dialog = window.findChild<QDialog *>("composer");
+                auto body = dialog->findChild<QTextEdit *>("bodyField");
+                require(dialog->findChild<QLineEdit *>("subjectField")->text() == "Re: bootstrap",
+                        "the subject is not prefixed twice");
+                require(body->toPlainText().startsWith("\n\n--\nsent by ynotbit"),
+                        "the reply starts with room to write, then the signature");
+                QMap<QString, int> quotedLevels;
+                for (auto block = body->document()->begin(); block.isValid(); block = block.next())
+                    quotedLevels[block.text()] =
+                        block.blockFormat().intProperty(QTextFormat::BlockQuoteLevel);
+                bool attributed = false;
+                for (auto it = quotedLevels.cbegin(); it != quotedLevels.cend(); ++it)
+                    attributed |= it.key().endsWith(" wrote:") && it.value() == 0;
+                require(attributed, "an attribution line introduces the quote");
+                require(quotedLevels.value("go offline") == 1 &&
+                            quotedLevels.value("What happened?") == 2 &&
+                            quotedLevels.value("We have zero working bootstrap addresses.") == 3,
+                        "the answered letter is quoted one level deeper, history deeper still");
+                QTest::keyClicks(body, "Agreed.");
+                dialog->findChild<QPushButton *>("saveDraftButton")->click();
+            });
+            window.compose(session.message(threaded), true);
+            QCoreApplication::processEvents();
+            QString replyBody;
+            for (auto m : session.messagePage("Drafts", {}, 0, 100))
+                if (m.toMap()["preview"].toString().startsWith("Agreed."))
+                    replyBody = session.message(m.toMap()["hash"].toString())["body"].toString();
+            require(replyBody.contains("-- \nsent by ynotbit") && !replyBody.contains("\\--"),
+                    "the saved reply keeps a proper \"-- \" signature delimiter");
+            require(replyBody.contains("> go offline") && replyBody.contains("> > What happened?") &&
+                        replyBody.contains("> > > We have zero working bootstrap addresses."),
+                    "the saved reply quotes with \">\", nested per level");
+            session.moveLetter(threaded, "Trash");
+            QCoreApplication::processEvents();
+        }
         const auto longBody =
             session.saveLetter({}, address, address, "Long body letter", QString(3000, 'z'), "direct");
         window.selectMessage(longBody);
@@ -899,8 +982,9 @@ int main(int argc, char **argv) {
             auto sigBody = dialog->findChild<QTextEdit *>("bodyField");
             require(sigBody->toPlainText().contains("ynotbit"),
                     "a brand-new letter is pre-filled with a default signature");
-            require(sigBody->toPlainText().startsWith("\n\n-- "),
-                    "two blank lines separate the cursor position from the signature");
+            require(sigBody->toPlainText().startsWith("\n\n--\nsent by ynotbit"),
+                    "two blank lines separate the cursor position from the signature, whose "
+                    "\"-- \" delimiter keeps its own line");
             require(sigBody->textCursor().position() == 0,
                     "the cursor starts on the first blank line, not inside the signature");
             dialog->reject();

@@ -1,6 +1,7 @@
 #include "desktop_window.h"
 #include "session.h"
 #include "i18n.h"
+#include "quoting.h"
 #include "qrcodegen.hpp"
 #include <QCryptographicHash>
 #include <QDesktopServices>
@@ -66,10 +67,24 @@ QString hexDump(const QByteArray &bytes) {
     return out;
 }
 namespace {
+// Quoted history, email style: each level indented one step and marked by a
+// coloured bar (blue, green, amber, violet, repeating), over a faint tint of
+// the same colour. Mid-tone colours read on both light and dark themes.
+constexpr int kQuoteIndent = 14;
+QColor quoteColor(int level) {
+    static const QColor colors[] = {"#4a8fd6", "#3fa46a", "#c98a1e", "#9a63c9"};
+    return colors[(level - 1) % 4];
+}
 class AddressHighlighter : public QSyntaxHighlighter {
   public:
     explicit AddressHighlighter(QTextDocument *document) : QSyntaxHighlighter(document) {}
     void highlightBlock(const QString &text) override {
+        // Raw ">" quoting (the Plain view) in its level's colour.
+        if (const int level = quoteLevel(text)) {
+            QTextCharFormat quoted;
+            quoted.setForeground(quoteColor(level));
+            setFormat(0, text.size(), quoted);
+        }
         static const QRegularExpression address("\\bBM-[1-9A-HJ-NP-Za-km-z]{20,50}\\b");
         QTextCharFormat format;
         format.setFontFamilies(addressFont().families());
@@ -368,12 +383,79 @@ QPushButton *button(QString text, QBoxLayout *layout, std::function<void()> fn) 
     QObject::connect(b, &QPushButton::clicked, b, std::move(fn));
     return b;
 }
+// Sets a block's quote level and gives it the indent and tint the bars need.
+void setQuoteLevel(QTextBlock block, int level) {
+    auto format = block.blockFormat();
+    format.setProperty(QTextFormat::BlockQuoteLevel, level);
+    format.setLeftMargin(level * kQuoteIndent + (level ? 6 : 0));
+    if (level) {
+        auto tint = quoteColor(level);
+        tint.setAlpha(22);
+        format.setBackground(tint);
+    } else {
+        format.clearBackground();
+    }
+    QTextCursor(block).setBlockFormat(format);
+}
+// Re-styles every block the Markdown parser marked as quoted.
+void styleQuoteBlocks(QTextDocument *doc) {
+    for (auto block = doc->begin(); block.isValid(); block = block.next())
+        if (const int level = block.blockFormat().intProperty(QTextFormat::BlockQuoteLevel))
+            setQuoteLevel(block, level);
+}
+// Plain text with ">" quoting: the markers become block quote levels.
+void quotesToBlocks(QTextDocument *doc) {
+    for (auto block = doc->begin(); block.isValid(); block = block.next()) {
+        int length = 0;
+        const int level = quoteLevel(block.text(), &length);
+        if (!level)
+            continue;
+        QTextCursor cursor(block);
+        cursor.setPosition(block.position() + length, QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+        setQuoteLevel(block, level);
+    }
+}
+// The bars, painted over the viewport of a text view after its text.
+void paintQuoteBars(QTextEdit *edit) {
+    QPainter p(edit->viewport());
+    const auto doc = edit->document();
+    const auto layout = doc->documentLayout();
+    const QPointF offset(-edit->horizontalScrollBar()->value(),
+                         -edit->verticalScrollBar()->value());
+    const auto visible = QRectF(edit->viewport()->rect());
+    for (auto block = doc->begin(); block.isValid(); block = block.next()) {
+        const int level = block.blockFormat().intProperty(QTextFormat::BlockQuoteLevel);
+        if (!level)
+            continue;
+        const auto rect = layout->blockBoundingRect(block).translated(offset);
+        if (!rect.intersects(visible))
+            continue;
+        for (int i = 1; i <= level; ++i)
+            p.fillRect(QRectF(doc->documentMargin() + offset.x() + (i - 1) * kQuoteIndent + 2,
+                              rect.top(), 3, rect.height()),
+                       quoteColor(i));
+    }
+}
+// A letter view: a text browser that draws quote bars.
+class LetterView : public QTextBrowser {
+  public:
+    using QTextBrowser::QTextBrowser;
+
+  protected:
+    void paintEvent(QPaintEvent *event) override {
+        QTextBrowser::paintEvent(event);
+        paintQuoteBars(this);
+    }
+};
 void renderMarkdown(QTextBrowser *body, const QString &text) {
     body->document()->setLayoutEnabled(false);
     body->document()->setMarkdown(
-        text, QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
-                                              QTextDocument::MarkdownNoHTML));
+        normalizeQuotes(text),
+        QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
+                                        QTextDocument::MarkdownNoHTML));
     body->document()->clearUndoRedoStacks();
+    styleQuoteBlocks(body->document());
     for (auto block = body->document()->begin(); block.isValid(); block = block.next()) {
         QTextCursor cursor(block);
         auto format = block.blockFormat();
@@ -405,6 +487,9 @@ BodyView detectBodyView(const QString &subject, const QString &text) {
         return BodyView::Hex;
     if (looksLikeMarkdown(text))
         return BodyView::Markdown;
+    // Quoted replies read best with their quote bars.
+    if (hasQuoting(text))
+        return BodyView::Text;
     return BodyView::Plain;
 }
 void renderBody(QTextBrowser *body, const QString &text, BodyView mode) {
@@ -417,7 +502,13 @@ void renderBody(QTextBrowser *body, const QString &text, BodyView mode) {
         renderMarkdown(body, text);
         return;
     }
-    body->setPlainText(mode == BodyView::Hex ? hexDump(text.toUtf8()) : text);
+    // Text shows quoting as bars (PyBitmessage's dash-separated history too);
+    // Plain keeps the raw ">" lines, coloured by level, and Hex the bytes.
+    body->setPlainText(mode == BodyView::Hex    ? hexDump(text.toUtf8())
+                       : mode == BodyView::Text ? normalizeQuotes(text)
+                                                : text);
+    if (mode == BodyView::Text)
+        quotesToBlocks(body->document());
     body->moveCursor(QTextCursor::Start);
     body->verticalScrollBar()->setValue(0);
 }
@@ -791,6 +882,10 @@ class MarkdownEdit : public QTextEdit {
     using QTextEdit::QTextEdit;
 
   protected:
+    void paintEvent(QPaintEvent *event) override {
+        QTextEdit::paintEvent(event);
+        paintQuoteBars(this);
+    }
     void keyPressEvent(QKeyEvent *event) override {
         if (event->key() == Qt::Key_Space && tryAutoFormat())
             return;
@@ -952,7 +1047,7 @@ class Composer : public QDialog {
     bool save() {
         if (!dirty_)
             return true;
-        auto body = bodyEdited_ ? body_->document()->toMarkdown() : original_;
+        auto body = bodyEdited_ ? fromComposerMarkdown(body_->document()->toMarkdown()) : original_;
         auto id = session_.saveLetter(id_, sender_->currentData().toString(), to_->text(),
                                       subject_->text(), body,
                                       modePublic_->isChecked() ? "broadcast" : "direct");
@@ -1132,9 +1227,21 @@ class Composer : public QDialog {
         const bool freshLetter = reply || letter["hash"].toString().isEmpty();
         if (freshLetter)
             original_ = "-- \nsent by ynotbit";
-        doc->setMarkdown(original_,
+        if (reply) {
+            // Email style: room to write at the top, the signature, then the
+            // letter being answered, quoted with ">" under an attribution.
+            const auto from = letter["from"].toString();
+            const auto name = session_.nameFor(from);
+            const auto when = QDateTime::fromSecsSinceEpoch(letter["storedAt"].toLongLong());
+            original_ += "\n\n" +
+                         quoteForReply(letter["body"].toString(),
+                                       DesktopWindow::tr("On %1, %2 wrote:")
+                                           .arg(formatDateTime(when), name.isEmpty() ? from : name));
+        }
+        doc->setMarkdown(toComposerMarkdown(original_),
                          QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
                                                          QTextDocument::MarkdownNoHTML));
+        styleQuoteBlocks(doc);
         if (freshLetter) {
             // Leading blank lines in the markdown source get collapsed by the
             // parser, so the separator has to be inserted as real blocks instead.
@@ -1308,7 +1415,7 @@ class Composer : public QDialog {
             dirty_ = true;
             if (save())
                 accept();
-        });
+        })->setObjectName("saveDraftButton");
         auto send = button(DesktopWindow::tr("Send"), actions, [this] {
             dirty_ = true;
             if (save() && session_.sendLetter(id_))
@@ -1555,7 +1662,7 @@ class MessageWindow : public QDialog {
         addresses->setWordWrap(true);
         addresses->setTextInteractionFlags(Qt::TextSelectableByMouse);
         frame->addWidget(addresses);
-        auto body = new QTextBrowser;
+        auto body = new LetterView;
         body->setObjectName("windowBody");
         body->setDocument(new SafeDocument(body));
         new AddressHighlighter(body->document());
@@ -1960,7 +2067,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     metadata->addWidget(timeline_, 4, 0, 1, 3);
     details_->hide();
     frame->addWidget(details_);
-    body_ = new QTextBrowser;
+    body_ = new LetterView;
     body_->setObjectName("readerBody");
     body_->setDocument(new SafeDocument(body_));
     new AddressHighlighter(body_->document());
