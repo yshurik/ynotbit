@@ -3,7 +3,7 @@ project(ynotbit VERSION 0.5.0 LANGUAGES C CXX) # the one place the version is se
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Network Test)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Network Test LinguistTools)
 # Qt 6.8 references AGL, which Apple removed from the macOS 26 SDK.
 # The Widgets desktop does not use this obsolete framework.
 if(APPLE AND CMAKE_OSX_SYSROOT MATCHES "MacOSX26")
@@ -77,7 +77,7 @@ else()
  target_compile_definitions(notbit_engine PRIVATE _GNU_SOURCE)
  target_compile_options(notbit_engine PRIVATE -Wno-deprecated-declarations -include sys/types.h)
 endif()
-qt_add_executable(ynotbit MACOSX_BUNDLE src/main.cpp src/session.cpp src/session.h
+qt_add_executable(ynotbit MACOSX_BUNDLE src/main.cpp src/i18n.cpp src/i18n.h src/session.cpp src/session.h
  assets/icons.qrc
  src/portable_relay.cpp src/portable_relay.h src/appearance.cpp src/appearance.h
  src/desktop_window.cpp src/desktop_window.h src/message_model.cpp src/message_model.h
@@ -130,7 +130,7 @@ if(Python3_Interpreter_FOUND)
 endif()
 add_test(NAME gui-smoke COMMAND ynotbit --offline --data-dir ${CMAKE_CURRENT_BINARY_DIR}/smoke-node --smoke-test)
 set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-qt_add_executable(desktop_tests tests/widgets_tests.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/appearance.cpp src/appearance.h
+qt_add_executable(desktop_tests tests/widgets_tests.cpp src/i18n.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/appearance.cpp src/appearance.h
  assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(desktop_tests PRIVATE third_party/qrcodegen)
@@ -140,7 +140,7 @@ set_tests_properties(desktop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" 
 # README screenshots from demo data; built only on request:
 #   cmake --build build --target readme_screenshots && build/readme_screenshots docs/images
 qt_add_executable(readme_screenshots EXCLUDE_FROM_ALL tools/readme_screenshots.cpp
- src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp
+ src/i18n.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp
  src/desktop_window.h src/appearance.cpp src/appearance.h assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(readme_screenshots PRIVATE third_party/qrcodegen)
@@ -161,3 +161,45 @@ set_tests_properties(delivery PROPERTIES TIMEOUT 120)
 add_executable(netaddress_tests tests/netaddress_tests.cpp)
 target_link_libraries(netaddress_tests PRIVATE notbit_codec)
 add_test(NAME netaddress COMMAND netaddress_tests)
+
+# --- Interface translations ---------------------------------------------------
+# translations/ynotbit_<lang>.ts hold the translations; `cmake --build build
+# --target update_translations` refreshes them from the sources (including the
+# storage/protocol error catalogue). Compiled .qm files, plus Qt's own qtbase
+# translations for standard buttons and dialogs, are embedded under :/i18n.
+set(YNOTBIT_LANGUAGES zh_CN zh_TW ja ko ru uk)
+set(YNOTBIT_TS_FILES)
+foreach(lang IN LISTS YNOTBIT_LANGUAGES)
+ list(APPEND YNOTBIT_TS_FILES ${CMAKE_CURRENT_SOURCE_DIR}/translations/ynotbit_${lang}.ts)
+endforeach()
+qt_add_lupdate(TS_FILES ${YNOTBIT_TS_FILES}
+ SOURCES src/desktop_window.cpp src/session.cpp src/i18n/error_catalog.cpp
+ LUPDATE_TARGET update_translations
+ OPTIONS -no-obsolete -locations none)
+qt_add_lrelease(TS_FILES ${YNOTBIT_TS_FILES} QM_FILES_OUTPUT_VARIABLE YNOTBIT_QM_FILES
+ LRELEASE_TARGET ynotbit_lrelease)
+set(QT_BASE_QM_FILES)
+foreach(lang IN LISTS YNOTBIT_LANGUAGES)
+ set(qm "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_TRANSLATIONS}/qtbase_${lang}.qm")
+ if(EXISTS "${qm}")
+  list(APPEND QT_BASE_QM_FILES "${qm}")
+ else()
+  message(WARNING "Qt translation not found, standard dialogs stay English: ${qm}")
+ endif()
+endforeach()
+qt_add_executable(i18n_tests tests/i18n_tests.cpp src/i18n.cpp src/i18n.h)
+target_include_directories(i18n_tests PRIVATE src)
+target_link_libraries(i18n_tests PRIVATE Qt6::Core)
+add_test(NAME i18n COMMAND i18n_tests)
+if(Python3_Interpreter_FOUND)
+ add_test(NAME translations COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-translations.py)
+endif()
+foreach(target ynotbit desktop_tests readme_screenshots i18n_tests)
+ add_dependencies(${target} ynotbit_lrelease)
+ qt_add_resources(${target} "ynotbit_translations" PREFIX "/i18n"
+  BASE "${CMAKE_CURRENT_BINARY_DIR}" FILES ${YNOTBIT_QM_FILES})
+ if(QT_BASE_QM_FILES)
+  qt_add_resources(${target} "qt_translations" PREFIX "/i18n"
+   BASE "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_TRANSLATIONS}" FILES ${QT_BASE_QM_FILES})
+ endif()
+endforeach()

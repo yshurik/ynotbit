@@ -237,11 +237,21 @@ int main(int argc, char **argv) {
                 return window.findChild<QToolButton *>(id)->icon().pixmap(12, 12).toImage();
             };
             auto themeTo = [&](const char *mode) {
-                for (auto a : window.findChildren<QAction *>())
-                    if (a->text() == mode)
-                        a->trigger();
+                window.findChild<QAction *>(QString("appearance_") + mode)->trigger();
             };
             themeTo("light");
+            {
+                auto language = window.findChild<QMenu *>("languageMenu");
+                auto appearance =
+                    window.findChild<QAction *>("appearance_light")->associatedObjects();
+                bool underAppearance = false;
+                for (auto owner : appearance)
+                    if (auto menu = qobject_cast<QMenu *>(owner))
+                        underAppearance |= menu->actions().contains(language->menuAction());
+                require(underAppearance &&
+                            !window.menuBar()->actions().contains(language->menuAction()),
+                        "Language is a submenu of Appearance, not its own top-level menu");
+            }
             // A stroke thinner than one pixel at the button's icon size only
             // ever renders as antialiased gray, which reads as a disabled
             // control. Every icon needs at least one fully-inked pixel.

@@ -2,6 +2,7 @@
 #include "portable_relay.h"
 #include "appearance.h"
 #include "desktop_window.h"
+#include "i18n.h"
 #include <QApplication>
 #include <QDir>
 #include <QStandardPaths>
@@ -21,6 +22,7 @@ int main(int argc, char **argv) {
     app.setApplicationDisplayName("ynotbit");
     app.setApplicationVersion(YNOTBIT_VERSION);
     app.setDesktopFileName("ynotbit");
+    bm::installTranslations(bm::savedLanguage());
 #ifndef Q_OS_MACOS
     app.setWindowIcon(bm::appLogo());
 #endif

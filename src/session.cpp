@@ -1,4 +1,5 @@
 #include "session.h"
+#include "i18n.h"
 #include "appearance.h"
 #include "message_model.h"
 #include "protocol.h"
@@ -34,9 +35,10 @@ static QString addressInput(const QString &title, const QString &label, bool *ac
     *accepted = dialog.exec() == QDialog::Accepted;
     return dialog.textValue();
 }
-static void check(bool b, const char *m) {
+// Messages arrive already translated (tr() at each call site).
+static void check(bool b, const QString &m) {
     if (!b)
-        throw std::runtime_error(m);
+        throw std::runtime_error(m.toStdString());
 }
 struct Password {
     QByteArray bytes;
@@ -48,20 +50,20 @@ struct Password {
 static Password password(const QString &title, bool confirm = false) {
     bool ok = false;
     QString text =
-        QInputDialog::getText(nullptr, title, "Vault password", QLineEdit::Password, {}, &ok);
+        QInputDialog::getText(nullptr, title, Session::tr("Vault password"), QLineEdit::Password, {}, &ok);
     if (!ok)
         throw std::runtime_error("Cancelled");
     Password p{text.toUtf8()};
     text.fill(QChar(0));
-    check(!p.bytes.isEmpty(), "Password cannot be empty");
+    check(!p.bytes.isEmpty(), Session::tr("Password cannot be empty"));
     if (confirm) {
         auto repeated =
-            QInputDialog::getText(nullptr, title, "Repeat password", QLineEdit::Password, {}, &ok);
+            QInputDialog::getText(nullptr, title, Session::tr("Repeat password"), QLineEdit::Password, {}, &ok);
         auto b = repeated.toUtf8();
         bool same = ok && b == p.bytes;
         sodium_memzero(b.data(), b.size());
         repeated.fill(QChar(0));
-        check(same, "Passwords do not match");
+        check(same, Session::tr("Passwords do not match"));
     }
     return p;
 }
@@ -82,7 +84,7 @@ Session::Session(QString root, bool offline, QObject *parent)
     messageModel_ = std::make_unique<MessageModel>(this, this);
     QDir().mkpath(root_);
     nodeLock_ = std::make_unique<QLockFile>(root_ + "/desktop.lock");
-    check(nodeLock_->tryLock(), "Another app instance is using this node folder");
+    check(nodeLock_->tryLock(), tr("Another app instance is using this node folder"));
     cache_ = std::make_unique<Cache>(root_);
     delivery_ = std::make_unique<Delivery>(root_);
     QSettings recent(root_ + "/desktop.ini", QSettings::IniFormat);
@@ -97,12 +99,12 @@ Session::Session(QString root, bool offline, QObject *parent)
     connect(&node_, &QProcess::readyReadStandardError, this, [this] {
         auto text = QString::fromUtf8(node_.readAllStandardError()).trimmed();
         if (!text.isEmpty()) {
-            error_ = "Node: " + text.left(400);
+            error_ = tr("Node: %1").arg(text.left(400));
             emit changed();
         }
     });
     connect(&node_, &QProcess::errorOccurred, this, [this] {
-        error_ = "Node: " + node_.errorString();
+        error_ = tr("Node: %1").arg(node_.errorString());
         emit changed();
     });
     connect(&node_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
@@ -110,7 +112,7 @@ Session::Session(QString root, bool offline, QObject *parent)
     startNode();
     connect(&timer_, &QTimer::timeout, this, &Session::tick);
     timer_.start(750);
-    activity_ = "Waiting for network objects";
+    activity_ = tr("Waiting for network objects");
 }
 Session::~Session() {
     timer_.stop();
@@ -125,29 +127,35 @@ Session::~Session() {
 }
 QString Session::status() const {
     if (offline_)
-        return "Offline · outgoing objects stay queued";
+        return tr("Offline · outgoing objects stay queued");
     if (node_.state() != QProcess::Running)
-        return "Node stopped · outgoing objects stay queued";
+        return tr("Node stopped · outgoing objects stay queued");
     QFile f(root_ + "/status.json");
     // Windows refuses the open for the instant the relay atomically replaces
     // the file; keep the last status read rather than flickering to "starting".
     if (f.open(QIODevice::ReadOnly))
         lastNodeStatus_ = QJsonDocument::fromJson(f.read(4096)).object();
     else if (lastNodeStatus_.isEmpty())
-        return "Node starting · connecting to peers";
+        return tr("Node starting · connecting to peers");
     const auto &status = lastNodeStatus_;
     if (QDateTime::currentSecsSinceEpoch() - status.value("time").toInteger() > 10)
-        return "Node status unavailable";
+        return tr("Node status unavailable");
     auto peers = status.value("peers").toInt();
     auto pending = status.value("pending").toInt();
-    auto base = peers ? QString("%1 connected peers · receiving and relaying").arg(peers)
-                      : "No connected peers · waiting for network";
+    // "label: n" wording, so no language needs plural forms here.
+    auto base = peers ? tr("Connected peers: %1 · receiving and relaying").arg(peers)
+                      : tr("No connected peers · waiting for network");
     if (pending > 0)
-        base += QString(" · %1 object%2 downloading").arg(pending).arg(pending == 1 ? "" : "s");
+        base += " · " + tr("objects downloading: %1").arg(pending);
     return base;
 }
+// Lower layers throw English (see src/i18n/error_catalog.cpp); messages this
+// class raised itself are already translated and pass through unchanged.
+QString Session::errorText(const std::exception &e) {
+    return QCoreApplication::translate("bm::Errors", e.what());
+}
 QString Session::document() const {
-    return mailboxOpen() ? QFileInfo(mailPath_).fileName() : "No mailbox open";
+    return mailboxOpen() ? QFileInfo(mailPath_).fileName() : tr("No mailbox open");
 }
 QVariantList Session::identities() const {
     QVariantList result;
@@ -166,7 +174,7 @@ void Session::attempt(const std::function<void()> &f) {
         error_.clear();
         f();
     } catch (const std::exception &e) {
-        auto message = QString::fromUtf8(e.what());
+        auto message = errorText(e);
         if (message != "Cancelled")
             error_ = message;
     }
@@ -175,7 +183,7 @@ void Session::attempt(const std::function<void()> &f) {
 }
 void Session::acquireVault(const QString &p) {
     vaultLock_ = std::make_unique<QLockFile>(p + ".lock");
-    check(vaultLock_->tryLock(), "Vault is in use by another instance");
+    check(vaultLock_->tryLock(), tr("Vault is in use by another instance"));
 }
 void Session::rememberVault(const QString &path) {
     recentVaultPaths_.removeAll(path);
@@ -205,11 +213,11 @@ QVariantList Session::recentMailboxes() const {
 }
 void Session::createVault() {
     attempt([&] {
-        check(!unlocked(), "Lock the current vault first");
-        auto p = chooseSave("Create vault", "Bitmessage vault (*.bmvault)", ".bmvault");
+        check(!unlocked(), tr("Lock the current vault first"));
+        auto p = chooseSave(tr("Create vault"), tr("Bitmessage vault (*.bmvault)"), ".bmvault");
         if (p.isEmpty())
             return;
-        auto pass = password("Create vault", true);
+        auto pass = password(tr("Create vault"), true);
         acquireVault(p);
         try {
             vault_.create(p, pass.bytes);
@@ -217,7 +225,7 @@ void Session::createVault() {
             mailPath_.clear();
             mailKey_.clear();
             rememberVault(p);
-            activity_ = "Vault created. Add an identity and create a mailbox.";
+            activity_ = tr("Vault created. Add an identity and create a mailbox.");
         } catch (...) {
             vaultLock_.reset();
             throw;
@@ -226,12 +234,12 @@ void Session::createVault() {
 }
 void Session::openVault() {
     attempt([&] {
-        check(!unlocked(), "Lock the current vault first");
-        auto p = QFileDialog::getOpenFileName(nullptr, "Open vault", documentsPath(),
-                                              "Bitmessage vault (*.bmvault)");
+        check(!unlocked(), tr("Lock the current vault first"));
+        auto p = QFileDialog::getOpenFileName(nullptr, tr("Open vault"), documentsPath(),
+                                              tr("Bitmessage vault (*.bmvault)"));
         if (p.isEmpty())
             return;
-        auto pass = password("Unlock vault");
+        auto pass = password(tr("Unlock vault"));
         acquireVault(p);
         try {
             vault_.unlock(p, pass.bytes);
@@ -239,7 +247,7 @@ void Session::openVault() {
             mailPath_.clear();
             mailKey_.clear();
             rememberVault(p);
-            activity_ = "Vault unlocked. Open a mailbox to inspect cached objects.";
+            activity_ = tr("Vault unlocked. Open a mailbox to inspect cached objects.");
         } catch (...) {
             vaultLock_.reset();
             throw;
@@ -254,7 +262,7 @@ void Session::unlockVault() {
     attempt([&] {
         if (unlocked())
             return;
-        auto pass = password("Unlock vault");
+        auto pass = password(tr("Unlock vault"));
         acquireVault(vaultPath_);
         try {
             vault_.unlock(vaultPath_, pass.bytes);
@@ -269,8 +277,8 @@ void Session::unlockVault() {
 }
 void Session::beginVaultCreate() {
     attempt([&] {
-        check(!unlocked(), "Lock the current vault first");
-        auto p = chooseSave("Create vault", "Bitmessage vault (*.bmvault)", ".bmvault");
+        check(!unlocked(), tr("Lock the current vault first"));
+        auto p = chooseSave(tr("Create vault"), tr("Bitmessage vault (*.bmvault)"), ".bmvault");
         if (p.isEmpty())
             return;
         pendingVaultPath_ = p;
@@ -279,9 +287,9 @@ void Session::beginVaultCreate() {
 }
 void Session::beginVaultOpen() {
     attempt([&] {
-        check(!unlocked(), "Lock the current vault first");
-        auto p = QFileDialog::getOpenFileName(nullptr, "Open vault", documentsPath(),
-                                              "Bitmessage vault (*.bmvault)");
+        check(!unlocked(), tr("Lock the current vault first"));
+        auto p = QFileDialog::getOpenFileName(nullptr, tr("Open vault"), documentsPath(),
+                                              tr("Bitmessage vault (*.bmvault)"));
         if (p.isEmpty())
             return;
         pendingVaultPath_ = p;
@@ -294,17 +302,17 @@ void Session::beginVaultUnlock() {
         return;
     }
     attempt([&] {
-        check(!unlocked(), "Vault is already unlocked");
+        check(!unlocked(), tr("Vault is already unlocked"));
         pendingVaultPath_ = vaultPath_;
         emit vaultPasswordRequired(vaultPath_, false);
     });
 }
 void Session::submitVaultPassword(QString passphrase, QString repeated, bool create) {
     attempt([&] {
-        check(!pendingVaultPath_.isEmpty(), "Choose a vault first");
-        check(!passphrase.isEmpty(), "Password cannot be empty");
+        check(!pendingVaultPath_.isEmpty(), tr("Choose a vault first"));
+        check(!passphrase.isEmpty(), tr("Password cannot be empty"));
         if (create)
-            check(passphrase == repeated, "Passwords do not match");
+            check(passphrase == repeated, tr("Passwords do not match"));
         const auto path = pendingVaultPath_;
         Password secret{passphrase.toUtf8()};
         auto &bytes = secret.bytes;
@@ -312,7 +320,7 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
         repeated.fill(QChar(0));
         if (create) {
             check(!QFile::exists(path),
-                  "Choose a new filename; existing vaults are never overwritten");
+                  tr("Choose a new filename; existing vaults are never overwritten"));
             acquireVault(path);
             try {
                 vault_.create(path, bytes);
@@ -320,7 +328,7 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
                 mailPath_.clear();
                 mailKey_.clear();
                 rememberVault(path);
-                activity_ = "Vault created. Add an identity and create a mailbox.";
+                activity_ = tr("Vault created. Add an identity and create a mailbox.");
             } catch (...) {
                 vaultLock_.reset();
                 sodium_memzero(bytes.data(), bytes.size());
@@ -336,7 +344,7 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
                 }
                 vaultPath_ = path;
                 rememberVault(path);
-                activity_ = "Vault unlocked. Open a mailbox to inspect cached objects.";
+                activity_ = tr("Vault unlocked. Open a mailbox to inspect cached objects.");
             } catch (...) {
                 vaultLock_.reset();
                 sodium_memzero(bytes.data(), bytes.size());
@@ -354,19 +362,19 @@ void Session::submitVaultPassword(QString passphrase, QString repeated, bool cre
 void Session::createMailbox() {
     emit aboutToCloseMailbox();
     attempt([&] {
-        check(unlocked(), "Unlock a vault first");
+        check(unlocked(), tr("Unlock a vault first"));
 
-        auto p = chooseSave("Create mailbox", "Bitmessage mailbox (*.bmmail)", ".bmmail");
+        auto p = chooseSave(tr("Create mailbox"), tr("Bitmessage mailbox (*.bmmail)"), ".bmmail");
         if (p.isEmpty())
             return;
         check(!QFile::exists(p),
-              "Choose a new filename; existing mailbox documents are never overwritten");
+              tr("Choose a new filename; existing mailbox documents are never overwritten"));
         delivery_->stop();
         mailbox_.close();
         clearMessages();
         mailLock_.reset();
         mailLock_ = std::make_unique<QLockFile>(p + ".lock");
-        check(mailLock_->tryLock(), "Mailbox is in use");
+        check(mailLock_->tryLock(), tr("Mailbox is in use"));
         try {
             auto id = vault_.addMailboxKey();
             mailbox_.create(p, id, vault_.mailboxKey(id));
@@ -383,16 +391,16 @@ void Session::createMailbox() {
 }
 void Session::openMailboxPath(const QString &p) {
     delivery_->stop();
-    check(unlocked(), "Unlock a vault first");
+    check(unlocked(), tr("Unlock a vault first"));
     mailbox_.close();
     clearMessages();
     mailLock_.reset();
     mailLock_ = std::make_unique<QLockFile>(p + ".lock");
-    check(mailLock_->tryLock(), "Mailbox is open in another instance");
+    check(mailLock_->tryLock(), tr("Mailbox is open in another instance"));
     for (const auto &id : vault_.mailboxIds()) {
         try {
             mailbox_.open(p, vault_.mailboxKey(id));
-            check(mailbox_.keyId() == id, "Mailbox key identifier mismatch");
+            check(mailbox_.keyId() == id, tr("Mailbox key identifier mismatch"));
             mailbox_.bindCache(cache_->id());
             mailPath_ = p;
             mailKey_ = id;
@@ -404,14 +412,15 @@ void Session::openMailboxPath(const QString &p) {
         }
     }
     mailLock_.reset();
-    throw std::runtime_error("This vault cannot open that mailbox, or the mailbox is damaged");
+    throw std::runtime_error(
+        tr("This vault cannot open that mailbox, or the mailbox is damaged").toStdString());
 }
 void Session::openMailbox() {
     emit aboutToCloseMailbox();
     attempt([&] {
-        check(unlocked(), "Unlock a vault first");
-        auto p = QFileDialog::getOpenFileName(nullptr, "Open mailbox", documentsPath(),
-                                              "Bitmessage mailbox (*.bmmail)");
+        check(unlocked(), tr("Unlock a vault first"));
+        auto p = QFileDialog::getOpenFileName(nullptr, tr("Open mailbox"), documentsPath(),
+                                              tr("Bitmessage mailbox (*.bmmail)"));
         if (!p.isEmpty())
             openMailboxPath(p);
     });
@@ -434,36 +443,36 @@ void Session::lock() {
     vault_.lock();
     mailLock_.reset();
     vaultLock_.reset();
-    activity_ = "Vault locked. Objects remain cached for later inspection.";
+    activity_ = tr("Vault locked. Objects remain cached for later inspection.");
     emit locked();
     emit changed();
 }
 void Session::addIdentity() {
     attempt([&] {
-        check(unlocked(), "Unlock a vault first");
+        check(unlocked(), tr("Unlock a vault first"));
         bool ok;
         auto label =
-            QInputDialog::getText(nullptr, "New identity", "Label", QLineEdit::Normal, {}, &ok);
+            QInputDialog::getText(nullptr, tr("New identity"), tr("Label"), QLineEdit::Normal, {}, &ok);
         if (!ok)
             return;
         vault_.addIdentity(label);
         if (mailboxOpen())
             mailbox_.advance(0);
-        activity_ = "Identity created. Retained objects will be inspected again.";
+        activity_ = tr("Identity created. Retained objects will be inspected again.");
     });
 }
 void Session::joinChannel() {
     attempt([&] {
-        check(unlocked(), "Unlock a vault first");
+        check(unlocked(), tr("Unlock a vault first"));
         bool ok;
         auto phrase =
-            QInputDialog::getText(nullptr, "Join or create chan", "Shared phrase (exact spelling)",
+            QInputDialog::getText(nullptr, tr("Join or create chan"), tr("Shared phrase (exact spelling)"),
                                   QLineEdit::Password, {}, &ok);
         if (!ok)
             return;
         auto expected =
-            addressInput("Verify chan address",
-                         "Expected BM-address (leave empty to create a version 4 chan)", &ok);
+            addressInput(tr("Verify chan address"),
+                         tr("Expected BM-address (leave empty to create a version 4 chan)"), &ok);
         if (!ok) {
             phrase.fill(QChar(0));
             return;
@@ -472,56 +481,56 @@ void Session::joinChannel() {
         phrase.fill(QChar(0));
         if (mailboxOpen())
             mailbox_.advance(0);
-        activity_ = "Chan joined. The address appears in Identities.";
+        activity_ = tr("Chan joined. The address appears in Identities.");
     });
 }
 void Session::importIdentities() {
     attempt([&] {
-        check(unlocked(), "Unlock a vault first");
-        auto p = QFileDialog::getOpenFileName(nullptr, "Import notbit / PyBitmessage identities",
-                                              documentsPath(), "Key files (*.dat);;All files (*)");
+        check(unlocked(), tr("Unlock a vault first"));
+        auto p = QFileDialog::getOpenFileName(nullptr, tr("Import notbit / PyBitmessage identities"),
+                                              documentsPath(), tr("Key files (*.dat);;All files (*)"));
         if (p.isEmpty())
             return;
         vault_.importKeys(p);
         if (mailboxOpen())
             mailbox_.advance(0);
-        activity_ = "Identities imported into the encrypted vault. The source file was preserved.";
+        activity_ = tr("Identities imported into the encrypted vault. The source file was preserved.");
     });
 }
 void Session::changePassword() {
     attempt([&] {
-        check(unlocked(), "Unlock a vault first");
-        auto pass = password("Change vault password", true);
+        check(unlocked(), tr("Unlock a vault first"));
+        auto pass = password(tr("Change vault password"), true);
         vault_.changePassword(pass.bytes);
     });
 }
 void Session::backup() {
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         auto dir =
-            QFileDialog::getExistingDirectory(nullptr, "Choose backup folder", documentsPath());
+            QFileDialog::getExistingDirectory(nullptr, tr("Choose backup folder"), documentsPath());
         if (dir.isEmpty())
             return;
         auto base =
             dir + "/bitmessage-" + QDateTime::currentDateTimeUtc().toString("yyyyMMdd-hhmmss");
         mailbox_.backup(base + ".bmmail", vault_.mailboxKey(mailKey_));
         check(QFile::copy(vaultPath_, base + ".bmvault"),
-              "Mailbox backed up, but vault copy failed");
-        activity_ = "Mailbox and vault backup saved to " + dir;
+              tr("Mailbox backed up, but vault copy failed"));
+        activity_ = tr("Mailbox and vault backup saved to %1").arg(dir);
     });
 }
 void Session::saveDraft(QString recipient, QString subject, QString body) {
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
-        check(body.size() <= 200000, "Draft is too large");
+        check(mailboxOpen(), tr("Open a mailbox first"));
+        check(body.size() <= 200000, tr("Draft is too large"));
         mailbox_.saveDraft({}, {}, recipient, subject, body);
         refresh();
-        activity_ = "Draft saved in the encrypted mailbox. It has not been sent.";
+        activity_ = tr("Draft saved in the encrypted mailbox. It has not been sent.");
     });
 }
 void Session::rescan() {
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         mailbox_.advance(0);
     });
 }
@@ -582,7 +591,7 @@ QVariantList Session::messagePage(const QString &folder, const QString &search, 
             {"kind",
              out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
             {"received",
-             QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
+             formatDateTime(QDateTime::fromSecsSinceEpoch(m.received))}};
     }
     return result;
 }
@@ -608,7 +617,7 @@ QVariantMap Session::message(QString id) const {
         {"deliveryError", out.error},
         {"unread", mailbox_.unread(m.hash)},
         {"kind", out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
-        {"received", QDateTime::fromSecsSinceEpoch(m.received).toString("dd MMM yyyy · hh:mm")}};
+        {"received", formatDateTime(QDateTime::fromSecsSinceEpoch(m.received))}};
 }
 void Session::clearMessages() {
     displayedRevision_.reset();
@@ -627,17 +636,17 @@ void Session::tick() {
             delivery_->tick(mailbox_, vault_, !offline_ && node_.state() == QProcess::Running);
             refresh();
             activity_ = cache_->after(mailbox_.checkpoint(), 1).isEmpty()
-                            ? "Mailbox up to date with retained objects"
-                            : "Inspecting cached objects · checkpoint " +
-                                  QString::number(mailbox_.checkpoint());
+                            ? tr("Mailbox up to date with retained objects")
+                            : tr("Inspecting cached objects · checkpoint %1")
+                                  .arg(mailbox_.checkpoint());
         }
         if (delivery_->working())
-            activity_ = "Preparing outgoing proof of work · locking pauses preparation";
+            activity_ = tr("Preparing outgoing proof of work · locking pauses preparation");
         if (cache_->pruned() > 0)
-            activity_ = "Retention cleanup removed older objects · Some older letters may no "
-                        "longer be recoverable";
+            activity_ = tr("Retention cleanup removed older objects · Some older letters may no "
+                           "longer be recoverable");
     } catch (const std::exception &e) {
-        error_ = QString::fromUtf8(e.what());
+        error_ = errorText(e);
     }
     emit changed();
 }
@@ -645,7 +654,7 @@ QString Session::saveLetter(QString id, QString from, QString to, QString subjec
                             QString kind) {
     QString result;
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         result = mailbox_.saveDraft(id, from, to.trimmed(), subject, body);
         mailbox_.setSetting("draftkind:" + result, kind == "broadcast" ? "broadcast" : "direct");
         refresh();
@@ -655,62 +664,62 @@ QString Session::saveLetter(QString id, QString from, QString to, QString subjec
 bool Session::sendLetter(QString id) {
     bool sent = false;
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         auto m = mailbox_.message(id);
         bool own = false;
         for (const auto &i : vault_.identities())
             if (i.address == m.from)
                 own = true;
-        check(own, "Choose a sender from this vault");
+        check(own, tr("Choose a sender from this vault"));
         auto kind = mailbox_.setting("draftkind:" + id, "direct");
         check(kind == "broadcast" || Wire::validAddress(m.to),
-              "Enter a valid Bitmessage recipient address");
-        check(!m.subject.contains('\n') && !m.subject.contains('\r'), "Subject must be one line");
-        check(!m.body.trimmed().isEmpty(), "Write a message before sending");
+              tr("Enter a valid Bitmessage recipient address"));
+        check(!m.subject.contains('\n') && !m.subject.contains('\r'), tr("Subject must be one line"));
+        check(!m.body.trimmed().isEmpty(), tr("Write a message before sending"));
         check(m.subject.toUtf8().size() + m.body.toUtf8().size() + 14 <= 200000,
-              "Message is too large");
+              tr("Message is too large"));
         mailbox_.queueDraft(id, kind, QDateTime::currentSecsSinceEpoch() + 4 * 86400);
         mailbox_.advance(0);
         refresh();
         sent = true;
-        activity_ = "Letter queued. Follow its progress in Outbox.";
+        activity_ = tr("Letter queued. Follow its progress in Outbox.");
     });
     return sent;
 }
 void Session::retryLetter(QString id) {
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         delivery_->retry(mailbox_, id);
         refresh();
     });
 }
 void Session::cancelLetter(QString id) {
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         delivery_->cancel(mailbox_, id);
         refresh();
     });
 }
 void Session::moveLetter(QString id, QString folder) {
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         mailbox_.moveMessage(id, folder);
         refresh();
     });
 }
 void Session::restoreLetter(QString id) {
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         mailbox_.restoreMessage(id);
         refresh();
     });
 }
 void Session::deleteLetter(QString id) {
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         if (QMessageBox::question(
-                nullptr, "Delete letter permanently?",
-                "This removes the letter from this mailbox. Backups are unchanged.") !=
+                nullptr, tr("Delete letter permanently?"),
+                tr("This removes the letter from this mailbox. Backups are unchanged.")) !=
             QMessageBox::Yes)
             return;
         mailbox_.deleteMessage(id);
@@ -738,11 +747,11 @@ QVariantList Session::deliveryHistory(QString id) {
         for (const auto &e : mailbox_.events(id))
             result << QVariantMap{
                 {"time",
-                 QDateTime::fromSecsSinceEpoch(e.timestamp).toString("dd MMM yyyy · HH:mm:ss")},
+                 formatDateTime(QDateTime::fromSecsSinceEpoch(e.timestamp), true)},
                 {"state", e.state},
                 {"detail", e.detail}};
     } catch (const std::exception &e) {
-        error_ = QString::fromUtf8(e.what());
+        error_ = errorText(e);
     }
     return result;
 }
@@ -763,14 +772,14 @@ QVariantList Session::contacts() const {
 QString Session::contactProblem(QString address) const {
     address = address.trimmed();
     if (!mailboxOpen())
-        return "Open a mailbox first";
+        return tr("Open a mailbox first");
     if (address.isEmpty())
-        return "Enter a BM- address";
+        return tr("Enter a BM- address");
     if (!Wire::validAddress(address))
-        return "That is not a valid Bitmessage address";
+        return tr("That is not a valid Bitmessage address");
     for (const auto &i : vault_.identities())
         if (i.address == address)
-            return i.chan ? "That is one of your chans" : "That is one of your own identities";
+            return i.chan ? tr("That is one of your chans") : tr("That is one of your own identities");
     return {};
 }
 bool Session::addContact(QString address, QString label) {
@@ -782,13 +791,13 @@ bool Session::addContact(QString address, QString label) {
         label = label.trimmed();
         mailbox_.saveContact(address, label.isEmpty() ? address : label);
         messageModel()->reload(); // list rows carry correspondents' names
-        activity_ = "Contact saved.";
+        activity_ = tr("Contact saved.");
     });
     return error_.isEmpty();
 }
 void Session::removeContact(QString address) {
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         mailbox_.removeContact(address);
         messageModel()->reload();
     });
@@ -822,33 +831,33 @@ QString Session::nameFor(QString address) const {
 }
 void Session::subscribe() {
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         bool ok = false;
         auto address =
-            addressInput("Subscribe to broadcasts", "Publisher BM-address", &ok).trimmed();
+            addressInput(tr("Subscribe to broadcasts"), tr("Publisher BM-address"), &ok).trimmed();
         if (!ok)
             return;
-        check(Wire::validAddress(address), "Invalid Bitmessage address");
-        auto label = QInputDialog::getText(nullptr, "Subscription label", "Label",
+        check(Wire::validAddress(address), tr("Invalid Bitmessage address"));
+        auto label = QInputDialog::getText(nullptr, tr("Subscription label"), tr("Label"),
                                            QLineEdit::Normal, {}, &ok);
         if (!ok)
             return;
         mailbox_.subscribe(address, label);
-        activity_ = "Subscription saved. Retained broadcasts will be inspected.";
+        activity_ = tr("Subscription saved. Retained broadcasts will be inspected.");
     });
 }
 void Session::unsubscribe(QString address) {
     attempt([&] {
-        check(mailboxOpen(), "Open a mailbox first");
+        check(mailboxOpen(), tr("Open a mailbox first"));
         mailbox_.unsubscribe(address);
     });
 }
 void Session::renameIdentity(QString address) {
     attempt([&] {
-        check(unlocked(), "Unlock a vault first");
+        check(unlocked(), tr("Unlock a vault first"));
         bool ok = false;
         auto label =
-            QInputDialog::getText(nullptr, "Rename identity", "Label", QLineEdit::Normal, {}, &ok);
+            QInputDialog::getText(nullptr, tr("Rename identity"), tr("Label"), QLineEdit::Normal, {}, &ok);
         if (ok)
             vault_.renameIdentity(address, label);
     });
@@ -858,18 +867,18 @@ void Session::copyAddress(QString address) {
 }
 void Session::setDefaultIdentity(QString address) {
     attempt([&] {
-        check(unlocked(), "Unlock a vault first");
+        check(unlocked(), tr("Unlock a vault first"));
         vault_.setDefaultIdentity(address);
     });
 }
 void Session::deleteIdentity(QString address) {
     attempt([&] {
-        check(unlocked(), "Unlock a vault first");
+        check(unlocked(), tr("Unlock a vault first"));
         if (QMessageBox::question(
-                nullptr, "Delete identity permanently?",
-                "This permanently removes the private key for this address. Mail already sent "
-                "or received stays in your mailbox, but you will no longer be able to send as "
-                "this address or read anything newly sent to it.") != QMessageBox::Yes)
+                nullptr, tr("Delete identity permanently?"),
+                tr("This permanently removes the private key for this address. Mail already sent "
+                   "or received stays in your mailbox, but you will no longer be able to send as "
+                   "this address or read anything newly sent to it.")) != QMessageBox::Yes)
             return;
         vault_.deleteIdentity(address);
     });
@@ -929,37 +938,37 @@ void Session::configureNode() {
     attempt([&] {
         QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
         bool ok = false;
-        auto peer = QInputDialog::getText(nullptr, "Network settings",
-                                          "Additional peer IP:port (empty for automatic discovery)",
+        auto peer = QInputDialog::getText(nullptr, tr("Network settings"),
+                                          tr("Additional peer IP:port (empty for automatic discovery)"),
                                           QLineEdit::Normal, config.value("peer").toString(), &ok)
                         .trimmed();
         if (!ok)
             return;
-        check(endpoint(peer), "Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444");
+        check(endpoint(peer), tr("Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444"));
         auto proxy =
-            QInputDialog::getText(nullptr, "SOCKS5 proxy",
-                                  "Proxy IP:port (empty for direct; Tor typically 127.0.0.1:9050)",
+            QInputDialog::getText(nullptr, tr("SOCKS5 proxy"),
+                                  tr("Proxy IP:port (empty for direct; Tor typically 127.0.0.1:9050)"),
                                   QLineEdit::Normal, config.value("proxy").toString(), &ok)
                 .trimmed();
         if (!ok)
             return;
-        check(endpoint(proxy), "Enter a proxy IP address and port");
+        check(endpoint(proxy), tr("Enter a proxy IP address and port"));
         config.setValue("peer", peer);
         config.setValue("proxy", proxy);
-        activity_ = "Network settings saved. Restart the node to apply them.";
+        activity_ = tr("Network settings saved. Restart the node to apply them.");
     });
 }
 void Session::configureRetention() {
     attempt([&] {
         bool ok = false;
-        auto mb = QInputDialog::getInt(nullptr, "Retained network objects",
-                                       "Maximum MB of encrypted network objects. Older objects are "
-                                       "discarded; saved mailbox letters are preserved.",
+        auto mb = QInputDialog::getInt(nullptr, tr("Retained network objects"),
+                                       tr("Maximum MB of encrypted network objects. Older objects are "
+                                          "discarded; saved mailbox letters are preserved."),
                                        retentionMB_, 64, 32768, 64, &ok);
         if (!ok)
             return;
-        auto days = QInputDialog::getInt(nullptr, "Retained network objects",
-                                         "Keep network objects for at most this many days",
+        auto days = QInputDialog::getInt(nullptr, tr("Retained network objects"),
+                                         tr("Keep network objects for at most this many days"),
                                          retentionDays_, 1, 3650, 1, &ok);
         if (!ok)
             return;
@@ -968,7 +977,7 @@ void Session::configureRetention() {
         QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
         config.setValue("retentionMB", mb);
         config.setValue("retentionDays", days);
-        activity_ = "Retention settings saved";
+        activity_ = tr("Retention settings saved");
     });
 }
 } // namespace bm

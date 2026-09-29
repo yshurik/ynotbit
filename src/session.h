@@ -121,6 +121,7 @@ class Session : public QObject {
     Q_INVOKABLE void readLetter(QString id);
     Q_INVOKABLE QVariantMap message(QString id) const;
     QHash<QString, QString> names() const;
+    static QString errorText(const std::exception &e);
     QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const;
     int messageCount(const QString &folder, const QString &search, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messageCount(folder, search, recipient, unreadOnly, anonymousOnly) : 0; }
     QVariantList channels() const;

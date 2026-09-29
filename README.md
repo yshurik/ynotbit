@@ -83,6 +83,9 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
 - The composer is a visual Markdown editor. Rendered messages use a safe Markdown
   document that does not fetch local files or remote images. Appearance follows the
   system color scheme by default and can be set to light or dark.
+- Interface in English, Simplified and Traditional Chinese, Japanese, Korean,
+  Russian and Ukrainian. It follows the system language, or pick one under
+  **Appearance → Language** (applies after a restart). Dates follow the chosen language.
 - Peer count, offline mode, node restart, additional peer and SOCKS5 proxy settings,
   configurable network-cache retention, recent document paths, and combined backup.
 
@@ -119,6 +122,13 @@ triplet) instead of `build-dependencies.sh`, and pass
 `-DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake`. See
 `.github/workflows/release.yml` for the exact, CI-verified sequence on all three
 platforms.
+
+Translations live in `translations/ynotbit_<lang>.ts` and can be edited with Qt
+Linguist or any text editor. After changing user-visible strings in the code,
+run `cmake --build build --target update_translations` to refresh the files;
+`scripts/check-translations.py` (also a test) fails on untranslated entries or
+broken `%1` placeholders. Error messages from the storage and protocol layers are
+collected by `scripts/update-error-catalog.py`.
 
 The README screenshots come from demo data, not a real mailbox. Regenerate them
 with `cmake --build build --target readme_screenshots` and

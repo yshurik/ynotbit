@@ -1,7 +1,8 @@
 // Renders the README screenshots from a throwaway demo vault and mailbox:
-//   readme_screenshots <output-dir>
+//   readme_screenshots <output-dir> [language, e.g. ru or zh_CN]
 // Not a test: it only builds realistic sample data and grabs the window.
 #include "desktop_window.h"
+#include "i18n.h"
 #include "protocol.h"
 #include "session.h"
 #include <QTest>
@@ -14,10 +15,11 @@ int main(int argc, char **argv) {
     app.setOrganizationName("YnotbitScreenshots");
     app.setApplicationName("Readme");
     if (argc < 2) {
-        std::cerr << "usage: readme_screenshots <output-dir>\n";
+        std::cerr << "usage: readme_screenshots <output-dir> [language]\n";
         return 2;
     }
     const QString out = QString::fromLocal8Bit(argv[1]);
+    bm::installTranslations(argc > 2 ? QString::fromLocal8Bit(argv[2]) : QString("en"));
     QDir().mkpath(out);
     QTemporaryDir temp;
 
