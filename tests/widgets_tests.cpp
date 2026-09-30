@@ -823,9 +823,7 @@ int main(int argc, char **argv) {
                 auto dialog = window.findChild<QDialog *>("composer");
                 auto to = dialog->findChild<QLineEdit *>("recipientField");
                 require(to->text() == alice, "Write addresses the letter to the contact");
-                require(dialog->findChild<QLabel *>("recipientName")->text() == "To Alice",
-                        "the composer names a known recipient");
-                require(dialog->findChild<QToolButton *>("contactsPickerButton")->isVisibleTo(dialog),
+                require(dialog->findChild<QPushButton *>("contactsPickerButton")->isVisibleTo(dialog),
                         "the composer offers the contacts picker");
                 auto completion = to->completer()->model();
                 require(completion->rowCount() == 1 &&
@@ -1315,16 +1313,40 @@ int main(int argc, char **argv) {
                     "non-channel sender shows mail privacy labels");
             require(modePrivate->isChecked() && !modePublic->isChecked(),
                     "private mail selected by default");
+            auto modeHint = dialog->findChild<QLabel *>("modeHint");
+            require(modePrivate->parentWidget() == modePublic->parentWidget() &&
+                        modePrivate->parentWidget()->objectName() == "modeSwitch",
+                    "private and public are one segmented switch");
+            require(qAbs(modeHint->geometry().center().y() -
+                         modePrivate->mapTo(dialog, modePrivate->rect().center()).y() +
+                         modeHint->parentWidget()->mapTo(dialog, QPoint()).y()) < 20 &&
+                        modeHint->mapTo(dialog, QPoint()).x() >
+                            modePublic->mapTo(dialog, QPoint(modePublic->width(), 0)).x(),
+                    "the mode's explanation sits to the right of the switch");
+            auto toLabel = dialog->findChild<QLabel *>("recipientLabel");
+            require(toLabel && toLabel->buddy() == to && toLabel->isVisible(),
+                    "the recipient field is labelled To:");
+            require(!dialog->findChild<QToolBar *>(), "no static formatting toolbar");
+            require(dialog->findChild<QPushButton *>("sendButton")->isDefault(),
+                    "Send is the default button");
             modePublic->click();
-            require(!to->isVisible(), "recipient hidden in public mode");
+            require(!to->isVisible() && !toLabel->isVisible(),
+                    "recipient and its label hidden in public mode");
             modePrivate->click();
             require(to->isVisible(), "recipient visible again after switching back");
-            for (const auto &name :
-                {"boldAction", "italicAction", "strikeAction", "codeAction", "linkAction",
-                 "imageAction", "clearFormatAction"})
-                require(dialog->findChild<QAction *>(name), QString("toolbar has %1").arg(name)
-                                                                 .toUtf8()
-                                                                 .constData());
+            for (const auto &name : {"floatBoldButton", "floatItalicButton", "floatStrikeButton",
+                                     "floatCodeButton", "floatLinkButton", "floatClearButton"})
+                require(dialog->findChild<QToolButton *>(name),
+                        QString("the floating toolbar has %1").arg(name).toUtf8().constData());
+            {
+                auto body = dialog->findChild<QTextEdit *>("bodyField");
+                body->setFocus();
+                body->setPlainText("make bold");
+                body->selectAll();
+                QTest::keyClick(body, Qt::Key_B, Qt::ControlModifier);
+                require(body->textCursor().charFormat().fontWeight() == QFont::Bold,
+                        "Ctrl+B still bolds without the toolbar");
+            }
             to->setText(session.identities().first().toMap()["address"].toString());
             dialog->findChild<QPushButton *>("sendButton")->click();
         });

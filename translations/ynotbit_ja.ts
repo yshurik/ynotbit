@@ -120,10 +120,6 @@
         <translation>連絡先から選択</translation>
     </message>
     <message>
-        <source>To %1</source>
-        <translation>宛先: %1</translation>
-    </message>
-    <message>
         <source>Subject</source>
         <translation>件名</translation>
     </message>
@@ -158,10 +154,6 @@
     <message>
         <source>https:// address</source>
         <translation>https:// アドレス</translation>
-    </message>
-    <message>
-        <source>Images aren't supported — remote images are never loaded, for privacy</source>
-        <translation>画像には対応していません — プライバシーのため、リモート画像は読み込まれません</translation>
     </message>
     <message>
         <source>Clear formatting</source>
@@ -797,6 +789,18 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Delete paragraph</source>
         <translation>段落を削除</translation>
+    </message>
+    <message>
+        <source>From:</source>
+        <translation>差出人:</translation>
+    </message>
+    <message>
+        <source>To:</source>
+        <translation>宛先:</translation>
+    </message>
+    <message>
+        <source>Subject:</source>
+        <translation>件名:</translation>
     </message>
 </context>
 <context>

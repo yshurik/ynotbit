@@ -1318,31 +1318,29 @@ class Composer : public QDialog {
         auto layout = new QVBoxLayout(this);
         layout->setContentsMargins(24, 24, 24, 24);
         layout->setSpacing(12);
+        // Private/Public is one choice: a segmented switch (styled with the
+        // app's other switches), its explanation beside it.
         auto modeRow = new QHBoxLayout;
-        // font-weight in the :checked rule would make the checked button's text
-        // bold and wider than the sizeHint computed from its regular-weight state,
-        // clipping the label -- background/border contrast alone indicates selection.
-        const QString modeButtonStyle =
-            "QPushButton { border: 1px solid palette(mid); }"
-            "QPushButton:checked { background: palette(highlight); "
-            "color: palette(highlighted-text); border-color: palette(highlight); }";
+        modeRow->setSpacing(14);
+        auto modeSwitch = new QWidget;
+        modeSwitch->setObjectName("modeSwitch");
+        auto switchLayout = new QHBoxLayout(modeSwitch);
+        switchLayout->setContentsMargins(0, 0, 0, 0);
+        switchLayout->setSpacing(0);
         modePrivate_ = new QPushButton;
         modePrivate_->setObjectName("modePrivateButton");
         modePrivate_->setCheckable(true);
         modePrivate_->setChecked(true);
-        modePrivate_->setStyleSheet(modeButtonStyle);
         modePublic_ = new QPushButton;
         modePublic_->setObjectName("modePublicButton");
         modePublic_->setCheckable(true);
-        modePublic_->setStyleSheet(modeButtonStyle);
         auto modeGroup = new QButtonGroup(this);
         modeGroup->setExclusive(true);
         modeGroup->addButton(modePrivate_);
         modeGroup->addButton(modePublic_);
-        modeRow->addWidget(modePrivate_);
-        modeRow->addWidget(modePublic_);
-        modeRow->addStretch();
-        layout->addLayout(modeRow);
+        switchLayout->addWidget(modePrivate_);
+        switchLayout->addWidget(modePublic_);
+        modeRow->addWidget(modeSwitch, 0, Qt::AlignVCenter);
         auto modeHint = new QLabel;
         modeHint->setObjectName("modeHint");
         modeHint->setWordWrap(true);
@@ -1351,7 +1349,8 @@ class Composer : public QDialog {
             f.setPointSizeF(f.pointSizeF() * 0.9);
             modeHint->setFont(f);
         }
-        layout->addWidget(modeHint);
+        modeRow->addWidget(modeHint, 1, Qt::AlignVCenter);
+        layout->addLayout(modeRow);
         sender_ = new QComboBox;
         sender_->setFont(addressFont());
         sender_->setObjectName("senderSelector");
@@ -1364,7 +1363,20 @@ class Composer : public QDialog {
         int n = sender_->findData(from);
         if (n >= 0)
             sender_->setCurrentIndex(n);
-        layout->addWidget(sender_);
+        // From, To and Subject, each named on its left.
+        auto fields = new QGridLayout;
+        fields->setHorizontalSpacing(10);
+        fields->setVerticalSpacing(8);
+        fields->setColumnStretch(1, 1);
+        auto fieldLabel = [](const QString &text, QWidget *buddy) {
+            auto label = new QLabel(text);
+            label->setBuddy(buddy);
+            label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            return label;
+        };
+        fields->addWidget(fieldLabel(DesktopWindow::tr("From:"), sender_), 0, 0);
+        fields->addWidget(sender_, 0, 1);
+        layout->addLayout(fields);
         auto updateModeLabels = [this, identities, modeHint] {
             bool channel = false;
             for (auto value : identities) {
@@ -1425,31 +1437,21 @@ class Composer : public QDialog {
                     const auto address = index.data(Qt::UserRole).toString();
                     QTimer::singleShot(0, this, [this, address] { to_->setText(address); });
                 });
+        auto toLabel = fieldLabel(DesktopWindow::tr("To:"), to_);
+        toLabel->setObjectName("recipientLabel");
+        fields->addWidget(toLabel, 1, 0);
         auto toRow = new QHBoxLayout;
         toRow->setSpacing(6);
         toRow->addWidget(to_, 1);
-        auto pickerButton = new QToolButton;
+        fields->addLayout(toRow, 1, 1);
+        auto pickerButton = new QPushButton;
         pickerButton->setObjectName("contactsPickerButton");
         pickerButton->setIcon(materialIcon("contacts", iconColor(dark)));
-        pickerButton->setIconSize(QSize(22, 22));
+        pickerButton->setIconSize(QSize(18, 18));
         pickerButton->setToolTip(DesktopWindow::tr("Choose from contacts"));
-        pickerButton->setPopupMode(QToolButton::InstantPopup);
         pickerButton->setMenu(picker);
         pickerButton->setVisible(!contacts.isEmpty());
         toRow->addWidget(pickerButton);
-        layout->addLayout(toRow);
-        auto recipientName = new QLabel;
-        recipientName->setObjectName("recipientName");
-        recipientName->setStyleSheet("color:palette(mid);font-size:12px;");
-        recipientName->setTextFormat(Qt::PlainText);
-        layout->addWidget(recipientName);
-        auto nameRecipient = [this, recipientName] {
-            const auto name = session_.nameFor(to_->text().trimmed());
-            recipientName->setText(name.isEmpty() ? QString() : DesktopWindow::tr("To %1").arg(name));
-            recipientName->setVisible(!name.isEmpty());
-        };
-        connect(to_, &QLineEdit::textChanged, this, nameRecipient);
-        nameRecipient();
         subject_ = new QLineEdit;
         subject_->setObjectName("subjectField");
         subject_->setPlaceholderText(DesktopWindow::tr("Subject"));
@@ -1457,11 +1459,8 @@ class Composer : public QDialog {
         if (reply && !subject.startsWith("Re:", Qt::CaseInsensitive))
             subject.prepend("Re: ");
         subject_->setText(subject);
-        layout->addWidget(subject_);
-        auto tools = new QToolBar;
-        tools->setToolButtonStyle(Qt::ToolButtonIconOnly);
-        tools->setIconSize(QSize(28, 28));
-        layout->addWidget(tools);
+        fields->addWidget(fieldLabel(DesktopWindow::tr("Subject:"), subject_), 2, 0);
+        fields->addWidget(subject_, 2, 1);
         body_ = new MarkdownEdit;
         body_->setObjectName("bodyField");
         body_->setAcceptRichText(false);
@@ -1515,32 +1514,38 @@ class Composer : public QDialog {
         bodyRow->addWidget(body_, 1);
         layout->addLayout(bodyRow, 1);
         auto icon = [dark](QString name) { return materialIcon(name, iconColor(dark)); };
+        // Formatting lives on the toolbar that floats over a selection; the
+        // actions sit on the editor so their shortcuts work without it.
         auto format = [&](QString iconName, QString objName, QString tip,
                           std::function<void()> fn) {
-            auto a = tools->addAction(icon(iconName), tip);
+            auto a = new QAction(icon(iconName), tip, body_);
             a->setObjectName(objName);
+            a->setShortcutContext(Qt::WidgetShortcut);
+            body_->addAction(a);
             connect(a, &QAction::triggered, this, [this, fn] {
                 fn();
                 body_->setFocus();
             });
             return a;
         };
-        format("bold", "boldAction", DesktopWindow::tr("Bold"), [this] {
+        auto bold = format("bold", "boldAction", DesktopWindow::tr("Bold"), [this] {
             QTextCharFormat f;
             f.setFontWeight(body_->fontWeight() == QFont::Bold ? QFont::Normal : QFont::Bold);
             body_->mergeCurrentCharFormat(f);
-        })->setShortcut(QKeySequence::Bold);
-        format("italic", "italicAction", DesktopWindow::tr("Italic"), [this] {
+        });
+        bold->setShortcut(QKeySequence::Bold);
+        auto italic = format("italic", "italicAction", DesktopWindow::tr("Italic"), [this] {
             QTextCharFormat f;
             f.setFontItalic(!body_->fontItalic());
             body_->mergeCurrentCharFormat(f);
-        })->setShortcut(QKeySequence::Italic);
-        format("strike", "strikeAction", DesktopWindow::tr("Strikethrough"), [this] {
+        });
+        italic->setShortcut(QKeySequence::Italic);
+        auto strike = format("strike", "strikeAction", DesktopWindow::tr("Strikethrough"), [this] {
             QTextCharFormat f;
             f.setFontStrikeOut(!body_->currentCharFormat().fontStrikeOut());
             body_->mergeCurrentCharFormat(f);
         });
-        format("code", "codeAction", DesktopWindow::tr("Inline code"), [this] {
+        auto code = format("code", "codeAction", DesktopWindow::tr("Inline code"), [this] {
             bool isCode = body_->currentCharFormat().fontFixedPitch();
             QTextCharFormat f;
             f.setFontFixedPitch(!isCode);
@@ -1548,7 +1553,7 @@ class Composer : public QDialog {
                 f.setFontFamilies({"monospace"});
             body_->mergeCurrentCharFormat(f);
         });
-        format("link", "linkAction", DesktopWindow::tr("Link"), [this] {
+        auto link = format("link", "linkAction", DesktopWindow::tr("Link"), [this] {
             bool ok;
             auto url = QInputDialog::getText(this, DesktopWindow::tr("Insert link"), DesktopWindow::tr("https:// address"),
                                              QLineEdit::Normal, {}, &ok);
@@ -1565,11 +1570,7 @@ class Composer : public QDialog {
             else
                 c.insertText(url, f);
         });
-        format("image", "imageAction", DesktopWindow::tr("Images aren't supported — remote images are never "
-                                       "loaded, for privacy"),
-               [] {})
-            ->setEnabled(false);
-        format("eraser", "clearFormatAction", DesktopWindow::tr("Clear formatting"), [this] {
+        auto clear = format("eraser", "clearFormatAction", DesktopWindow::tr("Clear formatting"), [this] {
             auto c = body_->textCursor();
             if (c.hasSelection())
                 c.setCharFormat(QTextCharFormat());
@@ -1582,58 +1583,15 @@ class Composer : public QDialog {
         auto floatLayout = new QHBoxLayout(floatingToolbar_);
         floatLayout->setContentsMargins(4, 4, 4, 4);
         floatLayout->setSpacing(2);
-        auto floatButton = [&](QString iconName, QString objName, std::function<void()> fn) {
+        for (auto [action, name] : {std::pair{bold, "floatBoldButton"}, {italic, "floatItalicButton"},
+                                    {strike, "floatStrikeButton"}, {code, "floatCodeButton"},
+                                    {link, "floatLinkButton"}, {clear, "floatClearButton"}}) {
             auto b = new QToolButton;
-            b->setObjectName(objName);
-            b->setIcon(icon(iconName));
+            b->setObjectName(name);
+            b->setDefaultAction(action);
             b->setIconSize(QSize(20, 20));
-            connect(b, &QToolButton::clicked, this, [this, fn] {
-                fn();
-                body_->setFocus();
-            });
             floatLayout->addWidget(b);
-            return b;
-        };
-        floatButton("bold", "floatBoldButton", [this] {
-            QTextCharFormat f;
-            f.setFontWeight(body_->fontWeight() == QFont::Bold ? QFont::Normal : QFont::Bold);
-            body_->mergeCurrentCharFormat(f);
-        });
-        floatButton("italic", "floatItalicButton", [this] {
-            QTextCharFormat f;
-            f.setFontItalic(!body_->fontItalic());
-            body_->mergeCurrentCharFormat(f);
-        });
-        floatButton("strike", "floatStrikeButton", [this] {
-            QTextCharFormat f;
-            f.setFontStrikeOut(!body_->currentCharFormat().fontStrikeOut());
-            body_->mergeCurrentCharFormat(f);
-        });
-        floatButton("code", "floatCodeButton", [this] {
-            bool isCode = body_->currentCharFormat().fontFixedPitch();
-            QTextCharFormat f;
-            f.setFontFixedPitch(!isCode);
-            if (!isCode)
-                f.setFontFamilies({"monospace"});
-            body_->mergeCurrentCharFormat(f);
-        });
-        floatButton("link", "floatLinkButton", [this] {
-            bool ok;
-            auto url = QInputDialog::getText(this, DesktopWindow::tr("Insert link"), DesktopWindow::tr("https:// address"),
-                                             QLineEdit::Normal, {}, &ok);
-            QUrl u(url);
-            if (!ok || u.scheme() != "https" || u.host().isEmpty())
-                return;
-            auto c = body_->textCursor();
-            QTextCharFormat f;
-            f.setAnchor(true);
-            f.setAnchorHref(url);
-            f.setFontUnderline(true);
-            if (c.hasSelection())
-                c.mergeCharFormat(f);
-            else
-                c.insertText(url, f);
-        });
+        }
         floatingToolbar_->hide();
         connect(body_, &QTextEdit::selectionChanged, this, [this] {
             if (!body_->textCursor().hasSelection()) {
@@ -1693,11 +1651,18 @@ class Composer : public QDialog {
         connect(to_, &QLineEdit::textEdited, this, changed);
         connect(subject_, &QLineEdit::textEdited, this, changed);
         connect(sender_, &QComboBox::currentIndexChanged, this, changed);
-        connect(modePublic_, &QPushButton::toggled, this, [this, changed](bool checked) {
-            to_->setVisible(!checked);
+        // Public mail has no recipient: the whole To row goes.
+        auto showRecipient = [this, toLabel, pickerButton, hasContacts = !contacts.isEmpty()] {
+            const bool shown = !modePublic_->isChecked();
+            to_->setVisible(shown);
+            toLabel->setVisible(shown);
+            pickerButton->setVisible(shown && hasContacts);
+        };
+        connect(modePublic_, &QPushButton::toggled, this, [showRecipient, changed] {
+            showRecipient();
             changed();
         });
-        to_->setVisible(!modePublic_->isChecked());
+        showRecipient();
         connect(&session_, &Session::aboutToCloseMailbox, this, [this] {
             if (save())
                 accept();
@@ -2700,6 +2665,19 @@ void DesktopWindow::updateTheme() {
             "QPushButton:hover{background:%2;} QListView,QTextEdit{border:0;} "
             "QListWidget::item{padding:10px;} QListWidget::item:selected{background:%5;color:%6;} "
             "QToolBar{border:0;spacing:3px;} "
+            "QPushButton:default{background:%6;color:%1;border-color:%6;font-weight:600;} "
+            "QPushButton:default:hover{background:%6;border-color:%4;} "
+            "QPushButton#contactsPickerButton::menu-indicator{image:none;width:0;} "
+            // No bold on :checked -- it would widen the label past its size hint.
+            "QWidget#modeSwitch{border:1px solid %4;border-radius:7px;background:transparent;} "
+            "QWidget#modeSwitch QPushButton{border:0;border-radius:0;background:transparent;"
+            "padding:7px 14px;} "
+            "QWidget#modeSwitch QPushButton:hover{background:%3;} "
+            "QWidget#modeSwitch QPushButton:checked{background:%5;color:%6;} "
+            "QWidget#modeSwitch QPushButton#modePrivateButton{border-top-left-radius:6px;"
+            "border-bottom-left-radius:6px;border-right:1px solid %4;} "
+            "QWidget#modeSwitch QPushButton#modePublicButton{border-top-right-radius:6px;"
+            "border-bottom-right-radius:6px;} "
             "QPushButton#writeButton{background:transparent;border:1px solid %4;"
             "border-radius:8px;padding:0;} "
             "QPushButton#writeButton:hover{background:%3;} "

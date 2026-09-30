@@ -120,10 +120,6 @@
         <translation>연락처에서 선택</translation>
     </message>
     <message>
-        <source>To %1</source>
-        <translation>받는 사람: %1</translation>
-    </message>
-    <message>
         <source>Subject</source>
         <translation>제목</translation>
     </message>
@@ -158,10 +154,6 @@
     <message>
         <source>https:// address</source>
         <translation>https:// 주소</translation>
-    </message>
-    <message>
-        <source>Images aren't supported — remote images are never loaded, for privacy</source>
-        <translation>이미지는 지원하지 않습니다 — 개인정보 보호를 위해 원격 이미지는 절대 불러오지 않습니다</translation>
     </message>
     <message>
         <source>Clear formatting</source>
@@ -797,6 +789,18 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Delete paragraph</source>
         <translation>단락 삭제</translation>
+    </message>
+    <message>
+        <source>From:</source>
+        <translation>보낸 사람:</translation>
+    </message>
+    <message>
+        <source>To:</source>
+        <translation>받는 사람:</translation>
+    </message>
+    <message>
+        <source>Subject:</source>
+        <translation>제목:</translation>
     </message>
 </context>
 <context>

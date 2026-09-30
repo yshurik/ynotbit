@@ -120,10 +120,6 @@
         <translation>從聯絡人中選擇</translation>
     </message>
     <message>
-        <source>To %1</source>
-        <translation>收件人：%1</translation>
-    </message>
-    <message>
         <source>Subject</source>
         <translation>主題</translation>
     </message>
@@ -158,10 +154,6 @@
     <message>
         <source>https:// address</source>
         <translation>https:// 地址</translation>
-    </message>
-    <message>
-        <source>Images aren't supported — remote images are never loaded, for privacy</source>
-        <translation>不支援圖片——為保護隱私，從不載入遠端圖片</translation>
     </message>
     <message>
         <source>Clear formatting</source>
@@ -797,6 +789,18 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Delete paragraph</source>
         <translation>刪除段落</translation>
+    </message>
+    <message>
+        <source>From:</source>
+        <translation>寄件者：</translation>
+    </message>
+    <message>
+        <source>To:</source>
+        <translation>收件者：</translation>
+    </message>
+    <message>
+        <source>Subject:</source>
+        <translation>主旨：</translation>
     </message>
 </context>
 <context>

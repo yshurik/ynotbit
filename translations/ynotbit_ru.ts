@@ -120,10 +120,6 @@
         <translation>Выбрать из контактов</translation>
     </message>
     <message>
-        <source>To %1</source>
-        <translation>Кому: %1</translation>
-    </message>
-    <message>
         <source>Subject</source>
         <translation>Тема</translation>
     </message>
@@ -158,10 +154,6 @@
     <message>
         <source>https:// address</source>
         <translation>Адрес https://</translation>
-    </message>
-    <message>
-        <source>Images aren't supported — remote images are never loaded, for privacy</source>
-        <translation>Изображения не поддерживаются — удалённые картинки никогда не загружаются ради приватности</translation>
     </message>
     <message>
         <source>Clear formatting</source>
@@ -797,6 +789,18 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Delete paragraph</source>
         <translation>Удалить абзац</translation>
+    </message>
+    <message>
+        <source>From:</source>
+        <translation>От:</translation>
+    </message>
+    <message>
+        <source>To:</source>
+        <translation>Кому:</translation>
+    </message>
+    <message>
+        <source>Subject:</source>
+        <translation>Тема:</translation>
     </message>
 </context>
 <context>
