@@ -65,7 +65,7 @@ void Mailbox::migrate() {
 }
 QString Mailbox::saveDraft(const QString &id, const QString &from, const QString &to,
                            const QString &subject, const QString &body) {
-    require(subject.toUtf8().size() <= 8192 && body.toUtf8().size() <= 200000,
+    require(subject.toUtf8().size() <= 8192 && body.toUtf8().size() <= kMaxDraftBytes,
             "Letter is too large");
     auto draft = id.isEmpty() ? "draft-" + uuid() : id;
     Transaction t(db_);

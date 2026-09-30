@@ -802,6 +802,34 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Subject:</source>
         <translation>Тема:</translation>
     </message>
+    <message>
+        <source>%1 of %2</source>
+        <translation>%1 з %2</translation>
+    </message>
+    <message>
+        <source>Too large to send: Bitmessage carries at most %1 per letter. Shorten it, or trim the quote.</source>
+        <translation>Завелике для надсилання: Bitmessage передає не більше %1 на лист. Скоротіть його або обріжте цитату.</translation>
+    </message>
+    <message>
+        <source>The letter's size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
+        <translation>Розмір листа відносно максимуму одного об'єкта Bitmessage. Більші листи також довше готуються (доказ роботи).</translation>
+    </message>
+    <message>
+        <source>This draft couldn't be saved: %1</source>
+        <translation>Не вдалося зберегти чернетку: %1</translation>
+    </message>
+    <message>
+        <source>Close anyway? Changes since the last save will be lost.</source>
+        <translation>Все одно закрити? Зміни після останнього збереження буде втрачено.</translation>
+    </message>
+    <message>
+        <source>Close without saving</source>
+        <translation>Закрити без збереження</translation>
+    </message>
+    <message>
+        <source>Keep editing</source>
+        <translation>Продовжити редагування</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1273,10 +1301,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>Напишіть повідомлення перед надсиланням</translation>
     </message>
     <message>
-        <source>Message is too large</source>
-        <translation>Повідомлення завелике</translation>
-    </message>
-    <message>
         <source>Letter queued. Follow its progress in Outbox.</source>
         <translation>Лист поставлено в чергу. Стежте за ним у «Вихідних».</translation>
     </message>
@@ -1383,6 +1407,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Retention settings saved</source>
         <translation>Налаштування зберігання збережено</translation>
+    </message>
+    <message>
+        <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
+        <translation>Розмір листа — %1; Bitmessage передає не більше %2. Скоротіть його або обріжте цитату.</translation>
     </message>
 </context>
 </TS>

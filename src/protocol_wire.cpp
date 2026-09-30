@@ -17,7 +17,7 @@ extern "C" {
 }
 namespace bm {
 namespace {
-constexpr int MaxObject = 262144, MaxText = 200000;
+constexpr int MaxObject = kMaxObjectBytes;
 void check(bool ok, const char *what = "Invalid wire object") {
     if (!ok)
         throw std::runtime_error(what);
@@ -322,7 +322,7 @@ PublicIdentity readIdentity(Reader &r, quint64 version = 0, quint64 stream = 0) 
 QByteArray textFields(const QString &subject, const QString &body) {
     check(!subject.contains('\n') && !subject.contains('\r'), "Subject must be a single line");
     Wiped t{("Subject:" + subject + "\nBody:" + body).toUtf8()};
-    check(t.b.size() <= MaxText, "Message is too large");
+    check(t.b.size() <= kMaxLetterText, "Message is too large");
     QByteArray b;
     var(b, 2);
     blob(b, t.b);
@@ -331,7 +331,8 @@ QByteArray textFields(const QString &subject, const QString &body) {
 void readText(Reader &r, Message &m) {
     auto encoding = r.var();
     check(encoding == 1 || encoding == 2);
-    Wiped bytes{r.blob(MaxText)};
+    // Other clients may fill a whole object; the object's own size bounds it.
+    Wiped bytes{r.blob(kMaxObjectBytes)};
     auto text = QString::fromUtf8(bytes.b);
     auto split = text.indexOf("\nBody:");
     if (encoding == 2 && text.startsWith("Subject:") && split >= 8) {

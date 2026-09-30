@@ -802,6 +802,34 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Subject:</source>
         <translation>主题：</translation>
     </message>
+    <message>
+        <source>%1 of %2</source>
+        <translation>%1 / %2</translation>
+    </message>
+    <message>
+        <source>Too large to send: Bitmessage carries at most %1 per letter. Shorten it, or trim the quote.</source>
+        <translation>太大，无法发送：Bitmessage 每封信最多传送 %1。请缩短内容或删减引用。</translation>
+    </message>
+    <message>
+        <source>The letter's size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
+        <translation>信件大小，相对于单个 Bitmessage 对象可承载的上限。信件越大，准备（工作量证明）所需时间也越长。</translation>
+    </message>
+    <message>
+        <source>This draft couldn't be saved: %1</source>
+        <translation>无法保存草稿：%1</translation>
+    </message>
+    <message>
+        <source>Close anyway? Changes since the last save will be lost.</source>
+        <translation>仍要关闭吗？上次保存之后的更改将丢失。</translation>
+    </message>
+    <message>
+        <source>Close without saving</source>
+        <translation>不保存并关闭</translation>
+    </message>
+    <message>
+        <source>Keep editing</source>
+        <translation>继续编辑</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1273,10 +1301,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>发送前请先写消息</translation>
     </message>
     <message>
-        <source>Message is too large</source>
-        <translation>消息过大</translation>
-    </message>
-    <message>
         <source>Letter queued. Follow its progress in Outbox.</source>
         <translation>信件已排队。可在发件箱中查看进度。</translation>
     </message>
@@ -1383,6 +1407,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Retention settings saved</source>
         <translation>保留设置已保存</translation>
+    </message>
+    <message>
+        <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
+        <translation>这封信大小为 %1；Bitmessage 最多传送 %2。请缩短内容或删减引用。</translation>
     </message>
 </context>
 </TS>

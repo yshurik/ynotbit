@@ -10,6 +10,19 @@
 #include <vector>
 struct sqlite3;
 namespace bm {
+// Letter sizes. Bitmessage nodes drop any object over 2^18 bytes. A letter's
+// text -- "Subject:<subject>\nBody:<body>" in UTF-8 -- may take kMaxLetterText
+// of them; the rest is the object header, the sender's keys, the acknowledgment,
+// the signature and the encryption: 486 bytes at most for a msg (see
+// Wire::encodeMessage), fewer for a broadcast, with some slack on top.
+constexpr int kMaxObjectBytes = 262144;
+constexpr int kMaxLetterText = 261000;
+inline int letterTextBytes(const QString &subject, const QString &body) {
+    return int(("Subject:" + subject + "\nBody:" + body).toUtf8().size());
+}
+// Drafts stay on this device, so they may run well past what the network
+// carries: a letter that grew too large can always be kept and trimmed.
+constexpr int kMaxDraftBytes = 4 * 1024 * 1024;
 class Secret {
     unsigned char *p_ = nullptr;
     size_t n_ = 0;

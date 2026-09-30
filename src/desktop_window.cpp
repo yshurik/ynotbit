@@ -1285,15 +1285,44 @@ class Composer : public QDialog {
     QPushButton *modePrivate_, *modePublic_;
     QWidget *floatingToolbar_;
     MarkdownEdit *body_;
-    QLabel *status_;
-    QTimer autosave_;
+    QLabel *status_, *sizeLabel_;
+    QProgressBar *sizeBar_;
+    QPushButton *send_;
+    QTimer autosave_, measure_;
     bool dirty_ = false, bodyEdited_ = false;
+    QString bodyText() const {
+        // ynotbit's own Markdown writer: Qt's export drops quoting from
+        // headings and joins the line after a list into the list.
+        return bodyEdited_ ? letterMarkdown(body_->document()) : original_;
+    }
+    // The letter's size against the most one Bitmessage object carries; a
+    // letter over it can still be kept as a draft, but not sent.
+    void measure() {
+        const int size = letterTextBytes(subject_->text(), bodyText());
+        const auto amount = [](qint64 bytes) {
+            return QLocale().formattedDataSize(bytes, 0, QLocale::DataSizeTraditionalFormat);
+        };
+        const bool over = size > kMaxLetterText;
+        const bool near = size > kMaxLetterText * 9 / 10;
+        sizeBar_->setValue(int(qMin<qint64>(size, kMaxLetterText) * 1000 / kMaxLetterText));
+        sizeLabel_->setText(DesktopWindow::tr("%1 of %2").arg(amount(size), amount(kMaxLetterText)));
+        const QString color = over ? "#d64545" : near ? "#c98a1e" : "#7c8b96";
+        sizeBar_->setStyleSheet(QString("QProgressBar{border:0;border-radius:2px;background:rgba(124,139,150,0.25);}"
+                                        "QProgressBar::chunk{border-radius:2px;background:%1;}")
+                                    .arg(color));
+        sizeLabel_->setStyleSheet(over || near ? QString("color:%1;").arg(color) : QString());
+        sizeBar_->setProperty("over", over);
+        send_->setEnabled(!over);
+        send_->setDefault(!over); // disabling a default button drops its default
+        send_->setToolTip(over ? DesktopWindow::tr("Too large to send: Bitmessage carries at most %1 "
+                                                   "per letter. Shorten it, or trim the quote.")
+                                     .arg(amount(kMaxLetterText))
+                               : QString());
+    }
     bool save() {
         if (!dirty_)
             return true;
-        // ynotbit's own Markdown writer: Qt's export drops quoting from
-        // headings and joins the line after a list into the list.
-        auto body = bodyEdited_ ? letterMarkdown(body_->document()) : original_;
+        auto body = bodyText();
         auto id = session_.saveLetter(id_, sender_->currentData().toString(), to_->text(),
                                       subject_->text(), body,
                                       modePublic_->isChecked() ? "broadcast" : "direct");
@@ -1632,12 +1661,37 @@ class Composer : public QDialog {
         });
         discard->setObjectName("discardButton");
         actions->addStretch();
+        // The size meter, beside the buttons it decides about.
+        auto meter = new QWidget;
+        meter->setObjectName("sizeMeter");
+        meter->setToolTip(DesktopWindow::tr("The letter's size, out of the most one Bitmessage object "
+                                            "carries. Larger letters also take longer to prepare "
+                                            "(proof of work)."));
+        auto meterLayout = new QVBoxLayout(meter);
+        meterLayout->setContentsMargins(0, 0, 8, 0);
+        meterLayout->setSpacing(3);
+        sizeLabel_ = new QLabel;
+        sizeLabel_->setObjectName("sizeLabel");
+        {
+            auto f = sizeLabel_->font();
+            f.setPointSizeF(f.pointSizeF() * 0.85);
+            sizeLabel_->setFont(f);
+        }
+        sizeLabel_->setAlignment(Qt::AlignRight);
+        sizeBar_ = new QProgressBar;
+        sizeBar_->setObjectName("sizeBar");
+        sizeBar_->setRange(0, 1000);
+        sizeBar_->setTextVisible(false);
+        sizeBar_->setFixedSize(110, 4);
+        meterLayout->addWidget(sizeLabel_, 0, Qt::AlignRight);
+        meterLayout->addWidget(sizeBar_, 0, Qt::AlignRight);
+        actions->addWidget(meter, 0, Qt::AlignVCenter);
         button(DesktopWindow::tr("Save a draft"), actions, [this] {
             dirty_ = true;
             if (save())
                 accept();
         })->setObjectName("saveDraftButton");
-        auto send = button(DesktopWindow::tr("Send"), actions, [this] {
+        auto send = send_ = button(DesktopWindow::tr("Send"), actions, [this] {
             dirty_ = true;
             if (save() && session_.sendLetter(id_))
                 accept();
@@ -1656,10 +1710,15 @@ class Composer : public QDialog {
         };
         autosave_.setSingleShot(true);
         connect(&autosave_, &QTimer::timeout, this, [this] { save(); });
+        measure_.setSingleShot(true);
+        connect(&measure_, &QTimer::timeout, this, [this] { measure(); });
         connect(body_, &QTextEdit::textChanged, this, [this, changed] {
             bodyEdited_ = true;
             changed();
+            measure_.start(250);
         });
+        connect(subject_, &QLineEdit::textChanged, this, [this] { measure_.start(250); });
+        measure();
         connect(to_, &QLineEdit::textEdited, this, changed);
         connect(subject_, &QLineEdit::textEdited, this, changed);
         connect(sender_, &QComboBox::currentIndexChanged, this, changed);
@@ -1681,8 +1740,26 @@ class Composer : public QDialog {
         });
     }
     void reject() override {
-        if (save())
+        if (save()) {
             QDialog::reject();
+            return;
+        }
+        // A draft that can't be saved must not trap its window.
+        QMessageBox box(QMessageBox::Warning, windowTitle(),
+                        DesktopWindow::tr("This draft couldn't be saved: %1").arg(session_.error()),
+                        QMessageBox::NoButton, this);
+        box.setObjectName("unsavedDraftBox");
+        box.setInformativeText(
+            DesktopWindow::tr("Close anyway? Changes since the last save will be lost."));
+        auto close = box.addButton(DesktopWindow::tr("Close without saving"),
+                                   QMessageBox::DestructiveRole);
+        close->setObjectName("closeWithoutSavingButton");
+        box.setDefaultButton(box.addButton(DesktopWindow::tr("Keep editing"), QMessageBox::RejectRole));
+        box.exec();
+        if (box.clickedButton() == close) {
+            dirty_ = false;
+            QDialog::reject();
+        }
     }
 };
 // The plain / text / markdown / hex switch. Owns its buttons rather than

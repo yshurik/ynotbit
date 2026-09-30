@@ -802,6 +802,34 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Subject:</source>
         <translation>제목:</translation>
     </message>
+    <message>
+        <source>%1 of %2</source>
+        <translation>%1 / %2</translation>
+    </message>
+    <message>
+        <source>Too large to send: Bitmessage carries at most %1 per letter. Shorten it, or trim the quote.</source>
+        <translation>너무 커서 보낼 수 없습니다: Bitmessage는 편지 한 통에 최대 %1까지 전송합니다. 내용을 줄이거나 인용을 줄이세요.</translation>
+    </message>
+    <message>
+        <source>The letter's size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
+        <translation>Bitmessage 객체 하나가 담을 수 있는 최대치 대비 편지 크기입니다. 편지가 클수록 준비(작업 증명)에 시간이 더 걸립니다.</translation>
+    </message>
+    <message>
+        <source>This draft couldn't be saved: %1</source>
+        <translation>초안을 저장할 수 없습니다: %1</translation>
+    </message>
+    <message>
+        <source>Close anyway? Changes since the last save will be lost.</source>
+        <translation>그래도 닫을까요? 마지막 저장 이후의 변경 사항은 사라집니다.</translation>
+    </message>
+    <message>
+        <source>Close without saving</source>
+        <translation>저장하지 않고 닫기</translation>
+    </message>
+    <message>
+        <source>Keep editing</source>
+        <translation>계속 편집</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1273,10 +1301,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>보내기 전에 메시지를 쓰세요</translation>
     </message>
     <message>
-        <source>Message is too large</source>
-        <translation>메시지가 너무 큽니다</translation>
-    </message>
-    <message>
         <source>Letter queued. Follow its progress in Outbox.</source>
         <translation>편지를 대기열에 넣었습니다. 진행 상황은 보낼 편지함에서 확인하세요.</translation>
     </message>
@@ -1383,6 +1407,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Retention settings saved</source>
         <translation>보존 설정을 저장했습니다</translation>
+    </message>
+    <message>
+        <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
+        <translation>이 편지는 %1입니다. Bitmessage는 최대 %2까지 전송합니다. 내용을 줄이거나 인용을 줄이세요.</translation>
     </message>
 </context>
 </TS>

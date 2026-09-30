@@ -136,7 +136,7 @@ QByteArray Protocol::encodeMessage(const Identity &sender, const Identity &recip
                                    const QString &subject, const QString &body, qint64 expires) {
     require(!subject.contains('\n') && !subject.contains('\r'), "Subject must be a single line");
     auto text = ("Subject:" + subject + "\nBody:" + body).toUtf8();
-    require(text.size() <= 200000, "Message is too large");
+    require(text.size() <= kMaxLetterText, "Message is too large");
     auto sa = address(sender), ra = address(recipient);
     Ecc ecc;
     auto sp = pub(ecc, sender.keys.data()), ep = pub(ecc, sender.keys.data() + 32);
@@ -211,7 +211,7 @@ std::optional<Message> Protocol::decodeMessage(const QByteArray &object,
     if (CRYPTO_memcmp(ra.ripe, m.destination_ripe, 20) != 0)
         return {};
     if (m.sender_address_version < 2 || m.sender_address_version > 4 ||
-        m.sender_stream_number != 1 || m.message_length > 200000 || m.sig_length > 80)
+        m.sender_stream_number != 1 || m.message_length > kMaxObjectBytes || m.sig_length > 80)
         return {};
     QByteArray publicKey(65, 0);
     publicKey[0] = 4;

@@ -873,6 +873,60 @@ int main(int argc, char **argv) {
             QCoreApplication::processEvents();
         }
         {
+            // --- Letter size: a meter against the network's limit; a letter
+            // over it is kept as a draft but can't be sent. ---
+            QString bigDraft;
+            QTimer::singleShot(30, &window, [&] {
+                auto dialog = window.findChild<QDialog *>("composer");
+                auto send = dialog->findChild<QPushButton *>("sendButton");
+                auto label = dialog->findChild<QLabel *>("sizeLabel");
+                auto bar = dialog->findChild<QProgressBar *>("sizeBar");
+                require(label && bar && label->text().endsWith(" of 255 kB") && send->isEnabled(),
+                        "the composer shows the letter's size against the 255 kB limit");
+                dialog->findChild<QLineEdit *>("recipientField")->setText(address);
+                dialog->findChild<QLineEdit *>("subjectField")->setText("Too big");
+                auto body = dialog->findChild<QTextEdit *>("bodyField");
+                body->setPlainText(QString(270000, 'x'));
+                QTest::qWait(400);
+                require(!send->isEnabled() && bar->property("over").toBool() &&
+                            bar->value() == bar->maximum() && !send->toolTip().isEmpty(),
+                        "a letter over the limit can't be sent, and the meter says so");
+                body->setPlainText("Small again");
+                QTest::qWait(400);
+                require(send->isEnabled() && send->isDefault() && !bar->property("over").toBool(),
+                        "trimming it enables Send again");
+                body->setPlainText(QString(270000, 'x'));
+                dialog->findChild<QPushButton *>("saveDraftButton")->click();
+            });
+            window.compose();
+            QCoreApplication::processEvents();
+            for (auto m : session.messagePage("Drafts", {}, 0, 100))
+                if (m.toMap()["subject"].toString() == "Too big")
+                    bigDraft = m.toMap()["hash"].toString();
+            require(!bigDraft.isEmpty() &&
+                        session.message(bigDraft)["body"].toString().size() == 270000,
+                    "a letter over the network limit is still kept as a draft");
+            // A draft that can't be saved doesn't trap its window.
+            bool asked = false;
+            QTimer::singleShot(30, &window, [&] {
+                auto dialog = window.findChild<QDialog *>("composer");
+                QTest::keyClicks(dialog->findChild<QTextEdit *>("bodyField"), "more");
+                session.moveLetter(bigDraft, "Trash"); // saving it now fails
+                QTimer::singleShot(30, &window, [&] {
+                    auto box = window.findChild<QMessageBox *>("unsavedDraftBox");
+                    asked = box != nullptr;
+                    if (box)
+                        box->findChild<QPushButton *>("closeWithoutSavingButton")->click();
+                });
+                dialog->reject();
+            });
+            window.compose({{"hash", bigDraft}});
+            QCoreApplication::processEvents();
+            require(asked && !window.findChild<QDialog *>("composer"),
+                    "closing a draft that can't be saved asks, and then closes");
+            session.moveLetter(bigDraft, "Trash");
+        }
+        {
             // --- Quoting: reading ">" and PyBitmessage history, replying ---
             const QString dashes(54, '-');
             const auto threaded = session.saveLetter(

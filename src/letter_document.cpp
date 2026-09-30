@@ -132,8 +132,11 @@ QString inlineMarkdown(const QTextBlock &block, const QString &continuation) {
             continue;
         auto text = fragment.text();
         const auto format = fragment.charFormat();
-        const int lead = text.size() - QString(text).remove(QRegularExpression("^\\s+")).size();
-        const int trail = text.size() - QString(text).remove(QRegularExpression("\\s+$")).size();
+        int lead = 0, trail = 0;
+        while (lead < text.size() && text[lead].isSpace())
+            ++lead;
+        while (trail < text.size() - lead && text[text.size() - 1 - trail].isSpace())
+            ++trail;
         auto core = text.mid(lead, text.size() - lead - trail);
         if (!core.isEmpty()) {
             if (format.fontFixedPitch() || format.fontFamilies().toStringList().contains("monospace"))

@@ -802,6 +802,34 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Subject:</source>
         <translation>件名:</translation>
     </message>
+    <message>
+        <source>%1 of %2</source>
+        <translation>%1 / %2</translation>
+    </message>
+    <message>
+        <source>Too large to send: Bitmessage carries at most %1 per letter. Shorten it, or trim the quote.</source>
+        <translation>大きすぎて送信できません：Bitmessage で送れるのは 1 通あたり最大 %1 です。短くするか、引用を削ってください。</translation>
+    </message>
+    <message>
+        <source>The letter's size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
+        <translation>手紙のサイズ（Bitmessage オブジェクト 1 つで運べる上限に対して）。大きな手紙ほど準備（プルーフ・オブ・ワーク）に時間がかかります。</translation>
+    </message>
+    <message>
+        <source>This draft couldn't be saved: %1</source>
+        <translation>下書きを保存できませんでした：%1</translation>
+    </message>
+    <message>
+        <source>Close anyway? Changes since the last save will be lost.</source>
+        <translation>それでも閉じますか？最後の保存以降の変更は失われます。</translation>
+    </message>
+    <message>
+        <source>Close without saving</source>
+        <translation>保存せずに閉じる</translation>
+    </message>
+    <message>
+        <source>Keep editing</source>
+        <translation>編集を続ける</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1273,10 +1301,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>送信する前にメッセージを書いてください</translation>
     </message>
     <message>
-        <source>Message is too large</source>
-        <translation>メッセージが大きすぎます</translation>
-    </message>
-    <message>
         <source>Letter queued. Follow its progress in Outbox.</source>
         <translation>メールをキューに追加しました。進行状況は送信トレイで確認できます。</translation>
     </message>
@@ -1383,6 +1407,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Retention settings saved</source>
         <translation>保持期間の設定を保存しました</translation>
+    </message>
+    <message>
+        <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
+        <translation>この手紙は %1 です。Bitmessage で送れるのは最大 %2 です。短くするか、引用を削ってください。</translation>
     </message>
 </context>
 </TS>

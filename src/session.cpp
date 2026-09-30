@@ -16,6 +16,7 @@
 #include <QInputDialog>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QSettings>
@@ -522,7 +523,7 @@ void Session::backup() {
 void Session::saveDraft(QString recipient, QString subject, QString body) {
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
-        check(body.size() <= 200000, tr("Draft is too large"));
+        check(body.toUtf8().size() <= kMaxDraftBytes, tr("Draft is too large"));
         mailbox_.saveDraft({}, {}, recipient, subject, body);
         refresh();
         activity_ = tr("Draft saved in the encrypted mailbox. It has not been sent.");
@@ -676,8 +677,12 @@ bool Session::sendLetter(QString id) {
               tr("Enter a valid Bitmessage recipient address"));
         check(!m.subject.contains('\n') && !m.subject.contains('\r'), tr("Subject must be one line"));
         check(!m.body.trimmed().isEmpty(), tr("Write a message before sending"));
-        check(m.subject.toUtf8().size() + m.body.toUtf8().size() + 14 <= 200000,
-              tr("Message is too large"));
+        const int size = letterTextBytes(m.subject, m.body);
+        check(size <= kMaxLetterText,
+              tr("This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.")
+                  .arg(QLocale().formattedDataSize(size, 0, QLocale::DataSizeTraditionalFormat),
+                       QLocale().formattedDataSize(kMaxLetterText, 0,
+                                                   QLocale::DataSizeTraditionalFormat)));
         mailbox_.queueDraft(id, kind, QDateTime::currentSecsSinceEpoch() + 4 * 86400);
         mailbox_.advance(0);
         refresh();

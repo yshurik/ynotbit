@@ -234,6 +234,19 @@ int main(int argc, char **argv) {
                     decoded->sender.address == sender.address && decoded->acknowledgment == ack,
                 "public recipient roundtrip");
         require(!Wire::decodeMessage(message, sender), "wrong recipient");
+        {
+            // The largest letter ynotbit sends still fits one object, whatever
+            // the text's make-up; longer texts from other clients are read.
+            const auto subject = QString("Full");
+            const auto body = QString(kMaxLetterText - letterTextBytes(subject, {}), 'x');
+            require(letterTextBytes(subject, body) == kMaxLetterText, "limit-sized letter");
+            auto full = Wire::encodeMessage(sender, publicRecipient, subject, body, 1700000000, ack);
+            require(full.size() <= kMaxObjectBytes, "a limit-sized msg fits in one object");
+            auto back = Wire::decodeMessage(full, recipient);
+            require(back && back->message.body.size() > 200000, "texts over 200,000 bytes are read");
+            auto cast = Wire::encodeBroadcast(sender, subject, body, 1700000000);
+            require(cast.size() <= kMaxObjectBytes, "a limit-sized broadcast fits in one object");
+        }
         auto oldDecoded = Protocol::decodeMessage(message, recipient);
         require(oldDecoded && oldDecoded->subject == "Hello",
                 "legacy notbit decrypt compatibility");
@@ -308,7 +321,7 @@ int main(int argc, char **argv) {
         rejects(
             [&] { Wire::encodeMessage(sender, publicRecipient, "bad\nsubject", "", 1700000000); });
         rejects([&] {
-            Wire::encodeMessage(sender, publicRecipient, "", QString(200001, 'x'), 1700000000);
+            Wire::encodeMessage(sender, publicRecipient, "", QString(kMaxLetterText, 'x'), 1700000000);
         });
         rejects([&] { Wire::acknowledgment(QByteArray(31, 0), 1700000000); });
         require(!Wire::validAddress("not an address") &&
