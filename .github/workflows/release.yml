@@ -11,7 +11,9 @@ env:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-24.04
+    # The oldest supported Ubuntu LTS: an AppImage runs only on systems with
+    # a glibc at least as new as the one it was built against (22.04: 2.35).
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
@@ -65,13 +67,25 @@ jobs:
       - name: Package
         run: |
           scripts/package-linux.sh "${{ github.workspace }}/build" \
-            "${{ github.workspace }}/ynotbit-linux-x86_64.AppImage" \
+            "${{ github.workspace }}/ynotbit-x86_64.AppImage" \
             "${{ steps.qt.outputs.prefix }}"
+
+      - name: Check glibc floor
+        run: |
+          ./ynotbit-x86_64.AppImage --appimage-extract >/dev/null
+          newest=$(find squashfs-root -type f \( -name '*.so*' -o -path '*/bin/*' \) \
+            -exec objdump -T {} + 2>/dev/null | grep -o 'GLIBC_[0-9.]*' | sort -u -V | tail -1)
+          echo "newest glibc symbol: $newest"
+          if [ "$(printf '%s\nGLIBC_2.35\n' "$newest" | sort -V | tail -1)" != GLIBC_2.35 ]; then
+            echo "::error::the AppImage needs $newest, newer than Ubuntu 22.04's GLIBC_2.35"
+            exit 1
+          fi
+          rm -rf squashfs-root
 
       - uses: actions/upload-artifact@v4
         with:
           name: ynotbit-linux
-          path: ynotbit-linux-x86_64.AppImage
+          path: ynotbit-x86_64.AppImage
 
   build-macos:
     runs-on: macos-14

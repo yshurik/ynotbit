@@ -140,7 +140,7 @@ To package a build for redistribution, with Qt's runtime libraries bundled in:
 # macOS
 scripts/package-macos.sh /absolute/build /absolute/ynotbit-macos-arm64.zip /absolute/Qt/6.8.3/macos
 # Linux — builds a single self-contained AppImage with linuxdeploy
-scripts/package-linux.sh /absolute/build /absolute/ynotbit-linux-x86_64.AppImage /absolute/Qt/6.8.3/gcc_64
+scripts/package-linux.sh /absolute/build /absolute/ynotbit-x86_64.AppImage /absolute/Qt/6.8.3/gcc_64
 ```
 ```powershell
 # Windows
