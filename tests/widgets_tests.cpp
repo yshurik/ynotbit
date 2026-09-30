@@ -460,6 +460,13 @@ int main(int argc, char **argv) {
             require(chanModePrivate && chanModePublic, "mode buttons exist for channel compose");
             require(chanModePrivate->text() == "Personal" && chanModePublic->text() == "Anonymous",
                     "channel sender shows Personal/Anonymous labels");
+            // Kinds as LetterKind numbers them: Personal, ChanPersonal, ChanAnonymous, Broadcast.
+            auto stripe = dialog->findChild<QWidget *>("composerKindStripe");
+            require(stripe && stripe->property("letterKind").toInt() == 1,
+                    "a personal chan post gets the chan-personal border");
+            chanModePublic->click();
+            require(stripe->property("letterKind").toInt() == 2,
+                    "switching to Anonymous changes the border to chan-anonymous");
             dialog->reject();
         });
         window.findChild<QPushButton *>("writeButton")->click();
@@ -1329,7 +1336,12 @@ int main(int argc, char **argv) {
             require(!dialog->findChild<QToolBar *>(), "no static formatting toolbar");
             require(dialog->findChild<QPushButton *>("sendButton")->isDefault(),
                     "Send is the default button");
+            auto stripe = dialog->findChild<QWidget *>("composerKindStripe");
+            require(stripe && stripe->property("letterKind").toInt() == 0,
+                    "private mail gets the personal letter border");
             modePublic->click();
+            require(stripe->property("letterKind").toInt() == 3,
+                    "public mail gets the broadcast border");
             require(!to->isVisible() && !toLabel->isVisible(),
                     "recipient and its label hidden in public mode");
             modePrivate->click();

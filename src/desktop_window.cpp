@@ -352,6 +352,7 @@ class KindFrame : public QWidget {
     }
     void setKind(LetterKind kind) {
         kind_ = kind;
+        setProperty("letterKind", int(kind));
         // A gap between the border and its content -- otherwise the toolbar
         // sits flush against the inner edge of the stripe with no breathing
         // room. Every kind now paints some border, so the inset is constant.
@@ -1315,9 +1316,17 @@ class Composer : public QDialog {
         setWindowTitle(reply ? DesktopWindow::tr("Reply") : DesktopWindow::tr("Write a letter"));
         resize(740, 650);
         setModal(true);
-        auto layout = new QVBoxLayout(this);
-        layout->setContentsMargins(24, 24, 24, 24);
+        // The letter's envelope: the same striped border as the reader, for
+        // the kind of letter this will be once sent.
+        auto outer = new QVBoxLayout(this);
+        outer->setContentsMargins(0, 0, 0, 0);
+        auto kindFrame = new KindFrame;
+        kindFrame->setObjectName("composerKindStripe");
+        outer->addWidget(kindFrame);
+        auto layout = new QVBoxLayout;
+        layout->setContentsMargins(16, 16, 16, 16);
         layout->setSpacing(12);
+        kindFrame->contentLayout()->addLayout(layout);
         // Private/Public is one choice: a segmented switch (styled with the
         // app's other switches), its explanation beside it.
         auto modeRow = new QHBoxLayout;
@@ -1377,7 +1386,7 @@ class Composer : public QDialog {
         fields->addWidget(fieldLabel(DesktopWindow::tr("From:"), sender_), 0, 0);
         fields->addWidget(sender_, 0, 1);
         layout->addLayout(fields);
-        auto updateModeLabels = [this, identities, modeHint] {
+        auto updateModeLabels = [this, identities, modeHint, kindFrame] {
             bool channel = false;
             for (auto value : identities) {
                 auto identity = value.toMap();
@@ -1386,6 +1395,9 @@ class Composer : public QDialog {
                     break;
                 }
             }
+            const bool privately = modePrivate_->isChecked();
+            kindFrame->setKind(channel ? (privately ? LetterKind::ChanPersonal : LetterKind::ChanAnonymous)
+                                       : (privately ? LetterKind::Personal : LetterKind::Broadcast));
             modePrivate_->setText(channel ? DesktopWindow::tr("Personal") : DesktopWindow::tr("Private mail"));
             modePublic_->setText(channel ? DesktopWindow::tr("Anonymous") : DesktopWindow::tr("Public mail"));
             if (modePrivate_->isChecked())
