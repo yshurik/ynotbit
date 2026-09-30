@@ -759,12 +759,44 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>%2 于 %1 写道：</translation>
     </message>
     <message>
-        <source>Quoted below your reply</source>
-        <translation>引用内容附在你的回复下方</translation>
+        <source>Paragraph</source>
+        <translation>段落</translation>
     </message>
     <message>
-        <source>Remove quote</source>
-        <translation>移除引用</translation>
+        <source>Bullet list</source>
+        <translation>无序列表</translation>
+    </message>
+    <message>
+        <source>Numbered list</source>
+        <translation>有序列表</translation>
+    </message>
+    <message>
+        <source>Code block</source>
+        <translation>代码块</translation>
+    </message>
+    <message>
+        <source>Heading %1</source>
+        <translation>标题 %1</translation>
+    </message>
+    <message>
+        <source>Paragraph type</source>
+        <translation>段落类型</translation>
+    </message>
+    <message>
+        <source>Turn into</source>
+        <translation>转换为</translation>
+    </message>
+    <message>
+        <source>Duplicate</source>
+        <translation>复制</translation>
+    </message>
+    <message>
+        <source>New paragraph below</source>
+        <translation>在下方新建段落</translation>
+    </message>
+    <message>
+        <source>Delete paragraph</source>
+        <translation>删除段落</translation>
     </message>
 </context>
 <context>

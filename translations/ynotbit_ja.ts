@@ -759,12 +759,44 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>%1、%2 さんは書きました:</translation>
     </message>
     <message>
-        <source>Quoted below your reply</source>
-        <translation>返信の下に引用されます</translation>
+        <source>Paragraph</source>
+        <translation>段落</translation>
     </message>
     <message>
-        <source>Remove quote</source>
-        <translation>引用を削除</translation>
+        <source>Bullet list</source>
+        <translation>箇条書き</translation>
+    </message>
+    <message>
+        <source>Numbered list</source>
+        <translation>番号付きリスト</translation>
+    </message>
+    <message>
+        <source>Code block</source>
+        <translation>コードブロック</translation>
+    </message>
+    <message>
+        <source>Heading %1</source>
+        <translation>見出し %1</translation>
+    </message>
+    <message>
+        <source>Paragraph type</source>
+        <translation>段落の種類</translation>
+    </message>
+    <message>
+        <source>Turn into</source>
+        <translation>変換</translation>
+    </message>
+    <message>
+        <source>Duplicate</source>
+        <translation>複製</translation>
+    </message>
+    <message>
+        <source>New paragraph below</source>
+        <translation>下に新しい段落</translation>
+    </message>
+    <message>
+        <source>Delete paragraph</source>
+        <translation>段落を削除</translation>
     </message>
 </context>
 <context>

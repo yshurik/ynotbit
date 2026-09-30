@@ -759,12 +759,44 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>%1, %2 님이 작성:</translation>
     </message>
     <message>
-        <source>Quoted below your reply</source>
-        <translation>답장 아래에 인용됩니다</translation>
+        <source>Paragraph</source>
+        <translation>단락</translation>
     </message>
     <message>
-        <source>Remove quote</source>
-        <translation>인용 삭제</translation>
+        <source>Bullet list</source>
+        <translation>글머리 기호 목록</translation>
+    </message>
+    <message>
+        <source>Numbered list</source>
+        <translation>번호 매기기 목록</translation>
+    </message>
+    <message>
+        <source>Code block</source>
+        <translation>코드 블록</translation>
+    </message>
+    <message>
+        <source>Heading %1</source>
+        <translation>제목 %1</translation>
+    </message>
+    <message>
+        <source>Paragraph type</source>
+        <translation>단락 유형</translation>
+    </message>
+    <message>
+        <source>Turn into</source>
+        <translation>변환</translation>
+    </message>
+    <message>
+        <source>Duplicate</source>
+        <translation>복제</translation>
+    </message>
+    <message>
+        <source>New paragraph below</source>
+        <translation>아래에 새 단락</translation>
+    </message>
+    <message>
+        <source>Delete paragraph</source>
+        <translation>단락 삭제</translation>
     </message>
 </context>
 <context>

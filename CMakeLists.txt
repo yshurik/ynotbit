@@ -77,7 +77,7 @@ else()
  target_compile_definitions(notbit_engine PRIVATE _GNU_SOURCE)
  target_compile_options(notbit_engine PRIVATE -Wno-deprecated-declarations -include sys/types.h)
 endif()
-qt_add_executable(ynotbit MACOSX_BUNDLE src/main.cpp src/i18n.cpp src/i18n.h src/quoting.cpp src/quoting.h src/session.cpp src/session.h
+qt_add_executable(ynotbit MACOSX_BUNDLE src/main.cpp src/i18n.cpp src/i18n.h src/quoting.cpp src/quoting.h src/letter_document.cpp src/letter_document.h src/letter_document.cpp src/letter_document.h src/session.cpp src/session.h
  assets/icons.qrc
  src/portable_relay.cpp src/portable_relay.h src/appearance.cpp src/appearance.h
  src/desktop_window.cpp src/desktop_window.h src/message_model.cpp src/message_model.h
@@ -130,7 +130,7 @@ if(Python3_Interpreter_FOUND)
 endif()
 add_test(NAME gui-smoke COMMAND ynotbit --offline --data-dir ${CMAKE_CURRENT_BINARY_DIR}/smoke-node --smoke-test)
 set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-qt_add_executable(desktop_tests tests/widgets_tests.cpp src/i18n.cpp src/quoting.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/appearance.cpp src/appearance.h
+qt_add_executable(desktop_tests tests/widgets_tests.cpp src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/appearance.cpp src/appearance.h
  assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(desktop_tests PRIVATE third_party/qrcodegen)
@@ -140,7 +140,7 @@ set_tests_properties(desktop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" 
 # README screenshots from demo data; built only on request:
 #   cmake --build build --target readme_screenshots && build/readme_screenshots docs/images
 qt_add_executable(readme_screenshots EXCLUDE_FROM_ALL tools/readme_screenshots.cpp
- src/i18n.cpp src/quoting.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp
+ src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp
  src/desktop_window.h src/appearance.cpp src/appearance.h assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(readme_screenshots PRIVATE third_party/qrcodegen)
@@ -192,6 +192,12 @@ target_include_directories(quoting_tests PRIVATE src)
 target_link_libraries(quoting_tests PRIVATE Qt6::Gui)
 add_test(NAME quoting COMMAND quoting_tests)
 set_tests_properties(quoting PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+qt_add_executable(letter_document_tests tests/letter_document_tests.cpp src/letter_document.cpp
+ src/quoting.cpp)
+target_include_directories(letter_document_tests PRIVATE src)
+target_link_libraries(letter_document_tests PRIVATE Qt6::Gui)
+add_test(NAME letter-document COMMAND letter_document_tests)
+set_tests_properties(letter-document PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 qt_add_executable(i18n_tests tests/i18n_tests.cpp src/i18n.cpp src/i18n.h)
 target_include_directories(i18n_tests PRIVATE src)
 target_link_libraries(i18n_tests PRIVATE Qt6::Core)

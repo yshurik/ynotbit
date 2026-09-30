@@ -759,12 +759,44 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>%1, %2 пише:</translation>
     </message>
     <message>
-        <source>Quoted below your reply</source>
-        <translation>Цитується під вашою відповіддю</translation>
+        <source>Paragraph</source>
+        <translation>Абзац</translation>
     </message>
     <message>
-        <source>Remove quote</source>
-        <translation>Прибрати цитату</translation>
+        <source>Bullet list</source>
+        <translation>Маркований список</translation>
+    </message>
+    <message>
+        <source>Numbered list</source>
+        <translation>Нумерований список</translation>
+    </message>
+    <message>
+        <source>Code block</source>
+        <translation>Блок коду</translation>
+    </message>
+    <message>
+        <source>Heading %1</source>
+        <translation>Заголовок %1</translation>
+    </message>
+    <message>
+        <source>Paragraph type</source>
+        <translation>Тип абзацу</translation>
+    </message>
+    <message>
+        <source>Turn into</source>
+        <translation>Перетворити на</translation>
+    </message>
+    <message>
+        <source>Duplicate</source>
+        <translation>Дублювати</translation>
+    </message>
+    <message>
+        <source>New paragraph below</source>
+        <translation>Новий абзац нижче</translation>
+    </message>
+    <message>
+        <source>Delete paragraph</source>
+        <translation>Видалити абзац</translation>
     </message>
 </context>
 <context>

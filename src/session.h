@@ -113,10 +113,6 @@ class Session : public QObject {
     Q_INVOKABLE QString saveLetter(QString id, QString from, QString to, QString subject,
                                    QString body, QString kind);
     Q_INVOKABLE bool sendLetter(QString id);
-    // The quoted letter a draft reply ends with, kept apart so the composer
-    // can show it as its own pane instead of editing it as Markdown.
-    QString draftQuote(QString id) const;
-    void setDraftQuote(QString id, QString quote);
     Q_INVOKABLE void retryLetter(QString id);
     Q_INVOKABLE void cancelLetter(QString id);
     Q_INVOKABLE void moveLetter(QString id, QString folder);

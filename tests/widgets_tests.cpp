@@ -1,6 +1,7 @@
 #include "desktop_window.h"
 #include "session.h"
 #include "protocol.h"
+#include "letter_document.h"
 #include <QElapsedTimer>
 #include <QTest>
 #include <QtWidgets>
@@ -27,8 +28,12 @@ int main(int argc, char **argv) {
     app.setApplicationName("Widgets");
     QTemporaryDir temp;
     auto require = [](bool ok, const char *message) {
-        if (!ok)
+        if (!ok) {
+            // Also printed here: a failure inside a dialog callback is thrown
+            // through Qt's event loop, which aborts before main() reports it.
+            std::cerr << "FAIL: " << message << "\n";
             throw std::runtime_error(message);
+        }
     };
     try {
         for (const auto &icon : {bm::appLogo(), bm::windowLogo()}) {
@@ -914,15 +919,12 @@ int main(int argc, char **argv) {
                 auto body = dialog->findChild<QTextEdit *>("bodyField");
                 require(dialog->findChild<QLineEdit *>("subjectField")->text() == "Re: bootstrap",
                         "the subject is not prefixed twice");
-                require(body->toPlainText().startsWith("\n\n--\nsent by ynotbit"),
+                require(body->toPlainText().replace(QChar(0x2028), '\n').startsWith(
+                            "\n\n-- \nsent by ynotbit"),
                         "the reply starts with room to write, then the signature");
-                // The answered letter is its own read-only pane under the editor.
-                auto quotePane = dialog->findChild<QTextBrowser *>("quoteView");
-                require(quotePane && quotePane->isVisibleTo(dialog),
-                        "the quoted letter is shown below the reply");
+                // The answered letter is quoted in the same editor, one level deeper.
                 QMap<QString, int> quotedLevels;
-                for (auto block = quotePane->document()->begin(); block.isValid();
-                     block = block.next())
+                for (auto block = body->document()->begin(); block.isValid(); block = block.next())
                     quotedLevels[block.text()] =
                         block.blockFormat().intProperty(QTextFormat::BlockQuoteLevel);
                 bool attributed = false;
@@ -933,6 +935,46 @@ int main(int argc, char **argv) {
                             quotedLevels.value("What happened?") == 2 &&
                             quotedLevels.value("We have zero working bootstrap addresses.") == 3,
                         "the answered letter is quoted one level deeper, history deeper still");
+                require(!dialog->findChild<QTextBrowser *>("quoteView"),
+                        "there is no separate quote pane");
+                // Quoted text can be edited, but its quote cannot be removed.
+                QTextBlock quoted;
+                for (auto block = body->document()->begin(); block.isValid(); block = block.next())
+                    if (block.text() == "go offline")
+                        quoted = block;
+                auto c = body->textCursor();
+                c.setPosition(quoted.position());
+                body->setTextCursor(c);
+                QTest::keyClick(body, Qt::Key_Backspace);
+                require(body->textCursor().block().text() == "go offline" &&
+                            body->textCursor().block().blockFormat().intProperty(
+                                QTextFormat::BlockQuoteLevel) == 1,
+                        "Backspace at the start of a quoted paragraph keeps it quoted");
+                c = body->textCursor();
+                c.setPosition(quoted.previous().position() + quoted.previous().length() - 1);
+                body->setTextCursor(c);
+                QTest::keyClick(body, Qt::Key_Delete);
+                require(body->textCursor().block().next().text() == "go offline",
+                        "Delete before a quoted paragraph does not pull it out of the quote");
+                c.setPosition(quoted.position() + 2);
+                body->setTextCursor(c);
+                QTest::keyClicks(body, "X");
+                require(body->textCursor().block().text() == "goX offline" &&
+                            body->textCursor().block().blockFormat().intProperty(
+                                QTextFormat::BlockQuoteLevel) == 1,
+                        "quoted text itself can be edited");
+                QTest::keyClick(body, Qt::Key_Backspace);
+                // Enter twice at the end of a quote leaves it: an inline answer.
+                c.setPosition(quoted.position() + quoted.length() - 1);
+                body->setTextCursor(c);
+                QTest::keyClick(body, Qt::Key_Return);
+                QTest::keyClick(body, Qt::Key_Return);
+                require(body->textCursor().block().blockFormat().intProperty(
+                            QTextFormat::BlockQuoteLevel) == 0,
+                        "Enter on an empty quoted line steps out of the quote");
+                QTest::keyClicks(body, "Inline answer.");
+                c.movePosition(QTextCursor::Start);
+                body->setTextCursor(c);
                 QTest::keyClicks(body, "Agreed.");
                 dialog->findChild<QPushButton *>("saveDraftButton")->click();
             });
@@ -944,9 +986,9 @@ int main(int argc, char **argv) {
                     replyBody = session.message(m.toMap()["hash"].toString())["body"].toString();
             require(replyBody.contains("-- \nsent by ynotbit") && !replyBody.contains("\\--"),
                     "the saved reply keeps a proper \"-- \" signature delimiter");
-            require(replyBody.contains("\n> go offline") && replyBody.contains("\n>> What happened?") &&
+            require(replyBody.contains("\n> go offline\n\nInline answer.\n>> What happened?") &&
                         replyBody.contains("\n>>> We have zero working bootstrap addresses."),
-                    "the saved reply quotes with \">\", nested per level, exactly as shown");
+                    "the saved reply quotes with \">\", nested per level, answers in between");
             session.moveLetter(threaded, "Trash");
             QCoreApplication::processEvents();
         }
@@ -1013,16 +1055,19 @@ int main(int argc, char **argv) {
             require(blockFor("Thanks!").isValid() && !blockFor("Thanks!").textList() &&
                         level(blockFor("Thanks!")) == 1,
                     "the quoted paragraph after the list stays a paragraph");
-            require(blockFor("sent by ynotbit").isValid() && blockFor("--").isValid(),
+            require(blockFor("-- " + QString(QChar(0x2028)) + "sent by ynotbit").isValid(),
                     "the signature keeps its delimiter line in the Markdown view");
-            // Reopening the draft: the quote goes back to its pane, untouched.
+            // Reopening the draft: one editor again, quoting and headings intact.
             QTimer::singleShot(30, &window, [&] {
                 auto dialog = window.findChild<QDialog *>("composer");
                 auto editor = dialog->findChild<QTextEdit *>("bodyField");
-                auto pane = dialog->findChild<QTextBrowser *>("quoteView");
-                require(!editor->toPlainText().contains("Release notes") && pane &&
-                            pane->isVisibleTo(dialog) && pane->toPlainText().contains("Release notes"),
-                        "a reopened reply draft shows its quote in the quote pane, not the editor");
+                QTextBlock heading;
+                for (auto block = editor->document()->begin(); block.isValid(); block = block.next())
+                    if (block.text() == "Release notes")
+                        heading = block;
+                require(heading.isValid() && heading.blockFormat().headingLevel() == 1 &&
+                            heading.blockFormat().intProperty(QTextFormat::BlockQuoteLevel) == 1,
+                        "a reopened reply draft shows the quoted heading in the editor");
                 dialog->findChild<QPushButton *>("saveDraftButton")->click();
             });
             window.compose({{"hash", replyId}});
@@ -1081,7 +1126,7 @@ int main(int argc, char **argv) {
             auto sigBody = dialog->findChild<QTextEdit *>("bodyField");
             require(sigBody->toPlainText().contains("ynotbit"),
                     "a brand-new letter is pre-filled with a default signature");
-            require(sigBody->toPlainText().startsWith("\n\n--\nsent by ynotbit"),
+            require(sigBody->toPlainText().replace(QChar(0x2028), '\n').startsWith("\n\n-- \nsent by ynotbit"),
                     "two blank lines separate the cursor position from the signature, whose "
                     "\"-- \" delimiter keeps its own line");
             require(sigBody->textCursor().position() == 0,
@@ -1157,6 +1202,57 @@ int main(int argc, char **argv) {
             auto gutter = dialog->findChild<QWidget *>("headingGutter");
             require(gutter && gutter->isVisible() && gutter->width() > 0,
                     "heading gutter renders beside the body");
+            {
+                // MarkText-style: the paragraph's mark opens "Turn into".
+                body->clear();
+                body->setPlainText("Plain words\nsecond paragraph");
+                auto c = body->textCursor();
+                c.movePosition(QTextCursor::Start);
+                body->setTextCursor(c);
+                QApplication::processEvents();
+                const auto first = body->document()->begin();
+                const auto rect = body->document()->documentLayout()->blockBoundingRect(first);
+                const QPoint mark(gutter->width() / 2,
+                                  int(rect.center().y()) + body->viewport()->y() -
+                                      body->verticalScrollBar()->value());
+                QTest::mouseClick(gutter, Qt::LeftButton, {}, mark);
+                auto menu = gutter->findChild<QMenu *>("paragraphMenu");
+                require(menu && menu->isVisible(), "clicking the paragraph mark opens its menu");
+                auto toParagraph = menu->findChild<QAction *>("turnInto_0");
+                require(toParagraph && toParagraph->isChecked() &&
+                            !menu->findChild<QAction *>("turnInto_1")->isChecked(),
+                        "the menu marks the paragraph's current type");
+                menu->findChild<QAction *>("turnInto_1")->trigger();
+                menu->close();
+                require(body->document()->begin().blockFormat().headingLevel() == 1,
+                        "\"Turn into\" Heading 1 makes the paragraph a heading");
+                require(bm::letterMarkdown(body->document()).startsWith("# Plain words"),
+                        "the heading is saved as \"# \"");
+                c.movePosition(QTextCursor::End);
+                body->setTextCursor(c);
+                dialog->activateWindow();
+                body->setFocus();
+                QApplication::processEvents();
+                QTest::keyClick(body, Qt::Key_2, Qt::ControlModifier | Qt::ShiftModifier);
+                require(body->textCursor().block().blockFormat().headingLevel() == 2,
+                        "Ctrl+Shift+2 turns the paragraph into Heading 2, as in MarkText");
+                QTest::keyClick(body, Qt::Key_0, Qt::ControlModifier | Qt::ShiftModifier);
+                require(body->textCursor().block().blockFormat().headingLevel() == 0 &&
+                            body->textCursor().charFormat().fontWeight() < QFont::Bold,
+                        "Ctrl+Shift+0 turns it back into a plain paragraph");
+                QTest::keyClick(body, Qt::Key_H, Qt::ControlModifier);
+                require(body->textCursor().currentList(), "Ctrl+H makes a bullet list item");
+                // A quoted paragraph stays quoted whatever its type becomes.
+                bm::setQuoteLevel(body->document()->begin(), 1);
+                c.movePosition(QTextCursor::Start);
+                body->setTextCursor(c);
+                QTest::keyClick(body, Qt::Key_3, Qt::ControlModifier | Qt::ShiftModifier);
+                require(body->document()->begin().blockFormat().headingLevel() == 3 &&
+                            bm::blockQuoteLevel(body->document()->begin()) == 1,
+                        "turning a quoted paragraph into a heading keeps its quote");
+                require(bm::letterMarkdown(body->document()).startsWith("> ### Plain words"),
+                        "a quoted heading is saved as \"> ### \"");
+            }
             body->clear();
             QApplication::clipboard()->setText(
                 "**Bold word** and a heading:\n\n## Section\n\nplain line after");

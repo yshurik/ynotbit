@@ -1,21 +1,13 @@
-// Reply quoting: reading ">" and PyBitmessage's dash-separated history, and
-// keeping line structure through the composer's Markdown round trip.
+// Reply quoting: reading ">" and PyBitmessage's dash-separated history.
+// (The composer's round trip is in letter_document_tests.)
 #include "quoting.h"
 #include <QGuiApplication>
-#include <QTextBlock>
-#include <QTextDocument>
 #include <iostream>
 #include <stdexcept>
 
 static void require(bool ok, const char *message) {
     if (!ok)
         throw std::runtime_error(message);
-}
-// What the composer does to a body: load it as Markdown, export it again.
-static QString throughComposer(const QString &body) {
-    QTextDocument doc;
-    doc.setMarkdown(bm::toComposerMarkdown(body), QTextDocument::MarkdownDialectGitHub);
-    return bm::fromComposerMarkdown(doc.toMarkdown());
 }
 int main(int argc, char **argv) {
     QGuiApplication app(argc, argv);
@@ -53,28 +45,7 @@ int main(int argc, char **argv) {
         require(bm::quoteForReply("hi\n\n" + dashes + "\nold", "A:") == "A:\n> hi\n>> old",
                 "a PyBitmessage thread is quoted as nested levels");
 
-        // Through the composer: quoted lines stay consecutive and the
-        // signature delimiter keeps its own, unescaped line.
-        const QString reply = "\n\n-- \nsent by ynotbit\n\nOn X, Alice wrote:\n> line one\n> line two\n"
-                              ">> deeper one\n>> deeper two";
-        const auto sent = throughComposer("Thanks!" + reply);
-        require(sent.contains("-- \nsent by ynotbit") && !sent.contains("\\--"),
-                "the signature is sent as \"-- \" then its text, never \"\\--\"");
-        require(sent.contains("> line one  \n> line two"), "quoted lines stay consecutive");
-        require(sent.contains("> > deeper one  \n> > deeper two"), "and so do deeper ones");
-        require(throughComposer(sent) == sent, "reopening a draft changes nothing");
-        require(bm::fromComposerMarkdown("x\n\n\\-- sent by ynotbit") == "x\n\n-- \nsent by ynotbit",
-                "older drafts with the merged, escaped signature are repaired");
-
-        // What the composer shows: one block per quoted line, at its level.
-        QTextDocument doc;
-        doc.setMarkdown(bm::toComposerMarkdown(sent), QTextDocument::MarkdownDialectGitHub);
-        QList<int> levels;
-        for (auto block = doc.begin(); block.isValid(); block = block.next())
-            if (block.text().contains("line") || block.text().contains("deeper"))
-                levels << block.blockFormat().intProperty(QTextFormat::BlockQuoteLevel);
-        require(levels == QList<int>({1, 1, 2, 2}), "the composer shows quote levels per line");
-        std::cout << "PASS: quote levels, PyBitmessage threads, reply quoting, composer round trip\n";
+        std::cout << "PASS: quote levels, PyBitmessage threads, reply quoting\n";
         return 0;
     } catch (const std::exception &e) {
         std::cerr << "FAIL: " << e.what() << "\n";

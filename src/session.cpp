@@ -661,13 +661,6 @@ QString Session::saveLetter(QString id, QString from, QString to, QString subjec
     });
     return result;
 }
-QString Session::draftQuote(QString id) const {
-    return mailboxOpen() && !id.isEmpty() ? mailbox_.setting("draftquote:" + id) : QString();
-}
-void Session::setDraftQuote(QString id, QString quote) {
-    if (mailboxOpen() && !id.isEmpty())
-        mailbox_.setSetting("draftquote:" + id, quote);
-}
 bool Session::sendLetter(QString id) {
     bool sent = false;
     attempt([&] {

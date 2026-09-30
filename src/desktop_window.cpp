@@ -2,6 +2,7 @@
 #include "session.h"
 #include "i18n.h"
 #include "quoting.h"
+#include "letter_document.h"
 #include "qrcodegen.hpp"
 #include <QCryptographicHash>
 #include <QDesktopServices>
@@ -67,14 +68,6 @@ QString hexDump(const QByteArray &bytes) {
     return out;
 }
 namespace {
-// Quoted history, email style: each level indented one step and marked by a
-// coloured bar (blue, green, amber, violet, repeating), over a faint tint of
-// the same colour. Mid-tone colours read on both light and dark themes.
-constexpr int kQuoteIndent = 14;
-QColor quoteColor(int level) {
-    static const QColor colors[] = {"#4a8fd6", "#3fa46a", "#c98a1e", "#9a63c9"};
-    return colors[(level - 1) % 4];
-}
 class AddressHighlighter : public QSyntaxHighlighter {
   public:
     explicit AddressHighlighter(QTextDocument *document) : QSyntaxHighlighter(document) {}
@@ -383,39 +376,6 @@ QPushButton *button(QString text, QBoxLayout *layout, std::function<void()> fn) 
     QObject::connect(b, &QPushButton::clicked, b, std::move(fn));
     return b;
 }
-// Sets a block's quote level and gives it the indent and tint the bars need.
-void setQuoteLevel(QTextBlock block, int level) {
-    auto format = block.blockFormat();
-    format.setProperty(QTextFormat::BlockQuoteLevel, level);
-    format.setLeftMargin(level * kQuoteIndent + (level ? 6 : 0));
-    if (level) {
-        auto tint = quoteColor(level);
-        tint.setAlpha(22);
-        format.setBackground(tint);
-    } else {
-        format.clearBackground();
-    }
-    QTextCursor(block).setBlockFormat(format);
-}
-// Re-styles every block the Markdown parser marked as quoted.
-void styleQuoteBlocks(QTextDocument *doc) {
-    for (auto block = doc->begin(); block.isValid(); block = block.next())
-        if (const int level = block.blockFormat().intProperty(QTextFormat::BlockQuoteLevel))
-            setQuoteLevel(block, level);
-}
-// Plain text with ">" quoting: the markers become block quote levels.
-void quotesToBlocks(QTextDocument *doc) {
-    for (auto block = doc->begin(); block.isValid(); block = block.next()) {
-        int length = 0;
-        const int level = quoteLevel(block.text(), &length);
-        if (!level)
-            continue;
-        QTextCursor cursor(block);
-        cursor.setPosition(block.position() + length, QTextCursor::KeepAnchor);
-        cursor.removeSelectedText();
-        setQuoteLevel(block, level);
-    }
-}
 // The bars, painted over the viewport of a text view after its text.
 void paintQuoteBars(QTextEdit *edit) {
     QPainter p(edit->viewport());
@@ -457,58 +417,12 @@ class LetterView : public QTextBrowser {
         paintQuoteBars(this);
     }
 };
-// Markdown with quoting. Qt's Markdown import drops the quote level of
-// headings ("> # Title" comes back as a plain heading), so each run of lines
-// at one quote level is parsed on its own, without its markers, and the level
-// is set on what it produced: quoted headings, lists and emphasis all survive.
+// Markdown with quoting, through loadLetter: each quote level is read on its
+// own, so quoted headings, lists and emphasis keep their quote.
 void renderMarkdown(QTextBrowser *body, const QString &text) {
-    const auto features = QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
-                                                          QTextDocument::MarkdownNoHTML);
     auto doc = body->document();
     doc->setLayoutEnabled(false);
-    doc->clear();
-    QTextCursor cursor(doc);
-    bool first = true;
-    auto flush = [&](int level, QStringList &run) {
-        const auto markdown = run.join('\n');
-        run.clear();
-        if (markdown.trimmed().isEmpty())
-            return;
-        if (!first) {
-            cursor.movePosition(QTextCursor::End);
-            cursor.insertBlock(QTextBlockFormat(), QTextCharFormat());
-        }
-        // Parsed apart, then inserted. The run's first block merges into the
-        // (empty) block at the cursor and would take its format, so a
-        // leading heading is restored from the parsed copy.
-        QTextDocument part;
-        part.setMarkdown(toComposerMarkdown(markdown), features);
-        const auto firstFormat = part.begin().blockFormat();
-        const int start = cursor.block().blockNumber();
-        cursor.insertFragment(QTextDocumentFragment(&part));
-        QTextCursor(doc->findBlockByNumber(start)).setBlockFormat(firstFormat);
-        first = false;
-        for (auto block = doc->findBlockByNumber(start); block.isValid(); block = block.next())
-            setQuoteLevel(block, level);
-    };
-    QStringList run;
-    int runLevel = -1;
-    for (const auto &line : normalizeQuotes(text).split('\n')) {
-        int length = 0;
-        const int level = quoteLevel(line, &length);
-        // A blank line between two runs belongs to neither.
-        if (level == 0 && line.trimmed().isEmpty() && runLevel > 0) {
-            run << QString();
-            continue;
-        }
-        if (level != runLevel && runLevel >= 0)
-            flush(runLevel, run);
-        runLevel = level;
-        run << line.mid(length);
-    }
-    if (runLevel >= 0)
-        flush(runLevel, run);
-    doc->clearUndoRedoStacks();
+    loadLetter(doc, text, true);
     for (auto block = doc->begin(); block.isValid(); block = block.next()) {
         QTextCursor blockCursor(block);
         auto format = block.blockFormat();
@@ -559,11 +473,10 @@ void renderBody(QTextBrowser *body, const QString &text, BodyView mode) {
     }
     // Text shows quoting as bars (PyBitmessage's dash-separated history too);
     // Plain keeps the raw ">" lines, coloured by level, and Hex the bytes.
-    body->setPlainText(mode == BodyView::Hex    ? hexDump(text.toUtf8())
-                       : mode == BodyView::Text ? normalizeQuotes(text)
-                                                : text);
     if (mode == BodyView::Text)
-        quotesToBlocks(body->document());
+        loadLetter(body->document(), text, false);
+    else
+        body->setPlainText(mode == BodyView::Hex ? hexDump(text.toUtf8()) : text);
     body->moveCursor(QTextCursor::Start);
     body->verticalScrollBar()->setValue(0);
 }
@@ -926,15 +839,172 @@ const QVector<QPair<QString, QString>> kFolderIcons = {
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Identities"), "identities"},
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Contacts"), "contacts"},
 };
+// Paragraph types, as MarkText's "Turn into" menu offers them.
+enum class ParagraphType { Paragraph, H1, H2, H3, H4, H5, H6, BulletList, NumberedList, Code };
+ParagraphType paragraphType(const QTextBlock &block) {
+    const auto format = block.blockFormat();
+    if (format.hasProperty(QTextFormat::BlockCodeFence) ||
+        format.hasProperty(QTextFormat::BlockCodeLanguage))
+        return ParagraphType::Code;
+    if (const int heading = format.headingLevel())
+        return ParagraphType(qBound(1, heading, 6));
+    if (auto list = block.textList())
+        return list->format().style() == QTextListFormat::ListDecimal ? ParagraphType::NumberedList
+                                                                      : ParagraphType::BulletList;
+    return ParagraphType::Paragraph;
+}
+// The gutter mark for a type: ¶ for a paragraph, like MarkText.
+QString paragraphSymbol(ParagraphType type) {
+    switch (type) {
+    case ParagraphType::Paragraph: return QString::fromUtf8("¶");
+    case ParagraphType::BulletList: return QString::fromUtf8("•");
+    case ParagraphType::NumberedList: return "1.";
+    case ParagraphType::Code: return "</>";
+    default: return "H" + QString::number(int(type));
+    }
+}
+QString paragraphTypeName(ParagraphType type) {
+    switch (type) {
+    case ParagraphType::Paragraph: return DesktopWindow::tr("Paragraph");
+    case ParagraphType::BulletList: return DesktopWindow::tr("Bullet list");
+    case ParagraphType::NumberedList: return DesktopWindow::tr("Numbered list");
+    case ParagraphType::Code: return DesktopWindow::tr("Code block");
+    default: return DesktopWindow::tr("Heading %1").arg(int(type));
+    }
+}
+// MarkText's keys (Linux/Windows): Ctrl+Shift+0..6, Ctrl+H, Ctrl+G, Ctrl+Shift+K.
+QKeySequence paragraphShortcut(ParagraphType type) {
+    switch (type) {
+    case ParagraphType::Paragraph: return QKeySequence("Ctrl+Shift+0");
+    case ParagraphType::BulletList: return QKeySequence("Ctrl+H");
+    case ParagraphType::NumberedList: return QKeySequence("Ctrl+G");
+    case ParagraphType::Code: return QKeySequence("Ctrl+Shift+K");
+    default: return QKeySequence("Ctrl+Shift+" + QString::number(int(type)));
+    }
+}
 QTextCharFormat headingCharFormat(int level) {
     QTextCharFormat t;
     t.setFontWeight(QFont::Bold);
     t.setFontPointSize(level == 1 ? 22 : level == 2 ? 18 : 15);
     return t;
 }
+// Turns the cursor's paragraph into another type. Its quote level stays: a
+// quoted paragraph can become a heading or a list item, but stays quoted.
+void setParagraphType(QTextCursor cursor, ParagraphType type) {
+    auto block = cursor.block();
+    const int level = blockQuoteLevel(block);
+    const auto was = paragraphType(block);
+    if (was == type)
+        return;
+    cursor.beginEditBlock();
+    if (auto list = block.textList()) {
+        list->remove(block);
+        auto format = cursor.blockFormat();
+        format.setIndent(0);
+        cursor.setBlockFormat(format);
+    }
+    auto format = cursor.blockFormat();
+    format.setHeadingLevel(0);
+    format.clearProperty(QTextFormat::BlockCodeFence);
+    format.clearProperty(QTextFormat::BlockCodeLanguage);
+    cursor.setBlockFormat(format);
+    QTextCursor text(block);
+    text.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    const auto body = block.document()->defaultFont();
+    if (was >= ParagraphType::H1 && was <= ParagraphType::H6) {
+        QTextCharFormat plain;
+        plain.setFontWeight(QFont::Normal);
+        plain.setFontPointSize(body.pointSizeF() > 0 ? body.pointSizeF() : 10);
+        plain.setProperty(QTextFormat::FontSizeAdjustment, 0);
+        text.mergeCharFormat(plain);
+    } else if (was == ParagraphType::Code) {
+        QTextCharFormat plain;
+        plain.setFontFamilies(QStringList{body.family()});
+        plain.setFontFixedPitch(false);
+        text.mergeCharFormat(plain);
+    }
+    if (type >= ParagraphType::H1 && type <= ParagraphType::H6) {
+        format = cursor.blockFormat();
+        format.setHeadingLevel(int(type));
+        cursor.setBlockFormat(format);
+        text.mergeCharFormat(headingCharFormat(int(type)));
+    } else if (type == ParagraphType::BulletList || type == ParagraphType::NumberedList) {
+        QTextListFormat list;
+        list.setStyle(type == ParagraphType::BulletList ? QTextListFormat::ListDisc
+                                                        : QTextListFormat::ListDecimal);
+        cursor.createList(list);
+    } else if (type == ParagraphType::Code) {
+        format = cursor.blockFormat();
+        format.setProperty(QTextFormat::BlockCodeFence, QChar('`'));
+        cursor.setBlockFormat(format);
+        QTextCharFormat code;
+        code.setFontFamilies(addressFont().families());
+        code.setFontFixedPitch(true);
+        text.mergeCharFormat(code);
+    }
+    setQuoteLevel(cursor.block(), level);
+    cursor.endEditBlock();
+}
 class MarkdownEdit : public QTextEdit {
   public:
-    using QTextEdit::QTextEdit;
+    explicit MarkdownEdit(QWidget *parent = nullptr) : QTextEdit(parent) {
+        for (auto type : {ParagraphType::Paragraph, ParagraphType::H1, ParagraphType::H2,
+                          ParagraphType::H3, ParagraphType::H4, ParagraphType::H5,
+                          ParagraphType::H6, ParagraphType::BulletList,
+                          ParagraphType::NumberedList, ParagraphType::Code})
+            shortcut(paragraphShortcut(type), [this, type] { turnInto(type); });
+        shortcut(QKeySequence("Ctrl+Shift+E"), [this] { duplicateParagraph(); });
+        shortcut(QKeySequence("Ctrl+Shift+N"), [this] { newParagraph(); });
+        shortcut(QKeySequence("Ctrl+Shift+D"), [this] { deleteParagraph(); });
+    }
+    void turnInto(ParagraphType type) {
+        setParagraphType(textCursor(), type);
+    }
+    void duplicateParagraph() {
+        const auto block = textCursor().block();
+        QTextCursor source(block);
+        source.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+        const auto contents = source.selection();
+        QTextCursor c(block);
+        c.beginEditBlock();
+        c.movePosition(QTextCursor::EndOfBlock);
+        c.insertBlock(block.blockFormat(), block.charFormat());
+        c.insertFragment(contents);
+        if (auto list = block.textList())
+            list->add(c.block());
+        c.endEditBlock();
+        setTextCursor(c);
+    }
+    // A new, unquoted paragraph below this one: the way to answer inline,
+    // between quoted paragraphs.
+    void newParagraph() {
+        auto c = textCursor();
+        c.beginEditBlock();
+        c.movePosition(QTextCursor::EndOfBlock);
+        QTextBlockFormat plain;
+        plain.setBottomMargin(c.blockFormat().bottomMargin());
+        c.insertBlock(plain, QTextCharFormat());
+        setQuoteLevel(c.block(), 0);
+        c.endEditBlock();
+        setTextCursor(c);
+    }
+    void deleteParagraph() {
+        auto c = textCursor();
+        c.beginEditBlock();
+        c.movePosition(QTextCursor::StartOfBlock);
+        c.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+        if (!c.atEnd())
+            c.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+        else if (c.block().previous().isValid()) {
+            // The last paragraph: take the break before it instead.
+            c.movePosition(QTextCursor::StartOfBlock);
+            c.movePosition(QTextCursor::PreviousCharacter);
+            c.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+        }
+        c.removeSelectedText();
+        c.endEditBlock();
+        setTextCursor(c);
+    }
 
   protected:
     void paintEvent(QPaintEvent *event) override {
@@ -943,6 +1013,8 @@ class MarkdownEdit : public QTextEdit {
     }
     void keyPressEvent(QKeyEvent *event) override {
         if (event->key() == Qt::Key_Space && tryAutoFormat())
+            return;
+        if (keepQuotes(event))
             return;
         QTextEdit::keyPressEvent(event);
     }
@@ -955,10 +1027,48 @@ class MarkdownEdit : public QTextEdit {
     }
 
   private:
+    void shortcut(const QKeySequence &keys, std::function<void()> fn) {
+        auto s = new QShortcut(keys, this);
+        s->setContext(Qt::WidgetShortcut);
+        connect(s, &QShortcut::activated, this, std::move(fn));
+    }
+    // Quoted paragraphs keep their quote: text can be edited or deleted, but
+    // a quoted paragraph never merges into an unquoted one (or the reverse),
+    // which is how Backspace or Delete at a boundary would drop the quote.
+    // Enter on an empty quoted line leaves the quote, to answer inline.
+    bool keepQuotes(QKeyEvent *event) {
+        auto c = textCursor();
+        if (c.hasSelection())
+            return false;
+        const auto block = c.block();
+        const int level = blockQuoteLevel(block);
+        const bool empty = block.text().isEmpty();
+        if (event->key() == Qt::Key_Backspace && c.atBlockStart()) {
+            const auto previous = block.previous();
+            if (previous.isValid() && blockQuoteLevel(previous) != level && !empty)
+                return true;
+        } else if (event->key() == Qt::Key_Delete && c.atBlockEnd()) {
+            const auto next = block.next();
+            if (next.isValid() && blockQuoteLevel(next) != level) {
+                if (!empty || next.text().isEmpty())
+                    return true;
+                // An empty line before a quote: remove it, not the quote.
+                c.beginEditBlock();
+                c.setBlockFormat(next.blockFormat());
+                c.deleteChar();
+                c.endEditBlock();
+                return true;
+            }
+        } else if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) &&
+                   level > 0 && empty && !(event->modifiers() & Qt::ShiftModifier)) {
+            setQuoteLevel(block, 0);
+            return true;
+        }
+        return false;
+    }
     void insertMarkdown(const QString &text) {
         QTextDocument doc;
-        doc.setMarkdown(text, QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
-                                                              QTextDocument::MarkdownNoHTML));
+        loadLetter(&doc, text, true);
         // Match this app's own "# "-triggered heading sizes rather than Qt's
         // markdown-parser defaults, so a pasted heading looks the same as one
         // typed by hand.
@@ -996,72 +1106,150 @@ class MarkdownEdit : public QTextEdit {
             setTextCursor(cursor);
             return true;
         };
-        if (prefix == "#" || prefix == "##" || prefix == "###") {
-            int level = prefix.size();
-            return apply([level](QTextCursor &c) {
-                auto f = c.blockFormat();
-                f.setHeadingLevel(level);
-                c.setBlockFormat(f);
-                c.mergeCharFormat(headingCharFormat(level));
-            });
-        }
+        if (prefix == "#" || prefix == "##" || prefix == "###")
+            return apply([&](QTextCursor &c) { setParagraphType(c, ParagraphType(prefix.size())); });
         if (prefix == "-" || prefix == "*")
-            return apply([](QTextCursor &c) {
-                QTextListFormat f;
-                f.setStyle(QTextListFormat::ListDisc);
-                c.createList(f);
-            });
+            return apply([](QTextCursor &c) { setParagraphType(c, ParagraphType::BulletList); });
         if (prefix == "1.")
-            return apply([](QTextCursor &c) {
-                QTextListFormat f;
-                f.setStyle(QTextListFormat::ListDecimal);
-                c.createList(f);
-            });
+            return apply([](QTextCursor &c) { setParagraphType(c, ParagraphType::NumberedList); });
         if (prefix == ">")
-            return apply([](QTextCursor &c) {
-                auto f = c.blockFormat();
-                f.setProperty(QTextFormat::BlockQuoteLevel, 1);
-                f.setLeftMargin(24);
-                c.setBlockFormat(f);
-            });
+            return apply([](QTextCursor &c) { setQuoteLevel(c.block(), blockQuoteLevel(c.block()) + 1); });
         return false;
     }
 };
+// The paragraph gutter, after MarkText: the paragraph under the mouse (or
+// holding the cursor) shows its type -- ¶, H1..H6, a list or code mark --
+// and clicking it opens "Turn into" and the paragraph actions. Headings
+// always show their level.
 class HeadingGutter : public QWidget {
   public:
-    explicit HeadingGutter(QTextEdit *editor) : editor_(editor) {
-        setFixedWidth(28);
+    explicit HeadingGutter(MarkdownEdit *editor) : editor_(editor) {
+        setFixedWidth(34);
+        setMouseTracking(true);
+        setToolTip(DesktopWindow::tr("Paragraph type"));
         connect(editor_->document(), &QTextDocument::contentsChanged, this, [this] { update(); });
+        connect(editor_, &QTextEdit::cursorPositionChanged, this, [this] { update(); });
         connect(editor_->verticalScrollBar(), &QScrollBar::valueChanged, this,
                 [this] { update(); });
+    }
+    // The menu for a paragraph, as the gutter shows it.
+    QMenu *menuFor(QTextBlock block) {
+        auto cursor = editor_->textCursor();
+        if (cursor.block() != block) {
+            cursor.setPosition(block.position());
+            editor_->setTextCursor(cursor);
+        }
+        auto menu = new QMenu(this);
+        menu->setObjectName("paragraphMenu");
+        menu->setAttribute(Qt::WA_DeleteOnClose);
+        menu->addSection(DesktopWindow::tr("Turn into"));
+        const auto current = paragraphType(block);
+        for (auto type : {ParagraphType::Paragraph, ParagraphType::H1, ParagraphType::H2,
+                          ParagraphType::H3, ParagraphType::H4, ParagraphType::H5,
+                          ParagraphType::H6, ParagraphType::BulletList,
+                          ParagraphType::NumberedList, ParagraphType::Code}) {
+            auto action = menu->addAction(paragraphSymbol(type) + "   " + paragraphTypeName(type),
+                                          editor_, [this, type] { editor_->turnInto(type); });
+            action->setObjectName(QString("turnInto_%1").arg(int(type)));
+            // Only the current type carries a mark, as in MarkText.
+            action->setCheckable(type == current);
+            action->setChecked(type == current);
+            action->setShortcut(paragraphShortcut(type));
+            // Shown as a hint only: the editor owns the key itself.
+            action->setShortcutContext(Qt::WidgetShortcut);
+            action->setShortcutVisibleInContextMenu(true);
+        }
+        menu->addSeparator();
+        const struct {
+            QString name, text;
+            QKeySequence keys;
+            void (MarkdownEdit::*act)();
+        } actions[] = {
+            {"duplicateParagraph", DesktopWindow::tr("Duplicate"), QKeySequence("Ctrl+Shift+E"),
+             &MarkdownEdit::duplicateParagraph},
+            {"newParagraph", DesktopWindow::tr("New paragraph below"), QKeySequence("Ctrl+Shift+N"),
+             &MarkdownEdit::newParagraph},
+            {"deleteParagraph", DesktopWindow::tr("Delete paragraph"), QKeySequence("Ctrl+Shift+D"),
+             &MarkdownEdit::deleteParagraph},
+        };
+        for (const auto &a : actions) {
+            auto action = menu->addAction(a.text, editor_, [this, act = a.act] { (editor_->*act)(); });
+            action->setObjectName(a.name);
+            action->setShortcut(a.keys);
+            action->setShortcutContext(Qt::WidgetShortcut);
+            action->setShortcutVisibleInContextMenu(true);
+        }
+        return menu;
+    }
+    QRect markRect(const QTextBlock &block) const {
+        const auto rect = editor_->document()->documentLayout()->blockBoundingRect(block);
+        const int top = int(rect.top()) - editor_->verticalScrollBar()->value() +
+                        editor_->viewport()->y();
+        return QRect(2, top, width() - 6, qMax(18, qMin(int(rect.height()), 26)));
     }
 
   protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
         auto f = p.font();
-        f.setPointSize(10);
+        f.setPointSize(9);
         f.setBold(true);
         p.setFont(f);
-        p.setPen(editor_->palette().color(QPalette::PlaceholderText));
+        const auto current = editor_->textCursor().block();
         auto doc = editor_->document();
-        auto layout = doc->documentLayout();
-        int scrollOffset = editor_->verticalScrollBar()->value();
         for (auto block = doc->begin(); block.isValid(); block = block.next()) {
-            int level = block.blockFormat().headingLevel();
-            if (level <= 0)
+            const auto rect = markRect(block);
+            if (rect.bottom() < 0 || rect.top() > height())
                 continue;
-            auto rect = layout->blockBoundingRect(block);
-            int top = static_cast<int>(rect.top()) - scrollOffset;
-            if (top + rect.height() < 0 || top > height())
+            const bool active = block == current || block == hovered_;
+            const auto type = paragraphType(block);
+            if (!active && (type < ParagraphType::H1 || type > ParagraphType::H6))
                 continue;
-            p.drawText(QRect(0, top, width() - 4, qMax(static_cast<int>(rect.height()), 1)),
-                       Qt::AlignRight | Qt::AlignTop, "H" + QString::number(level));
+            if (block == hovered_) {
+                auto fill = palette().color(QPalette::Highlight);
+                fill.setAlpha(60);
+                p.setPen(Qt::NoPen);
+                p.setBrush(fill);
+                p.drawRoundedRect(rect, 4, 4);
+            }
+            p.setPen(palette().color(active ? QPalette::Text : QPalette::PlaceholderText));
+            p.drawText(rect, Qt::AlignCenter, paragraphSymbol(type));
         }
+    }
+    void mouseMoveEvent(QMouseEvent *event) override {
+        const auto block = blockAt(event->position().y());
+        if (block != hovered_) {
+            hovered_ = block;
+            setCursor(block.isValid() ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            update();
+        }
+    }
+    void leaveEvent(QEvent *) override {
+        hovered_ = QTextBlock();
+        update();
+    }
+    void mousePressEvent(QMouseEvent *event) override {
+        const auto block = blockAt(event->position().y());
+        if (!block.isValid())
+            return;
+        auto menu = menuFor(block);
+        menu->popup(mapToGlobal(markRect(block).bottomLeft()));
     }
 
   private:
-    QTextEdit *editor_;
+    QTextBlock blockAt(qreal y) const {
+        for (auto block = editor_->document()->begin(); block.isValid(); block = block.next()) {
+            const auto rect = editor_->document()->documentLayout()->blockBoundingRect(block);
+            const qreal top = rect.top() - editor_->verticalScrollBar()->value() +
+                              editor_->viewport()->y();
+            if (y >= top && y < top + rect.height())
+                return block;
+        }
+        return {};
+    }
+    MarkdownEdit *editor_;
+    QTextBlock hovered_;
 };
 class QrCodeView : public QWidget {
   public:
@@ -1090,25 +1278,21 @@ class QrCodeView : public QWidget {
 };
 class Composer : public QDialog {
     Session &session_;
-    QString id_, original_, quote_;
-    QWidget *quoteBox_ = nullptr;
+    QString id_, original_;
     QComboBox *sender_;
     QLineEdit *to_, *subject_;
     QPushButton *modePrivate_, *modePublic_;
     QWidget *floatingToolbar_;
-    QTextEdit *body_;
+    MarkdownEdit *body_;
     QLabel *status_;
     QTimer autosave_;
     bool dirty_ = false, bodyEdited_ = false;
     bool save() {
         if (!dirty_)
             return true;
-        auto body = bodyEdited_ ? fromComposerMarkdown(body_->document()->toMarkdown()) : original_;
-        if (!quote_.isEmpty()) {
-            while (body.endsWith('\n'))
-                body.chop(1);
-            body += "\n\n" + quote_;
-        }
+        // ynotbit's own Markdown writer: Qt's export drops quoting from
+        // headings and joins the line after a list into the list.
+        auto body = bodyEdited_ ? letterMarkdown(body_->document()) : original_;
         auto id = session_.saveLetter(id_, sender_->currentData().toString(), to_->text(),
                                       subject_->text(), body,
                                       modePublic_->isChecked() ? "broadcast" : "direct");
@@ -1118,7 +1302,6 @@ class Composer : public QDialog {
             return false;
         }
         id_ = id;
-        session_.setDraftQuote(id_, quote_);
         dirty_ = false;
         status_->hide();
         return true;
@@ -1291,30 +1474,25 @@ class Composer : public QDialog {
             original_ = "-- \nsent by ynotbit";
         if (reply) {
             // Email style: room to write at the top, the signature, then the
-            // letter being answered, quoted with ">" under an attribution. The
-            // quote is its own pane (below), appended verbatim when saved --
-            // Qt's Markdown export would rewrite it (quoted headings lost their
-            // ">", list items swallowed the next line).
+            // letter being answered, quoted with ">" under an attribution --
+            // all in this one editor. Quoted paragraphs can be edited but keep
+            // their quote (see MarkdownEdit).
             const auto from = letter["from"].toString();
             const auto name = session_.nameFor(from);
             const auto when = QDateTime::fromSecsSinceEpoch(letter["storedAt"].toLongLong());
-            quote_ = quoteForReply(letter["body"].toString(),
-                                   DesktopWindow::tr("On %1, %2 wrote:")
-                                       .arg(formatDateTime(when), name.isEmpty() ? from : name));
-        } else if (!freshLetter) {
-            // A draft reply: split its stored quote back off the body.
-            const auto quote = session_.draftQuote(letter["hash"].toString());
-            if (!quote.isEmpty() && original_.endsWith(quote)) {
-                quote_ = quote;
-                original_.chop(quote.size());
-                while (original_.endsWith('\n'))
-                    original_.chop(1);
-            }
+            original_ += "\n\n" +
+                         quoteForReply(letter["body"].toString(),
+                                       DesktopWindow::tr("On %1, %2 wrote:")
+                                           .arg(formatDateTime(when), name.isEmpty() ? from : name));
         }
-        doc->setMarkdown(toComposerMarkdown(original_),
-                         QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub |
-                                                         QTextDocument::MarkdownNoHTML));
-        styleQuoteBlocks(doc);
+        loadLetter(doc, original_, true);
+        // Paragraphs are blocks, not blank lines: give them room to breathe,
+        // as the reader does. New paragraphs inherit it.
+        for (auto block = doc->begin(); block.isValid(); block = block.next()) {
+            auto format = block.blockFormat();
+            format.setBottomMargin(block.textList() ? 2 : 8);
+            QTextCursor(block).setBlockFormat(format);
+        }
         if (freshLetter) {
             // Leading blank lines in the markdown source get collapsed by the
             // parser, so the separator has to be inserted as real blocks instead.
@@ -1336,41 +1514,6 @@ class Composer : public QDialog {
         bodyRow->addWidget(gutter);
         bodyRow->addWidget(body_, 1);
         layout->addLayout(bodyRow, 1);
-        // The letter being answered: read-only, rendered like the reader
-        // (Markdown kept, quote bars), removable.
-        quoteBox_ = new QWidget;
-        quoteBox_->setObjectName("quotePane");
-        auto quoteLayout = new QVBoxLayout(quoteBox_);
-        quoteLayout->setContentsMargins(0, 0, 0, 0);
-        quoteLayout->setSpacing(4);
-        auto quoteHead = new QHBoxLayout;
-        auto quoteTitle = new QLabel(DesktopWindow::tr("Quoted below your reply"));
-        quoteTitle->setStyleSheet("color:palette(mid);font-size:12px;");
-        quoteHead->addWidget(quoteTitle);
-        quoteHead->addStretch();
-        auto removeQuote = new QPushButton(DesktopWindow::tr("Remove quote"));
-        removeQuote->setObjectName("removeQuoteButton");
-        connect(removeQuote, &QPushButton::clicked, this, [this] {
-            quote_.clear();
-            quoteBox_->hide();
-            dirty_ = true;
-            autosave_.start(800);
-        });
-        quoteHead->addWidget(removeQuote);
-        quoteLayout->addLayout(quoteHead);
-        auto quoteView = new LetterView;
-        quoteView->setObjectName("quoteView");
-        quoteView->setDocument(new SafeDocument(quoteView));
-        quoteView->setOpenLinks(false);
-        quoteView->setFrameShape(QFrame::NoFrame);
-        quoteView->setMaximumHeight(180);
-        renderBody(quoteView, quote_,
-                   looksLikeMarkdown(quote_) ? BodyView::Markdown : BodyView::Text);
-        quoteLayout->addWidget(quoteView);
-        quoteBox_->setVisible(!quote_.isEmpty());
-        layout->addWidget(quoteBox_);
-        if (!quote_.isEmpty())
-            resize(width(), height() + 200); // the quote pane gets its own room
         auto icon = [dark](QString name) { return materialIcon(name, iconColor(dark)); };
         auto format = [&](QString iconName, QString objName, QString tip,
                           std::function<void()> fn) {
@@ -1433,7 +1576,7 @@ class Composer : public QDialog {
             else
                 body_->setCurrentCharFormat(QTextCharFormat());
         });
-        floatingToolbar_ = new QWidget(this, Qt::Tool | Qt::FramelessWindowHint);
+        floatingToolbar_ = new QWidget(this, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
         floatingToolbar_->setObjectName("floatingToolbar");
         floatingToolbar_->setAttribute(Qt::WA_ShowWithoutActivating);
         auto floatLayout = new QHBoxLayout(floatingToolbar_);
