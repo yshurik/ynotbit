@@ -88,6 +88,27 @@ ntb_network_error;
  * we could get it again if another peer advertised it */
 #define NTB_NETWORK_MAX_STUB_INVENTORY_AGE (5 * 60)
 
+/* Downloads are spread over every peer that advertises an object rather
+ * than all asked of whichever peer advertised it first: each peer has at
+ * most this many objects requested at a time. */
+#define NTB_NETWORK_MAX_REQUESTS_PER_PEER 500
+
+/* PyBitmessage silently drops getdata that arrives too soon after the
+ * handshake (its "anti-intersection delay"), so the first request to a
+ * PyBitmessage peer waits this many seconds. */
+#define NTB_NETWORK_REQUEST_QUIET_TIME 10
+
+/* A peer that delivers nothing for this many seconds while it has
+ * requests outstanding is stalled: its requests are released for other
+ * peers that advertised the same objects, and it is left alone for a
+ * while before being asked again. */
+#define NTB_NETWORK_REQUEST_STALL_TIME 45
+#define NTB_NETWORK_REQUEST_PAUSE_TIME 15
+
+/* The most advertised-but-not-yet-requested hashes kept per peer: the
+ * protocol's own limit for one inv message. */
+#define NTB_NETWORK_MAX_WANTED_PER_PEER 50000
+
 /* Time in seconds after which we'll stop advertising an addr */
 #define NTB_NETWORK_MAX_ADDR_AGE (3 * 60 * 60)
 #define NTB_NETWORK_MAX_ADDRESSES 4096
@@ -174,6 +195,15 @@ struct ntb_network_peer {
 
         struct ntb_list requested_inventories;
 
+        /* Hashes this peer advertised that we didn't have, oldest first,
+         * waiting to be requested from it (see pump_requests). Entries
+         * before wanted_start have been consumed. */
+        struct ntb_buffer wanted;
+        size_t wanted_start;
+        uint64_t connected_us, progress_us, paused_until_us;
+        /* Set for PyBitmessage peers, see NTB_NETWORK_REQUEST_QUIET_TIME */
+        bool drops_early_getdata;
+
         enum ntb_network_peer_state state;
         bool received_version;
         uint64_t setup_started_us;
@@ -205,6 +235,7 @@ struct ntb_network {
 
         uint64_t dial_refill_us;
         unsigned dial_tokens;
+        uint64_t last_pump_us;
         uint64_t attempts, setup_timeouts, rejections;
 
         uint64_t nonce;
@@ -267,6 +298,8 @@ struct ntb_network_inventory {
                         /* Monotonic time that we sent a request for
                          * this item */
                         uint64_t last_request_time;
+                        /* The peer whose requested_inventories holds it */
+                        struct ntb_network_peer *requester;
                 };
 
                 struct {
@@ -404,6 +437,7 @@ remove_peer(struct ntb_network *nw,
                 ntb_hash_table_remove(nw->inventory_hash, inventory);
                 free_inventory(inventory);
         }
+        ntb_buffer_destroy(&peer->wanted);
 
         if (peer->addr && !peer->neutral_close)
                 address_failed(nw, peer->addr, 0);
@@ -509,6 +543,12 @@ add_peer(struct ntb_network *nw,
         peer->connection = conn;
 
         ntb_list_init(&peer->requested_inventories);
+        ntb_buffer_init(&peer->wanted);
+        peer->wanted_start = 0;
+        peer->connected_us = 0;
+        peer->progress_us = 0;
+        peer->paused_until_us = 0;
+        peer->drops_early_getdata = false;
 
         ntb_list_insert(&nw->peers, &peer->link);
 
@@ -584,6 +624,11 @@ ntb_network_get_peer_stats(struct ntb_network *nw,
         stats->rejections = nw->rejections;
 }
 
+static void
+pump_requests(struct ntb_network *nw, struct ntb_network_peer *peer);
+static void
+release_stalled_requests(struct ntb_network *nw, struct ntb_network_peer *peer);
+
 void
 ntb_network_tick(struct ntb_network *nw)
 {
@@ -592,6 +637,12 @@ ntb_network_tick(struct ntb_network *nw)
         struct ntb_network_addr *addr, *selected;
         struct ntb_network_peer_stats stats;
         unsigned pending_limit = nw->use_proxy ? 4 : 16;
+        /* The tick runs on every main loop iteration; downloads are
+         * topped up a few times a second (and as each inv arrives). */
+        bool pump = now - nw->last_pump_us >= UINT64_C(250000);
+
+        if (pump)
+                nw->last_pump_us = now;
 
         if (nw->bootstrap_job && ntb_dns_bootstrap_poll(nw->bootstrap_job, dns_bootstrap_cb, nw)) {
                 ntb_dns_bootstrap_free(nw->bootstrap_job);
@@ -605,6 +656,10 @@ ntb_network_tick(struct ntb_network *nw)
                 nw->bootstrap_backoff = MIN(nw->bootstrap_backoff * 2, 900);
         }
         ntb_list_for_each_safe(peer, tmp, &nw->peers, link) {
+                if (pump && peer->received_version) {
+                        release_stalled_requests(nw, peer);
+                        pump_requests(nw, peer);
+                }
                 if (peer->state == NTB_NETWORK_PEER_STATE_CONNECTED)
                         continue;
                 if (peer->direction == NTB_NETWORK_OUTGOING &&
@@ -870,6 +925,8 @@ handle_version(struct ntb_network *nw,
                         user_agent_buf[i] = event->user_agent.data[i];
         }
         user_agent_buf[i] = '\0';
+        peer->drops_early_getdata = strncmp(user_agent_buf, "/PyBitmessage:",
+                                            strlen("/PyBitmessage:")) == 0;
 
         ntb_log("Received version command from %s with user agent %s",
                 remote_address_string,
@@ -911,6 +968,7 @@ handle_version(struct ntb_network *nw,
         }
 
         peer->received_version = true;
+        peer->connected_us = ntb_main_context_get_monotonic_clock(NULL);
         ntb_connection_send_verack(peer->connection);
 
         switch (peer->state) {
@@ -968,6 +1026,7 @@ request_inventory(struct ntb_network *nw,
         memcpy(inv->hash, hash, NTB_PROTO_HASH_LENGTH);
 
         inv->last_request_time = ntb_main_context_get_monotonic_clock(NULL);
+        inv->requester = peer;
 
         ntb_list_insert(&peer->requested_inventories, &inv->link);
 
@@ -976,26 +1035,119 @@ request_inventory(struct ntb_network *nw,
         ntb_connection_add_getdata_hash(peer->connection, hash);
 }
 
+static size_t
+n_wanted(const struct ntb_network_peer *peer)
+{
+        return (peer->wanted.length - peer->wanted_start) / NTB_PROTO_HASH_LENGTH;
+}
+
+static void
+queue_wanted(struct ntb_network_peer *peer, const uint8_t *hash)
+{
+        if (n_wanted(peer) < NTB_NETWORK_MAX_WANTED_PER_PEER)
+                ntb_buffer_append(&peer->wanted, hash, NTB_PROTO_HASH_LENGTH);
+}
+
+/* Requests objects this peer advertised, up to its share of requests in
+ * flight. A hash already requested from another peer stays queued here,
+ * so that if that peer stalls this one can still be asked for it. */
+static void
+pump_requests(struct ntb_network *nw, struct ntb_network_peer *peer)
+{
+        uint64_t now = ntb_main_context_get_monotonic_clock(NULL);
+        struct ntb_network_inventory *inv;
+        uint8_t hash[NTB_PROTO_HASH_LENGTH];
+        size_t in_flight, scan;
+        bool started = false;
+
+        /* Peers may pipeline inv ahead of finishing the handshake; their
+         * version is enough to know what they are. */
+        if (!peer->received_version ||
+            (peer->drops_early_getdata &&
+             now < peer->connected_us +
+                   NTB_NETWORK_REQUEST_QUIET_TIME * UINT64_C(1000000)) ||
+            now < peer->paused_until_us)
+                return;
+
+        in_flight = ntb_list_length(&peer->requested_inventories);
+
+        for (scan = n_wanted(peer);
+             scan > 0 && in_flight < NTB_NETWORK_MAX_REQUESTS_PER_PEER;
+             scan--) {
+                memcpy(hash, peer->wanted.data + peer->wanted_start,
+                       NTB_PROTO_HASH_LENGTH);
+                peer->wanted_start += NTB_PROTO_HASH_LENGTH;
+                inv = ntb_hash_table_get(nw->inventory_hash, hash);
+
+                if (inv == NULL) {
+                        if (!started) {
+                                ntb_connection_begin_getdata(peer->connection);
+                                if (in_flight == 0)
+                                        peer->progress_us = now;
+                                started = true;
+                        }
+                        request_inventory(nw, peer, hash);
+                        in_flight++;
+                } else if (inv->state == NTB_NETWORK_INV_STATE_STUB &&
+                           inv->requester != peer) {
+                        queue_wanted(peer, hash);
+                }
+        }
+
+        if (started)
+                ntb_connection_end_getdata(peer->connection);
+
+        /* Drop the consumed front once it's most of the buffer */
+        if (peer->wanted_start > peer->wanted.length / 2) {
+                memmove(peer->wanted.data,
+                        peer->wanted.data + peer->wanted_start,
+                        peer->wanted.length - peer->wanted_start);
+                peer->wanted.length -= peer->wanted_start;
+                peer->wanted_start = 0;
+        }
+}
+
+/* A peer that has stopped delivering gives its requests back: other peers
+ * that advertised the same objects pick them up, and the hashes go back
+ * on this peer's own queue for after its pause. */
+static void
+release_stalled_requests(struct ntb_network *nw, struct ntb_network_peer *peer)
+{
+        uint64_t now = ntb_main_context_get_monotonic_clock(NULL);
+        struct ntb_network_inventory *inv, *tmp;
+
+        if (ntb_list_empty(&peer->requested_inventories) ||
+            now - peer->progress_us <
+            NTB_NETWORK_REQUEST_STALL_TIME * UINT64_C(1000000))
+                return;
+
+        ntb_list_for_each_safe(inv, tmp, &peer->requested_inventories, link) {
+                queue_wanted(peer, inv->hash);
+                ntb_list_remove(&inv->link);
+                ntb_hash_table_remove(nw->inventory_hash, inv);
+                free_inventory(inv);
+        }
+
+        peer->paused_until_us =
+                now + NTB_NETWORK_REQUEST_PAUSE_TIME * UINT64_C(1000000);
+}
+
 static bool
 handle_inv(struct ntb_network *nw,
            struct ntb_network_peer *peer,
            struct ntb_connection_inv_event *event)
 {
-        struct ntb_network_inventory *inv;
         const uint8_t *hash;
         uint64_t i;
 
-        ntb_connection_begin_getdata(peer->connection);
-
         for (i = 0; i < event->n_inventories; i++) {
                 hash = event->inventories + i * NTB_PROTO_HASH_LENGTH;
-                inv = ntb_hash_table_get(nw->inventory_hash, hash);
 
-                if (inv == NULL)
-                        request_inventory(nw, peer, hash);
+                if (ntb_hash_table_get(nw->inventory_hash, hash) == NULL)
+                        queue_wanted(peer, hash);
         }
 
-        ntb_connection_end_getdata(peer->connection);
+        pump_requests(nw, peer);
 
         return true;
 }
@@ -1278,6 +1430,8 @@ handle_object(struct ntb_network *nw,
               struct ntb_network_peer *peer,
               struct ntb_connection_object_event *event)
 {
+        peer->progress_us = ntb_main_context_get_monotonic_clock(NULL);
+
         add_object(nw,
                    event->object_data,
                    event->object_data_length,
@@ -1933,11 +2087,23 @@ int ntb_network_connected_peers(struct ntb_network *nw)
  * same "still downloading" backlog PyBitmessage's status bar shows. */
 int ntb_network_pending_objects(struct ntb_network *nw)
 {
-        int count = 0;
+        int count = 0, queued = 0;
         struct ntb_network_peer *peer;
-        ntb_list_for_each(peer, &nw->peers, link)
+        ntb_list_for_each(peer, &nw->peers, link) {
+                /* Peers advertise much the same objects, so the largest
+                 * queue of still-unrequested ones stands in for the
+                 * backlog rather than their sum. */
+                int unrequested = 0;
+                size_t i;
                 count += ntb_list_length(&peer->requested_inventories);
-        return count;
+                for (i = peer->wanted_start; i < peer->wanted.length;
+                     i += NTB_PROTO_HASH_LENGTH)
+                        if (!ntb_hash_table_get(nw->inventory_hash,
+                                                peer->wanted.data + i))
+                                unrequested++;
+                queued = MAX(queued, unrequested);
+        }
+        return count + queued;
 }
 void ntb_network_offer(struct ntb_network *nw, const uint8_t *hash)
 {
