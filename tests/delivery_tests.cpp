@@ -1,6 +1,7 @@
 #include "delivery.h"
 #include "protocol.h"
 #include "protocol_wire.h"
+#include "updates.h"
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -9,6 +10,7 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 #include <QThread>
+#include <functional>
 #include <iostream>
 using namespace bm;
 static void require(bool b, const char *s) {
@@ -179,10 +181,53 @@ int main(int argc, char **argv) {
                 QThread::msleep(5);
         }
         require(chanFound, "chan member decodes an Anonymous-mode broadcast without subscribing");
+        // Release announcements: every mailbox hears the publisher without subscribing.
+        require(updates::announcedVersion("ynotbit 0.6.0") == QString("0.6.0") &&
+                    updates::announcedVersion("ynotbit v1.2") == QString("1.2") &&
+                    !updates::announcedVersion("ynotbit 0.6.0 is out, get it at evil.example") &&
+                    !updates::announcedVersion("Re: ynotbit 0.6.0"),
+                "only a bare \"ynotbit <version>\" subject announces a version");
+        require(updates::compareVersions("0.10.0", "0.9.9") > 0 &&
+                    updates::compareVersions("0.5", "0.5.0") == 0 &&
+                    updates::compareVersions("0.5.1", "0.6") < 0,
+                "versions compare numerically");
+        const auto publisher = av.addIdentity("ynotbit releases");
+        updates::setPublisherAddressForTesting(publisher);
+        auto announce = [&](const QString &subject) {
+            for (const auto &i : av.identities())
+                if (i.address == publisher)
+                    cacheObject(b, Wire::encodeBroadcast(i, subject, "Release notes", expires));
+        };
+        auto scanFor = [&](const std::function<bool()> &done, int ms) {
+            const auto deadline = QDateTime::currentMSecsSinceEpoch() + ms;
+            while (!done() && QDateTime::currentMSecsSinceEpoch() < deadline) {
+                bc.discover();
+                bd.scan(bc, bm, bv, 100);
+                if (!done())
+                    QThread::msleep(5);
+            }
+            return done();
+        };
+        auto latest = [&] { return bm.setting(updates::kLatestSetting); };
+        announce("ynotbit 9.9.9");
+        require(scanFor([&] { return latest() == "9.9.9"; }, 5000),
+                "a signed release announcement records the version, unsubscribed");
+        bool letter = false;
+        for (const auto &m : bm.messages())
+            letter |= m.folder == "Broadcasts" && m.subject == "ynotbit 9.9.9";
+        require(letter, "the announcement is also kept as a letter");
+        announce("ynotbit 1.0");
+        scanFor([] { return false; }, 300);
+        require(latest() == "9.9.9", "an older announcement does not replace a newer one");
+        bm.setSetting(updates::kNotifySetting, "off");
+        announce("ynotbit 99.0");
+        scanFor([] { return false; }, 300);
+        require(latest() == "9.9.9", "turned off, announcements are not heard");
+        updates::setPublisherAddressForTesting({});
         ad.stop();
         bd.stop();
         std::cout << "PASS: key lookup, real PoW, lock/reopen, encrypted handoff, receive, ACK, "
-                     "rescan, reply, cancel/retry, broadcasts, chan broadcasts\n";
+                     "rescan, reply, cancel/retry, broadcasts, chan broadcasts, release announcements\n";
     } catch (const std::exception &e) {
         std::cerr << "FAIL: " << e.what() << '\n';
         return 1;

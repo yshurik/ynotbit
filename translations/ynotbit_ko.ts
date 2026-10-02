@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="ko">
 <context>
@@ -96,7 +96,7 @@
         <translation>공개 편지</translation>
     </message>
     <message>
-        <source>Encrypted to the channel's shared address. Anyone who knows the channel phrase can read it.</source>
+        <source>Encrypted to the channel&apos;s shared address. Anyone who knows the channel phrase can read it.</source>
         <translation>채널의 공유 주소로 암호화됩니다. 채널 문구를 아는 사람은 누구나 읽을 수 있습니다.</translation>
     </message>
     <message>
@@ -104,7 +104,7 @@
         <translation>한 명의 받는 사람에게 암호화됩니다. 그 사람만 읽을 수 있습니다.</translation>
     </message>
     <message>
-        <source>Sent as the channel to everyone subscribed. Your own identity isn't revealed.</source>
+        <source>Sent as the channel to everyone subscribed. Your own identity isn&apos;t revealed.</source>
         <translation>채널 이름으로 모든 구독자에게 보냅니다. 내 신원은 드러나지 않습니다.</translation>
     </message>
     <message>
@@ -811,11 +811,11 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>너무 커서 보낼 수 없습니다: Bitmessage는 편지 한 통에 최대 %1까지 전송합니다. 내용을 줄이거나 인용을 줄이세요.</translation>
     </message>
     <message>
-        <source>The letter's size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
+        <source>The letter&apos;s size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
         <translation>Bitmessage 객체 하나가 담을 수 있는 최대치 대비 편지 크기입니다. 편지가 클수록 준비(작업 증명)에 시간이 더 걸립니다.</translation>
     </message>
     <message>
-        <source>This draft couldn't be saved: %1</source>
+        <source>This draft couldn&apos;t be saved: %1</source>
         <translation>초안을 저장할 수 없습니다: %1</translation>
     </message>
     <message>
@@ -829,6 +829,22 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Keep editing</source>
         <translation>계속 편집</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation>다운로드</translation>
+    </message>
+    <message>
+        <source>Dismiss</source>
+        <translation>닫기</translation>
+    </message>
+    <message>
+        <source>Notify about new ynotbit versions</source>
+        <translation>새 ynotbit 버전 알림</translation>
+    </message>
+    <message>
+        <source>ynotbit %1 is available (you have %2).</source>
+        <translation>ynotbit %1 버전을 사용할 수 있습니다(현재 %2).</translation>
     </message>
 </context>
 <context>
@@ -1411,6 +1427,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
         <translation>이 편지는 %1입니다. Bitmessage는 최대 %2까지 전송합니다. 내용을 줄이거나 인용을 줄이세요.</translation>
+    </message>
+    <message>
+        <source>ynotbit updates</source>
+        <translation>ynotbit 업데이트</translation>
     </message>
 </context>
 </TS>

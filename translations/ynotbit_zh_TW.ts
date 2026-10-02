@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_TW">
 <context>
@@ -96,7 +96,7 @@
         <translation>公開郵件</translation>
     </message>
     <message>
-        <source>Encrypted to the channel's shared address. Anyone who knows the channel phrase can read it.</source>
+        <source>Encrypted to the channel&apos;s shared address. Anyone who knows the channel phrase can read it.</source>
         <translation>使用頻道的共享地址加密。任何知道頻道通關密語的人都能閱讀。</translation>
     </message>
     <message>
@@ -104,7 +104,7 @@
         <translation>為單個收件人加密。只有對方能閱讀。</translation>
     </message>
     <message>
-        <source>Sent as the channel to everyone subscribed. Your own identity isn't revealed.</source>
+        <source>Sent as the channel to everyone subscribed. Your own identity isn&apos;t revealed.</source>
         <translation>以頻道名義傳送給所有訂閱者。不會暴露你自己的身分。</translation>
     </message>
     <message>
@@ -811,11 +811,11 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>太大，無法傳送：Bitmessage 每封信最多傳送 %1。請縮短內容或刪減引用。</translation>
     </message>
     <message>
-        <source>The letter's size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
+        <source>The letter&apos;s size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
         <translation>信件大小，相對於單一 Bitmessage 物件可承載的上限。信件越大，準備（工作量證明）所需時間也越長。</translation>
     </message>
     <message>
-        <source>This draft couldn't be saved: %1</source>
+        <source>This draft couldn&apos;t be saved: %1</source>
         <translation>無法儲存草稿：%1</translation>
     </message>
     <message>
@@ -829,6 +829,22 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Keep editing</source>
         <translation>繼續編輯</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation>下載</translation>
+    </message>
+    <message>
+        <source>Dismiss</source>
+        <translation>關閉</translation>
+    </message>
+    <message>
+        <source>Notify about new ynotbit versions</source>
+        <translation>通知 ynotbit 新版本</translation>
+    </message>
+    <message>
+        <source>ynotbit %1 is available (you have %2).</source>
+        <translation>ynotbit %1 已發佈（目前版本：%2）。</translation>
     </message>
 </context>
 <context>
@@ -1411,6 +1427,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
         <translation>這封信大小為 %1；Bitmessage 最多傳送 %2。請縮短內容或刪減引用。</translation>
+    </message>
+    <message>
+        <source>ynotbit updates</source>
+        <translation>ynotbit 更新</translation>
     </message>
 </context>
 </TS>

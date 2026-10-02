@@ -1,6 +1,7 @@
 #include "delivery.h"
 #include "protocol.h"
 #include "protocol_wire.h"
+#include "updates.h"
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -271,6 +272,11 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int limit) {
         addresses << i.address;
     for (const auto &s : m.subscriptions())
         addresses << "subscription:" + s.address;
+    const auto publisher = m.setting(updates::kNotifySetting) == "off"
+                               ? QString()
+                               : updates::publisherAddress();
+    if (!publisher.isEmpty())
+        addresses << "updates:" + publisher;
     addresses.sort();
     m.bindIdentities(QString::fromLatin1(
         QCryptographicHash::hash(addresses.join('\n').toUtf8(), QCryptographicHash::Sha256)
@@ -322,6 +328,9 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int limit) {
                 if (decoded)
                     break;
             }
+            // ynotbit's own release announcements, heard without subscribing.
+            if (!decoded && !publisher.isEmpty())
+                decoded = Wire::decodeBroadcast(data, publisher);
             // Joining a chan already means "I care about this address's traffic" --
             // members shouldn't also have to manually subscribe to hear a chan's own
             // "Anonymous"/broadcast-mode posts.
@@ -351,6 +360,11 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int limit) {
             if (!d.acknowledgment.isEmpty() && ProofOfWork::valid(d.acknowledgment, now()))
                 addJob(m, {}, "incoming-ack", Protocol::inventoryHash(d.acknowledgment),
                        d.acknowledgment, 1000, 1000, "ready");
+            // The broadcast is signed, so only the publisher can announce a version.
+            if (d.broadcast && !publisher.isEmpty() && d.sender.address == publisher)
+                if (auto version = updates::announcedVersion(d.message.subject))
+                    if (updates::compareVersions(*version, m.setting(updates::kLatestSetting, "0")) > 0)
+                        m.setSetting(updates::kLatestSetting, *version);
             m.store(id, d.message.from, d.message.to, d.message.subject, d.message.body, o.sequence,
                     chanBroadcast ? "Channels" : (d.broadcast ? "Broadcasts" : d.message.folder));
             ++count;

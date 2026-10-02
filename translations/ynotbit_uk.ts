@@ -830,6 +830,22 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Keep editing</source>
         <translation>Продовжити редагування</translation>
     </message>
+    <message>
+        <source>Download</source>
+        <translation>Завантажити</translation>
+    </message>
+    <message>
+        <source>Dismiss</source>
+        <translation>Сховати</translation>
+    </message>
+    <message>
+        <source>Notify about new ynotbit versions</source>
+        <translation>Повідомляти про нові версії ynotbit</translation>
+    </message>
+    <message>
+        <source>ynotbit %1 is available (you have %2).</source>
+        <translation>Доступна версія ynotbit %1 (у вас %2).</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1411,6 +1427,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
         <translation>Розмір листа — %1; Bitmessage передає не більше %2. Скоротіть його або обріжте цитату.</translation>
+    </message>
+    <message>
+        <source>ynotbit updates</source>
+        <translation>Оновлення ynotbit</translation>
     </message>
 </context>
 </TS>

@@ -1,10 +1,13 @@
 #include "desktop_window.h"
 #include "session.h"
+#include "updates.h"
 #include "protocol.h"
 #include "letter_document.h"
 #include <QElapsedTimer>
+#include <QFileDialog>
 #include <QTest>
 #include <QtWidgets>
+#include <functional>
 #include <iostream>
 #ifdef Q_OS_MACOS
 #include <mach/mach.h>
@@ -511,6 +514,38 @@ int main(int argc, char **argv) {
             require(list->currentIndex().isValid() &&
                         list->currentIndex().data(Qt::UserRole + 1).toString() == "7",
                     "the previously selected message stays selected after new mail resets the list");
+        }
+        {
+            // A release announcement the scan recorded shows a banner until dismissed.
+            bm::updates::setPublisherAddressForTesting("BM-releases");
+            QCoreApplication::setApplicationVersion("0.5.1");
+            vault.unlock(temp.filePath("vault"), "test password");
+            bm::Mailbox injected;
+            injected.open(temp.filePath("mailbox"), vault.mailboxKey(key));
+            injected.setSetting(bm::updates::kLatestSetting, "0.6.0");
+            injected.close();
+            vault.lock();
+            session.clearError();
+            auto banner = window.findChild<QWidget *>("updateBanner");
+            auto toggle = window.findChild<QAction *>("updateNoticesAction");
+            require(banner && !banner->isHidden() &&
+                        window.findChild<QLabel *>("updateLabel")->text().contains("0.6.0"),
+                    "a newer announced version shows the update banner");
+            require(toggle && toggle->isEnabled() && toggle->isChecked(),
+                    "update notices are on by default");
+            toggle->trigger();
+            require(banner->isHidden() && !session.updateNotices(),
+                    "turning notices off hides the banner");
+            toggle->trigger();
+            require(!banner->isHidden(), "turning notices on again shows it");
+            window.findChild<QPushButton *>("updateDismissButton")->click();
+            require(banner->isHidden(), "a dismissed version is not shown again");
+            QCoreApplication::setApplicationVersion("0.6.0");
+            session.clearError();
+            require(banner->isHidden(), "the running version is not announced as new");
+            bm::updates::setPublisherAddressForTesting({});
+            session.clearError();
+            require(!toggle->isEnabled(), "a build without a publisher has nothing to toggle");
         }
         footprint("After scrolling and selections");
         if (app.arguments().contains("--soak")) {
@@ -1546,6 +1581,117 @@ int main(int argc, char **argv) {
             for (auto l : window.findChildren<QLabel *>("identityName"))
                 renamed = renamed || l->text() == "test password";
             require(renamed, "Rename updates the identity's label via the same prompt");
+
+            // Menu items change identities behind the open Identities page; the
+            // page must redraw itself, not wait for the user to navigate away and back.
+            auto menuItem = [&](const QString &text) -> QAction * {
+                for (auto a : window.findChildren<QAction *>())
+                    if (a->text() == text)
+                        return a;
+                throw std::runtime_error(("no menu item " + text).toStdString());
+            };
+            // Runs fn on the modal dialog once it is up -- a fixed delay can fire
+            // before it opens on a busy machine.
+            auto onDialog = [&](auto *type, auto fn) {
+                using Dialog = std::remove_pointer_t<decltype(type)>;
+                auto poll = new QTimer(&window);
+                QObject::connect(poll, &QTimer::timeout, &window, [poll, fn]() mutable {
+                    if (auto d = qobject_cast<Dialog *>(QApplication::activeModalWidget())) {
+                        poll->stop();
+                        poll->deleteLater();
+                        fn(d);
+                    }
+                });
+                poll->start(10);
+            };
+            auto cards = [&] { return window.findChildren<QFrame *>("identityCard").size(); };
+            auto cardFor = [&](const QString &addr) {
+                for (auto l : window.findChildren<QLabel *>("identityAddress"))
+                    if (l->text() == addr)
+                        return true;
+                return false;
+            };
+            auto shownCards = cards();
+            menuItem("Create identity…")->trigger(); // the responder answers the label prompt
+            QTest::qWait(50);
+            require(cards() == shownCards + 1,
+                    "Identity > Create identity… shows the new card on the open Identities page");
+            const QString imported = "BM-2cSsZnHbLbJr5A2RCrCMQo7vwGBi7CKNfz";
+            {
+                QFile keys(temp.filePath("import-keys.dat"));
+                require(keys.open(QIODevice::WriteOnly), "write a keys.dat to import");
+                keys.write("[BM-2cSsZnHbLbJr5A2RCrCMQo7vwGBi7CKNfz]\nlabel = Imported key\n"
+                           "enabled = true\ndecoy = false\n"
+                           "privsigningkey = 5JCLH7eb8Hd3CNMLfP8sBTE8AYLUeLbb6K7dqJdrp5bgzYpnAvX\n"
+                           "privencryptionkey = 5JXWzkqmfv6MxZ8Uq18byihHYSQPCN5GV6j9GsC2ZD1BSmRjQn6\n");
+            }
+            bool picked = false;
+            onDialog((QFileDialog *)nullptr, [&](QFileDialog *d) {
+                d->selectFile(temp.filePath("import-keys.dat"));
+                static_cast<QDialog *>(d)->accept(); // QFileDialog's own is protected
+                picked = true;
+            });
+            menuItem("Import keys.dat…")->trigger();
+            QTest::qWait(50);
+            require(picked, "Import keys.dat… asks for the file");
+            require(cardFor(imported),
+                    "Identity > Import keys.dat… shows the imported key on the open Identities page");
+            // A chan takes two prompts (phrase, then the expected address), so the
+            // password responder steps aside.
+            responder.stop();
+            // Answers the menu item's prompts in turn.
+            std::function<void(QStringList)> answer = [&](QStringList replies) {
+                onDialog((QInputDialog *)nullptr, [&, replies](QInputDialog *d) mutable {
+                    d->setTextValue(replies.takeFirst());
+                    if (!replies.isEmpty())
+                        answer(replies);
+                    d->accept();
+                });
+            };
+            answer({"widgets menu chan", ""});
+            shownCards = cards();
+            menuItem("Join or create chan…")->trigger();
+            QTest::qWait(50);
+            responder.start(10);
+            require(session.error().isEmpty() && cards() == shownCards + 1,
+                    "Identity > Join or create chan… shows the chan on the open Identities page");
+
+            // A subscription's label names its letters: subscribing or unsubscribing
+            // from the menu redraws the open letter and the list.
+            const QString publisher = "BM-2cWFkyuXXFw6d393RGnin2RpSXj8wxtt6F";
+            {
+                vault.unlock(temp.filePath("vault"), "test password");
+                bm::Mailbox injected;
+                injected.open(temp.filePath("mailbox"), vault.mailboxKey(key));
+                injected.store("news-1", publisher, publisher, "Weekly news", "Broadcast body",
+                               1800, "Inbox");
+                injected.close();
+                vault.lock();
+            }
+            window.findChild<QToolButton *>("folderIcon_Inbox")->click();
+            session.messageModel()->reload();
+            window.selectMessage("news-1");
+            auto fromNameLabel = window.findChild<QLabel *>("fromName");
+            auto listName = [&] {
+                const auto row = session.messageModel()->rowForHash("news-1");
+                return list->model()->index(row, 0).data(Qt::UserRole + 12).toString();
+            };
+            require(!fromNameLabel->isVisible() && listName().isEmpty(),
+                    "a letter from an unknown address shows no name");
+            responder.stop();
+            answer({publisher, "Release news"});
+            menuItem("Subscribe to broadcasts…")->trigger();
+            QTest::qWait(50);
+            require(session.error().isEmpty() && fromNameLabel->isVisible() &&
+                        fromNameLabel->text() == "Release news",
+                    "Identity > Subscribe to broadcasts… names the open letter's sender");
+            require(listName() == "Release news", "...and its row in the list");
+            answer({"Release news · " + publisher});
+            menuItem("Manage subscriptions…")->trigger();
+            QTest::qWait(50);
+            require(!fromNameLabel->isVisible() && listName().isEmpty(),
+                    "unsubscribing from the menu takes the name away again");
+            responder.start(10);
             window.findChild<QToolButton *>("folderIcon_Inbox")->click();
         }
         for (const auto &mode : {QString("light"), QString("dark"), QString("system")}) {

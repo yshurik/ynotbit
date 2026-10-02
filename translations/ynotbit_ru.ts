@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="ru">
 <context>
@@ -96,7 +96,7 @@
         <translation>Публичное письмо</translation>
     </message>
     <message>
-        <source>Encrypted to the channel's shared address. Anyone who knows the channel phrase can read it.</source>
+        <source>Encrypted to the channel&apos;s shared address. Anyone who knows the channel phrase can read it.</source>
         <translation>Зашифровано для общего адреса канала. Прочитать сможет любой, кто знает фразу канала.</translation>
     </message>
     <message>
@@ -104,7 +104,7 @@
         <translation>Зашифровано для одного получателя. Прочитать сможет только он.</translation>
     </message>
     <message>
-        <source>Sent as the channel to everyone subscribed. Your own identity isn't revealed.</source>
+        <source>Sent as the channel to everyone subscribed. Your own identity isn&apos;t revealed.</source>
         <translation>Отправляется от имени канала всем подписчикам. Ваша идентичность не раскрывается.</translation>
     </message>
     <message>
@@ -811,11 +811,11 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>Слишком большое для отправки: Bitmessage передаёт не более %1 на письмо. Сократите его или урежьте цитату.</translation>
     </message>
     <message>
-        <source>The letter's size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
+        <source>The letter&apos;s size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
         <translation>Размер письма относительно максимума одного объекта Bitmessage. Большие письма также дольше готовятся (доказательство работы).</translation>
     </message>
     <message>
-        <source>This draft couldn't be saved: %1</source>
+        <source>This draft couldn&apos;t be saved: %1</source>
         <translation>Не удалось сохранить черновик: %1</translation>
     </message>
     <message>
@@ -829,6 +829,22 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Keep editing</source>
         <translation>Продолжить редактирование</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation>Скачать</translation>
+    </message>
+    <message>
+        <source>Dismiss</source>
+        <translation>Скрыть</translation>
+    </message>
+    <message>
+        <source>Notify about new ynotbit versions</source>
+        <translation>Сообщать о новых версиях ynotbit</translation>
+    </message>
+    <message>
+        <source>ynotbit %1 is available (you have %2).</source>
+        <translation>Доступна версия ynotbit %1 (у вас %2).</translation>
     </message>
 </context>
 <context>
@@ -1411,6 +1427,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
         <translation>Размер письма — %1; Bitmessage передаёт не более %2. Сократите его или урежьте цитату.</translation>
+    </message>
+    <message>
+        <source>ynotbit updates</source>
+        <translation>Обновления ynotbit</translation>
     </message>
 </context>
 </TS>

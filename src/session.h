@@ -137,6 +137,12 @@ class Session : public QObject {
     Q_INVOKABLE void copyAddress(QString address);
     Q_INVOKABLE void closeMailbox();
     QVariantList subscriptions() const;
+    // ynotbit release announcements: the newer version announced and not yet
+    // dismissed, or empty.
+    QString availableUpdate() const;
+    Q_INVOKABLE void dismissUpdate();
+    bool updateNotices() const;
+    Q_INVOKABLE void setUpdateNotices(bool on);
     // The address book (kept in the open mailbox). Names are local and private.
     QVariantList contacts() const;
     // Why the address cannot be added as a contact, or empty when it can.

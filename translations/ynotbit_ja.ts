@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="ja">
 <context>
@@ -96,7 +96,7 @@
         <translation>公開メール</translation>
     </message>
     <message>
-        <source>Encrypted to the channel's shared address. Anyone who knows the channel phrase can read it.</source>
+        <source>Encrypted to the channel&apos;s shared address. Anyone who knows the channel phrase can read it.</source>
         <translation>チャンネルの共有アドレス宛てに暗号化されます。チャンネルのフレーズを知っている人なら誰でも読めます。</translation>
     </message>
     <message>
@@ -104,7 +104,7 @@
         <translation>1 人の受信者宛てに暗号化されます。その人だけが読めます。</translation>
     </message>
     <message>
-        <source>Sent as the channel to everyone subscribed. Your own identity isn't revealed.</source>
+        <source>Sent as the channel to everyone subscribed. Your own identity isn&apos;t revealed.</source>
         <translation>チャンネル名義で購読者全員に送信されます。あなた自身の ID は明かされません。</translation>
     </message>
     <message>
@@ -811,11 +811,11 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>大きすぎて送信できません：Bitmessage で送れるのは 1 通あたり最大 %1 です。短くするか、引用を削ってください。</translation>
     </message>
     <message>
-        <source>The letter's size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
+        <source>The letter&apos;s size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
         <translation>手紙のサイズ（Bitmessage オブジェクト 1 つで運べる上限に対して）。大きな手紙ほど準備（プルーフ・オブ・ワーク）に時間がかかります。</translation>
     </message>
     <message>
-        <source>This draft couldn't be saved: %1</source>
+        <source>This draft couldn&apos;t be saved: %1</source>
         <translation>下書きを保存できませんでした：%1</translation>
     </message>
     <message>
@@ -829,6 +829,22 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Keep editing</source>
         <translation>編集を続ける</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation>ダウンロード</translation>
+    </message>
+    <message>
+        <source>Dismiss</source>
+        <translation>閉じる</translation>
+    </message>
+    <message>
+        <source>Notify about new ynotbit versions</source>
+        <translation>ynotbit の新しいバージョンを通知</translation>
+    </message>
+    <message>
+        <source>ynotbit %1 is available (you have %2).</source>
+        <translation>ynotbit %1 が利用可能です（現在のバージョン: %2）。</translation>
     </message>
 </context>
 <context>
@@ -1411,6 +1427,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
         <translation>この手紙は %1 です。Bitmessage で送れるのは最大 %2 です。短くするか、引用を削ってください。</translation>
+    </message>
+    <message>
+        <source>ynotbit updates</source>
+        <translation>ynotbit アップデート</translation>
     </message>
 </context>
 </TS>

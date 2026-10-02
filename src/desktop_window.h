@@ -8,6 +8,7 @@ class QLabel;
 class QTextBrowser;
 class QTextEdit;
 class QWidget;
+class QAction;
 class QVBoxLayout;
 class QLineEdit;
 class QPushButton;
@@ -42,7 +43,10 @@ class DesktopWindow : public QMainWindow {
     QLineEdit *search_;
     QVariantList channelIdentities_;
     QVariantList shownContacts_; // the address book the views were last drawn with
-    QLabel *heading_, *status_, *error_;
+    QVariantList shownSubscriptions_; // the subscriptions the views were last drawn with
+    QLabel *heading_, *status_, *error_, *updateLabel_;
+    QWidget *updateBanner_;
+    QAction *updateNoticesAction_;
     QTextEdit *subject_;
     QLabel *fromAddress_, *toAddress_, *deliveryStatus_, *deliveryError_;
     QLabel *fromName_, *toName_;

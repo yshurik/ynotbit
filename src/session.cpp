@@ -5,6 +5,7 @@
 #include "protocol.h"
 #include "protocol_wire.h"
 #include "scanner.h"
+#include "updates.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QDateTime>
@@ -767,6 +768,31 @@ QVariantList Session::subscriptions() const {
             result << QVariantMap{{"address", s.address}, {"label", s.label}};
     return result;
 }
+QString Session::availableUpdate() const {
+    if (!mailboxOpen() || !updateNotices())
+        return {};
+    const auto latest = mailbox_.setting(updates::kLatestSetting);
+    if (latest.isEmpty() || latest == mailbox_.setting(updates::kDismissedSetting) ||
+        updates::compareVersions(latest, QCoreApplication::applicationVersion()) <= 0)
+        return {};
+    return latest;
+}
+void Session::dismissUpdate() {
+    attempt([&] {
+        check(mailboxOpen(), tr("Open a mailbox first"));
+        mailbox_.setSetting(updates::kDismissedSetting, mailbox_.setting(updates::kLatestSetting));
+    });
+}
+bool Session::updateNotices() const {
+    return mailboxOpen() && !updates::publisherAddress().isEmpty() &&
+           mailbox_.setting(updates::kNotifySetting) != "off";
+}
+void Session::setUpdateNotices(bool on) {
+    attempt([&] {
+        check(mailboxOpen(), tr("Open a mailbox first"));
+        mailbox_.setSetting(updates::kNotifySetting, on ? "on" : "off");
+    });
+}
 QVariantList Session::contacts() const {
     QVariantList result;
     if (mailboxOpen())
@@ -817,6 +843,8 @@ bool Session::isContact(QString address) const {
 QHash<QString, QString> Session::names() const {
     // Lowest precedence first, so later inserts win.
     QHash<QString, QString> result;
+    if (!updates::publisherAddress().isEmpty())
+        result[updates::publisherAddress()] = tr("ynotbit updates");
     if (mailboxOpen()) {
         for (const auto &s : mailbox_.subscriptions())
             if (!s.label.trimmed().isEmpty())
@@ -848,6 +876,7 @@ void Session::subscribe() {
         if (!ok)
             return;
         mailbox_.subscribe(address, label);
+        messageModel()->reload(); // a subscription's label names its letters
         activity_ = tr("Subscription saved. Retained broadcasts will be inspected.");
     });
 }
@@ -855,6 +884,7 @@ void Session::unsubscribe(QString address) {
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
         mailbox_.unsubscribe(address);
+        messageModel()->reload();
     });
 }
 void Session::renameIdentity(QString address) {

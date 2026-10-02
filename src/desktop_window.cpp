@@ -3,6 +3,7 @@
 #include "i18n.h"
 #include "quoting.h"
 #include "letter_document.h"
+#include "updates.h"
 #include "qrcodegen.hpp"
 #include <QCryptographicHash>
 #include <QDesktopServices>
@@ -2052,6 +2053,22 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     error_->setWordWrap(true);
     error_->setContentsMargins(20, 8, 20, 8);
     outer->addWidget(error_);
+    // A newer ynotbit announced by its signed release broadcast.
+    updateBanner_ = new QWidget;
+    updateBanner_->setObjectName("updateBanner");
+    updateBanner_->setAttribute(Qt::WA_StyledBackground);
+    auto updateRow = new QHBoxLayout(updateBanner_);
+    updateRow->setContentsMargins(20, 6, 20, 6);
+    updateLabel_ = new QLabel;
+    updateLabel_->setObjectName("updateLabel");
+    updateRow->addWidget(updateLabel_, 1);
+    button(tr("Download"), updateRow, [this] {
+        QDesktopServices::openUrl(QUrl(updates::releaseUrl(session_.availableUpdate())));
+    })->setObjectName("updateDownloadButton");
+    button(tr("Dismiss"), updateRow, [this] { session_.dismissUpdate(); })
+        ->setObjectName("updateDismissButton");
+    updateBanner_->hide();
+    outer->addWidget(updateBanner_);
     auto splitWidget = new QWidget;
     auto split = new QHBoxLayout(splitWidget);
     split->setContentsMargins(0, 0, 0, 0);
@@ -2593,6 +2610,11 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     network->addAction(tr("Peer / proxy settings…"), &session_, &Session::configureNode);
     network->addAction(tr("Restart node"), &session_, &Session::restartNode);
     network->addAction(tr("Retention settings…"), &session_, &Session::configureRetention);
+    network->addSeparator();
+    updateNoticesAction_ = network->addAction(tr("Notify about new ynotbit versions"));
+    updateNoticesAction_->setObjectName("updateNoticesAction");
+    updateNoticesAction_->setCheckable(true);
+    connect(updateNoticesAction_, &QAction::triggered, &session_, &Session::setUpdateNotices);
     auto identity = menuBar()->addMenu(tr("Identity"));
     identity->addAction(tr("Create identity…"), &session_, &Session::addIdentity);
     identity->addAction(tr("Join or create chan…"), &session_, &Session::joinChannel);
@@ -2757,6 +2779,7 @@ void DesktopWindow::updateTheme() {
             "QPushButton:default{background:%6;color:%1;border-color:%6;font-weight:600;} "
             "QPushButton:default:hover{background:%6;border-color:%4;} "
             "QPushButton#contactsPickerButton::menu-indicator{image:none;width:0;} "
+            "QWidget#updateBanner{background:%5;} QLabel#updateLabel{color:%6;font-weight:600;} "
             // No bold on :checked -- it would widen the label past its size hint.
             "QWidget#modeSwitch{border:1px solid %4;border-radius:7px;background:transparent;} "
             "QWidget#modeSwitch QPushButton{border:0;border-radius:0;background:transparent;"
@@ -2929,6 +2952,13 @@ void DesktopWindow::updateState() {
     setWindowTitle(session_.document() + " — ynotbit");
     error_->setText(session_.error());
     error_->setVisible(!session_.error().isEmpty());
+    const auto update = session_.availableUpdate();
+    updateLabel_->setText(tr("ynotbit %1 is available (you have %2).")
+                              .arg(update, QCoreApplication::applicationVersion()));
+    updateBanner_->setVisible(!update.isEmpty());
+    updateNoticesAction_->setEnabled(session_.mailboxOpen() &&
+                                     !updates::publisherAddress().isEmpty());
+    updateNoticesAction_->setChecked(session_.updateNotices());
     findChild<QPushButton *>("lockButton")->setVisible(session_.unlocked());
     findChild<QPushButton *>("closeMailboxButton")->setVisible(session_.mailboxOpen());
     const bool channelPage = folders_->currentRow() == 4;
@@ -2944,6 +2974,13 @@ void DesktopWindow::updateState() {
     if (identities != channelIdentities_) {
         channelIdentities_ = identities;
         refreshChannels();
+        // Created, joined or imported from the menu while the page is open. Later,
+        // not now: a card's own button may be what changed them, mid-click.
+        if (folders_->currentRow() == 8)
+            QTimer::singleShot(0, this, [this] {
+                if (folders_->currentRow() == 8)
+                    refreshIdentities();
+            });
     }
     // After refreshChannels(), which may have picked a different active chan.
     // Whole sentences, so languages can inflect "folder"/"channel" as they need.
@@ -2955,7 +2992,12 @@ void DesktopWindow::updateState() {
                 placeholder = tr("Search %1").arg(v.toMap()["label"].toString());
     }
     search_->setPlaceholderText(placeholder);
-    // A contact added, renamed or removed anywhere redraws every view of names.
+    // A contact or subscription added, renamed or removed anywhere redraws every
+    // view of names.
+    if (const auto subscriptions = session_.subscriptions(); subscriptions != shownSubscriptions_) {
+        shownSubscriptions_ = subscriptions;
+        updateCorrespondents();
+    }
     if (const auto contacts = session_.contacts(); contacts != shownContacts_) {
         shownContacts_ = contacts;
         updateCorrespondents();
