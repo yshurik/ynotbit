@@ -80,7 +80,7 @@ endif()
 qt_add_executable(ynotbit MACOSX_BUNDLE src/main.cpp src/i18n.cpp src/i18n.h src/quoting.cpp src/quoting.h src/letter_document.cpp src/letter_document.h src/letter_document.cpp src/letter_document.h src/session.cpp src/session.h
  assets/icons.qrc
  src/portable_relay.cpp src/portable_relay.h src/appearance.cpp src/appearance.h
- src/desktop_window.cpp src/desktop_window.h src/message_model.cpp src/message_model.h
+ src/desktop_window.cpp src/desktop_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/message_model.cpp src/message_model.h
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(ynotbit PRIVATE third_party/qrcodegen)
 if(APPLE)
@@ -132,7 +132,7 @@ set_tests_properties(relay-download PROPERTIES TIMEOUT 60)
 endif()
 add_test(NAME gui-smoke COMMAND ynotbit --offline --data-dir ${CMAKE_CURRENT_BINARY_DIR}/smoke-node --smoke-test)
 set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-qt_add_executable(desktop_tests tests/widgets_tests.cpp src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/appearance.cpp src/appearance.h
+qt_add_executable(desktop_tests tests/widgets_tests.cpp src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/appearance.cpp src/appearance.h
  assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(desktop_tests PRIVATE third_party/qrcodegen)
@@ -143,7 +143,7 @@ set_tests_properties(desktop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" 
 #   cmake --build build --target readme_screenshots && build/readme_screenshots docs/images
 qt_add_executable(readme_screenshots EXCLUDE_FROM_ALL tools/readme_screenshots.cpp
  src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp
- src/desktop_window.h src/appearance.cpp src/appearance.h assets/icons.qrc
+ src/desktop_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/appearance.cpp src/appearance.h assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(readme_screenshots PRIVATE third_party/qrcodegen)
 target_link_libraries(readme_screenshots PRIVATE bmcore Qt6::Widgets Qt6::Network Qt6::Test)
@@ -151,11 +151,19 @@ target_link_libraries(readme_screenshots PRIVATE bmcore Qt6::Widgets Qt6::Networ
 # built only on request. Dry run unless --send:
 #   cmake --build build --target announce_release
 #   build/announce_release --keys release_key.dat --version 0.5.1 --notes notes.md --send
-qt_add_executable(announce_release EXCLUDE_FROM_ALL tools/announce_release.cpp
- src/i18n.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h
- src/appearance.cpp src/appearance.h src/relay_bridge.cpp)
-target_link_libraries(announce_release PRIVATE bmcore notbit_engine Qt6::Widgets Qt6::Network)
-target_compile_definitions(announce_release PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
+# Bitmessage digest issue (the digest address, footer appended); built only on
+# request. Dry run unless --send:
+#   cmake --build build --target post_digest
+#   build/post_digest --keys digest_keys.dat --issue issue.md --send
+foreach(tool announce_release post_digest)
+ qt_add_executable(${tool} EXCLUDE_FROM_ALL tools/${tool}.cpp
+  tools/publish_broadcast.cpp tools/publish_broadcast.h
+  src/i18n.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h
+  src/appearance.cpp src/appearance.h src/relay_bridge.cpp)
+ target_include_directories(${tool} PRIVATE tools)
+ target_link_libraries(${tool} PRIVATE bmcore notbit_engine Qt6::Widgets Qt6::Network)
+ target_compile_definitions(${tool} PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
+endforeach()
 add_executable(outbox_tests tests/outbox_tests.cpp)
 target_link_libraries(outbox_tests PRIVATE bmcore)
 add_test(NAME outbox COMMAND outbox_tests)
@@ -184,7 +192,7 @@ foreach(lang IN LISTS YNOTBIT_LANGUAGES)
  list(APPEND YNOTBIT_TS_FILES ${CMAKE_CURRENT_SOURCE_DIR}/translations/ynotbit_${lang}.ts)
 endforeach()
 qt_add_lupdate(TS_FILES ${YNOTBIT_TS_FILES}
- SOURCES src/desktop_window.cpp src/session.cpp src/i18n/error_catalog.cpp
+ SOURCES src/desktop_window.cpp src/session.cpp src/feed_view.cpp src/updates.cpp src/i18n/error_catalog.cpp
  LUPDATE_TARGET update_translations
  OPTIONS -no-obsolete -locations none)
 qt_add_lrelease(TS_FILES ${YNOTBIT_TS_FILES} QM_FILES_OUTPUT_VARIABLE YNOTBIT_QM_FILES

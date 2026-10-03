@@ -1,6 +1,7 @@
 #include "desktop_window.h"
 #include "session.h"
 #include "updates.h"
+#include "feed_view.h"
 #include "protocol.h"
 #include "letter_document.h"
 #include <QElapsedTimer>
@@ -117,6 +118,9 @@ int main(int argc, char **argv) {
                 }
         });
         responder.start(10);
+        // The built-in subscriptions get a test of their own below; elsewhere
+        // the rail holds only what each test adds.
+        bm::updates::setDefaultSubscriptionsForTesting({});
         bm::Session session(temp.filePath("node"), true);
         QElapsedTimer clock;
         clock.start();
@@ -1695,8 +1699,8 @@ int main(int argc, char **argv) {
             require(!fromNameLabel->isVisible() && listName().isEmpty(),
                     "unsubscribing from the menu takes the name away again");
 
-            // The Broadcasts page works like Channels: a rail of senders, each
-            // with its own letters.
+            // The Subscriptions page: the rail of senders, and the selected
+            // sender's posts as a feed.
             const QString other = "BM-2cX8TF9vuQZEWvT7UrEeq1HN9dgiSUPLEN";
             const QString releases = "BM-2cUzX8f9CKUU7L8NeB8GExZvf54PrcXq1S";
             {
@@ -1707,6 +1711,10 @@ int main(int argc, char **argv) {
                                "Broadcasts");
                 injected.store("bc-2", other, other, "Other sender's post", "Hello", 1802,
                                "Broadcasts");
+                for (int i = 0; i < 45; ++i) // more than two pages of release notes
+                    injected.store("rel-" + QString::number(i), releases, releases,
+                                   "ynotbit 0." + QString::number(i), "Notes for " + QString::number(i),
+                                   1900 + i, "Broadcasts");
                 injected.close();
                 vault.lock();
             }
@@ -1739,25 +1747,100 @@ int main(int argc, char **argv) {
             QTest::qWait(50);
             require(session.error().isEmpty() && chipNamed("Weekly"),
                     "+ Subscribe… adds the subscription to the rail");
+            auto feed = window.findChild<QWidget *>("feedView");
+            auto feedScroll = window.findChild<QScrollArea *>("feedScroll");
+            auto feedHashes = [&] {
+                QStringList hashes;
+                auto layout = feedScroll->widget()->layout();
+                for (int i = 0; i < layout->count(); ++i)
+                    if (auto w = layout->itemAt(i)->widget(); w && w->objectName() == "feedCard")
+                        hashes << w->property("hash").toString();
+                return hashes;
+            };
+            auto feedCard = [&](const QString &hash) -> QWidget * {
+                for (auto card : feedScroll->findChildren<QWidget *>("feedCard"))
+                    if (card->property("hash").toString() == hash)
+                        return card;
+                return nullptr;
+            };
             chipNamed("Weekly")->click();
-            QTest::qWait(20);
-            require(list->model()->rowCount() == 1 &&
-                        list->model()->index(0, 0).data(Qt::UserRole + 1).toString() == "bc-1",
-                    "a subscription's chip lists only that sender's broadcasts");
-            window.selectMessage("bc-1");
-            require(window.findChild<QTextEdit *>("subject")->toPlainText().contains("Weekly issue 1"),
-                    "clicking a broadcast opens it in the reader");
-            require(!window.findChild<QLabel *>("toLabel")->isVisible() &&
-                        !window.findChild<QLabel *>("toAddress")->isVisible() &&
-                        !window.findChild<QLabel *>("toName")->isVisible(),
-                    "a broadcast shows no To line: its recipient is its own sender");
+            QTest::qWait(30);
+            require(feed->isVisible() && !window.findChild<QWidget *>("listColumn")->isVisible() &&
+                        !window.findChild<QTextEdit *>("subject")->isVisible() &&
+                        !window.findChild<QLabel *>("messageAddresses")->isVisible() &&
+                        !window.findChild<QLabel *>("toLabel")->isVisible(),
+                    "Subscriptions shows a feed: no letter list, no reader, no From/To");
+            require(feedHashes() == QStringList{"bc-1"} &&
+                        window.findChild<QLabel *>("feedHeaderName")->text() == "Weekly",
+                    "a subscription's chip shows only that sender's posts, under their name");
+            {
+                auto card = feedCard("bc-1");
+                require(card->findChild<QLabel *>("feedSubject")->text() == "Weekly issue 1" &&
+                            card->findChild<QTextBrowser *>("feedBody")->toPlainText().contains("News"),
+                        "a card shows the post's subject and full text");
+                auto body = card->findChild<QTextBrowser *>("feedBody");
+                require(body->height() >= int(body->document()->size().height()),
+                        "a card's text is never cut: the card grows with it");
+            }
+            chipNamed("ynotbit updates")->click();
+            QTest::qWait(30);
+            require(feedHashes().size() == bm::FeedView::kPageSize &&
+                        feedHashes().first() == "rel-44" && feedHashes()[1] == "rel-43",
+                    "the feed opens with one page of posts, newest on top");
+            for (int round = 0; round < 3 && feedHashes().size() < 45; ++round) {
+                feedScroll->verticalScrollBar()->setValue(feedScroll->verticalScrollBar()->maximum());
+                QTest::qWait(30);
+            }
+            require(feedHashes().size() == 45 && feedHashes().last() == "rel-0",
+                    "scrolling to the bottom loads the older posts, page by page");
+            {
+                const QDateTime now(QDate(2026, 10, 3), QTime(12, 0));
+                require(bm::relativeTime(now.addSecs(-20), now) == "just now" &&
+                            bm::relativeTime(now.addSecs(-5 * 60), now) == "5 min" &&
+                            bm::relativeTime(now.addSecs(-3 * 3600), now) == "3 h" &&
+                            bm::relativeTime(now.addDays(-1).addSecs(-3600), now) == "Yesterday" &&
+                            bm::relativeTime(now.addDays(-9), now) ==
+                                QLocale().toString(now.addDays(-9).date(), QLocale::ShortFormat),
+                        "post times read like a feed's: just now, 5 min, 3 h, Yesterday, a date");
+            }
+            feedScroll->verticalScrollBar()->setValue(0);
+            QTest::qWait(30);
+            feedCard("rel-44")->findChild<QToolButton *>("feedArchive")->click();
+            QTest::qWait(30);
+            require(!feedHashes().contains("rel-44") &&
+                        session.message("rel-44")["folder"].toString() == "Archive",
+                    "Archive on a card files the post and takes the card away");
             chipNamed(other)->click();
-            QTest::qWait(20);
-            require(list->model()->rowCount() == 1 &&
-                        list->model()->index(0, 0).data(Qt::UserRole + 1).toString() == "bc-2",
-                    "another sender's chip lists its own broadcasts");
+            QTest::qWait(30);
+            require(feedCard("bc-2")->property("unread").toBool() &&
+                        !feedCard("bc-2")->findChild<QLabel *>("feedUnreadDot")->isHidden(),
+                    "a new post starts unread, with a dot by its time");
+            require(!feedCard("bc-2")->styleSheet().contains("border-left"),
+                    "a card's border is even all round (unread is the dot, not the edge)");
+            QTest::qWait(bm::FeedView::kReadAfterMs + 600);
+            require(!session.message("bc-2")["unread"].toBool() &&
+                        !feedCard("bc-2")->property("unread").toBool(),
+                    "a post on screen for a second turns read");
+            require(feedCard("bc-2")->findChild<QLabel *>("feedUnreadDot")->isHidden(),
+                    "...and its dot goes away");
+            QTest::qWait(30);
+            require(!chipNamed(other)->font().bold(), "...and its sender's bold in the rail clears");
+            // Reply privately: a personal letter to the sender, quoting the post.
+            bool replied = false;
+            onDialog((QDialog *)nullptr, [&](QDialog *d) {
+                if (d->objectName() != "composer")
+                    return;
+                replied = d->findChild<QLineEdit *>("recipientField")->text() == other &&
+                          d->findChild<QPushButton *>("modePrivateButton")->isChecked();
+                d->reject();
+            });
+            feedCard("bc-2")->findChild<QToolButton *>("feedReply")->click();
+            QTest::qWait(50);
+            if (auto box = window.findChild<QMessageBox *>("unsavedDraftBox"))
+                box->findChild<QPushButton *>("closeWithoutSavingButton")->click();
+            require(replied, "Reply privately writes a personal letter to the sender");
             require(window.findChild<QPushButton *>("writeButton")->toolTip() == "Write a broadcast",
-                    "Write on the Broadcasts page writes a broadcast");
+                    "Write on the Subscriptions page writes a broadcast");
             // Right-click a subscription: Unsubscribe. Its letters stay, under the address.
             bool unsubscribed = false;
             auto popup = new QTimer(&window);
@@ -1784,6 +1867,20 @@ int main(int argc, char **argv) {
                     "right-click > Unsubscribe on a chip removes the subscription");
             require(!chipNamed("Weekly") && chipNamed(publisher),
                     "its broadcasts stay, listed under the bare address");
+            // Built-in subscriptions: added once per mailbox, so unsubscribing sticks.
+            bm::updates::setDefaultSubscriptionsForTesting({{other, "Bitmessage digest"}});
+            session.seedSubscriptions();
+            {
+                const auto subs = session.subscriptions();
+                require(subs.size() == 1 && subs[0].toMap()["address"] == other &&
+                            subs[0].toMap()["label"] == "Bitmessage digest",
+                        "a mailbox starts subscribed to the Bitmessage digest");
+            }
+            session.unsubscribe(other);
+            session.seedSubscriptions();
+            require(session.subscriptions().isEmpty(),
+                    "after unsubscribing, the digest is not added back");
+            bm::updates::setDefaultSubscriptionsForTesting({});
             bm::updates::setPublisherAddressForTesting({});
             responder.start(10);
             window.findChild<QToolButton *>("folderIcon_Inbox")->click();

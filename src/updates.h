@@ -9,6 +9,17 @@ void setPublisherAddressForTesting(const QString &address);
 inline const QString kNotifySetting = "updates:notify"; // "off" turns notices off
 inline const QString kLatestSetting = "updates:latest"; // newest announced version
 inline const QString kDismissedSetting = "updates:dismissed"; // a version
+// Subscriptions every mailbox starts with: added once when a mailbox first
+// opens, so unsubscribing sticks. The label is untranslated (Session::tr).
+struct DefaultSubscription {
+    QString address;
+    const char *label;
+};
+QList<DefaultSubscription> defaultSubscriptions();
+// "Bitmessage digest": weekly news of the network, one of the defaults.
+QString digestAddress();
+void setDefaultSubscriptionsForTesting(const QList<DefaultSubscription> &subscriptions);
+inline const QString kSeededSetting = "seeded:"; // + address: offered once already
 // The version a subject such as "ynotbit 0.5.2" announces.
 std::optional<QString> announcedVersion(const QString &subject);
 // The release page; built here, never taken from a letter.

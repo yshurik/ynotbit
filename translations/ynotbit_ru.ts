@@ -1091,6 +1091,71 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
 </context>
 <context>
+    <name>bm::FeedView</name>
+    <message>
+        <source>just now</source>
+        <translation>только что</translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation>%1 мин</translation>
+    </message>
+    <message>
+        <source>%1 h</source>
+        <translation>%1 ч</translation>
+    </message>
+    <message>
+        <source>Yesterday</source>
+        <translation>Вчера</translation>
+    </message>
+    <message>
+        <source>Copy address</source>
+        <translation>Копировать адрес</translation>
+    </message>
+    <message>
+        <source>No posts from %1 yet. Broadcasts stay on the network for up to 28 days.</source>
+        <translation>От %1 пока нет публикаций. Рассылки хранятся в сети до 28 дней.</translation>
+    </message>
+    <message>
+        <source>Add to contacts</source>
+        <translation>Добавить в контакты</translation>
+    </message>
+    <message>
+        <source>Open link</source>
+        <translation>Открыть ссылку</translation>
+    </message>
+    <message>
+        <source>Open this link in your browser?
+%1</source>
+        <translation>Открыть эту ссылку в браузере?
+%1</translation>
+    </message>
+    <message>
+        <source>Reply privately</source>
+        <translation>Ответить лично</translation>
+    </message>
+    <message>
+        <source>Copy text</source>
+        <translation>Копировать текст</translation>
+    </message>
+    <message>
+        <source>Open in new window</source>
+        <translation>Открыть в новом окне</translation>
+    </message>
+    <message>
+        <source>Archive</source>
+        <translation>Архив</translation>
+    </message>
+    <message>
+        <source>Trash</source>
+        <translation>Корзина</translation>
+    </message>
+    <message>
+        <source>Unread</source>
+        <translation>Не прочитано</translation>
+    </message>
+</context>
+<context>
     <name>bm::Session</name>
     <message>
         <source>Vault password</source>
@@ -1455,6 +1520,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>ynotbit updates</source>
         <translation>Обновления ynotbit</translation>
+    </message>
+    <message>
+        <source>Bitmessage digest</source>
+        <translation>Дайджест Bitmessage</translation>
     </message>
 </context>
 </TS>

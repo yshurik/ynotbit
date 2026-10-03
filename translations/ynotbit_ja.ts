@@ -1091,6 +1091,71 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
 </context>
 <context>
+    <name>bm::FeedView</name>
+    <message>
+        <source>just now</source>
+        <translation>たった今</translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation>%1分</translation>
+    </message>
+    <message>
+        <source>%1 h</source>
+        <translation>%1時間</translation>
+    </message>
+    <message>
+        <source>Yesterday</source>
+        <translation>昨日</translation>
+    </message>
+    <message>
+        <source>Copy address</source>
+        <translation>アドレスをコピー</translation>
+    </message>
+    <message>
+        <source>No posts from %1 yet. Broadcasts stay on the network for up to 28 days.</source>
+        <translation>%1 からの投稿はまだありません。ブロードキャストはネットワーク上に最大28日間保持されます。</translation>
+    </message>
+    <message>
+        <source>Add to contacts</source>
+        <translation>連絡先に追加</translation>
+    </message>
+    <message>
+        <source>Open link</source>
+        <translation>リンクを開く</translation>
+    </message>
+    <message>
+        <source>Open this link in your browser?
+%1</source>
+        <translation>このリンクをブラウザーで開きますか？
+%1</translation>
+    </message>
+    <message>
+        <source>Reply privately</source>
+        <translation>個別に返信</translation>
+    </message>
+    <message>
+        <source>Copy text</source>
+        <translation>テキストをコピー</translation>
+    </message>
+    <message>
+        <source>Open in new window</source>
+        <translation>新しいウィンドウで開く</translation>
+    </message>
+    <message>
+        <source>Archive</source>
+        <translation>アーカイブ</translation>
+    </message>
+    <message>
+        <source>Trash</source>
+        <translation>ゴミ箱</translation>
+    </message>
+    <message>
+        <source>Unread</source>
+        <translation>未読</translation>
+    </message>
+</context>
+<context>
     <name>bm::Session</name>
     <message>
         <source>Vault password</source>
@@ -1455,6 +1520,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>ynotbit updates</source>
         <translation>ynotbit アップデート</translation>
+    </message>
+    <message>
+        <source>Bitmessage digest</source>
+        <translation>Bitmessage ダイジェスト</translation>
     </message>
 </context>
 </TS>

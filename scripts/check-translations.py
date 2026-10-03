@@ -25,7 +25,7 @@ MARKED = re.compile(r'(?:\btr\(|QT_TRANSLATE_NOOP3?\("[^"]*",)\s*' + LITERALS, r
 def source_strings():
     """Every string the UI sources mark for translation."""
     found = set()
-    for name in ("desktop_window.cpp", "session.cpp"):
+    for name in ("desktop_window.cpp", "session.cpp", "feed_view.cpp", "updates.cpp"):
         text = (ROOT / "src" / name).read_text(encoding="utf-8")
         for match in MARKED.finditer(text):
             parts = re.findall(r'"((?:[^"\\]|\\.)*)"', match.group(1))

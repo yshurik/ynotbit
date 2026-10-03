@@ -1091,6 +1091,71 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
 </context>
 <context>
+    <name>bm::FeedView</name>
+    <message>
+        <source>just now</source>
+        <translation>刚刚</translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation>%1 分钟</translation>
+    </message>
+    <message>
+        <source>%1 h</source>
+        <translation>%1 小时</translation>
+    </message>
+    <message>
+        <source>Yesterday</source>
+        <translation>昨天</translation>
+    </message>
+    <message>
+        <source>Copy address</source>
+        <translation>复制地址</translation>
+    </message>
+    <message>
+        <source>No posts from %1 yet. Broadcasts stay on the network for up to 28 days.</source>
+        <translation>%1 尚无帖子。广播在网络上最多保留 28 天。</translation>
+    </message>
+    <message>
+        <source>Add to contacts</source>
+        <translation>添加到联系人</translation>
+    </message>
+    <message>
+        <source>Open link</source>
+        <translation>打开链接</translation>
+    </message>
+    <message>
+        <source>Open this link in your browser?
+%1</source>
+        <translation>在浏览器中打开此链接？
+%1</translation>
+    </message>
+    <message>
+        <source>Reply privately</source>
+        <translation>私下回复</translation>
+    </message>
+    <message>
+        <source>Copy text</source>
+        <translation>复制文本</translation>
+    </message>
+    <message>
+        <source>Open in new window</source>
+        <translation>在新窗口中打开</translation>
+    </message>
+    <message>
+        <source>Archive</source>
+        <translation>归档</translation>
+    </message>
+    <message>
+        <source>Trash</source>
+        <translation>回收站</translation>
+    </message>
+    <message>
+        <source>Unread</source>
+        <translation>未读</translation>
+    </message>
+</context>
+<context>
     <name>bm::Session</name>
     <message>
         <source>Vault password</source>
@@ -1455,6 +1520,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>ynotbit updates</source>
         <translation>ynotbit 更新</translation>
+    </message>
+    <message>
+        <source>Bitmessage digest</source>
+        <translation>Bitmessage 摘要</translation>
     </message>
 </context>
 </TS>

@@ -1091,6 +1091,71 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
 </context>
 <context>
+    <name>bm::FeedView</name>
+    <message>
+        <source>just now</source>
+        <translation>방금</translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation>%1분</translation>
+    </message>
+    <message>
+        <source>%1 h</source>
+        <translation>%1시간</translation>
+    </message>
+    <message>
+        <source>Yesterday</source>
+        <translation>어제</translation>
+    </message>
+    <message>
+        <source>Copy address</source>
+        <translation>주소 복사</translation>
+    </message>
+    <message>
+        <source>No posts from %1 yet. Broadcasts stay on the network for up to 28 days.</source>
+        <translation>%1의 게시물이 아직 없습니다. 브로드캐스트는 네트워크에 최대 28일간 보관됩니다.</translation>
+    </message>
+    <message>
+        <source>Add to contacts</source>
+        <translation>연락처에 추가</translation>
+    </message>
+    <message>
+        <source>Open link</source>
+        <translation>링크 열기</translation>
+    </message>
+    <message>
+        <source>Open this link in your browser?
+%1</source>
+        <translation>브라우저에서 이 링크를 여시겠습니까?
+%1</translation>
+    </message>
+    <message>
+        <source>Reply privately</source>
+        <translation>개인적으로 답장</translation>
+    </message>
+    <message>
+        <source>Copy text</source>
+        <translation>텍스트 복사</translation>
+    </message>
+    <message>
+        <source>Open in new window</source>
+        <translation>새 창에서 열기</translation>
+    </message>
+    <message>
+        <source>Archive</source>
+        <translation>보관</translation>
+    </message>
+    <message>
+        <source>Trash</source>
+        <translation>휴지통</translation>
+    </message>
+    <message>
+        <source>Unread</source>
+        <translation>읽지 않음</translation>
+    </message>
+</context>
+<context>
     <name>bm::Session</name>
     <message>
         <source>Vault password</source>
@@ -1455,6 +1520,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>ynotbit updates</source>
         <translation>ynotbit 업데이트</translation>
+    </message>
+    <message>
+        <source>Bitmessage digest</source>
+        <translation>Bitmessage 다이제스트</translation>
     </message>
 </context>
 </TS>

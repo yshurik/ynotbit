@@ -132,6 +132,8 @@ class Session : public QObject {
     // announcements while notices are on, and any other sender whose broadcasts
     // are still kept. Each: address, label, subscribed, updates (the built-in one).
     QVariantList broadcastSources() const;
+    // The built-in subscriptions (updates.h), once per mailbox.
+    void seedSubscriptions();
     bool broadcastUnread(QString address) const {
         return mailboxOpen() && mailbox_.channelUnread(address, "Broadcasts");
     }

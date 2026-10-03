@@ -1,5 +1,6 @@
 #pragma once
 #include "appearance.h"
+#include "letter_render.h"
 #include <QMainWindow>
 #include <QVariantMap>
 class QListView;
@@ -16,11 +17,7 @@ class QStackedWidget;
 class QAbstractItemDelegate;
 namespace bm {
 class Session;
-bool looksCryptic(const QString &text);
-bool looksCryptic(const QString &subject, const QString &body);
-QString crypticLabel(const QString &hash);
-// Offset / 16 byte pairs / printable text, as the hex view shows a body.
-QString hexDump(const QByteArray &bytes);
+class FeedView;
 class DesktopWindow : public QMainWindow {
     Q_OBJECT
   public:
@@ -56,6 +53,7 @@ class DesktopWindow : public QMainWindow {
     QWidget *details_;
     QTextBrowser *body_;
     QWidget *actions_, *reader_, *identities_, *contacts_;
+    FeedView *feed_ = nullptr; // the Subscriptions page: one sender's posts as a feed
     QVBoxLayout *contactLayout_;
     QLineEdit *contactsFilter_;
     QWidget *letterStripe_;

@@ -1,4 +1,5 @@
 #include "updates.h"
+#include <QCoreApplication>
 #include <QRegularExpression>
 #include <QStringList>
 namespace bm::updates {
@@ -9,6 +10,25 @@ QString &publisher() {
     return address;
 }
 } // namespace
+QString digestAddress() {
+    // Signs the digest; its key is held by the maintainer.
+    return QStringLiteral("BM-5oSrHVwbsQYPKmePHfqQJZr6eibiqj9");
+}
+namespace {
+QList<DefaultSubscription> &defaults() {
+    static QList<DefaultSubscription> list{
+        // Weekly news of the network: chans, tools, subscriptions worth following.
+        {digestAddress(), QT_TRANSLATE_NOOP("bm::Session", "Bitmessage digest")},
+    };
+    return list;
+}
+} // namespace
+QList<DefaultSubscription> defaultSubscriptions() {
+    return defaults();
+}
+void setDefaultSubscriptionsForTesting(const QList<DefaultSubscription> &subscriptions) {
+    defaults() = subscriptions;
+}
 QString publisherAddress() {
     return publisher();
 }

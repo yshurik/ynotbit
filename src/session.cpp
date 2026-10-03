@@ -404,6 +404,11 @@ void Session::openMailboxPath(const QString &p) {
             mailbox_.open(p, vault_.mailboxKey(id));
             check(mailbox_.keyId() == id, tr("Mailbox key identifier mismatch"));
             mailbox_.bindCache(cache_->id());
+            try {
+                seedSubscriptions();
+            } catch (...) {
+                // A default subscription not added is no reason to refuse the mailbox.
+            }
             mailPath_ = p;
             mailKey_ = id;
             rememberMailbox(p);
@@ -767,6 +772,19 @@ QVariantList Session::subscriptions() const {
         for (const auto &s : mailbox_.subscriptions())
             result << QVariantMap{{"address", s.address}, {"label", s.label}};
     return result;
+}
+void Session::seedSubscriptions() {
+    for (const auto &d : updates::defaultSubscriptions()) {
+        const auto key = updates::kSeededSetting + d.address;
+        if (!Wire::validAddress(d.address) || !mailbox_.setting(key).isEmpty())
+            continue;
+        bool known = false;
+        for (const auto &s : mailbox_.subscriptions())
+            known = known || s.address == d.address;
+        if (!known)
+            mailbox_.subscribe(d.address, tr(d.label));
+        mailbox_.setSetting(key, "1");
+    }
 }
 QVariantList Session::broadcastSources() const {
     QMap<QString, QVariantMap> sources;
