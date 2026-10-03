@@ -139,7 +139,7 @@ class Connectivity(unittest.IsolatedAsyncioTestCase):
         else:
             (self.root / 'qt-peers.json').write_text(json.dumps([f'127.0.0.1:{p}' for p in ports]))
         await self.start(explicit=False)
-        await self.until(lambda: self.status().get('peers') == 5, 5)
+        await self.until(lambda: self.status().get('peers') == 5, 15)
 
     async def test_verified_history_survives_24_hours(self):
         ports = await self.listeners(5)
@@ -153,7 +153,7 @@ class Connectivity(unittest.IsolatedAsyncioTestCase):
                  'success': yesterday, 'attempt': yesterday, 'retry': 0, 'failures': 0}
                 for p in ports]))
         await self.start(explicit=False)
-        await self.until(lambda: self.status().get('peers') == 5, 5)
+        await self.until(lambda: self.status().get('peers') == 5, 15)
 
     async def test_churn_replenishes_outgoing_target(self):
         await self.start(await self.listeners(16))

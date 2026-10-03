@@ -1877,7 +1877,22 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     // State 1: vault locked (or none chosen yet). A vault target is shown with an
     // inline password field instead of a modal dialog; recents let you switch targets.
     lockedPage_ = new QWidget;
-    auto lockedOuter = new QVBoxLayout(lockedPage_);
+    // Scrolls rather than squeezes when the window is shorter than the card
+    // (Windows lets it get that short): squeezed, every box clips its text.
+    auto lockedScroll = new QScrollArea;
+    lockedScroll->setObjectName("lockedScroll");
+    lockedScroll->setWidgetResizable(true);
+    lockedScroll->setFrameShape(QFrame::NoFrame);
+    lockedScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    lockedScroll->viewport()->setAutoFillBackground(false);
+    auto lockedPageLayout = new QVBoxLayout(lockedPage_);
+    lockedPageLayout->setContentsMargins(0, 0, 0, 0);
+    lockedPageLayout->addWidget(lockedScroll);
+    auto lockedContent = new QWidget;
+    lockedContent->setObjectName("lockedContent");
+    lockedContent->setAutoFillBackground(false);
+    lockedScroll->setWidget(lockedContent);
+    auto lockedOuter = new QVBoxLayout(lockedContent);
     lockedOuter->addStretch();
     auto lockedCard = new QWidget;
     lockedCard->setFixedWidth(380);

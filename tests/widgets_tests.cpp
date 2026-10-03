@@ -1902,8 +1902,10 @@ int main(int argc, char **argv) {
         {
             // A short window must not squeeze the chosen vault's box: its name and
             // path stay whole (macOS windows open shorter than this test's).
-            const auto size = window.size();
-            window.resize(size.width(), 420);
+            // Windows lets a window get shorter than the lock page needs; here
+            // the window won't, so the page's own area is capped instead.
+            auto welcome = window.findChild<QWidget *>("welcomeStack");
+            welcome->setMaximumHeight(260);
             QTest::qWait(30);
             auto box = window.findChild<QWidget *>("vaultBox");
             auto name = window.findChild<QLabel *>("lockedVaultName");
@@ -1931,7 +1933,7 @@ int main(int argc, char **argv) {
                 describe("path", path);
             }
             require(inside(name) && inside(path),
-                    "a short window does not clip the vault's name or path");
+                    "a lock page shorter than its content still shows the vault's name and path whole");
             require(path->toolTip() == vaultFile && path->text().contains(QChar(0x2026)) &&
                         path->fontMetrics().horizontalAdvance(path->text()) <= path->width(),
                     "a long vault path is one line, shortened in the middle, whole in the tooltip");
@@ -1939,7 +1941,7 @@ int main(int argc, char **argv) {
             // inside without growing the box on macOS, and clips both lines.
             require(!box->styleSheet().contains("padding"),
                     "the vault box spaces its text with layout margins, not padding");
-            window.resize(size);
+            welcome->setMaximumHeight(QWIDGETSIZE_MAX);
             QTest::qWait(30);
         }
         QTimer passwordResponder;
