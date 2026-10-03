@@ -2439,8 +2439,13 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     auto vaultBox = new QWidget;
     vaultBox->setObjectName("vaultBox");
     vaultBox->setStyleSheet(
-        "QWidget#vaultBox{border:1px solid palette(mid);border-radius:8px;padding:10px;}");
+        "QWidget#vaultBox{border:1px solid palette(mid);border-radius:8px;}");
+    // Spacing from the layout, not stylesheet padding: on macOS that padding
+    // shrinks the inside without growing the box, clipping the name and path.
+    vaultBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto vaultBoxLayout = new QVBoxLayout(vaultBox);
+    vaultBoxLayout->setContentsMargins(12, 10, 12, 10);
+    vaultBoxLayout->setSpacing(2);
     lockedVaultName_ = new QLabel;
     lockedVaultName_->setObjectName("lockedVaultName");
     lockedVaultName_->setStyleSheet("font-weight:700;");

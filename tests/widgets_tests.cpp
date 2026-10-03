@@ -1794,6 +1794,31 @@ int main(int argc, char **argv) {
         require(list->model()->rowCount() == 0, "lock clears model");
         require(window.findChild<QTextBrowser *>("readerBody")->toPlainText().isEmpty(),
                 "lock clears plaintext");
+        {
+            // A short window must not squeeze the chosen vault's box: its name and
+            // path stay whole (macOS windows open shorter than this test's).
+            const auto size = window.size();
+            window.resize(size.width(), 420);
+            QTest::qWait(30);
+            auto box = window.findChild<QWidget *>("vaultBox");
+            auto name = window.findChild<QLabel *>("lockedVaultName");
+            auto path = window.findChild<QLabel *>("lockedVaultPath");
+            require(box->isVisible() && !name->text().isEmpty(), "the locked screen names the vault");
+            const auto inside = [&](QWidget *label) {
+                const QRect r(label->mapTo(box, QPoint(0, 0)), label->size());
+                return box->contentsRect().contains(r) &&
+                       label->height() >= label->heightForWidth(label->width()) &&
+                       label->height() >= label->fontMetrics().height();
+            };
+            require(inside(name) && inside(path),
+                    "a short window does not clip the vault's name or path");
+            // The box's spacing is its layout's: stylesheet padding shrinks the
+            // inside without growing the box on macOS, and clips both lines.
+            require(!box->styleSheet().contains("padding"),
+                    "the vault box spaces its text with layout margins, not padding");
+            window.resize(size);
+            QTest::qWait(30);
+        }
         QTimer passwordResponder;
         int attempts = 0;
         QObject::connect(&passwordResponder, &QTimer::timeout, [&] {
