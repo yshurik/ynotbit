@@ -1931,6 +1931,21 @@ int main(int argc, char **argv) {
                           << ", hint " << box->sizeHint().height() << "\n";
                 describe("name", name);
                 describe("path", path);
+                // What gave it too little room: each widget up to the window,
+                // its height against what it asks for.
+                std::cerr << "style " << QApplication::style()->name().toStdString()
+                          << ", box margins " << box->contentsMargins().top() << "/"
+                          << box->layout()->contentsMargins().top() << ", min "
+                          << box->minimumSizeHint().height() << ", policy "
+                          << int(box->sizePolicy().verticalPolicy()) << "\n";
+                for (QWidget *w = box; w; w = w->parentWidget())
+                    std::cerr << "  " << w->metaObject()->className() << " '"
+                              << w->objectName().toStdString() << "': height " << w->height()
+                              << ", min " << w->minimumSizeHint().height() << "/"
+                              << w->minimumHeight() << ", hint " << w->sizeHint().height()
+                              << ", max " << w->maximumHeight() << ", layout min "
+                              << (w->layout() ? w->layout()->minimumSize().height() : -1)
+                              << ", visible " << w->isVisible() << "\n";
             }
             require(inside(name) && inside(path),
                     "a lock page shorter than its content still shows the vault's name and path whole");
