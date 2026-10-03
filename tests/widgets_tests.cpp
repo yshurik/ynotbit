@@ -31,6 +31,11 @@ int main(int argc, char **argv) {
     app.setOrganizationName("YnotbitTests");
     app.setApplicationName("Widgets");
     QTemporaryDir temp;
+    // A long vault path, like a macOS runner's /var/folders/.../T/...: the
+    // locked screen must show it whole-height there too.
+    const QString vaultFile =
+        temp.filePath("var/folders/xz/q1w2e3r4t5y6u7i8o9p0asdfghjk/T/vaults-of-the-test/vault");
+    QDir().mkpath(QFileInfo(vaultFile).absolutePath());
     auto require = [](bool ok, const char *message) {
         if (!ok) {
             // Also printed here: a failure inside a dialog callback is thrown
@@ -60,7 +65,7 @@ int main(int argc, char **argv) {
             }
         }
         bm::Vault vault;
-        vault.create(temp.filePath("vault"), "test password");
+        vault.create(vaultFile, "test password");
         const auto personal = vault.addIdentity("Personal");
         const auto emptyChannel =
             vault.addChannel("widgets empty channel regression", "Empty channel");
@@ -106,7 +111,7 @@ int main(int argc, char **argv) {
         QDir().mkpath(temp.filePath("node"));
         {
             QSettings settings(temp.filePath("node/desktop.ini"), QSettings::IniFormat);
-            settings.setValue("vault", temp.filePath("vault"));
+            settings.setValue("vault", vaultFile);
             settings.setValue("mailbox", temp.filePath("mailbox"));
         }
         QTimer responder;
@@ -503,7 +508,7 @@ int main(int argc, char **argv) {
             auto readerBody = window.findChild<QTextBrowser *>("readerBody");
             const auto beforeReset = readerBody->toPlainText();
             require(!beforeReset.isEmpty(), "message body loaded before new mail arrives");
-            vault.unlock(temp.filePath("vault"), "test password");
+            vault.unlock(vaultFile, "test password");
             bm::Mailbox injected;
             injected.open(temp.filePath("mailbox"), vault.mailboxKey(key));
             injected.store("new-arrival", "sender", "recipient", "New arrival",
@@ -523,7 +528,7 @@ int main(int argc, char **argv) {
             // A release announcement the scan recorded shows a banner until dismissed.
             bm::updates::setPublisherAddressForTesting("BM-releases");
             QCoreApplication::setApplicationVersion("0.5.1");
-            vault.unlock(temp.filePath("vault"), "test password");
+            vault.unlock(vaultFile, "test password");
             bm::Mailbox injected;
             injected.open(temp.filePath("mailbox"), vault.mailboxKey(key));
             injected.setSetting(bm::updates::kLatestSetting, "0.6.0");
@@ -1664,7 +1669,7 @@ int main(int argc, char **argv) {
             // from the menu redraws the open letter and the list.
             const QString publisher = "BM-2cWFkyuXXFw6d393RGnin2RpSXj8wxtt6F";
             {
-                vault.unlock(temp.filePath("vault"), "test password");
+                vault.unlock(vaultFile, "test password");
                 bm::Mailbox injected;
                 injected.open(temp.filePath("mailbox"), vault.mailboxKey(key));
                 injected.store("news-1", publisher, publisher, "Weekly news", "Broadcast body",
@@ -1704,7 +1709,7 @@ int main(int argc, char **argv) {
             const QString other = "BM-2cX8TF9vuQZEWvT7UrEeq1HN9dgiSUPLEN";
             const QString releases = "BM-2cUzX8f9CKUU7L8NeB8GExZvf54PrcXq1S";
             {
-                vault.unlock(temp.filePath("vault"), "test password");
+                vault.unlock(vaultFile, "test password");
                 bm::Mailbox injected;
                 injected.open(temp.filePath("mailbox"), vault.mailboxKey(key));
                 injected.store("bc-1", publisher, publisher, "Weekly issue 1", "News", 1801,
@@ -1912,6 +1917,9 @@ int main(int argc, char **argv) {
             };
             require(inside(name) && inside(path),
                     "a short window does not clip the vault's name or path");
+            require(path->toolTip() == vaultFile && path->text().contains(QChar(0x2026)) &&
+                        path->fontMetrics().horizontalAdvance(path->text()) <= path->width(),
+                    "a long vault path is one line, shortened in the middle, whole in the tooltip");
             // The box's spacing is its layout's: stylesheet padding shrinks the
             // inside without growing the box on macOS, and clips both lines.
             require(!box->styleSheet().contains("padding"),

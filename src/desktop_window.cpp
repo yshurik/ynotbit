@@ -1265,6 +1265,30 @@ void showLetterBody(QTextBrowser *body, QTextEdit *subject, const QString &subje
 // Add or rename an address-book entry. With no address given, a valid one on
 // the clipboard is offered; validation is live and Save only enables for an
 // address the book will take.
+// One line, shortened in the middle to fit ("/Users/…/a.bmvault"), the whole
+// text in its tooltip. A word-wrapped path made the box's height depend on
+// where the lines happened to break, and long ones were cut off.
+class ElidedLabel : public QLabel {
+  public:
+    using QLabel::QLabel;
+    void setFullText(const QString &text) {
+        full_ = text;
+        setToolTip(text);
+        elide();
+    }
+
+  protected:
+    void resizeEvent(QResizeEvent *event) override {
+        QLabel::resizeEvent(event);
+        elide();
+    }
+
+  private:
+    void elide() {
+        QLabel::setText(fontMetrics().elidedText(full_, Qt::ElideMiddle, width()));
+    }
+    QString full_;
+};
 class ContactDialog : public QDialog {
   public:
     ContactDialog(Session &session, QString address, QString label, QWidget *parent)
@@ -1884,10 +1908,11 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     lockedVaultName_ = new QLabel;
     lockedVaultName_->setObjectName("lockedVaultName");
     lockedVaultName_->setStyleSheet("font-weight:700;");
-    lockedVaultPath_ = new QLabel;
+    lockedVaultPath_ = new ElidedLabel;
     lockedVaultPath_->setObjectName("lockedVaultPath");
     lockedVaultPath_->setFont(addressFont());
-    lockedVaultPath_->setWordWrap(true);
+    // However long the path, it doesn't widen the card.
+    lockedVaultPath_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     lockedVaultPath_->setStyleSheet("color:palette(mid);font-size:11px;");
     vaultBoxLayout->addWidget(lockedVaultName_);
     vaultBoxLayout->addWidget(lockedVaultPath_);
@@ -2782,7 +2807,7 @@ void DesktopWindow::showVaultPasswordFor(QString path, bool create) {
 void DesktopWindow::updateLockedScreen() {
     const bool hasTarget = !targetVaultPath_.isEmpty();
     lockedVaultName_->setText(QFileInfo(targetVaultPath_).fileName());
-    lockedVaultPath_->setText(targetVaultPath_);
+    static_cast<ElidedLabel *>(lockedVaultPath_)->setFullText(targetVaultPath_);
     findChild<QWidget *>("vaultAuthGroup")->setVisible(hasTarget);
     vaultRepeatField_->setVisible(vaultCreateMode_);
     vaultUnlockButton_->setText(vaultCreateMode_ ? tr("Create vault") : tr("Unlock vault"));
