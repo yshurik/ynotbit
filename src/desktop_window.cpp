@@ -835,12 +835,19 @@ const QVector<QPair<QString, QString>> kFolderIcons = {
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Outbox"), "outbox"},
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Sent"), "sent"},
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Channels"), "channels"},
-    {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Broadcasts"), "broadcasts"},
+    {"Broadcasts", "broadcasts"}, // shown as "Subscriptions": see folderTitle()
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Archive"), "archive"},
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Trash"), "delete"},
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Identities"), "identities"},
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Contacts"), "contacts"},
 };
+// A folder's displayed name. Received broadcasts are kept under "Broadcasts",
+// but the page is the senders you follow: "Subscriptions", as in PyBitmessage.
+QString folderTitle(const QString &key) {
+    if (key == "Broadcasts")
+        return DesktopWindow::tr("Subscriptions");
+    return DesktopWindow::tr(key.toUtf8().constData());
+}
 // Paragraph types, as MarkText's "Turn into" menu offers them.
 enum class ParagraphType { Paragraph, H1, H2, H3, H4, H5, H6, BulletList, NumberedList, Code };
 ParagraphType paragraphType(const QTextBlock &block) {
@@ -2121,7 +2128,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         icon->setFixedSize(38, 38);
         icon->setIconSize(QSize(24, 24));
         icon->setIcon(materialIcon(iconName, iconColor(appearance_.dark())));
-        icon->setToolTip(tr(label.toUtf8().constData()));
+        icon->setToolTip(folderTitle(label));
         icon->setCursor(Qt::PointingHandCursor);
         folderGroup->addButton(icon);
         connect(icon, &QToolButton::clicked, this, [this, i] { folders_->setCurrentRow(i); });
@@ -2758,7 +2765,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         if (auto icon = findChild<QToolButton *>("folderIcon_" + folder))
             icon->setChecked(true);
         // Folder names are keys; the heading shows the translated name.
-        heading_->setText(tr(folder.toUtf8().constData()).toUpper());
+        heading_->setText(folderTitle(folder).toUpper());
         if (folder == "Channels" || folder == "Broadcasts")
             refreshChannels();
         session_.messageModel()->setFolder(folder);

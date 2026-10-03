@@ -52,10 +52,6 @@
         <translation>頻道</translation>
     </message>
     <message>
-        <source>Broadcasts</source>
-        <translation>廣播</translation>
-    </message>
-    <message>
         <source>Archive</source>
         <translation>封存</translation>
     </message>
@@ -869,6 +865,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Subscribe to broadcasts</source>
         <translation>訂閱廣播</translation>
+    </message>
+    <message>
+        <source>Subscriptions</source>
+        <translation>訂閱</translation>
     </message>
 </context>
 <context>

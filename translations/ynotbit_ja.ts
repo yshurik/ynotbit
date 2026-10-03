@@ -52,10 +52,6 @@
         <translation>チャンネル</translation>
     </message>
     <message>
-        <source>Broadcasts</source>
-        <translation>ブロードキャスト</translation>
-    </message>
-    <message>
         <source>Archive</source>
         <translation>アーカイブ</translation>
     </message>
@@ -869,6 +865,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Subscribe to broadcasts</source>
         <translation>ブロードキャストを購読</translation>
+    </message>
+    <message>
+        <source>Subscriptions</source>
+        <translation>購読</translation>
     </message>
 </context>
 <context>

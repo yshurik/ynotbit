@@ -1720,6 +1720,9 @@ int main(int argc, char **argv) {
                         window.findChild<QLabel *>("channelRailHeading")->text() == "SUBSCRIPTIONS" &&
                         addSource->text() == "+ Subscribe…",
                     "the Broadcasts page shows a subscriptions rail like the Channels page");
+            require(window.findChild<QToolButton *>("folderIcon_Broadcasts")->toolTip() ==
+                        "Subscriptions",
+                    "the page is named Subscriptions (its letters stay in the Broadcasts folder)");
             auto chipNamed = [&](const QString &text) -> QPushButton * {
                 for (auto chip : window.findChildren<QPushButton *>("channelChip"))
                     // Collapsed, a chip's name is only in its tooltip.

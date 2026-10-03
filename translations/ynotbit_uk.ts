@@ -52,10 +52,6 @@
         <translation>Канали</translation>
     </message>
     <message>
-        <source>Broadcasts</source>
-        <translation>Розсилки</translation>
-    </message>
-    <message>
         <source>Archive</source>
         <translation>Архів</translation>
     </message>
@@ -869,6 +865,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Subscribe to broadcasts</source>
         <translation>Підписатися на розсилки</translation>
+    </message>
+    <message>
+        <source>Subscriptions</source>
+        <translation>Підписки</translation>
     </message>
 </context>
 <context>
