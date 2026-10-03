@@ -392,7 +392,8 @@ void Mailbox::subscribe(const QString &address, const QString &label) {
     s.text(1, address);
     s.text(2, label);
     s.row();
-    advance(0);
+    // No rescan from here: the scan notices the new subscription and reads the
+    // kept broadcasts again on its own (Delivery::catchUpBroadcasts).
     t.commit();
 }
 void Mailbox::unsubscribe(const QString &address) {

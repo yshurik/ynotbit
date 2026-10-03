@@ -1,6 +1,7 @@
 #pragma once
 #include "cache.h"
 #include "delivery.h"
+#include <utility>
 #include "message_model.h"
 #include "storage.h"
 #include <QJsonObject>
@@ -26,6 +27,7 @@ class Session : public QObject {
     Q_PROPERTY(QVariantList subscriptions READ subscriptions NOTIFY changed)
     Vault vault_;
     Mailbox mailbox_;
+    QString welcomeSource_;
     std::unique_ptr<Cache> cache_;
     std::unique_ptr<Delivery> delivery_;
     std::unique_ptr<MessageModel> messageModel_;
@@ -134,6 +136,11 @@ class Session : public QObject {
     QVariantList broadcastSources() const;
     // The built-in subscriptions (updates.h), once per mailbox.
     void seedSubscriptions();
+    // Where the window opens after a mailbox opens, once per opening: the
+    // Subscriptions page on the Bitmessage digest.
+    QString takeWelcomeSource() {
+        return std::exchange(welcomeSource_, {});
+    }
     bool broadcastUnread(QString address) const {
         return mailboxOpen() && mailbox_.channelUnread(address, "Broadcasts");
     }

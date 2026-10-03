@@ -353,8 +353,8 @@ void Mailbox::advance(qint64 c) {
 }
 void Mailbox::store(const QString &hash, const QString &from, const QString &to,
                     const QString &subject, const QString &body, qint64 c, const QString &folder) {
-    sql("BEGIN IMMEDIATE");
-    try {
+    detail::Transaction t(db_);
+    {
         Statement s(
             db_,
             "INSERT OR IGNORE INTO messages(hash,sender,recipient,subject,body,folder,received) "
@@ -367,11 +367,9 @@ void Mailbox::store(const QString &hash, const QString &from, const QString &to,
         s.text(6, folder);
         s.number(7, QDateTime::currentSecsSinceEpoch());
         s.row();
-        advance(c);
-        sql("COMMIT");
-    } catch (...) {
-        sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
-        throw;
+        if (c >= 0) // a catch-up pass stores behind the checkpoint and leaves it be
+            advance(c);
+        t.commit();
     }
 }
 QVector<Message> Mailbox::messages() const {
@@ -479,7 +477,26 @@ void Mailbox::bindCache(const QString &id) {
 } // namespace bm
 
 namespace bm {
-void Mailbox::bindIdentities(const QString &fingerprint) {
+Mailbox::Batch::Batch(Mailbox &m) : t_(std::make_unique<detail::Transaction>(m.db_)) {}
+Mailbox::Batch::~Batch() = default;
+void Mailbox::Batch::commit() {
+    t_->commit();
+}
+QString Mailbox::boundIdentities() const {
+    Statement s(db_, "SELECT identities FROM meta");
+    return s.row() ? s.text(0) : QString();
+}
+void Mailbox::bindIdentities(const QString &fingerprint, bool keepCheckpoint) {
+    // Called before every scan batch: write (a synchronous commit) only when the
+    // identities actually changed.
+    if (boundIdentities() == fingerprint)
+        return;
+    if (keepCheckpoint) {
+        Statement s(db_, "UPDATE meta SET identities=?");
+        s.text(1, fingerprint);
+        s.row();
+        return;
+    }
     Statement s(db_, "UPDATE meta SET checkpoint=CASE WHEN identities=? THEN checkpoint ELSE 0 "
                      "END, identities=?");
     s.text(1, fingerprint);

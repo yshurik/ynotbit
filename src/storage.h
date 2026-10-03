@@ -9,6 +9,9 @@
 #include <sodium.h>
 #include <vector>
 struct sqlite3;
+namespace bm::detail {
+class Transaction;
+}
 namespace bm {
 // Letter sizes. Bitmessage nodes drop any object over 2^18 bytes. A letter's
 // text -- "Subject:<subject>\nBody:<body>" in UTF-8 -- may take kMaxLetterText
@@ -120,7 +123,20 @@ class Mailbox {
     }
     QString keyId() const;
     void bindCache(const QString &cacheId);
-    void bindIdentities(const QString &fingerprint);
+    // The identities the checkpoint was reached with; a different set restarts
+    // the scan from the first object (keepCheckpoint: relabel only).
+    void bindIdentities(const QString &fingerprint, bool keepCheckpoint = false);
+    QString boundIdentities() const;
+    // Groups many writes into one commit (one disk sync); without commit(),
+    // all of them roll back.
+    class Batch {
+        std::unique_ptr<detail::Transaction> t_;
+
+      public:
+        explicit Batch(Mailbox &);
+        ~Batch();
+        void commit();
+    };
     void store(const QString &hash, const QString &from, const QString &to, const QString &subject,
                const QString &body, qint64 checkpoint, const QString &folder = "Inbox");
     void advance(qint64 checkpoint);

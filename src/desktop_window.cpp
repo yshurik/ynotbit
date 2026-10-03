@@ -2419,6 +2419,17 @@ void DesktopWindow::updateTimeline() {
     updateDeliveryStatus();
 }
 void DesktopWindow::updateState() {
+    // A mailbox opens on Subscriptions with the digest selected (the first
+    // sender instead, if the digest was unsubscribed).
+    if (session_.mailboxOpen())
+        if (const auto welcome = session_.takeWelcomeSource(); !welcome.isEmpty()) {
+            activeBroadcastAddress_ = welcome;
+            if (folders_->currentRow() == 5)
+                refreshChannels();
+            else
+                folders_->setCurrentRow(5); // runs updateState again
+            return;
+        }
     setWindowTitle(session_.document() + " — ynotbit");
     error_->setText(session_.error());
     error_->setVisible(!session_.error().isEmpty());

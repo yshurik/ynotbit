@@ -56,21 +56,26 @@ class Statement {
                           sqlite3_column_bytes(s_, n));
     }
 };
+// Inside a transaction already open (a scan batch), it joins that one: the
+// outer one commits, or rolls everything back if this throws.
 class Transaction {
     sqlite3 *db_;
-    bool committed_ = false;
+    bool committed_ = false, nested_ = false;
 
   public:
     explicit Transaction(sqlite3 *db) : db_(db) {
-        if (!db || sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) != SQLITE_OK)
-            throw std::runtime_error(db ? sqlite3_errmsg(db) : "Mailbox is closed");
+        if (!db)
+            throw std::runtime_error("Mailbox is closed");
+        nested_ = sqlite3_get_autocommit(db) == 0;
+        if (!nested_ && sqlite3_exec(db, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) != SQLITE_OK)
+            throw std::runtime_error(sqlite3_errmsg(db));
     }
     ~Transaction() {
-        if (!committed_)
+        if (!committed_ && !nested_)
             sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
     }
     void commit() {
-        if (sqlite3_exec(db_, "COMMIT", nullptr, nullptr, nullptr) != SQLITE_OK)
+        if (!nested_ && sqlite3_exec(db_, "COMMIT", nullptr, nullptr, nullptr) != SQLITE_OK)
             throw std::runtime_error(sqlite3_errmsg(db_));
         committed_ = true;
     }

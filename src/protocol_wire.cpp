@@ -1,4 +1,7 @@
 #include "protocol_wire.h"
+#include <secp256k1.h>
+#include <secp256k1_ecdh.h>
+#include <cstring>
 #include "protocol.h"
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -106,7 +109,10 @@ ntb_address address(const QString &s) {
           "Invalid Bitmessage address");
     return a;
 }
-Key privateKey(const unsigned char *secret) {
+// withPublic: also compute the public point (a full scalar multiplication).
+// Signing and addresses need it; ECDH does not, and decrypting tries every
+// identity on every incoming message, so it skips it.
+Key privateKey(const unsigned char *secret, bool withPublic = true) {
     Key k(EC_KEY_new_by_curve_name(NID_secp256k1), EC_KEY_free);
     check(bool(k));
     Bn n(BN_bin2bn(secret, 32, nullptr), BN_clear_free);
@@ -115,9 +121,11 @@ Key privateKey(const unsigned char *secret) {
     check(n && order && EC_GROUP_get_order(group, order.get(), nullptr) == 1 &&
               !BN_is_zero(n.get()) && BN_cmp(n.get(), order.get()) < 0,
           "Invalid private scalar");
+    check(EC_KEY_set_private_key(k.get(), n.get()) == 1);
+    if (!withPublic)
+        return k;
     Point p(EC_POINT_new(group), EC_POINT_free);
     check(p && EC_POINT_mul(group, p.get(), n.get(), nullptr, nullptr, nullptr) == 1 &&
-          EC_KEY_set_private_key(k.get(), n.get()) == 1 &&
           EC_KEY_set_public_key(k.get(), p.get()) == 1);
     return k;
 }
@@ -196,6 +204,26 @@ void shared(EC_KEY *priv, EC_KEY *pub, Secret &keys) {
           "ECDH failed");
     check(SHA512(raw.data(), 32, keys.data()) != nullptr);
 }
+// The same secret through libsecp256k1, for decrypting: Bitmessage hashes the
+// shared point's bare x coordinate (what ECDH_compute_key returns), so the
+// hash step only copies it out. 10-20x faster than OpenSSL's generic curve
+// code, and decrypting runs once per identity on every incoming message.
+int sharedX(unsigned char *out, const unsigned char *x32, const unsigned char *, void *) {
+    std::memcpy(out, x32, 32);
+    return 1;
+}
+void sharedFast(const unsigned char *secret, const QByteArray &uncompressed, Secret &keys) {
+    secp256k1_pubkey point;
+    check(uncompressed.size() == 65 &&
+              secp256k1_ec_pubkey_parse(secp256k1_context_static, &point, ptr(uncompressed),
+                                        65) == 1,
+          "Invalid public key");
+    Secret raw(32);
+    check(secp256k1_ecdh(secp256k1_context_static, raw.data(), &point, secret, sharedX,
+                         nullptr) == 1,
+          "ECDH failed");
+    check(SHA512(raw.data(), 32, keys.data()) != nullptr);
+}
 QByteArray mac(const QByteArray &data, const Secret &keys) {
     QByteArray result(32, 0);
     unsigned int n = 32;
@@ -245,9 +273,8 @@ QByteArray decrypt(const QByteArray &data, const unsigned char *secret) {
     check(size >= 16 && size % 16 == 0);
     auto ciphertext = r.take(size), tag = r.take(32);
     r.end();
-    auto k = privateKey(secret), p = publicKey(pub);
     Secret keys(64);
-    shared(k.get(), p.get(), keys);
+    sharedFast(secret, pub, keys);
     auto expected = mac(data.left(data.size() - 32), keys);
     check(CRYPTO_memcmp(ptr(tag), ptr(expected), 32) == 0, "ECIES authentication failed");
     Cipher c(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
@@ -412,8 +439,10 @@ std::optional<DecodedEnvelope> Wire::decodeMessage(const QByteArray &object,
         Reader wire{object};
         auto h = parseHeader(wire);
         check(h.type == 2 && h.version == 1);
-        auto ra = address(recipient.address);
+        // Decrypting fails for nearly every identity tried; only then is the
+        // recipient's address worth decoding.
         Wiped plain{decrypt(object.mid(h.headerSize), recipient.keys.data() + 32)};
+        auto ra = address(recipient.address);
         Reader r{plain.b};
         DecodedEnvelope e;
         e.sender = readIdentity(r);

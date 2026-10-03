@@ -31,9 +31,26 @@ if(MSVC)
 else()
  target_compile_options(notbit_codec PRIVATE -Wno-deprecated-declarations -include sys/types.h)
 endif()
+# libsecp256k1, for the ECDH that decrypting tries on every incoming message
+# against every identity: 10-20x OpenSSL's generic curve code. Pinned and
+# checksummed; built static, nothing installed.
+include(FetchContent)
+# Its CMake declares BUILD_SHARED_LIBS (default ON) for the whole project,
+# which would turn our own libraries shared; they stay static.
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(SECP256K1_DISABLE_SHARED ON CACHE BOOL "" FORCE)
+set(SECP256K1_INSTALL OFF CACHE BOOL "" FORCE)
+set(SECP256K1_ENABLE_MODULE_ECDH ON CACHE BOOL "" FORCE)
+foreach(off BUILD_TESTS BUILD_EXHAUSTIVE_TESTS BUILD_BENCHMARK BUILD_CTIME_TESTS BUILD_EXAMPLES)
+ set(SECP256K1_${off} OFF CACHE BOOL "" FORCE)
+endforeach()
+FetchContent_Declare(secp256k1
+ URL https://github.com/bitcoin-core/secp256k1/archive/refs/tags/v0.6.0.tar.gz
+ URL_HASH SHA256=785bb98e7d6705c51c8dfa8ac3af6aa2ccfa3774714d51c0b9e28fac1146e9f1)
+FetchContent_MakeAvailable(secp256k1)
 add_library(bmcore src/storage.cpp src/mailbox_ops.cpp src/protocol.cpp src/protocol_wire.cpp src/pow.cpp src/delivery.cpp src/cache.cpp src/scanner.cpp src/updates.cpp)
 target_include_directories(bmcore PUBLIC src)
-target_link_libraries(bmcore PUBLIC Threads::Threads notbit_codec Qt6::Core PkgConfig::SODIUM PkgConfig::SQLCIPHER OpenSSL::Crypto)
+target_link_libraries(bmcore PUBLIC Threads::Threads notbit_codec secp256k1 Qt6::Core PkgConfig::SODIUM PkgConfig::SQLCIPHER OpenSSL::Crypto)
 add_executable(core_tests tests/core_tests.cpp)
 target_link_libraries(core_tests PRIVATE bmcore)
 enable_testing()

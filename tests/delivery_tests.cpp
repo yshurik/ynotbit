@@ -3,6 +3,7 @@
 #include "protocol_wire.h"
 #include "updates.h"
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -224,6 +225,55 @@ int main(int argc, char **argv) {
         scanFor([] { return false; }, 300);
         require(latest() == "9.9.9", "turned off, announcements are not heard");
         updates::setPublisherAddressForTesting({});
+        // Subscribing later reads only the kept broadcasts again: the checkpoint
+        // (how far every message has been tried against every identity) stays.
+        const auto carol = av.addIdentity("Carol");
+        for (const auto &i : av.identities())
+            if (i.address == carol)
+                cacheObject(b, Wire::encodeBroadcast(i, "Carol's news", "Old post", expires));
+        auto drain = [&] {
+            const auto deadline = QDateTime::currentMSecsSinceEpoch() + 5000;
+            while (QDateTime::currentMSecsSinceEpoch() < deadline) {
+                bc.discover();
+                bd.scan(bc, bm, bv, 100);
+                if (bc.after(bm.checkpoint(), 1).isEmpty())
+                    return;
+                QThread::msleep(5);
+            }
+        };
+        drain();
+        auto hasCarol = [&] {
+            for (const auto &msg : bm.messages())
+                if (msg.subject == "Carol's news" && msg.folder == "Broadcasts")
+                    return true;
+            return false;
+        };
+        require(!hasCarol(), "an unsubscribed sender's broadcast is passed over");
+        const auto reached = bm.checkpoint();
+        require(reached > 0, "the scan has reached the end of the cache");
+        bm.subscribe(carol, "Carol");
+        bd.scan(bc, bm, bv, 1); // one object: a rescan from the start would show
+        require(bm.checkpoint() == reached,
+                "subscribing does not send the full scan back to the start");
+        for (int i = 0; i < 20 && !hasCarol(); ++i)
+            bd.scan(bc, bm, bv, 100);
+        require(hasCarol(), "the new subscription's kept broadcast is found by the catch-up");
+        // Mailboxes from before carry one fingerprint of identities and
+        // subscriptions together: upgrading must not rescan everything.
+        {
+            QStringList entries;
+            for (const auto &i : bv.identities())
+                entries << i.address;
+            for (const auto &sub : bm.subscriptions())
+                entries << "subscription:" + sub.address;
+            entries.sort();
+            bm.bindIdentities(QString::fromLatin1(QCryptographicHash::hash(
+                                  entries.join('\n').toUtf8(), QCryptographicHash::Sha256)
+                                                      .toHex()),
+                              true);
+        }
+        bd.scan(bc, bm, bv, 1);
+        require(bm.checkpoint() == reached, "an older mailbox keeps its checkpoint on upgrade");
         ad.stop();
         bd.stop();
         std::cout << "PASS: key lookup, real PoW, lock/reopen, encrypted handoff, receive, ACK, "

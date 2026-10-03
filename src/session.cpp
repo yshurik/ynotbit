@@ -409,6 +409,9 @@ void Session::openMailboxPath(const QString &p) {
             } catch (...) {
                 // A default subscription not added is no reason to refuse the mailbox.
             }
+            // ynotbit opens on the first built-in subscription: the digest.
+            if (const auto defaults = updates::defaultSubscriptions(); !defaults.isEmpty())
+                welcomeSource_ = defaults.first().address;
             mailPath_ = p;
             mailKey_ = id;
             rememberMailbox(p);
@@ -639,7 +642,9 @@ void Session::tick() {
         cache_->discover();
         cache_->prune(qint64(retentionMB_) * 1024 * 1024, retentionDays_);
         if (mailboxOpen()) {
-            delivery_->scan(*cache_, mailbox_, vault_);
+            // A time budget, not a count: catching up (a new identity, first
+            // sync) goes as fast as the window can spare, ~150 ms per tick.
+            delivery_->scan(*cache_, mailbox_, vault_, 512, 150);
             delivery_->tick(mailbox_, vault_, !offline_ && node_.state() == QProcess::Running);
             refresh();
             activity_ = cache_->after(mailbox_.checkpoint(), 1).isEmpty()
@@ -690,7 +695,7 @@ bool Session::sendLetter(QString id) {
                        QLocale().formattedDataSize(kMaxLetterText, 0,
                                                    QLocale::DataSizeTraditionalFormat)));
         mailbox_.queueDraft(id, kind, QDateTime::currentSecsSinceEpoch() + 4 * 86400);
-        mailbox_.advance(0);
+        Delivery::rereadKept(mailbox_); // the recipient's key may already be kept
         refresh();
         sent = true;
         activity_ = tr("Letter queued. Follow its progress in Outbox.");

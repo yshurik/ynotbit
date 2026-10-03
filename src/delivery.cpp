@@ -5,6 +5,7 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -264,37 +265,172 @@ void Delivery::tick(Mailbox &m, const Vault &v, bool online) {
     plan(m, v, now());
     processJobs(m, online);
 }
-int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int limit) {
+namespace {
+QString fingerprint(QStringList entries) {
+    entries.sort();
+    return QString::fromLatin1(
+        QCryptographicHash::hash(entries.join('\n').toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+// A broadcast from a subscription, ynotbit's release address, or (chans, when
+// given) a chan's own Anonymous-mode post.
+std::optional<DecodedEnvelope> decodeBroadcast(const QByteArray &data, const Mailbox &m,
+                                               const QString &publisher,
+                                               const Vault *chansOf, bool *chanBroadcast) {
+    *chanBroadcast = false;
+    for (const auto &sub : m.subscriptions())
+        if (auto decoded = Wire::decodeBroadcast(data, sub.address))
+            return decoded;
+    // ynotbit's own release announcements, heard without subscribing.
+    if (!publisher.isEmpty())
+        if (auto decoded = Wire::decodeBroadcast(data, publisher))
+            return decoded;
+    // Joining a chan already means "I care about this address's traffic" --
+    // members shouldn't also have to manually subscribe to hear a chan's own
+    // "Anonymous"/broadcast-mode posts.
+    if (chansOf)
+        for (const auto &i : chansOf->identities())
+            if (i.chan)
+                if (auto decoded = Wire::decodeBroadcast(data, i.address)) {
+                    *chanBroadcast = true;
+                    return decoded;
+                }
+    return {};
+}
+// Records a release announcement's version: the broadcast is signed, so only
+// the publisher can announce one.
+void noteRelease(Mailbox &m, const DecodedEnvelope &d, const QString &publisher) {
+    if (d.broadcast && !publisher.isEmpty() && d.sender.address == publisher)
+        if (auto version = updates::announcedVersion(d.message.subject))
+            if (updates::compareVersions(*version, m.setting(updates::kLatestSetting, "0")) > 0)
+                m.setSetting(updates::kLatestSetting, *version);
+}
+const QString kSubscriptionsSetting = "scan:subscriptions"; // the set last scanned for
+const QString kCatchUpFrom = "scan:catchup-from", kCatchUpTo = "scan:catchup-to";
+} // namespace
+void Delivery::rereadKept(Mailbox &m) {
+    if (m.checkpoint() <= 0)
+        return; // the main scan has everything still ahead of it
+    m.setSetting(kCatchUpFrom, "0");
+    m.setSetting(kCatchUpTo, QString::number(m.checkpoint()));
+}
+// A subscription added (or a letter queued) needs only the kept broadcasts
+// (or public keys) read again, not every message tried against every
+// identity: this pass reads object headers, decodes those two types alone,
+// and never moves the checkpoint.
+int Delivery::catchUpBroadcasts(Cache &cache, Mailbox &m, const QString &publisher) {
+    const auto to = m.setting(kCatchUpTo).toLongLong();
+    auto from = m.setting(kCatchUpFrom).toLongLong();
+    if (to <= 0 || from >= to)
+        return 0;
+    int count = 0;
+    QElapsedTimer budget;
+    budget.start();
+    while (from < to && budget.elapsed() < 50) {
+        const auto batch = cache.after(from, 256);
+        if (batch.isEmpty()) {
+            from = to;
+            break;
+        }
+        for (const auto &o : batch) {
+            if (o.sequence > to) {
+                from = to;
+                break;
+            }
+            from = o.sequence;
+            QFile file(o.path);
+            if (!file.open(QIODevice::ReadOnly))
+                continue;
+            const auto data = file.read(262145);
+            const auto h = Wire::header(data);
+            if (h && h->type == 1 && h->expires > now()) {
+                for (const auto &item : m.outbox())
+                    if (!terminal(item.state))
+                        if (auto key = Wire::decodePubkey(data, item.message.to))
+                            saveKey(m, *key, h->expires);
+                continue;
+            }
+            if (!h || h->type != 3)
+                continue;
+            bool chanBroadcast = false;
+            if (auto decoded = decodeBroadcast(data, m, publisher, nullptr, &chanBroadcast)) {
+                const auto &d = *decoded;
+                saveKey(m, d.sender, now() + 28 * 86400);
+                noteRelease(m, d, publisher);
+                m.store(o.hash, d.message.from, d.message.to, d.message.subject, d.message.body,
+                        -1, "Broadcasts");
+                ++count;
+            }
+        }
+    }
+    if (from >= to) {
+        m.setSetting(kCatchUpTo, {});
+        m.setSetting(kCatchUpFrom, {});
+    } else {
+        m.setSetting(kCatchUpFrom, QString::number(from));
+    }
+    return count;
+}
+int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int limit, int budgetMs) {
     if (!v.unlocked() || !m.isOpen())
         return 0;
-    QStringList addresses;
+    QStringList identities, subscriptions;
     for (const auto &i : v.identities())
-        addresses << i.address;
+        identities << i.address;
     for (const auto &s : m.subscriptions())
-        addresses << "subscription:" + s.address;
+        subscriptions << "subscription:" + s.address;
     const auto publisher = m.setting(updates::kNotifySetting) == "off"
                                ? QString()
                                : updates::publisherAddress();
     if (!publisher.isEmpty())
-        addresses << "updates:" + publisher;
-    addresses.sort();
-    m.bindIdentities(QString::fromLatin1(
-        QCryptographicHash::hash(addresses.join('\n').toUtf8(), QCryptographicHash::Sha256)
-            .toHex()));
+        subscriptions << "updates:" + publisher;
+    // Mailboxes scanned before identities and subscriptions were told apart
+    // carry one fingerprint of both: still the same set, so no rescan.
+    const auto identitiesNow = fingerprint(identities);
+    if (m.boundIdentities() == fingerprint(identities + subscriptions))
+        m.bindIdentities(identitiesNow, true);
+    const bool identitiesChanged = m.boundIdentities() != identitiesNow;
+    m.bindIdentities(identitiesNow); // a different set starts over from the first object
+    const auto subscriptionsNow = fingerprint(subscriptions);
+    if (m.setting(kSubscriptionsSetting) != subscriptionsNow) {
+        // A full rescan reads everything anyway; otherwise only broadcasts
+        // already passed need reading again.
+        if (!identitiesChanged)
+            rereadKept(m);
+        m.setSetting(kSubscriptionsSetting, subscriptionsNow);
+    }
+    if (identitiesChanged) {
+        m.setSetting(kCatchUpTo, {});
+        m.setSetting(kCatchUpFrom, {});
+    }
+    // One commit per call: the letters stored and the checkpoint reached
+    // land together, and a failure re-inspects the batch (harmlessly).
+    Mailbox::Batch batch(m);
     int count = 0;
+    // Objects that are not for us only move the checkpoint, and that is written
+    // once per batch, not per object: each write is a synchronous commit, and
+    // nine in ten objects are someone else's. A crash re-inspects at most one
+    // batch, which is harmless (storing a letter twice is ignored).
+    qint64 passed = 0;
+    QElapsedTimer spent;
+    spent.start();
     for (const auto &o : cache.after(m.checkpoint(), limit)) {
+        if (budgetMs > 0 && spent.elapsed() >= budgetMs)
+            break;
         QFile file(o.path);
         if (!file.open(QIODevice::ReadOnly)) {
             if (!file.exists()) {
-                m.advance(o.sequence);
+                passed = o.sequence;
                 continue;
             }
+            if (passed)
+                m.advance(passed);
+            batch.commit(); // keep what was done before the unreadable object
             throw std::runtime_error("Cannot read a cached object; checkpoint preserved");
         }
         auto data = file.read(262145);
         auto h = Wire::header(data);
         if (!h) {
-            m.advance(o.sequence);
+            passed = o.sequence;
             continue;
         }
         auto token = Wire::acknowledgmentToken(data);
@@ -322,28 +458,8 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int limit) {
                 if (decoded)
                     break;
             }
-        if (h->type == 3) {
-            for (const auto &sub : m.subscriptions()) {
-                decoded = Wire::decodeBroadcast(data, sub.address);
-                if (decoded)
-                    break;
-            }
-            // ynotbit's own release announcements, heard without subscribing.
-            if (!decoded && !publisher.isEmpty())
-                decoded = Wire::decodeBroadcast(data, publisher);
-            // Joining a chan already means "I care about this address's traffic" --
-            // members shouldn't also have to manually subscribe to hear a chan's own
-            // "Anonymous"/broadcast-mode posts.
-            if (!decoded)
-                for (const auto &i : v.identities())
-                    if (i.chan) {
-                        decoded = Wire::decodeBroadcast(data, i.address);
-                        if (decoded) {
-                            chanBroadcast = true;
-                            break;
-                        }
-                    }
-        }
+        if (h->type == 3)
+            decoded = decodeBroadcast(data, m, publisher, &v, &chanBroadcast);
         if (decoded) {
             auto &d = *decoded;
             auto ackToken = Wire::acknowledgmentToken(d.acknowledgment);
@@ -360,17 +476,18 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int limit) {
             if (!d.acknowledgment.isEmpty() && ProofOfWork::valid(d.acknowledgment, now()))
                 addJob(m, {}, "incoming-ack", Protocol::inventoryHash(d.acknowledgment),
                        d.acknowledgment, 1000, 1000, "ready");
-            // The broadcast is signed, so only the publisher can announce a version.
-            if (d.broadcast && !publisher.isEmpty() && d.sender.address == publisher)
-                if (auto version = updates::announcedVersion(d.message.subject))
-                    if (updates::compareVersions(*version, m.setting(updates::kLatestSetting, "0")) > 0)
-                        m.setSetting(updates::kLatestSetting, *version);
+            noteRelease(m, d, publisher);
             m.store(id, d.message.from, d.message.to, d.message.subject, d.message.body, o.sequence,
                     chanBroadcast ? "Channels" : (d.broadcast ? "Broadcasts" : d.message.folder));
             ++count;
+            passed = 0; // store() moved the checkpoint past this object
         } else
-            m.advance(o.sequence);
+            passed = o.sequence;
     }
+    if (passed)
+        m.advance(passed);
+    count += catchUpBroadcasts(cache, m, publisher);
+    batch.commit();
     return count;
 }
 } // namespace bm

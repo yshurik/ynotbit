@@ -2003,7 +2003,17 @@ int main(int argc, char **argv) {
                     "no-mailbox state hides the reader's subject label");
             if (capturingStates)
                 window.grab().save(dir + "/state2-nomailbox.png");
+            // Every opening shows Subscriptions with the digest selected.
+            const QString digest = "BM-2cX8TF9vuQZEWvT7UrEeq1HN9dgiSUPLEN";
+            bm::updates::setDefaultSubscriptionsForTesting({{digest, "Bitmessage digest"}});
             session.openMailboxAt(mailboxPath);
+            QCoreApplication::processEvents();
+            QTest::qWait(30);
+            require(folders->currentRow() == 5 &&
+                        window.findChild<QLabel *>("feedHeaderAddress")->text() == digest,
+                    "ynotbit opens on Subscriptions with the digest selected");
+            bm::updates::setDefaultSubscriptionsForTesting({});
+            folders->setCurrentRow(0);
             QCoreApplication::processEvents();
             require(subjectLabel->isVisible(),
                     "full-mailbox state shows the reader's subject label again");
