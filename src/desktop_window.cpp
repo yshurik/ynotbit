@@ -1265,6 +1265,23 @@ void showLetterBody(QTextBrowser *body, QTextEdit *subject, const QString &subje
 // Add or rename an address-book entry. With no address given, a valid one on
 // the clipboard is offered; validation is live and Save only enables for an
 // address the book will take.
+// A column of fixed width whose minimum height is what its contents need at
+// that width. Qt counts a word-wrapped label's minimum before knowing the
+// width, so a label wrapping onto more lines (Windows' font, longer
+// translations) took the room of the widgets below it.
+class FixedWidthColumn : public QWidget {
+  public:
+    using QWidget::QWidget;
+
+  protected:
+    bool event(QEvent *event) override {
+        const bool handled = QWidget::event(event);
+        if ((event->type() == QEvent::LayoutRequest || event->type() == QEvent::Resize) &&
+            layout())
+            setMinimumHeight(layout()->totalHeightForWidth(width()));
+        return handled;
+    }
+};
 // One line, shortened in the middle to fit ("/Users/…/a.bmvault"), the whole
 // text in its tooltip. A word-wrapped path made the box's height depend on
 // where the lines happened to break, and long ones were cut off.
@@ -1894,7 +1911,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     lockedScroll->setWidget(lockedContent);
     auto lockedOuter = new QVBoxLayout(lockedContent);
     lockedOuter->addStretch();
-    auto lockedCard = new QWidget;
+    auto lockedCard = new FixedWidthColumn;
     lockedCard->setFixedWidth(380);
     auto lockedCardLayout = new QVBoxLayout(lockedCard);
     lockedCardLayout->setSpacing(14);
@@ -1902,6 +1919,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         new QLabel("<b style='font-size:16px'>" + tr("Vault locked").toHtmlEscaped() + "</b>");
     lockedCardLayout->addWidget(lockedTitle);
     auto lockedSubtitle = new QLabel(tr("Choose a vault file and enter its passphrase to unlock."));
+    lockedSubtitle->setObjectName("lockedSubtitle");
     lockedSubtitle->setStyleSheet("color:palette(mid);");
     lockedSubtitle->setWordWrap(true);
     lockedCardLayout->addWidget(lockedSubtitle);

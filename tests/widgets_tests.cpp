@@ -1906,6 +1906,12 @@ int main(int argc, char **argv) {
             // the window won't, so the page's own area is capped instead.
             auto welcome = window.findChild<QWidget *>("welcomeStack");
             welcome->setMaximumHeight(260);
+            // A subtitle that wraps onto more lines than Qt's minimum counts on
+            // (Windows' font does this to the real one): it must not take the
+            // vault box's room.
+            auto subtitle = window.findChild<QLabel *>("lockedSubtitle");
+            const auto subtitleText = subtitle->text();
+            subtitle->setText(subtitleText + " " + subtitleText + " " + subtitleText);
             QTest::qWait(30);
             auto box = window.findChild<QWidget *>("vaultBox");
             auto name = window.findChild<QLabel *>("lockedVaultName");
@@ -1956,6 +1962,7 @@ int main(int argc, char **argv) {
             // inside without growing the box on macOS, and clips both lines.
             require(!box->styleSheet().contains("padding"),
                     "the vault box spaces its text with layout margins, not padding");
+            subtitle->setText(subtitleText);
             welcome->setMaximumHeight(QWIDGETSIZE_MAX);
             QTest::qWait(30);
         }
