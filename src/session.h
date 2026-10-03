@@ -128,6 +128,13 @@ class Session : public QObject {
     bool channelUnread(QString address) const {
         return mailboxOpen() && mailbox_.channelUnread(address);
     }
+    // The Broadcasts page's sources: subscriptions, ynotbit's release
+    // announcements while notices are on, and any other sender whose broadcasts
+    // are still kept. Each: address, label, subscribed, updates (the built-in one).
+    QVariantList broadcastSources() const;
+    bool broadcastUnread(QString address) const {
+        return mailboxOpen() && mailbox_.channelUnread(address, "Broadcasts");
+    }
     Q_INVOKABLE QVariantList deliveryHistory(QString id);
     Q_INVOKABLE void subscribe();
     Q_INVOKABLE void unsubscribe(QString address);

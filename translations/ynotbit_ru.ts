@@ -846,6 +846,30 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>ynotbit %1 is available (you have %2).</source>
         <translation>Доступна версия ynotbit %1 (у вас %2).</translation>
     </message>
+    <message>
+        <source>Write a broadcast</source>
+        <translation>Написать рассылку</translation>
+    </message>
+    <message>
+        <source>Search these broadcasts</source>
+        <translation>Искать в этих рассылках</translation>
+    </message>
+    <message>
+        <source>Turn off update notices</source>
+        <translation>Отключить уведомления об обновлениях</translation>
+    </message>
+    <message>
+        <source>SUBSCRIPTIONS</source>
+        <translation>ПОДПИСКИ</translation>
+    </message>
+    <message>
+        <source>+ Subscribe…</source>
+        <translation>+ Подписаться…</translation>
+    </message>
+    <message>
+        <source>Subscribe to broadcasts</source>
+        <translation>Подписаться на рассылки</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

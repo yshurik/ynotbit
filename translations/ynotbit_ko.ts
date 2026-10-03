@@ -846,6 +846,30 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>ynotbit %1 is available (you have %2).</source>
         <translation>ynotbit %1 버전을 사용할 수 있습니다(현재 %2).</translation>
     </message>
+    <message>
+        <source>Write a broadcast</source>
+        <translation>브로드캐스트 쓰기</translation>
+    </message>
+    <message>
+        <source>Search these broadcasts</source>
+        <translation>이 브로드캐스트 검색</translation>
+    </message>
+    <message>
+        <source>Turn off update notices</source>
+        <translation>업데이트 알림 끄기</translation>
+    </message>
+    <message>
+        <source>SUBSCRIPTIONS</source>
+        <translation>구독</translation>
+    </message>
+    <message>
+        <source>+ Subscribe…</source>
+        <translation>+ 구독…</translation>
+    </message>
+    <message>
+        <source>Subscribe to broadcasts</source>
+        <translation>브로드캐스트 구독</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

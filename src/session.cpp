@@ -768,6 +768,35 @@ QVariantList Session::subscriptions() const {
             result << QVariantMap{{"address", s.address}, {"label", s.label}};
     return result;
 }
+QVariantList Session::broadcastSources() const {
+    QMap<QString, QVariantMap> sources;
+    if (!mailboxOpen())
+        return {};
+    const auto names = this->names();
+    for (const auto &address : mailbox_.channelAddresses("Broadcasts"))
+        sources[address] = {{"address", address},
+                            {"label", names.value(address, address)},
+                            {"subscribed", false},
+                            {"updates", false}};
+    if (updateNotices())
+        sources[updates::publisherAddress()] = {{"address", updates::publisherAddress()},
+                                                {"label", tr("ynotbit updates")},
+                                                {"subscribed", true},
+                                                {"updates", true}};
+    for (const auto &s : mailbox_.subscriptions())
+        sources[s.address] = {{"address", s.address},
+                              {"label", s.label.trimmed().isEmpty() ? s.address : s.label.trimmed()},
+                              {"subscribed", true},
+                              {"updates", s.address == updates::publisherAddress()}};
+    QVariantList result;
+    for (const auto &v : sources)
+        result << v;
+    std::stable_sort(result.begin(), result.end(), [](const QVariant &a, const QVariant &b) {
+        return a.toMap()["label"].toString().compare(b.toMap()["label"].toString(),
+                                                     Qt::CaseInsensitive) < 0;
+    });
+    return result;
+}
 QString Session::availableUpdate() const {
     if (!mailboxOpen() || !updateNotices())
         return {};

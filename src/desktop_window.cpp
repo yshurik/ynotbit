@@ -2090,6 +2090,8 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     connect(write, &QPushButton::clicked, this, [this] {
         if (folders_->currentRow() == 4 && !activeChannelAddress_.isEmpty())
             compose({{"to", activeChannelAddress_}, {"from", activeChannelAddress_}});
+        else if (folders_->currentRow() == 5)
+            compose({{"kind", "broadcast"}}); // the Broadcasts page writes one
         else
             compose();
     });
@@ -2149,7 +2151,10 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     railScroll->setWidget(railList);
     railOuter->addWidget(railScroll, 1);
     button(tr("+ Join or create…"), railOuter, [this] {
-        session_.joinChannel();
+        if (folders_->currentRow() == 5)
+            session_.subscribe();
+        else
+            session_.joinChannel();
         refreshChannels();
     })->setObjectName("joinOrCreateChannelButton");
     button({}, railOuter, [this] { setChannelRailCollapsed(!channelRailCollapsed_); })
@@ -2361,6 +2366,10 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         });
         (addressRow == 0 ? addFromContact_ : addToContact_) = add;
         auto label = new QLabel(addressRow == 0 ? tr("From") : tr("To"));
+        if (addressRow == 1) {
+            label->setObjectName("toLabel");
+            toLabel_ = label;
+        }
         metadata->addWidget(label, addressRow, 0, Qt::AlignTop);
         metadata->addWidget(name, addressRow, 1, Qt::AlignTop);
         auto addressCell = new QHBoxLayout;
@@ -2745,7 +2754,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             icon->setChecked(true);
         // Folder names are keys; the heading shows the translated name.
         heading_->setText(tr(folder.toUtf8().constData()).toUpper());
-        if (folder == "Channels")
+        if (folder == "Channels" || folder == "Broadcasts")
             refreshChannels();
         session_.messageModel()->setFolder(folder);
         selected_.clear();
@@ -2962,12 +2971,15 @@ void DesktopWindow::updateState() {
     findChild<QPushButton *>("lockButton")->setVisible(session_.unlocked());
     findChild<QPushButton *>("closeMailboxButton")->setVisible(session_.mailboxOpen());
     const bool channelPage = folders_->currentRow() == 4;
+    const bool broadcastPage = folders_->currentRow() == 5;
     const bool mailboxState = session_.mailboxOpen();
     auto write = findChild<QPushButton *>("writeButton");
-    write->setToolTip(channelPage ? tr("Write to channel") : tr("Write a letter"));
+    write->setToolTip(channelPage     ? tr("Write to channel")
+                      : broadcastPage ? tr("Write a broadcast")
+                                      : tr("Write a letter"));
     write->setEnabled(mailboxState && (!channelPage || !activeChannelAddress_.isEmpty()));
-    channelRail_->setVisible(mailboxState && channelPage);
-    heading_->setVisible(!channelPage);
+    channelRail_->setVisible(mailboxState && (channelPage || broadcastPage));
+    heading_->setVisible(!channelPage && !broadcastPage);
     channelRail_->setEnabled(session_.unlocked());
     updateListCount();
     const auto identities = session_.unlocked() ? session_.identities() : QVariantList();
@@ -2989,6 +3001,18 @@ void DesktopWindow::updateState() {
         placeholder = tr("Search this channel");
         for (auto v : session_.channels())
             if (v.toMap()["address"].toString() == activeChannelAddress_)
+                placeholder = tr("Search %1").arg(v.toMap()["label"].toString());
+    }
+    // Subscriptions or update notices changed: the Broadcasts rail follows.
+    if (const auto sources = session_.broadcastSources(); sources != shownBroadcastSources_) {
+        shownBroadcastSources_ = sources;
+        if (broadcastPage)
+            QTimer::singleShot(0, this, [this] { refreshChannels(); });
+    }
+    if (broadcastPage) {
+        placeholder = tr("Search these broadcasts");
+        for (auto v : shownBroadcastSources_)
+            if (v.toMap()["address"].toString() == activeBroadcastAddress_)
                 placeholder = tr("Search %1").arg(v.toMap()["label"].toString());
     }
     search_->setPlaceholderText(placeholder);
@@ -3049,12 +3073,16 @@ void DesktopWindow::updateState() {
                   "\n" + session_.activity());
 }
 void DesktopWindow::refreshChannels() {
-    const auto entries = session_.channels();
+    // One rail, two pages: chans on Channels, subscriptions on Broadcasts.
+    const bool broadcasts = folders_->currentRow() == 5;
+    updateRailTexts();
+    const auto entries = broadcasts ? session_.broadcastSources() : session_.channels();
+    auto &active = broadcasts ? activeBroadcastAddress_ : activeChannelAddress_;
     bool stillJoined = false;
     for (auto v : entries)
-        stillJoined = stillJoined || v.toMap()["address"].toString() == activeChannelAddress_;
+        stillJoined = stillJoined || v.toMap()["address"].toString() == active;
     if (!stillJoined)
-        activeChannelAddress_ = entries.isEmpty() ? QString() : entries.first().toMap()["address"].toString();
+        active = entries.isEmpty() ? QString() : entries.first().toMap()["address"].toString();
     while (auto item = channelChipLayout_->takeAt(0)) {
         delete item->widget();
         delete item;
@@ -3068,8 +3096,9 @@ void DesktopWindow::refreshChannels() {
         auto chip = new QPushButton(channelRailCollapsed_ ? QString() : label);
         chip->setObjectName("channelChip");
         chip->setCheckable(true);
-        chip->setChecked(chipAddress == activeChannelAddress_);
-        const bool unread = session_.channelUnread(chipAddress);
+        chip->setChecked(chipAddress == active);
+        const bool unread = broadcasts ? session_.broadcastUnread(chipAddress)
+                                       : session_.channelUnread(chipAddress);
         if (channelRailCollapsed_) {
             // No name to embolden when collapsed: unread mail is a dot on the
             // identicon's corner instead.
@@ -3081,7 +3110,7 @@ void DesktopWindow::refreshChannels() {
                 p.setRenderHint(QPainter::Antialiasing);
                 // On the selected chip the background is the highlight colour
                 // itself, so the dot takes the text colour drawn on it.
-                const bool selected = chipAddress == activeChannelAddress_;
+                const bool selected = chipAddress == active;
                 p.setPen(QPen(palette().color(selected ? QPalette::Highlight : QPalette::Window),
                               1.5));
                 p.setBrush(palette().color(selected ? QPalette::HighlightedText
@@ -3109,18 +3138,58 @@ void DesktopWindow::refreshChannels() {
         chip->setCursor(Qt::PointingHandCursor);
         chip->setToolTip((label != chipAddress ? "<b>" + label.toHtmlEscaped() + "</b>" : QString()) +
                          "<pre>" + chipAddress.toHtmlEscaped() + "</pre>");
-        connect(chip, &QPushButton::clicked, this, [this, chipAddress] {
-            activeChannelAddress_ = chipAddress;
+        connect(chip, &QPushButton::clicked, this, [this, chipAddress, broadcasts] {
+            (broadcasts ? activeBroadcastAddress_ : activeChannelAddress_) = chipAddress;
             session_.messageModel()->setChannel(chipAddress);
             updateState();
             QTimer::singleShot(0, this, [this] { refreshChannels(); });
         });
+        if (broadcasts) {
+            // Right-click: copy the address, or stop following this sender.
+            const bool subscribed = item["subscribed"].toBool();
+            const bool updatesSource = item["updates"].toBool();
+            chip->setContextMenuPolicy(Qt::CustomContextMenu);
+            connect(chip, &QWidget::customContextMenuRequested, this,
+                    [this, chip, chipAddress, subscribed, updatesSource](const QPoint &at) {
+                        QMenu menu(this);
+                        menu.setObjectName("broadcastSourceMenu");
+                        menu.addAction(tr("Copy address"))->setObjectName("copySourceAddress");
+                        if (updatesSource && session_.updateNotices())
+                            menu.addAction(tr("Turn off update notices"))
+                                ->setObjectName("turnOffUpdates");
+                        else if (subscribed)
+                            menu.addAction(tr("Unsubscribe"))->setObjectName("unsubscribeSource");
+                        // Acted on once the menu is closed: these redraw the rail,
+                        // and with it this chip.
+                        const auto chosen = menu.exec(chip->mapToGlobal(at));
+                        const auto what = chosen ? chosen->objectName() : QString();
+                        if (what == "copySourceAddress")
+                            session_.copyAddress(chipAddress);
+                        else if (what == "turnOffUpdates")
+                            session_.setUpdateNotices(false);
+                        else if (what == "unsubscribeSource")
+                            session_.unsubscribe(chipAddress);
+                    });
+        }
         channelChipLayout_->addWidget(chip);
     }
     channelChipLayout_->addStretch();
-    session_.messageModel()->setChannel(activeChannelAddress_);
+    session_.messageModel()->setChannel(active);
     if (folders_->currentRow() == 4)
         heading_->setText(tr("Channels"));
+}
+void DesktopWindow::updateRailTexts() {
+    const bool broadcasts = folders_->currentRow() == 5;
+    auto heading = channelRail_->findChild<QLabel *>("channelRailHeading");
+    heading->setText(channelRailCollapsed_ ? (broadcasts ? "@" : "#")
+                                           : (broadcasts ? tr("SUBSCRIPTIONS") : tr("CHANNELS")));
+    auto join = channelRail_->findChild<QPushButton *>("joinOrCreateChannelButton");
+    join->setText(channelRailCollapsed_ ? "+"
+                  : broadcasts          ? tr("+ Subscribe…")
+                                        : tr("+ Join or create…"));
+    join->setToolTip(!channelRailCollapsed_ ? QString()
+                     : broadcasts           ? tr("Subscribe to broadcasts")
+                                            : tr("Join or create a chan"));
 }
 void DesktopWindow::setChannelRailCollapsed(bool collapsed) {
     channelRailCollapsed_ = collapsed;
@@ -3128,12 +3197,8 @@ void DesktopWindow::setChannelRailCollapsed(bool collapsed) {
     channelRail_->setFixedWidth(collapsed ? 50 : 190);
     static_cast<QVBoxLayout *>(channelRail_->layout())
         ->setContentsMargins(collapsed ? 6 : 10, 5, collapsed ? 4 : 2, 12);
-    auto heading = channelRail_->findChild<QLabel *>("channelRailHeading");
-    heading->setText(collapsed ? "#" : tr("CHANNELS"));
-    heading->setAlignment(collapsed ? Qt::AlignHCenter : Qt::AlignLeft);
-    auto join = channelRail_->findChild<QPushButton *>("joinOrCreateChannelButton");
-    join->setText(collapsed ? "+" : tr("+ Join or create…"));
-    join->setToolTip(collapsed ? tr("Join or create a chan") : QString());
+    channelRail_->findChild<QLabel *>("channelRailHeading")
+        ->setAlignment(collapsed ? Qt::AlignHCenter : Qt::AlignLeft);
     auto toggle = channelRail_->findChild<QPushButton *>("channelRailToggle");
     toggle->setText(collapsed ? ">>>" : "<<<");
     toggle->setToolTip(collapsed ? tr("Expand the channel list") : tr("Collapse the channel list"));
@@ -3167,7 +3232,11 @@ void DesktopWindow::selectMessage(const QString &id) {
         ->setKind(classifyLetter(selected_["folder"].toString(), selected_["from"].toString(),
                                  selected_["to"].toString()));
     fromAddress_->setText(selected_["from"].toString());
-    toAddress_->setText(selected_["to"].toString());
+    // A broadcast's recipient is its own sender: no To line.
+    const bool broadcast = selected_["folder"].toString() == "Broadcasts";
+    toAddress_->setText(broadcast ? QString() : selected_["to"].toString());
+    toAddress_->setVisible(!broadcast);
+    toLabel_->setVisible(!broadcast);
     updateCorrespondents();
     deliveryError_->setText(selected_["deliveryError"].toString());
     deliveryError_->setVisible(!deliveryError_->text().isEmpty());

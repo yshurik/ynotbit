@@ -38,6 +38,11 @@ class MessageModel final : public QAbstractListModel {
     void setAnonymousOnly(bool on);
 
   private:
+    // Channels and Broadcasts list one source at a time: the chan, or the
+    // subscribed sender (a broadcast's recipient is the address it came from).
+    bool perSource() const {
+        return folder_ == "Channels" || folder_ == "Broadcasts";
+    }
     Session *session_;
     mutable QCache<int, QVariantList> pages_{3};
     int count_ = 0;

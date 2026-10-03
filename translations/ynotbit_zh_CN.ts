@@ -846,6 +846,30 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>ynotbit %1 is available (you have %2).</source>
         <translation>ynotbit %1 已发布（当前版本：%2）。</translation>
     </message>
+    <message>
+        <source>Write a broadcast</source>
+        <translation>写广播</translation>
+    </message>
+    <message>
+        <source>Search these broadcasts</source>
+        <translation>搜索这些广播</translation>
+    </message>
+    <message>
+        <source>Turn off update notices</source>
+        <translation>关闭更新通知</translation>
+    </message>
+    <message>
+        <source>SUBSCRIPTIONS</source>
+        <translation>订阅</translation>
+    </message>
+    <message>
+        <source>+ Subscribe…</source>
+        <translation>+ 订阅…</translation>
+    </message>
+    <message>
+        <source>Subscribe to broadcasts</source>
+        <translation>订阅广播</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

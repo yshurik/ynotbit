@@ -132,8 +132,10 @@ class Mailbox {
                                       bool unreadOnly = false, bool anonymousOnly = false) const;
     int messageCount(const QString &folder, const QString &search, const QString &recipient = {},
                      bool unreadOnly = false, bool anonymousOnly = false) const;
-    QStringList channelAddresses() const;
-    bool channelUnread(const QString &recipient) const;
+    // Addresses with letters in a per-source folder (Channels: the chan;
+    // Broadcasts: the subscribed sender), and whether one has unread letters.
+    QStringList channelAddresses(const QString &folder = "Channels") const;
+    bool channelUnread(const QString &recipient, const QString &folder = "Channels") const;
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     quint64 messageRevision() const {
         return messageRevision_;

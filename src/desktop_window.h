@@ -35,7 +35,7 @@ class DesktopWindow : public QMainWindow {
     QListWidget *folders_;
     QWidget *channelRail_;
     QVBoxLayout *channelChipLayout_;
-    QString activeChannelAddress_;
+    QString activeChannelAddress_, activeBroadcastAddress_;
     QString listDensity_;
     bool channelRailCollapsed_ = false;
     QAbstractItemDelegate *letterDelegate_ = nullptr;
@@ -44,12 +44,13 @@ class DesktopWindow : public QMainWindow {
     QVariantList channelIdentities_;
     QVariantList shownContacts_; // the address book the views were last drawn with
     QVariantList shownSubscriptions_; // the subscriptions the views were last drawn with
+    QVariantList shownBroadcastSources_; // the Broadcasts rail's senders, last drawn
     QLabel *heading_, *status_, *error_, *updateLabel_;
     QWidget *updateBanner_;
     QAction *updateNoticesAction_;
     QTextEdit *subject_;
     QLabel *fromAddress_, *toAddress_, *deliveryStatus_, *deliveryError_;
-    QLabel *fromName_, *toName_;
+    QLabel *fromName_, *toName_, *toLabel_;
     QWidget *addFromContact_, *addToContact_;
     QLabel *timeline_;
     QWidget *details_;
@@ -82,6 +83,7 @@ class DesktopWindow : public QMainWindow {
     void refreshIdentities();
     void refreshContacts();
     void refreshChannels();
+    void updateRailTexts(); // the rail heading and add button for its page
     void setListDensity(QString density);
     void setChannelRailCollapsed(bool collapsed);
     void updateListCount();

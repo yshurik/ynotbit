@@ -846,6 +846,30 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>ynotbit %1 is available (you have %2).</source>
         <translation>ynotbit %1 が利用可能です（現在のバージョン: %2）。</translation>
     </message>
+    <message>
+        <source>Write a broadcast</source>
+        <translation>ブロードキャストを書く</translation>
+    </message>
+    <message>
+        <source>Search these broadcasts</source>
+        <translation>これらのブロードキャストを検索</translation>
+    </message>
+    <message>
+        <source>Turn off update notices</source>
+        <translation>アップデート通知をオフにする</translation>
+    </message>
+    <message>
+        <source>SUBSCRIPTIONS</source>
+        <translation>購読</translation>
+    </message>
+    <message>
+        <source>+ Subscribe…</source>
+        <translation>+ 購読…</translation>
+    </message>
+    <message>
+        <source>Subscribe to broadcasts</source>
+        <translation>ブロードキャストを購読</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

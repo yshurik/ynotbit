@@ -15,7 +15,7 @@ QVariant MessageModel::data(const QModelIndex &index, int role) const {
         try {
             pages_.insert(page, new QVariantList(session_->messagePage(
                                     folder_, search_, page * 100, 100,
-                                    folder_ == "Channels" ? channel_ : QString(), unreadOnly_,
+                                    perSource() ? channel_ : QString(), unreadOnly_,
                                     anonymousOnly_)));
         } catch (...) {
             return {};
@@ -55,9 +55,9 @@ void MessageModel::setSearch(const QString &search) {
 }
 void MessageModel::reload() {
     const int count =
-        folder_ == "Channels" && channel_.isEmpty()
+        perSource() && channel_.isEmpty()
             ? 0
-            : session_->messageCount(folder_, search_, folder_ == "Channels" ? channel_ : QString(),
+            : session_->messageCount(folder_, search_, perSource() ? channel_ : QString(),
                                      unreadOnly_, anonymousOnly_);
     if (count == count_) {
         pages_.clear();
@@ -76,9 +76,9 @@ void MessageModel::setChannel(const QString &address) {
     beginResetModel();
     channel_ = address;
     pages_.clear();
-    count_ = folder_ == "Channels" && channel_.isEmpty()
+    count_ = perSource() && channel_.isEmpty()
                  ? 0
-                 : session_->messageCount(folder_, search_, folder_ == "Channels" ? channel_ : QString(),
+                 : session_->messageCount(folder_, search_, perSource() ? channel_ : QString(),
                                           unreadOnly_, anonymousOnly_);
     endResetModel();
 }
@@ -95,9 +95,9 @@ void MessageModel::setAnonymousOnly(bool on) {
     reload();
 }
 int MessageModel::totalCount() const {
-    return folder_ == "Channels" && channel_.isEmpty()
+    return perSource() && channel_.isEmpty()
                ? 0
-               : session_->messageCount(folder_, search_, folder_ == "Channels" ? channel_ : QString());
+               : session_->messageCount(folder_, search_, perSource() ? channel_ : QString());
 }
 int MessageModel::rowForHash(const QString &hash) const {
     if (hash.isEmpty())

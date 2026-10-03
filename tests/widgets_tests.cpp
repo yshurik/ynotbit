@@ -1671,6 +1671,9 @@ int main(int argc, char **argv) {
             window.findChild<QToolButton *>("folderIcon_Inbox")->click();
             session.messageModel()->reload();
             window.selectMessage("news-1");
+            require(window.findChild<QLabel *>("toLabel")->isVisible() &&
+                        window.findChild<QLabel *>("toAddress")->text() == publisher,
+                    "an ordinary letter keeps its To line");
             auto fromNameLabel = window.findChild<QLabel *>("fromName");
             auto listName = [&] {
                 const auto row = session.messageModel()->rowForHash("news-1");
@@ -1691,6 +1694,94 @@ int main(int argc, char **argv) {
             QTest::qWait(50);
             require(!fromNameLabel->isVisible() && listName().isEmpty(),
                     "unsubscribing from the menu takes the name away again");
+
+            // The Broadcasts page works like Channels: a rail of senders, each
+            // with its own letters.
+            const QString other = "BM-2cX8TF9vuQZEWvT7UrEeq1HN9dgiSUPLEN";
+            const QString releases = "BM-2cUzX8f9CKUU7L8NeB8GExZvf54PrcXq1S";
+            {
+                vault.unlock(temp.filePath("vault"), "test password");
+                bm::Mailbox injected;
+                injected.open(temp.filePath("mailbox"), vault.mailboxKey(key));
+                injected.store("bc-1", publisher, publisher, "Weekly issue 1", "News", 1801,
+                               "Broadcasts");
+                injected.store("bc-2", other, other, "Other sender's post", "Hello", 1802,
+                               "Broadcasts");
+                injected.close();
+                vault.lock();
+            }
+            bm::updates::setPublisherAddressForTesting(releases);
+            session.messageModel()->reload();
+            folders->setCurrentRow(5);
+            QTest::qWait(30);
+            auto rail = window.findChild<QWidget *>("channelRail");
+            auto addSource = window.findChild<QPushButton *>("joinOrCreateChannelButton");
+            require(rail->isVisible() &&
+                        window.findChild<QLabel *>("channelRailHeading")->text() == "SUBSCRIPTIONS" &&
+                        addSource->text() == "+ Subscribe…",
+                    "the Broadcasts page shows a subscriptions rail like the Channels page");
+            auto chipNamed = [&](const QString &text) -> QPushButton * {
+                for (auto chip : window.findChildren<QPushButton *>("channelChip"))
+                    // Collapsed, a chip's name is only in its tooltip.
+                    if (chip->text() == text ||
+                        chip->toolTip().contains(">" + text.toHtmlEscaped() + "<"))
+                        return chip;
+                return nullptr;
+            };
+            require(chipNamed("ynotbit updates") && chipNamed(other),
+                    "the rail lists the built-in release notices and every sender with letters");
+            require(chipNamed(other)->font().bold(), "a sender with unread letters is bold");
+            answer({publisher, "Weekly"});
+            addSource->click();
+            QTest::qWait(50);
+            require(session.error().isEmpty() && chipNamed("Weekly"),
+                    "+ Subscribe… adds the subscription to the rail");
+            chipNamed("Weekly")->click();
+            QTest::qWait(20);
+            require(list->model()->rowCount() == 1 &&
+                        list->model()->index(0, 0).data(Qt::UserRole + 1).toString() == "bc-1",
+                    "a subscription's chip lists only that sender's broadcasts");
+            window.selectMessage("bc-1");
+            require(window.findChild<QTextEdit *>("subject")->toPlainText().contains("Weekly issue 1"),
+                    "clicking a broadcast opens it in the reader");
+            require(!window.findChild<QLabel *>("toLabel")->isVisible() &&
+                        !window.findChild<QLabel *>("toAddress")->isVisible() &&
+                        !window.findChild<QLabel *>("toName")->isVisible(),
+                    "a broadcast shows no To line: its recipient is its own sender");
+            chipNamed(other)->click();
+            QTest::qWait(20);
+            require(list->model()->rowCount() == 1 &&
+                        list->model()->index(0, 0).data(Qt::UserRole + 1).toString() == "bc-2",
+                    "another sender's chip lists its own broadcasts");
+            require(window.findChild<QPushButton *>("writeButton")->toolTip() == "Write a broadcast",
+                    "Write on the Broadcasts page writes a broadcast");
+            // Right-click a subscription: Unsubscribe. Its letters stay, under the address.
+            bool unsubscribed = false;
+            auto popup = new QTimer(&window);
+            QObject::connect(popup, &QTimer::timeout, &window, [&, popup] {
+                auto menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+                if (!menu)
+                    return;
+                popup->stop();
+                popup->deleteLater();
+                for (auto a : menu->actions())
+                    if (a->objectName() == "unsubscribeSource") {
+                        menu->setActiveAction(a);
+                        QTest::keyClick(menu, Qt::Key_Return);
+                        unsubscribed = true;
+                    }
+                if (!unsubscribed)
+                    menu->close();
+            });
+            popup->start(10);
+            auto weekly = chipNamed("Weekly");
+            emit weekly->customContextMenuRequested(QPoint(5, 5));
+            QTest::qWait(50);
+            require(unsubscribed && session.subscriptions().isEmpty(),
+                    "right-click > Unsubscribe on a chip removes the subscription");
+            require(!chipNamed("Weekly") && chipNamed(publisher),
+                    "its broadcasts stay, listed under the bare address");
+            bm::updates::setPublisherAddressForTesting({});
             responder.start(10);
             window.findChild<QToolButton *>("folderIcon_Inbox")->click();
         }

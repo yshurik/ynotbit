@@ -434,15 +434,17 @@ int Mailbox::messageCount(const QString &folder, const QString &search, const QS
     s.row();
     return int(s.number(0));
 }
-QStringList Mailbox::channelAddresses() const {
-    Statement s(db_, "SELECT DISTINCT recipient FROM messages WHERE folder='Channels' AND recipient<>'' ORDER BY recipient");
+QStringList Mailbox::channelAddresses(const QString &folder) const {
+    Statement s(db_, "SELECT DISTINCT recipient FROM messages WHERE folder=? AND recipient<>'' ORDER BY recipient");
+    s.text(1, folder);
     QStringList result;
     while (s.row()) result << s.text(0);
     return result;
 }
-bool Mailbox::channelUnread(const QString &recipient) const {
-    Statement s(db_, "SELECT 1 FROM messages WHERE folder='Channels' AND recipient=? AND unread<>0 LIMIT 1");
-    s.text(1, recipient);
+bool Mailbox::channelUnread(const QString &recipient, const QString &folder) const {
+    Statement s(db_, "SELECT 1 FROM messages WHERE folder=? AND recipient=? AND unread<>0 LIMIT 1");
+    s.text(1, folder);
+    s.text(2, recipient);
     return s.row();
 }
 void Mailbox::backup(const QString &path, const Secret &key) {
