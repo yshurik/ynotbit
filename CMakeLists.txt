@@ -147,6 +147,15 @@ qt_add_executable(readme_screenshots EXCLUDE_FROM_ALL tools/readme_screenshots.c
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(readme_screenshots PRIVATE third_party/qrcodegen)
 target_link_libraries(readme_screenshots PRIVATE bmcore Qt6::Widgets Qt6::Network Qt6::Test)
+# Release announcement broadcast ("ynotbit X.Y.Z" from the release address);
+# built only on request. Dry run unless --send:
+#   cmake --build build --target announce_release
+#   build/announce_release --keys release_key.dat --version 0.5.1 --notes notes.md --send
+qt_add_executable(announce_release EXCLUDE_FROM_ALL tools/announce_release.cpp
+ src/i18n.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h
+ src/appearance.cpp src/appearance.h src/relay_bridge.cpp)
+target_link_libraries(announce_release PRIVATE bmcore notbit_engine Qt6::Widgets Qt6::Network)
+target_compile_definitions(announce_release PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
 add_executable(outbox_tests tests/outbox_tests.cpp)
 target_link_libraries(outbox_tests PRIVATE bmcore)
 add_test(NAME outbox COMMAND outbox_tests)
