@@ -1915,6 +1915,21 @@ int main(int argc, char **argv) {
                        label->height() >= label->heightForWidth(label->width()) &&
                        label->height() >= label->fontMetrics().height();
             };
+            if (!inside(name) || !inside(path)) {
+                // Measured, so a failure on another platform says which part.
+                const auto describe = [&](const char *what, QWidget *w) {
+                    auto label = static_cast<QLabel *>(w);
+                    std::cerr << what << ": at " << w->mapTo(box, QPoint(0, 0)).y() << " height "
+                              << w->height() << ", font " << label->fontMetrics().height()
+                              << ", needs " << label->heightForWidth(w->width()) << "/"
+                              << label->sizeHint().height() << "\n";
+                };
+                std::cerr << "vault box: height " << box->height() << ", inside "
+                          << box->contentsRect().top() << ".." << box->contentsRect().bottom()
+                          << ", hint " << box->sizeHint().height() << "\n";
+                describe("name", name);
+                describe("path", path);
+            }
             require(inside(name) && inside(path),
                     "a short window does not clip the vault's name or path");
             require(path->toolTip() == vaultFile && path->text().contains(QChar(0x2026)) &&
