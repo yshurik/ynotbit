@@ -1142,7 +1142,8 @@ class Composer : public QDialog {
         connect(picture, &QToolButton::clicked, this, [this] {
             const auto path = QFileDialog::getOpenFileName(
                 this, DesktopWindow::tr("Insert picture"), {},
-                DesktopWindow::tr("Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)"));
+                DesktopWindow::tr("Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)"),
+                nullptr, QFileDialog::DontUseNativeDialog);
             if (!path.isEmpty())
                 insertPicture(path);
         });
