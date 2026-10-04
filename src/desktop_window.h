@@ -6,6 +6,7 @@
 class QListView;
 class QListWidget;
 class QLabel;
+class QProgressBar;
 class QTextBrowser;
 class QTextEdit;
 class QWidget;
@@ -38,6 +39,7 @@ class DesktopWindow : public QMainWindow {
     QAbstractItemDelegate *letterDelegate_ = nullptr;
     QLabel *listCountLabel_;
     QLineEdit *search_;
+    QProgressBar *searchProgress_;
     QVariantList channelIdentities_;
     QVariantList shownContacts_; // the address book the views were last drawn with
     QVariantList shownSubscriptions_; // the subscriptions the views were last drawn with

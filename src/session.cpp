@@ -570,6 +570,31 @@ QVariantList Session::channels() const {
         result << QVariantMap{{"address", i.key()}, {"label", i.value()}};
     return result;
 }
+// One row of the letter list.
+static QVariantMap listRow(const Mailbox &mailbox, const Message &m,
+                           const QHash<QString, QString> &names) {
+    OutboxItem out;
+    if (m.folder == "Outbox" || m.folder == "Sent") {
+        try {
+            out = mailbox.outgoing(m.hash);
+        } catch (...) {
+        }
+    }
+    return QVariantMap{
+        {"hash", m.hash},
+        {"from", m.from},
+        {"to", m.to},
+        {"fromName", names.value(m.from) == m.from ? QString() : names.value(m.from)},
+        {"toName", names.value(m.to) == m.to ? QString() : names.value(m.to)},
+        {"subject", m.subject},
+        {"preview", m.body},
+        {"folder", m.folder},
+        {"state", out.state},
+        {"deliveryError", out.error},
+        {"unread", mailbox.unread(m.hash)},
+        {"kind", out.kind.isEmpty() ? mailbox.setting("draftkind:" + m.hash, "direct") : out.kind},
+        {"received", formatDateTime(QDateTime::fromSecsSinceEpoch(m.received))}};
+}
 QVariantList Session::messagePage(const QString &folder, const QString &search, int offset,
                                   int limit, const QString &recipient, bool unreadOnly,
                                   bool anonymousOnly) const {
@@ -578,31 +603,17 @@ QVariantList Session::messagePage(const QString &folder, const QString &search, 
         return result;
     const auto names = this->names();
     for (const auto &m : mailbox_.messageSummaries(folder, search, offset, limit, recipient,
-                                                   unreadOnly, anonymousOnly)) {
-        OutboxItem out;
-        if (m.folder == "Outbox" || m.folder == "Sent") {
-            try {
-                out = mailbox_.outgoing(m.hash);
-            } catch (...) {
-            }
-        }
-        result << QVariantMap{
-            {"hash", m.hash},
-            {"from", m.from},
-            {"to", m.to},
-            {"fromName", names.value(m.from) == m.from ? QString() : names.value(m.from)},
-            {"toName", names.value(m.to) == m.to ? QString() : names.value(m.to)},
-            {"subject", m.subject},
-            {"preview", m.body},
-            {"folder", m.folder},
-            {"state", out.state},
-            {"deliveryError", out.error},
-            {"unread", mailbox_.unread(m.hash)},
-            {"kind",
-             out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
-            {"received",
-             formatDateTime(QDateTime::fromSecsSinceEpoch(m.received))}};
-    }
+                                                   unreadOnly, anonymousOnly))
+        result << listRow(mailbox_, m, names);
+    return result;
+}
+QHash<QString, QVariantMap> Session::messageRows(const QStringList &hashes) const {
+    QHash<QString, QVariantMap> result;
+    if (!mailboxOpen())
+        return result;
+    const auto names = this->names();
+    for (const auto &m : mailbox_.messageSummaries(hashes))
+        result.insert(m.hash, listRow(mailbox_, m, names));
     return result;
 }
 QVariantMap Session::message(QString id) const {

@@ -432,6 +432,50 @@ int Mailbox::messageCount(const QString &folder, const QString &search, const QS
     s.row();
     return int(s.number(0));
 }
+QStringList Mailbox::messageHashes(const QString &folder, const QString &recipient,
+                                   bool unreadOnly, bool anonymousOnly) const {
+    const auto query = QByteArray("SELECT hash FROM messages") + messageFilter({},recipient,unreadOnly,anonymousOnly) + " ORDER BY received DESC,rowid DESC";
+    Statement s(db_, query.constData());
+    s.text(1, folder);
+    if (!recipient.isEmpty()) s.text(2, recipient);
+    QStringList hashes;
+    while (s.row()) hashes << s.text(0);
+    return hashes;
+}
+QVector<Message> Mailbox::messageSummaries(const QStringList &hashes) const {
+    Statement s(db_, "SELECT hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received FROM messages WHERE hash=?");
+    QVector<Message> list;
+    for (const auto &hash : hashes) {
+        s.reset();
+        s.text(1, hash);
+        if (s.row())
+            list.push_back(
+                {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
+    }
+    return list;
+}
+int Mailbox::messagePosition(const QString &hash, const QString &folder, const QString &recipient,
+                             bool unreadOnly, bool anonymousOnly) const {
+    const auto filter = messageFilter({}, recipient, unreadOnly, anonymousOnly);
+    const auto bind = [&](Statement &s) {
+        s.text(1, folder);
+        if (!recipient.isEmpty()) s.text(2, recipient);
+        return recipient.isEmpty() ? 2 : 3;
+    };
+    Statement at(db_, (QByteArray("SELECT received,rowid FROM messages") + filter + " AND hash=?").constData());
+    at.text(bind(at), hash);
+    if (!at.row())
+        return -1;
+    const qint64 received = at.number(0), rowid = at.number(1);
+    // Rows above it: newer, or as new and inserted later (the list's order).
+    Statement before(db_, (QByteArray("SELECT count(*) FROM messages") + filter + " AND (received>? OR (received=? AND rowid>?))").constData());
+    int parameter = bind(before);
+    before.number(parameter++, received);
+    before.number(parameter++, received);
+    before.number(parameter, rowid);
+    before.row();
+    return int(before.number(0));
+}
 QStringList Mailbox::channelAddresses(const QString &folder) const {
     Statement s(db_, "SELECT DISTINCT recipient FROM messages WHERE folder=? AND recipient<>'' ORDER BY recipient");
     s.text(1, folder);

@@ -870,6 +870,14 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Subscriptions</source>
         <translation>Підписки</translation>
     </message>
+    <message>
+        <source>%1 found, searching…</source>
+        <translation>знайдено: %1, триває пошук…</translation>
+    </message>
+    <message>
+        <source>%1 found</source>
+        <translation>знайдено: %1</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1088,6 +1096,14 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Cached object exceeds protocol limit</source>
         <translation>Об'єкт у кеші перевищує межу протоколу</translation>
+    </message>
+    <message>
+        <source>Cannot open mailbox</source>
+        <translation>Не вдається відкрити поштову скриньку</translation>
+    </message>
+    <message>
+        <source>Cannot apply mailbox key</source>
+        <translation>Не вдається застосувати ключ поштової скриньки</translation>
     </message>
 </context>
 <context>

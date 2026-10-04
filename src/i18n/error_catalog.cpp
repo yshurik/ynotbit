@@ -33,6 +33,8 @@ static const char *const kErrorCatalog[] = {
     QT_TRANSLATE_NOOP("bm::Errors", "Vault is locked"),
     QT_TRANSLATE_NOOP("bm::Errors", "Identity label is too long"),
     QT_TRANSLATE_NOOP("bm::Errors", "Identity not found"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Cannot open mailbox"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Cannot apply mailbox key"),
     QT_TRANSLATE_NOOP("bm::Errors", "Invalid relay packet"),
     QT_TRANSLATE_NOOP("bm::Errors", "Unsupported proof-of-work requirement"),
     QT_TRANSLATE_NOOP("bm::Errors", "Invalid proof-of-work object"),

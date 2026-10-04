@@ -35,6 +35,11 @@ class Statement {
     void blob(int n, const QByteArray &b) {
         check(sqlite3_bind_blob(s_, n, b.constData(), b.size(), SQLITE_TRANSIENT));
     }
+    // Ready to bind and step again.
+    void reset() {
+        sqlite3_reset(s_);
+        sqlite3_clear_bindings(s_);
+    }
     bool row() {
         int r = sqlite3_step(s_);
         if (r == SQLITE_ROW)

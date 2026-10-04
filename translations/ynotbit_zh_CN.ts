@@ -870,6 +870,14 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Subscriptions</source>
         <translation>订阅</translation>
     </message>
+    <message>
+        <source>%1 found, searching…</source>
+        <translation>已找到 %1 封，正在搜索…</translation>
+    </message>
+    <message>
+        <source>%1 found</source>
+        <translation>已找到 %1 封</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1088,6 +1096,14 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Cached object exceeds protocol limit</source>
         <translation>缓存对象超出协议限制</translation>
+    </message>
+    <message>
+        <source>Cannot open mailbox</source>
+        <translation>无法打开邮箱</translation>
+    </message>
+    <message>
+        <source>Cannot apply mailbox key</source>
+        <translation>无法应用邮箱密钥</translation>
     </message>
 </context>
 <context>

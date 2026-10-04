@@ -25,6 +25,14 @@ static void footprint(const char *stage) {
     Q_UNUSED(stage);
 #endif
 }
+// The filter searches on a worker thread; let it finish before reading the list.
+static bool searched(bm::MessageModel *model) {
+    QElapsedTimer clock;
+    clock.start();
+    while (model->searching() && clock.elapsed() < 20000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    return !model->searching();
+}
 int main(int argc, char **argv) {
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc, argv);
@@ -435,7 +443,8 @@ int main(int argc, char **argv) {
         }
         std::cout << "60 scroll positions across 1500 messages: " << clock.elapsed() << "ms\n";
         session.messageModel()->setSearch("Subject 1499");
-        require(session.messageModel()->rowCount() == 1, "search finds old rows");
+        require(searched(session.messageModel()) && session.messageModel()->rowCount() == 1,
+                "search finds old rows");
         session.messageModel()->setSearch("");
         window.selectMessage("0");
         selectChannel("second-recipient");
@@ -445,7 +454,8 @@ int main(int argc, char **argv) {
         require(window.findChild<QTextBrowser *>("readerBody")->toPlainText().isEmpty(),
                 "switching channel clears previous body");
         session.messageModel()->setSearch("Subject");
-        require(list->model()->rowCount() == 0, "search stays within selected channel");
+        require(searched(session.messageModel()) && list->model()->rowCount() == 0,
+                "search stays within selected channel");
         session.messageModel()->setSearch("");
         folders->setCurrentRow(0);
         folders->setCurrentRow(4);
@@ -2077,6 +2087,71 @@ int main(int argc, char **argv) {
                     rechecked = true;
                 }
             require(rechecked, "found the same channel chip again after reopening the mailbox");
+        }
+        {
+            // A chan full of big spam letters, like [chan] general: typing in the
+            // filter must not freeze the window while every body is read.
+            vault.unlock(vaultFile, "test password");
+            {
+                bm::Mailbox injected;
+                injected.open(session.mailPath(), vault.mailboxKey(key));
+                bm::Mailbox::Batch batch(injected);
+                QRandomGenerator noise(7);
+                for (int i = 0; i < 300; ++i) {
+                    QString body(150 * 1024, Qt::Uninitialized);
+                    for (auto &c : body)
+                        c = QChar(' ' + noise.bounded(94));
+                    if (i == 150)
+                        body.insert(body.size() / 2, " Cool amber wine in cups of gold ");
+                    injected.store("heavy-" + QString::number(i), "spammer", "heavy-chan",
+                                   "Spam " + QString::number(i), body, 1900 + i, "Channels");
+                }
+                batch.commit();
+                injected.close();
+            }
+            vault.lock();
+            session.messageModel()->reload();
+            folders->setCurrentRow(0);
+            folders->setCurrentRow(4);
+            QTest::qWait(50);
+            selectChannel("heavy-chan");
+            require(list->model()->rowCount() == 300, "the heavy chan lists every letter");
+            QTest::qWait(200); // the chan's first paint is not the filter's to answer for
+            auto searchBox = window.findChild<QLineEdit *>("messageSearch");
+            auto progress = window.findChild<QProgressBar *>("searchProgress");
+            auto countLabel = window.findChild<QLabel *>("listCountLabel");
+            QElapsedTimer stall;
+            stall.start();
+            qint64 last = 0, worst = 0;
+            bool sawProgress = false, sawSearching = false;
+            QTimer meter;
+            QObject::connect(&meter, &QTimer::timeout, [&] {
+                const auto now = stall.elapsed();
+                worst = std::max(worst, now - last);
+                last = now;
+                sawProgress |= progress->isVisible();
+                sawSearching |= countLabel->text().contains("searching");
+            });
+            meter.start(5);
+            last = stall.elapsed();
+            QTest::keyClicks(searchBox, "cool am", Qt::NoModifier, 40);
+            QTest::qWait(300);
+            const bool finished = searched(session.messageModel());
+            QTest::qWait(20);
+            meter.stop();
+            std::cout << "Filter over 300 x 150 KB letters: worst UI stall " << worst << "ms\n";
+            require(finished, "the search finishes");
+            require(worst < 250, "typing in the filter never freezes the window");
+            require(sawProgress && sawSearching, "a running search shows its progress");
+            require(list->model()->rowCount() == 1 &&
+                        list->model()->index(0, 0).data(Qt::UserRole + 1) == "heavy-150",
+                    "the filter finds the one letter whose body matches");
+            require(!progress->isVisible() && countLabel->text() == "1 found",
+                    "a finished search hides its progress and says what it found");
+            searchBox->clear();
+            QTest::qWait(300);
+            require(list->model()->rowCount() == 300 && countLabel->text() == "300 total",
+                    "clearing the filter lists every letter again");
         }
         session.lock();
         std::cout << "PASS Widgets mailbox selection, rendering and lock\n";

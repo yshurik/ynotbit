@@ -148,6 +148,14 @@ class Mailbox {
                                       bool unreadOnly = false, bool anonymousOnly = false) const;
     int messageCount(const QString &folder, const QString &search, const QString &recipient = {},
                      bool unreadOnly = false, bool anonymousOnly = false) const;
+    // The list's letters in display order (newest first), without reading bodies.
+    QStringList messageHashes(const QString &folder, const QString &recipient = {},
+                              bool unreadOnly = false, bool anonymousOnly = false) const;
+    // Summaries of the given letters, in no particular order.
+    QVector<Message> messageSummaries(const QStringList &hashes) const;
+    // A letter's row in the unsearched list, or -1 when the list does not show it.
+    int messagePosition(const QString &hash, const QString &folder, const QString &recipient = {},
+                        bool unreadOnly = false, bool anonymousOnly = false) const;
     // Addresses with letters in a per-source folder (Channels: the chan;
     // Broadcasts: the subscribed sender), and whether one has unread letters.
     QStringList channelAddresses(const QString &folder = "Channels") const;

@@ -126,6 +126,12 @@ class Session : public QObject {
     static QString errorText(const std::exception &e);
     QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const;
     int messageCount(const QString &folder, const QString &search, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messageCount(folder, search, recipient, unreadOnly, anonymousOnly) : 0; }
+    QStringList messageHashes(const QString &folder, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messageHashes(folder, recipient, unreadOnly, anonymousOnly) : QStringList(); }
+    int messagePosition(const QString &hash, const QString &folder, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messagePosition(hash, folder, recipient, unreadOnly, anonymousOnly) : -1; }
+    // List rows for the given letters, keyed by hash.
+    QHash<QString, QVariantMap> messageRows(const QStringList &hashes) const;
+    // The open mailbox's key, for a second (search) connection; null when closed.
+    const Secret *mailboxSecret() const { return mailboxOpen() ? &vault_.mailboxKey(mailKey_) : nullptr; }
     QVariantList channels() const;
     bool channelUnread(QString address) const {
         return mailboxOpen() && mailbox_.channelUnread(address);

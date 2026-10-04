@@ -1,7 +1,9 @@
+#include "message_search.h"
 #include "protocol.h"
 #include "storage.h"
 #include <QCoreApplication>
 #include <QDataStream>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QTemporaryDir>
 #include <functional>
@@ -234,6 +236,72 @@ int main(int argc, char **argv) {
                 filterBox.messageSummaries("Channels", "", 0, 10, "BM-chan", true, true);
             require(onlyAnonUnread.size() == 1 && onlyAnonUnread[0].hash == "anon-unread",
                     "combined filter returns exactly the matching message");
+            // The list's order and positions come from the index, not the bodies.
+            const auto order = filterBox.messageHashes("Channels", "BM-chan");
+            require(order.size() == 4 && order[0] == "named-read" && order[1] == "named-unread",
+                    "hashes in list order, newest first");
+            for (int i = 0; i < order.size(); ++i)
+                require(filterBox.messagePosition(order[i], "Channels", "BM-chan") == i,
+                        "a letter's position is its row in the list");
+            require(filterBox.messagePosition("named-read", "Channels", "BM-chan", true) == -1,
+                    "a letter the filter hides has no position");
+            require(filterBox.messageHashes("Channels", "BM-chan", true) ==
+                        QStringList(order).filter("unread"),
+                    "hashes honour the unread filter");
+            require(filterBox.messageSummaries(QStringList{"named-read", "gone", "named-unread"})
+                            .size() == 2,
+                    "summaries by hash skip letters that no longer exist");
+            {
+                // The filter box's search runs on its own thread and connection.
+                MessageSearch search;
+                search.open(d.filePath("filter.bmmail"), filterVault.mailboxKey(filterKey));
+                quint64 current = 0, failedSearch = 0;
+                QStringList done, matched;
+                QObject::connect(&search, &MessageSearch::checked,
+                                 [&](quint64 id, const QStringList &d, const QStringList &m) {
+                                     if (id == current) {
+                                         done += d;
+                                         matched += m;
+                                     }
+                                 });
+                QObject::connect(&search, &MessageSearch::failed,
+                                 [&](quint64 id, const QString &) { failedSearch = id; });
+                const auto settle = [&](const std::function<bool()> &until) {
+                    QElapsedTimer clock;
+                    clock.start();
+                    while (!until() && clock.elapsed() < 10000)
+                        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+                    return until();
+                };
+                current = search.start("NAMED", order);
+                require(settle([&] { return done.size() == order.size(); }),
+                        "every letter is checked");
+                require(done == order && matched == QStringList({"named-read", "named-unread"}),
+                        "matches subject case-insensitively, in list order");
+                // A newer search abandons the older one at its next letter.
+                QStringList many;
+                for (int i = 0; i < 20000; ++i)
+                    many += order;
+                quint64 abandoned = search.start("zzz", many);
+                int abandonedDone = 0;
+                QObject::connect(&search, &MessageSearch::checked,
+                                 [&](quint64 id, const QStringList &d, const QStringList &) {
+                                     if (id == abandoned)
+                                         abandonedDone += int(d.size());
+                                 });
+                done.clear();
+                matched.clear();
+                current = search.start("alice", order);
+                require(settle([&] { return done.size() == order.size(); }),
+                        "the newer search completes");
+                require(matched == QStringList({"named-read", "named-unread"}),
+                        "matches the sender too");
+                require(abandonedDone < many.size(), "the older search stopped early");
+                search.close();
+                const auto closedSearch = search.start("x", order);
+                require(settle([&] { return failedSearch == closedSearch; }),
+                        "a closed search reports failure instead of hanging");
+            }
             filterBox.close();
         }
         std::cout << "PASS: vault, password rotation, SQLCipher, deduplication, backup, chan "

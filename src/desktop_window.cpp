@@ -1650,7 +1650,27 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     auto search = search_ = new QLineEdit;
     search->setObjectName("messageSearch");
     search->setPlaceholderText(tr("Search this folder"));
+    search->setClearButtonEnabled(true);
     mid->addWidget(search);
+    // A search reads every letter in the background; this shows how far it got.
+    auto searchBar = searchProgress_ = new QProgressBar;
+    searchBar->setObjectName("searchProgress");
+    searchBar->setRange(0, 100);
+    searchBar->setTextVisible(false);
+    searchBar->setFixedHeight(3);
+    searchBar->setStyleSheet("QProgressBar{border:0;border-radius:1px;background:rgba(124,139,150,0.25);}"
+                             "QProgressBar::chunk{border-radius:1px;background:palette(highlight);}");
+    auto keepSpace = searchBar->sizePolicy();
+    keepSpace.setRetainSizeWhenHidden(true);
+    searchBar->setSizePolicy(keepSpace);
+    searchBar->hide();
+    mid->addWidget(searchBar);
+    connect(session_.messageModel(), &MessageModel::searchStateChanged, this, [this] {
+        const auto model = session_.messageModel();
+        searchProgress_->setVisible(model->searching());
+        searchProgress_->setValue(model->searchProgress());
+        updateListCount();
+    });
     auto debounce = new QTimer(this);
     debounce->setSingleShot(true);
     connect(search, &QLineEdit::textChanged, this, [debounce] { debounce->start(250); });
@@ -2759,6 +2779,11 @@ void DesktopWindow::setListDensity(QString density) {
 void DesktopWindow::updateListCount() {
     auto model = session_.messageModel();
     const int shown = model->rowCount();
+    if (!model->search().isEmpty()) {
+        listCountLabel_->setText(model->searching() ? tr("%1 found, searching…").arg(shown)
+                                                    : tr("%1 found").arg(shown));
+        return;
+    }
     const int total = model->totalCount();
     listCountLabel_->setText(shown == total ? tr("%1 total").arg(total)
                                             : tr("%1 of %2 total").arg(shown).arg(total));

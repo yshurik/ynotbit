@@ -870,6 +870,14 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Subscriptions</source>
         <translation>구독</translation>
     </message>
+    <message>
+        <source>%1 found, searching…</source>
+        <translation>%1개 찾음, 검색 중…</translation>
+    </message>
+    <message>
+        <source>%1 found</source>
+        <translation>%1개 찾음</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1088,6 +1096,14 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Cached object exceeds protocol limit</source>
         <translation>캐시된 객체가 프로토콜 한도를 넘습니다</translation>
+    </message>
+    <message>
+        <source>Cannot open mailbox</source>
+        <translation>메일함을 열 수 없습니다</translation>
+    </message>
+    <message>
+        <source>Cannot apply mailbox key</source>
+        <translation>메일함 키를 적용할 수 없습니다</translation>
     </message>
 </context>
 <context>
