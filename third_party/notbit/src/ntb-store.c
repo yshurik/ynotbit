@@ -66,6 +66,8 @@
 #include "ntb-load-outgoings.h"
 #include "ntb-save-message.h"
 #include "ntb-mkdir.h"
+#include "ntb-object-db.h"
+#include <time.h>
 
 struct ntb_error_domain
 ntb_store_error;
@@ -94,6 +96,15 @@ struct ntb_store {
         unsigned int num_stored_messages;
 
         bool quit;
+
+        struct ntb_object_db *objects;
+        /* Set before the store thread starts, from the daemon's -R and -A */
+        int64_t max_object_bytes;
+        int max_object_days;
+        /* Only touched by the store thread */
+        bool in_transaction;
+        /* Copied from the object store under the mutex, for other threads */
+        int64_t object_count, object_bytes;
 };
 
 enum ntb_store_task_type {
@@ -106,7 +117,8 @@ enum ntb_store_task_type {
         NTB_STORE_TASK_TYPE_SAVE_MESSAGE_CONTENT,
         NTB_STORE_TASK_TYPE_LOAD_MESSAGE_CONTENT,
         NTB_STORE_TASK_TYPE_DELETE_MESSAGE_CONTENT,
-        NTB_STORE_TASK_TYPE_DELETE_OBJECT
+        NTB_STORE_TASK_TYPE_DELETE_OBJECT,
+        NTB_STORE_TASK_TYPE_PRUNE_OBJECTS
 };
 
 struct ntb_store_task {
@@ -174,12 +186,6 @@ struct ntb_store_cookie {
         ntb_store_load_callback func;
         void *user_data;
 };
-
-typedef void (* for_each_blob_internal_func)(const uint8_t *hash,
-                                             int64_t expires_time,
-                                             const char *filename,
-                                             FILE *file,
-                                             void *user_data);
 
 /* The cookies are only allocated and destroyed in the main thread so
  * we don't need to have a per-store allocator */
@@ -320,15 +326,21 @@ init_store_directory(struct ntb_store *store,
 
         store->directory_len = store->filename_buf.length;
 
-        ntb_buffer_append_string(&store->filename_buf, "objects");
-
+        ntb_buffer_append_string(&store->filename_buf, "outgoing");
         if (!ntb_mkdir_hierarchy(&store->filename_buf, error))
                 return false;
 
         store->filename_buf.length = store->directory_len;
-        ntb_buffer_append_string(&store->filename_buf, "outgoing");
-        if (!ntb_mkdir((const char *) store->filename_buf.data, error))
+        ntb_buffer_append_c(&store->filename_buf, '\0');
+        store->objects = ntb_object_db_open((const char *) store->filename_buf.data);
+        if (store->objects == NULL) {
+                ntb_set_error(error,
+                              &ntb_store_error,
+                              NTB_STORE_ERROR_INVALID_STORE_DIRECTORY,
+                              "Could not open the object store in %s",
+                              (const char *) store->filename_buf.data);
                 return false;
+        }
 
         return true;
 }
@@ -391,16 +403,6 @@ init_maildir(struct ntb_store *store,
 }
 
 static void
-append_hash(struct ntb_buffer *buffer,
-            const uint8_t *hash)
-{
-        int i;
-
-        for (i = 0; i < NTB_PROTO_HASH_LENGTH; i++)
-                ntb_buffer_append_printf(buffer, "%02x", hash[i]);
-}
-
-static void
 load_data_idle_cb(struct ntb_main_context_source *source,
                   void *user_data)
 {
@@ -439,36 +441,16 @@ read_all(const char *filename,
         return true;
 }
 
-static struct ntb_blob *
-load_blob_from_file(const char *filename,
-                    FILE *file)
-{
-        struct stat statbuf;
-        struct ntb_blob *blob;
-
-        if (fstat(fileno(file), &statbuf) == -1) {
-                ntb_log("Error getting info for %s", filename);
-                return NULL;
-        }
-
-        blob = ntb_blob_new(NULL /* data */,
-                            statbuf.st_size);
-
-        if (!read_all(filename, blob->data, blob->size, file)) {
-                ntb_blob_unref(blob);
-                return NULL;
-        }
-
-        return blob;
-}
-
 static void
-set_hash_filename(struct ntb_store *store,
-                  const uint8_t *hash)
+load_blob_cb(const uint8_t *hash,
+             int64_t expires,
+             const uint8_t *data,
+             size_t size,
+             void *user_data)
 {
-        store->filename_buf.length = store->directory_len;
-        ntb_buffer_append_string(&store->filename_buf, "objects/");
-        append_hash(&store->filename_buf, hash);
+        struct ntb_blob **blob = user_data;
+
+        *blob = ntb_blob_new(data, size);
 }
 
 static void
@@ -476,7 +458,6 @@ handle_load_blob(struct ntb_store *store,
                  struct ntb_store_task *task)
 {
         struct ntb_blob *blob = NULL;
-        FILE *file;
 
         /* As a special case this the lock is still held when this
          * function is called */
@@ -489,20 +470,11 @@ handle_load_blob(struct ntb_store *store,
 
         pthread_mutex_unlock(&store->mutex);
 
-        set_hash_filename(store, task->load_blob.hash);
-
-        file = fopen((char *) store->filename_buf.data, "rb");
-
-        if (file == NULL) {
-                ntb_log("Error opening %s: %s",
-                        (char *) store->filename_buf.data,
-                        strerror(errno));
-        } else {
-                blob = load_blob_from_file((char *) store->filename_buf.data,
-                                           file);
-
-                fclose(file);
-        }
+        /* A pruned object simply isn't there any more */
+        ntb_object_db_load(store->objects,
+                           task->load_blob.hash,
+                           load_blob_cb,
+                           &blob);
 
         pthread_mutex_lock(&store->mutex);
 
@@ -541,52 +513,85 @@ rename_tmp_file(struct ntb_store *store)
 }
 
 static void
+publish_object_stats(struct ntb_store *store)
+{
+        int64_t count, bytes;
+
+        ntb_object_db_stats(store->objects, &count, &bytes);
+
+        pthread_mutex_lock(&store->mutex);
+        store->object_count = count;
+        store->object_bytes = bytes;
+        pthread_mutex_unlock(&store->mutex);
+}
+
+static void
+prune_objects(struct ntb_store *store)
+{
+        int64_t now = (int64_t) time(NULL);
+        int64_t deleted;
+
+        deleted = ntb_object_db_prune(store->objects,
+                                      store->max_object_bytes,
+                                      now - (int64_t) store->max_object_days * 86400);
+        if (deleted > 0)
+                ntb_log("Pruned %" PRId64 " stored objects", deleted);
+
+        publish_object_stats(store);
+}
+
+static void
 handle_save_blob(struct ntb_store *store,
                  struct ntb_store_task *task)
 {
-        FILE *file;
+        if (!store->in_transaction)
+                store->in_transaction = ntb_object_db_begin(store->objects);
 
-        set_hash_filename(store, task->save_blob.hash);
+        if (!ntb_object_db_save(store->objects,
+                                task->save_blob.hash,
+                                task->save_blob.blob->data,
+                                task->save_blob.blob->size,
+                                (int64_t) time(NULL)))
+                ntb_log("Error saving an object to " NTB_OBJECT_DB_FILE);
+}
 
-        ntb_buffer_append_string(&store->filename_buf, ".tmp");
+static void
+finish_saves(struct ntb_store *store)
+{
+        int64_t count, bytes;
 
-        file = fopen((char *) store->filename_buf.data, "wb");
+        if (!ntb_object_db_commit(store->objects))
+                ntb_log("Error committing objects to " NTB_OBJECT_DB_FILE);
+        store->in_transaction = false;
 
-        if (file == NULL) {
-                ntb_log("Error opening %s: %s",
-                        (char *) store->filename_buf.data,
-                        strerror(errno));
-                return;
-        }
+        ntb_object_db_stats(store->objects, &count, &bytes);
+        if (bytes > store->max_object_bytes)
+                prune_objects(store);
+        else
+                publish_object_stats(store);
+}
 
-        if (fwrite(task->save_blob.blob->data, 1,
-                   task->save_blob.blob->size, file) !=
-            task->save_blob.blob->size) {
-                ntb_log("Error writing %s: %s",
-                        (char *) store->filename_buf.data,
-                        strerror(errno));
-                fclose(file);
-                unlink((char *) store->filename_buf.data);
-                return;
-        }
+static bool
+next_task_saves_blob(struct ntb_store *store)
+{
+        struct ntb_store_task *next;
 
-        if (fclose(file) == EOF) {
-                ntb_log("Error writing %s: %s",
-                        (char *) store->filename_buf.data,
-                        strerror(errno));
-                unlink((char *) store->filename_buf.data);
-                return;
-        }
+        /* Called with the mutex held */
+        if (ntb_list_empty(&store->queue))
+                return false;
 
-        rename_tmp_file(store);
+        next = ntb_container_of(store->queue.next,
+                                struct ntb_store_task,
+                                link);
+        return next->type == NTB_STORE_TASK_TYPE_SAVE_BLOB;
 }
 
 static void
 handle_delete_object(struct ntb_store *store,
                      struct ntb_store_task *task)
 {
-        /* Retention is managed by the desktop cache policy, independently
-         * of the network inventory expiry. */
+        /* Retention is the store's own policy (ntb_store_set_retention),
+         * independent of the network inventory expiry. */
         (void) store;
         (void) task;
 }
@@ -1110,6 +1115,7 @@ free_task(struct ntb_store *store,
                 break;
         case NTB_STORE_TASK_TYPE_LOAD_BLOB:
         case NTB_STORE_TASK_TYPE_DELETE_OBJECT:
+        case NTB_STORE_TASK_TYPE_PRUNE_OBJECTS:
                 break;
         case NTB_STORE_TASK_TYPE_SAVE_ADDR_LIST:
                 ntb_free(task->save_addr_list.addrs);
@@ -1180,6 +1186,9 @@ store_thread_func(void *user_data)
                         case NTB_STORE_TASK_TYPE_DELETE_OBJECT:
                                 handle_delete_object(store, task);
                                 break;
+                        case NTB_STORE_TASK_TYPE_PRUNE_OBJECTS:
+                                prune_objects(store);
+                                break;
                         case NTB_STORE_TASK_TYPE_SAVE_ADDR_LIST:
                                 handle_save_addr_list(store, task);
                                 break;
@@ -1208,6 +1217,13 @@ store_thread_func(void *user_data)
                 }
 
                 free_task(store, task);
+
+                /* Saves queued back to back share one transaction */
+                if (store->in_transaction && !next_task_saves_blob(store)) {
+                        pthread_mutex_unlock(&store->mutex);
+                        finish_saves(store);
+                        pthread_mutex_lock(&store->mutex);
+                }
         }
 
         pthread_mutex_unlock(&store->mutex);
@@ -1226,12 +1242,20 @@ ntb_store_new(const char *store_directory,
         store->quit = false;
         store->started = false;
         store->num_stored_messages = 0;
+        store->objects = NULL;
+        store->max_object_bytes = INT64_C(2048) * 1024 * 1024;
+        store->max_object_days = 90;
+        store->in_transaction = false;
+        store->object_count = 0;
+        store->object_bytes = 0;
 
         ntb_buffer_init(&store->filename_buf);
         ntb_buffer_init(&store->maildir_buf);
 
         if (!init_store_directory(store, store_directory, error))
                 goto error;
+
+        ntb_object_db_stats(store->objects, &store->object_count, &store->object_bytes);
 
         /* No plaintext maildir exists in the keyless desktop relay. */
         store->maildir_len = 0;
@@ -1247,6 +1271,7 @@ ntb_store_new(const char *store_directory,
         return store;
 
 error:
+        ntb_object_db_close(store->objects);
         ntb_buffer_destroy(&store->maildir_buf);
         ntb_buffer_destroy(&store->filename_buf);
         ntb_free(store);
@@ -1489,127 +1514,6 @@ ntb_store_save_outgoings(struct ntb_store *store,
         pthread_mutex_unlock(&store->mutex);
 }
 
-static int
-hex_digit_value(int ch)
-{
-        if (ch >= 'a')
-                return ch - 'a' + 10;
-        if (ch >= 'A')
-                return ch - 'A' + 10;
-
-        return ch - '0';
-}
-
-static bool
-is_hex_digit(int ch)
-{
-        return ((ch >= 'a' && ch <= 'f') ||
-                (ch >= 'A' && ch <= 'F') ||
-                (ch >= '0' && ch <= '9'));
-}
-
-static void
-process_file(struct ntb_store *store,
-             const char *filename,
-             for_each_blob_internal_func func,
-             void *user_data)
-{
-        uint8_t hash[NTB_PROTO_HASH_LENGTH];
-        uint8_t buf[sizeof (uint64_t) * 2];
-        int64_t expires_time;
-        FILE *file;
-        const char *p;
-        int64_t now;
-        int i;
-
-        p = filename + store->directory_len + 8;
-
-        for (i = 0; i < NTB_PROTO_HASH_LENGTH; i++) {
-                /* Skip files that don't look like a hash */
-                if (!is_hex_digit(p[0]) ||
-                    !is_hex_digit(p[1]))
-                        return;
-
-                hash[i] = ((hex_digit_value(p[0]) << 4) |
-                           hex_digit_value(p[1]));
-                p += 2;
-        }
-
-        /* Delete any temporary files. These could be left around if
-         * notbit crashes while writing a file */
-        if (!strcmp(p, ".tmp")) {
-                if (unlink(filename) == -1)
-                        ntb_log("Error deleting %s: %s",
-                                filename,
-                                strerror(errno));
-                return;
-        } else if (p[0] != '\0') {
-                return;
-        }
-
-        file = fopen(filename, "rb");
-        if (file == NULL) {
-                ntb_log("Error reading %s: %s",
-                        filename,
-                        strerror(errno));
-                return;
-        }
-
-        /* All of the files should start with the 64-bit nonce and
-         * then 64-bit expiry time. We only need the expiry time
-         * so we don't need to read the rest */
-        if (!read_all(filename, buf, sizeof buf, file)) {
-                fclose(file);
-                return;
-        }
-
-        now = ntb_main_context_get_wall_clock(NULL);
-
-        expires_time = ntb_proto_get_64(buf + sizeof (uint64_t));
-
-        if (now >= expires_time + NTB_PROTO_EXTRA_AGE) {
-                /* Keep locally; never reload expired objects into inventory. */
-        } else {
-                func(hash, expires_time, filename, file, user_data);
-        }
-
-        fclose(file);
-}
-
-static void
-for_each_blob_internal(struct ntb_store *store,
-                       for_each_blob_internal_func func,
-                       void *user_data)
-{
-        DIR *dir;
-        struct dirent *dirent;
-
-        store->filename_buf.length = store->directory_len;
-        ntb_buffer_append_string(&store->filename_buf, "objects");
-
-        dir = opendir((char *) store->filename_buf.data);
-        if (dir == NULL) {
-                ntb_log("Error listing %s: %s",
-                        (char *) store->filename_buf.data,
-                        strerror(errno));
-                return;
-        }
-
-        ntb_buffer_append_c(&store->filename_buf, '/');
-
-        while ((dirent = readdir(dir))) {
-                store->filename_buf.length = store->directory_len + 8;
-                ntb_buffer_append_string(&store->filename_buf, dirent->d_name);
-
-                process_file(store,
-                             (char *) store->filename_buf.data,
-                             func,
-                             user_data);
-        }
-
-        closedir(dir);
-}
-
 struct for_each_blob_data {
         ntb_store_for_each_blob_func func;
         void *user_data;
@@ -1617,14 +1521,14 @@ struct for_each_blob_data {
 
 static void
 for_each_blob_cb(const uint8_t *hash,
-                 int64_t expires_time,
-                 const char *filename,
-                 FILE *file,
+                 int64_t expires,
+                 const uint8_t *data,
+                 size_t size,
                  void *user_data)
 {
-        struct for_each_blob_data *data = user_data;
+        struct for_each_blob_data *d = user_data;
 
-        data->func(hash, expires_time, data->user_data);
+        d->func(hash, expires, d->user_data);
 }
 
 void
@@ -1632,22 +1536,19 @@ ntb_store_for_each_blob(struct ntb_store *store,
                         ntb_store_for_each_blob_func func,
                         void *user_data)
 {
-        struct for_each_blob_data data;
+        struct for_each_blob_data data = { func, user_data };
+        int64_t now = ntb_main_context_get_wall_clock(NULL);
 
         if (store == NULL)
                 store = ntb_store_get_default_or_abort();
 
-        /* This function runs synchronously but it should only be
-         * called once at startup before connecting to any peers so it
-         * shouldn't really matter */
-
+        /* Runs once at startup, before the store thread starts */
         ntb_log("Loading saved object store");
-
-        data.func = func;
-        data.user_data = user_data;
-
-        for_each_blob_internal(store, for_each_blob_cb, &data);
-
+        ntb_object_db_for_each(store->objects,
+                               now - NTB_PROTO_EXTRA_AGE,
+                               false,
+                               for_each_blob_cb,
+                               &data);
         ntb_log("Finished loading object store");
 }
 
@@ -1658,46 +1559,20 @@ struct for_each_pubkey_blob_data {
 
 static void
 for_each_pubkey_blob_cb(const uint8_t *hash,
-                        int64_t expires_time,
-                        const char *filename,
-                        FILE *file,
+                        int64_t expires,
+                        const uint8_t *data,
+                        size_t size,
                         void *user_data)
 {
-        struct for_each_pubkey_blob_data *data = user_data;
-        struct stat statbuf;
+        struct for_each_pubkey_blob_data *d = user_data;
         struct ntb_blob *blob;
-        uint8_t buf[sizeof (uint64_t) * 2 + sizeof (uint32_t)];
-        uint32_t type;
 
-        /* Reset the file to the beginning */
-        if (fseek(file, 0, SEEK_SET))
+        if (size < sizeof (uint64_t) * 2 + sizeof (uint32_t) ||
+            ntb_proto_get_32(data + sizeof (uint64_t) * 2) != NTB_PROTO_INV_TYPE_PUBKEY)
                 return;
 
-        if (!read_all(filename, buf, sizeof buf, file))
-                return;
-
-        type = ntb_proto_get_32(buf + sizeof (uint64_t) * 2);
-
-        if (type != NTB_PROTO_INV_TYPE_PUBKEY)
-                return;
-
-        if (fstat(fileno(file), &statbuf) == -1)
-                return;
-
-        if (statbuf.st_size < sizeof buf)
-                return;
-
-        blob = ntb_blob_new(NULL, /* data */
-                            statbuf.st_size);
-
-        memcpy(blob->data, buf, sizeof buf);
-
-        if (read_all(filename,
-                     blob->data + sizeof buf,
-                     statbuf.st_size - sizeof buf,
-                     file))
-                data->func(hash, expires_time, blob, data->user_data);
-
+        blob = ntb_blob_new(data, size);
+        d->func(hash, expires, blob, d->user_data);
         ntb_blob_unref(blob);
 }
 
@@ -1706,22 +1581,18 @@ ntb_store_for_each_pubkey_blob(struct ntb_store *store,
                                ntb_store_for_each_pubkey_blob_func func,
                                void *user_data)
 {
-        struct for_each_pubkey_blob_data data;
+        struct for_each_pubkey_blob_data data = { func, user_data };
+        int64_t now = ntb_main_context_get_wall_clock(NULL);
 
         if (store == NULL)
                 store = ntb_store_get_default_or_abort();
 
-        /* This function runs synchronously but it should only be
-         * called once at startup before connecting to any peers so it
-         * shouldn't really matter */
-
         ntb_log("Loading pubkey objects");
-
-        data.func = func;
-        data.user_data = user_data;
-
-        for_each_blob_internal(store, for_each_pubkey_blob_cb, &data);
-
+        ntb_object_db_for_each(store->objects,
+                               now - NTB_PROTO_EXTRA_AGE,
+                               true,
+                               for_each_pubkey_blob_cb,
+                               &data);
         ntb_log("Finished loading pubkey objects");
 }
 
@@ -2036,6 +1907,7 @@ ntb_store_cancel_task(struct ntb_store_cookie *cookie)
                 case NTB_STORE_TASK_TYPE_SAVE_MESSAGE_CONTENT:
                 case NTB_STORE_TASK_TYPE_DELETE_MESSAGE_CONTENT:
                 case NTB_STORE_TASK_TYPE_DELETE_OBJECT:
+                case NTB_STORE_TASK_TYPE_PRUNE_OBJECTS:
                         assert(false);
                         break;
                 }
@@ -2048,6 +1920,41 @@ ntb_store_cancel_task(struct ntb_store_cookie *cookie)
         pthread_mutex_unlock(&store->mutex);
 
         ntb_slice_free(&ntb_store_cookie_allocator, cookie);
+}
+
+void
+ntb_store_set_retention(struct ntb_store *store,
+                        int64_t max_bytes,
+                        int max_days)
+{
+        /* Before ntb_store_start: the store thread isn't running yet */
+        store->max_object_bytes = max_bytes;
+        store->max_object_days = max_days;
+}
+
+void
+ntb_store_prune_objects(struct ntb_store *store)
+{
+        if (store == NULL)
+                store = ntb_store_get_default_or_abort();
+
+        pthread_mutex_lock(&store->mutex);
+        new_task(store, NTB_STORE_TASK_TYPE_PRUNE_OBJECTS);
+        pthread_mutex_unlock(&store->mutex);
+}
+
+void
+ntb_store_object_stats(struct ntb_store *store,
+                       int64_t *count,
+                       int64_t *bytes)
+{
+        if (store == NULL)
+                store = ntb_store_get_default_or_abort();
+
+        pthread_mutex_lock(&store->mutex);
+        *count = store->object_count;
+        *bytes = store->object_bytes;
+        pthread_mutex_unlock(&store->mutex);
 }
 
 void
@@ -2065,6 +1972,8 @@ ntb_store_free(struct ntb_store *store)
 
         ntb_list_for_each_safe(task, tmp, &store->queue, link)
                 free_task(store, task);
+
+        ntb_object_db_close(store->objects);
 
         ntb_buffer_destroy(&store->maildir_buf);
         ntb_buffer_destroy(&store->tmp_buf);

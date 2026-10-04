@@ -87,8 +87,10 @@ static bool option_use_proxy = false;
 static bool option_bootstrap_dns = true;
 static struct ntb_netaddress option_proxy_address;
 static bool option_listen = true;
+static long option_retention_mb = 2048;
+static long option_retention_days = 90;
 
-static const char options[] = "-a:l:du:g:D:p:eP:hm:LbBr:iT";
+static const char options[] = "-a:l:du:g:D:p:eP:hm:LbBr:iTR:A:";
 
 static void
 add_address(struct address **list,
@@ -186,9 +188,33 @@ usage(void)
                "                       nodes to be trustworthy\n"
                " -B                    Don't bootstrap with DNS. Useful if\n"
                "                       running under Tor.\n"
-               " -i                    Don't listen for incoming connections."
-               "\n");
+               " -i                    Don't listen for incoming connections.\n"
+               " -R <MiB>              Keep at most this much of the object\n"
+               "                       store (default 2048).\n"
+               " -A <days>             Drop stored objects received more than\n"
+               "                       this many days ago (default 90).\n");
         exit(EXIT_FAILURE);
+}
+
+static bool
+parse_positive(const char *value,
+               long *result,
+               struct ntb_error **error)
+{
+        char *tail;
+        long number = strtol(value, &tail, 10);
+
+        if (tail == value || *tail != '\0' || number <= 0) {
+                ntb_set_error(error,
+                              &arguments_error,
+                              NTB_ARGUMENTS_ERROR_INVALID,
+                              "invalid number \"%s\"",
+                              value);
+                return false;
+        }
+
+        *result = number;
+        return true;
 }
 
 static bool
@@ -276,6 +302,16 @@ process_arguments(int argc, char **argv, struct ntb_error **error)
 
                 case 'i':
                         option_listen = false;
+                        break;
+
+                case 'R':
+                        if (!parse_positive(optarg, &option_retention_mb, error))
+                                goto error;
+                        break;
+
+                case 'A':
+                        if (!parse_positive(optarg, &option_retention_days, error))
+                                goto error;
                         break;
 
                 case 'T':
@@ -513,11 +549,19 @@ set_log_file(struct ntb_store *store,
 extern void ynotbit_relay_tick(struct ntb_network *, const char *);
 
 static void
+prune_timeout_cb(struct ntb_main_context_source *source,
+                 void *user_data)
+{
+        ntb_store_prune_objects(user_data);
+}
+
+static void
 run_main_loop(struct ntb_network *nw,
               struct ntb_keyring *keyring,
               struct ntb_store *store)
 {
         struct ntb_main_context_source *quit_source;
+        struct ntb_main_context_source *prune_source;
         bool quit = false;
 
         if (option_group)
@@ -540,6 +584,10 @@ run_main_loop(struct ntb_network *nw,
 
         ntb_store_start(store);
 
+        prune_source = ntb_main_context_add_timer(NULL,
+                                                  1 /* minute */,
+                                                  prune_timeout_cb,
+                                                  store);
         quit_source = ntb_main_context_add_quit(NULL, quit_cb, &quit);
 
         do {
@@ -551,6 +599,7 @@ run_main_loop(struct ntb_network *nw,
         ntb_log("Exiting...");
 
         ntb_main_context_remove_source(quit_source);
+        ntb_main_context_remove_source(prune_source);
 }
 
 static int
@@ -582,6 +631,9 @@ run_network(void)
                         ret = EXIT_FAILURE;
                 } else {
                         ntb_store_set_default(store);
+                        ntb_store_set_retention(store,
+                                                (int64_t) option_retention_mb * 1024 * 1024,
+                                                (int) option_retention_days);
 
                         if (!set_log_file(store, &error)) {
                                 fprintf(stderr, "%s\n", error->message);

@@ -6,6 +6,7 @@ import re
 import uuid
 import pathlib
 import socket
+import sqlite3
 import struct
 import subprocess
 import sys
@@ -43,6 +44,24 @@ def wait_file(path):
     raise AssertionError("relay did not persist valid object")
 
 
+def wait_object(root,object_hash):
+    deadline=time.monotonic()+8
+    while time.monotonic()<deadline:
+        db=root/"objects.sqlite"
+        if db.exists():
+            connection=sqlite3.connect(db)
+            try:
+                row=connection.execute("SELECT payload FROM objects WHERE hash=?",(object_hash,)).fetchone()
+            except sqlite3.OperationalError:
+                row=None
+            finally:
+                connection.close()
+            if row:
+                return row[0]
+        time.sleep(.05)
+    raise AssertionError("relay did not persist valid object")
+
+
 with tempfile.TemporaryDirectory() as temporary:
     root=pathlib.Path(temporary)
     listener=socket.socket()
@@ -59,7 +78,7 @@ with tempfile.TemporaryDirectory() as temporary:
         nonce+=1
     payload=struct.pack(">Q",nonce)+rest
     object_hash=sha(sha(payload))[:32]
-    process=subprocess.Popen([sys.argv[1],os.environ.get("YNOTBIT_TEST_NODE_FLAG","--node"),"-D",str(root),"-b","-B","-e","-L","-i","-P",f"127.0.0.1:{port}"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    process=subprocess.Popen([sys.argv[1],os.environ.get("YNOTBIT_TEST_NODE_FLAG","--node"),"-D",str(root),"-b","-B","-e","-L","-i","-R","64","-A","1","-P",f"127.0.0.1:{port}"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     try:
         peer,_=listener.accept();peer.settimeout(8)
         command,data=receive(peer)
@@ -103,8 +122,16 @@ with tempfile.TemporaryDirectory() as temporary:
             time.sleep(.05)
         assert pending>=1,"status.json should report the outstanding getdata as pending"
         peer.sendall(frame("object",payload))
-        saved=root/"objects"/object_hash.hex();wait_file(saved)
-        assert saved.read_bytes()==payload
+        assert wait_object(root,object_hash)==payload
+        status={}
+        stats_deadline=time.monotonic()+8
+        while time.monotonic()<stats_deadline:
+            status=json.loads((root/"status.json").read_text())
+            if status.get("objects",0)>=1:
+                break
+            time.sleep(.05)
+        assert status.get("objects",0)>=1 and status.get("object_bytes",0)>=len(payload),\
+            "status.json reports the stored objects and their size"
         settle_deadline=time.monotonic()+8
         pending=1
         while time.monotonic()<settle_deadline:

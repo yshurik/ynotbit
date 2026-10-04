@@ -12,6 +12,8 @@ int ntb_network_connected_peers(struct ntb_network *);
 int ntb_network_pending_objects(struct ntb_network *);
 int ntb_network_submit(struct ntb_network *, const uint8_t *, size_t);
 void ntb_network_offer(struct ntb_network *, const uint8_t *);
+struct ntb_store;
+void ntb_store_object_stats(struct ntb_store *, int64_t *, int64_t *);
 #ifdef __cplusplus
 }
 #endif

@@ -195,6 +195,19 @@ void
 ntb_store_cancel_task(struct ntb_store_cookie *cookie);
 
 void
+ntb_store_set_retention(struct ntb_store *store,
+                        int64_t max_bytes,
+                        int max_days);
+
+void
+ntb_store_prune_objects(struct ntb_store *store);
+
+void
+ntb_store_object_stats(struct ntb_store *store,
+                       int64_t *count,
+                       int64_t *bytes);
+
+void
 ntb_store_free(struct ntb_store *store);
 
 #endif /* NTB_STORE_H */

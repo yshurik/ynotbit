@@ -86,6 +86,7 @@ if(WIN32)
  list(FILTER NTB_ENGINE_SOURCES EXCLUDE REGEX "/(ntb-ipc[a-z-]*|ntb-sendmail|ntb-keygen)\\.c$")
 endif()
 add_library(notbit_engine STATIC ${NTB_ENGINE_SOURCES})
+target_link_libraries(notbit_engine PUBLIC ntb_object_db)
 set_target_properties(notbit_engine PROPERTIES C_STANDARD 11)
 # The network user agent, "/ynotbit:<version>/".
 target_compile_definitions(notbit_engine PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
@@ -161,6 +162,10 @@ set_tests_properties(relay-download PROPERTIES TIMEOUT 60)
 endif()
 add_test(NAME gui-smoke COMMAND ynotbit --offline --data-dir ${CMAKE_CURRENT_BINARY_DIR}/smoke-node --smoke-test)
 set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+# A zero or non-numeric retention limit must stop the node, not delete everything.
+add_test(NAME node-rejects-bad-retention COMMAND ynotbit --node -D ${CMAKE_CURRENT_BINARY_DIR}/bad-retention-node -R 0)
+add_test(NAME node-rejects-bad-age COMMAND ynotbit --node -D ${CMAKE_CURRENT_BINARY_DIR}/bad-retention-node -A x)
+set_tests_properties(node-rejects-bad-retention node-rejects-bad-age PROPERTIES WILL_FAIL TRUE TIMEOUT 10)
 qt_add_executable(desktop_tests tests/widgets_tests.cpp src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/appearance.cpp src/appearance.h
  assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
