@@ -159,24 +159,16 @@ qint64 Cache::bytes() const {
 }
 void Cache::prune(qint64 maximumBytes, int days) {
     auto used = bytes(), threshold = QDateTime::currentSecsSinceEpoch() - qint64(days) * 86400;
+    // Once over the cap, free a margin below it: pruning to exactly the cap
+    // would run again on the very next arrival.
+    const auto target = used > maximumBytes ? maximumBytes * 95 / 100 : maximumBytes;
+    // discover()'s walk is deliberately left running: a file deleted under it
+    // just fails to open and is skipped. Restarting it here made every prune at
+    // the size cap re-examine the same first entries, starving the rest.
     Stmt s(db_, "SELECT seq,hash,size,received FROM objects ORDER BY seq");
-    bool discardedDiscovery = false;
     while (s.row()) {
-        if (used <= maximumBytes && s.num(3) >= threshold)
+        if (used <= target && s.num(3) >= threshold)
             break;
-        if (!discardedDiscovery) {
-            // A paused discover() iterator may still be walking entries we're
-            // about to delete (and won't see files written after it started
-            // either); drop it only once we actually have something to prune,
-            // not unconditionally on every call. tick() calls prune() on every
-            // ~750ms cycle, and the common case is nothing needs pruning --
-            // resetting discovery_ regardless forced it to restart its scan
-            // from the beginning every cycle, capping real progress through a
-            // large objects/ directory at whatever one discover() call
-            // examines, no matter how many cycles ran.
-            discovery_.reset();
-            discardedDiscovery = true;
-        }
         auto path = root_ + "/objects/" + s.text(1);
         if (QFile::exists(path) && !QFile::remove(path))
             continue;

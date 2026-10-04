@@ -136,6 +136,38 @@ int main(int argc, char **argv) {
                 "a write (and thus an mtime change) and a routine no-op prune() before "
                 "almost every call, instead of "
                 "resetting progress back toward the same prefix each time");
+        // At the size cap, a full node's normal state, nearly every new object
+        // pushes the cache over and prune() deletes something. prune() used to
+        // restart discovery whenever it deleted, so each call re-examined the
+        // same first entries and later ones waited indefinitely: on a real node
+        // a just-sent broadcast took 12-20 minutes to be registered.
+        Cache full(d.filePath("full-node"));
+        auto writeFullObject = [&](int n) {
+            auto obj = Protocol::encodeMessage(sender, vault.identities()[0],
+                                               "Full " + QString::number(n), "x", 1700000000);
+            QFile f(d.filePath("full-node/objects/") + Protocol::inventoryHash(obj));
+            require(f.open(QIODevice::WriteOnly), "full object file");
+            f.write(obj);
+        };
+        for (int n = 0; n < 300; ++n)
+            writeFullObject(n);
+        const auto onDisk = [&] {
+            return QDir(d.filePath("full-node/objects")).entryList(QDir::Files).size();
+        };
+        int fullCalls = 0;
+        while (full.count() < onDisk() && fullCalls < 30) {
+            full.discover();
+            full.prune(full.bytes() - 1, 90); // just over the cap: prune() must delete
+            ++fullCalls;
+        }
+        require(full.count() == onDisk(),
+                "a prune() that deletes objects does not restart discovery: everything on "
+                "disk is registered within a bounded number of calls at the size cap");
+        const auto cap = full.bytes() - 1;
+        full.prune(cap, 90);
+        require(full.bytes() <= cap * 95 / 100,
+                "over the size cap, prune() frees down to 95% so the next arrival does not "
+                "trigger it again");
         std::cout << "PASS: locked collection, unlock scan, expired local object, crash replay, "
                      "cache relocation, retention, malformed ECIES, discover() under write churn\n";
     } catch (const std::exception &e) {
