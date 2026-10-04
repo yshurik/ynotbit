@@ -1,5 +1,4 @@
 #include "session.h"
-#include "portable_relay.h"
 #include "appearance.h"
 #include "desktop_window.h"
 #include "i18n.h"
@@ -12,8 +11,6 @@ extern "C" {
 int ntb_daemon(int argc, char **argv);
 }
 int main(int argc, char **argv) {
-    if (argc > 1 && std::string(argv[1]) == "--qt-node")
-        return bm::runPortableRelay(argc, argv);
     if (argc > 1 && std::string(argv[1]) == "--node")
         return ntb_daemon(argc - 1, argv + 1);
     QApplication app(argc, argv);

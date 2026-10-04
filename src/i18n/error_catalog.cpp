@@ -7,7 +7,6 @@ static const char *const kErrorCatalog[] = {
     QT_TRANSLATE_NOOP("bm::Errors", "Network cache database error"),
     QT_TRANSLATE_NOOP("bm::Errors", "Invalid outgoing object"),
     QT_TRANSLATE_NOOP("bm::Errors", "Cannot queue encrypted object for relay"),
-    QT_TRANSLATE_NOOP("bm::Errors", "Cannot read a cached object; checkpoint preserved"),
     QT_TRANSLATE_NOOP("bm::Errors", "Letter is too large"),
     QT_TRANSLATE_NOOP("bm::Errors", "Only drafts can be edited"),
     QT_TRANSLATE_NOOP("bm::Errors", "This letter already has a delivery record; duplicate it as a new draft"),
@@ -35,7 +34,6 @@ static const char *const kErrorCatalog[] = {
     QT_TRANSLATE_NOOP("bm::Errors", "Identity not found"),
     QT_TRANSLATE_NOOP("bm::Errors", "Cannot open mailbox"),
     QT_TRANSLATE_NOOP("bm::Errors", "Cannot apply mailbox key"),
-    QT_TRANSLATE_NOOP("bm::Errors", "Invalid relay packet"),
     QT_TRANSLATE_NOOP("bm::Errors", "Unsupported proof-of-work requirement"),
     QT_TRANSLATE_NOOP("bm::Errors", "Invalid proof-of-work object"),
     QT_TRANSLATE_NOOP("bm::Errors", "Invalid identity address"),
@@ -58,6 +56,4 @@ static const char *const kErrorCatalog[] = {
     QT_TRANSLATE_NOOP("bm::Errors", "Invalid expected chan address"),
     QT_TRANSLATE_NOOP("bm::Errors", "The shared phrase does not match that chan address"),
     QT_TRANSLATE_NOOP("bm::Errors", "Channel already joined"),
-    QT_TRANSLATE_NOOP("bm::Errors", "A retained object cannot be read; scan checkpoint preserved"),
-    QT_TRANSLATE_NOOP("bm::Errors", "Cached object exceeds protocol limit"),
 };

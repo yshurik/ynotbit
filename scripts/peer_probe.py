@@ -170,7 +170,7 @@ async def loopback(args):
         servers.append(await asyncio.start_server(handler, '127.0.0.1', 0))
     ports = [s.sockets[0].getsockname()[1] for s in servers]
     with tempfile.TemporaryDirectory(prefix='ynotbit-peer-probe-') as root:
-        command = [args.binary, args.backend, '-D', root, '-b', '-B', '-L', '-i', '-e']
+        command = [args.binary, '--node', '-D', root, '-b', '-B', '-L', '-i', '-e']
         for port in ports:
             command += ['-P', f'127.0.0.1:{port}']
         with tempfile.TemporaryFile() as log:
@@ -229,7 +229,7 @@ async def loopback(args):
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
             log.seek(0)
-            Path(args.output).write_text(json.dumps({'backend': args.backend, 'returncode': process.returncode, 'samples': rows, 'log': log.read().decode(errors='replace')}, indent=2)+'\n')
+            Path(args.output).write_text(json.dumps({'backend': '--node', 'returncode': process.returncode, 'samples': rows, 'log': log.read().decode(errors='replace')}, indent=2)+'\n')
 
 
 async def control(args):
@@ -249,7 +249,7 @@ async def control(args):
     if not endpoints:
         raise ValueError('Survey has no successful peers')
     with tempfile.TemporaryDirectory(prefix='ynotbit-live-control-') as root, tempfile.TemporaryFile() as log:
-        command = [args.binary, args.backend, '-D', root, '-b', '-B', '-e', '-i']
+        command = [args.binary, '--node', '-D', root, '-b', '-B', '-e', '-i']
         for endpoint in endpoints:
             command += ['-P', endpoint]
         process = await asyncio.create_subprocess_exec(*command, stdout=log, stderr=log)
@@ -284,13 +284,11 @@ def main():
     p.add_argument('--output', required=True)
     p = sub.add_parser('loopback')
     p.add_argument('--binary', required=True)
-    p.add_argument('--backend', choices=['--node', '--qt-node'], default='--node')
     p.add_argument('--duration', type=int, default=45)
     p.add_argument('--reject', action='store_true', help='Send fatal errors on seven stalled connections')
     p.add_argument('--output', required=True)
     p = sub.add_parser('control', help='Temporary real relay; receives public objects but publishes no local messages')
     p.add_argument('--binary', required=True)
-    p.add_argument('--backend', choices=['--node', '--qt-node'], default='--node')
     p.add_argument('--survey', required=True)
     p.add_argument('--duration', type=int, default=180)
     p.add_argument('--output', required=True)

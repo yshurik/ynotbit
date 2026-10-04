@@ -79,7 +79,7 @@ else()
 endif()
 
 file(GLOB NTB_ENGINE_SOURCES CONFIGURE_DEPENDS ${NTB}/src/*.c)
-list(FILTER NTB_ENGINE_SOURCES EXCLUDE REGEX "/(main|dump-store|ntb-object-db|ntb-address|ntb-base58|ntb-buffer|ntb-util|ntb-error|ntb-ecc|ntb-proto|ntb-netaddress)\\.c$")
+list(FILTER NTB_ENGINE_SOURCES EXCLUDE REGEX "/(main|ntb-object-db|ntb-address|ntb-base58|ntb-buffer|ntb-util|ntb-error|ntb-ecc|ntb-proto|ntb-netaddress)\\.c$")
 if(WIN32)
  # The IPC socket and its sendmail/keygen clients are Unix-socket only, and
  # ynotbit uses neither: the desktop talks to the engine through files.
@@ -109,7 +109,7 @@ else()
 endif()
 qt_add_executable(ynotbit MACOSX_BUNDLE src/main.cpp src/i18n.cpp src/i18n.h src/quoting.cpp src/quoting.h src/letter_document.cpp src/letter_document.h src/letter_document.cpp src/letter_document.h src/session.cpp src/session.h
  assets/icons.qrc
- src/portable_relay.cpp src/portable_relay.h src/appearance.cpp src/appearance.h
+ src/appearance.cpp src/appearance.h
  src/desktop_window.cpp src/desktop_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/message_model.cpp src/message_model.h
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(ynotbit PRIVATE third_party/qrcodegen)
@@ -149,16 +149,11 @@ find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
  add_test(NAME peer-connectivity COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/peer_connectivity_test.py $<TARGET_FILE:ynotbit>)
  set_tests_properties(peer-connectivity PROPERTIES TIMEOUT 180)
- add_test(NAME qt-peer-connectivity COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/peer_connectivity_test.py $<TARGET_FILE:ynotbit>)
- set_tests_properties(qt-peer-connectivity PROPERTIES ENVIRONMENT "YNOTBIT_TEST_NODE_FLAG=--qt-node" TIMEOUT 180)
  add_test(NAME relay COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/relay_test.py $<TARGET_FILE:ynotbit>)
  add_test(NAME relay-verack-first COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/relay_test.py $<TARGET_FILE:ynotbit> verack-first)
  set_tests_properties(relay relay-verack-first PROPERTIES TIMEOUT 60)
 add_test(NAME relay-download COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/relay_download_test.py $<TARGET_FILE:ynotbit>)
 set_tests_properties(relay-download PROPERTIES TIMEOUT 60)
- add_test(NAME qt-relay COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/relay_test.py $<TARGET_FILE:ynotbit>)
- add_test(NAME qt-relay-verack-first COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/relay_test.py $<TARGET_FILE:ynotbit> verack-first)
- set_tests_properties(qt-relay qt-relay-verack-first PROPERTIES ENVIRONMENT "YNOTBIT_TEST_NODE_FLAG=--qt-node" TIMEOUT 60)
 endif()
 add_test(NAME gui-smoke COMMAND ynotbit --offline --data-dir ${CMAKE_CURRENT_BINARY_DIR}/smoke-node --smoke-test)
 set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
