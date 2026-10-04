@@ -911,7 +911,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
 From: %2
 Date: %1
 </source>
-        <translation type="unfinished"></translation>
+        <translation>-------- 转发的邮件 --------&#xa;发件人: %2&#xa;日期: %1&#xa;</translation>
     </message>
 </context>
 <context>

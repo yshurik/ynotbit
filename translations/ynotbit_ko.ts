@@ -911,7 +911,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
 From: %2
 Date: %1
 </source>
-        <translation type="unfinished"></translation>
+        <translation>-------- 전달된 메시지 --------&#xa;보낸사람: %2&#xa;날짜: %1&#xa;</translation>
     </message>
 </context>
 <context>

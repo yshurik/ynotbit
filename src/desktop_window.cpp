@@ -1010,9 +1010,12 @@ class Composer : public QDialog {
         body_->setAcceptRichText(false);
         body_->onInsertImageRequested = [this](const QString &path) {
             if (path.isEmpty()) {
+                QFileDialog::Options options;
+                if (qApp->testAttribute(Qt::AA_DontUseNativeDialogs))
+                    options |= QFileDialog::DontUseNativeDialog;
                 const auto selectedPath = QFileDialog::getOpenFileName(
                     this, DesktopWindow::tr("Insert picture"), {},
-                    DesktopWindow::tr("Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)"));
+                    DesktopWindow::tr("Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)"), nullptr, options);
                 if (!selectedPath.isEmpty())
                     insertPicture(selectedPath);
             } else {

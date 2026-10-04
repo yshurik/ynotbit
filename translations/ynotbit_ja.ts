@@ -911,7 +911,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
 From: %2
 Date: %1
 </source>
-        <translation type="unfinished"></translation>
+        <translation>-------- 転送されたメッセージ --------&#xa;差出人: %2&#xa;日付: %1&#xa;</translation>
     </message>
 </context>
 <context>
