@@ -1012,8 +1012,7 @@ class Composer : public QDialog {
             if (path.isEmpty()) {
                 const auto selectedPath = QFileDialog::getOpenFileName(
                     this, DesktopWindow::tr("Insert picture"), {},
-                    DesktopWindow::tr("Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)"),
-                    nullptr, QFileDialog::DontUseNativeDialog);
+                    DesktopWindow::tr("Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)"));
                 if (!selectedPath.isEmpty())
                     insertPicture(selectedPath);
             } else {
