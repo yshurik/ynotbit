@@ -27,12 +27,12 @@ class AddressHighlighter : public QSyntaxHighlighter {
     explicit AddressHighlighter(QTextDocument *document) : QSyntaxHighlighter(document) {}
     void highlightBlock(const QString &text) override;
 };
+// A letter's document: it shows the pictures the letter carries (data: URLs,
+// see letterImage) and never fetches anything.
 class SafeDocument : public QTextDocument {
   public:
     using QTextDocument::QTextDocument;
-    QVariant loadResource(int, const QUrl &) override {
-        return QVariant::fromValue(QImage());
-    }
+    QVariant loadResource(int type, const QUrl &name) override;
 };
 // A letter view: a text browser that draws quote bars.
 class LetterView : public QTextBrowser {

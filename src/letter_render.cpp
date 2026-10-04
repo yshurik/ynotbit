@@ -149,6 +149,15 @@ void paintQuoteBars(QTextEdit *edit) {
                        quoteColor(i));
     }
 }
+QVariant SafeDocument::loadResource(int type, const QUrl &name) {
+    auto image = type == QTextDocument::ImageResource ? letterImage(name) : QImage();
+    // As wide as the text at most, and never wider than a comfortable column.
+    const int room = textWidth() > 0 ? int(textWidth() - 2 * documentMargin()) : 640;
+    const int width = qBound(160, room, 640);
+    if (image.width() > width)
+        image = image.scaledToWidth(width, Qt::SmoothTransformation);
+    return QVariant::fromValue(image);
+}
 // Markdown with quoting, through loadLetter: each quote level is read on its
 // own, so quoted headings, lists and emphasis keep their quote.
 void renderMarkdown(QTextBrowser *body, const QString &text) {
@@ -158,7 +167,9 @@ void renderMarkdown(QTextBrowser *body, const QString &text) {
     for (auto block = doc->begin(); block.isValid(); block = block.next()) {
         QTextCursor blockCursor(block);
         auto format = block.blockFormat();
-        format.setLineHeight(130, QTextBlockFormat::ProportionalHeight);
+        // Airy lines for text; a picture's line is as tall as the picture.
+        if (!block.text().contains(QChar::ObjectReplacementCharacter))
+            format.setLineHeight(130, QTextBlockFormat::ProportionalHeight);
         format.setBottomMargin(block.textList() ? 3 : 10);
         blockCursor.setBlockFormat(format);
     }
@@ -177,8 +188,12 @@ bool looksLikeMarkdown(const QString &source) {
     static const QRegularExpression bold("\\*\\*[^*\\n]+\\*\\*|__[^_\\n]+__");
     static const QRegularExpression code("`[^`\\n]+`");
     static const QRegularExpression link("\\[[^\\]\\n]+\\]\\([^)\\n]+\\)");
+    // A picture by reference, ![alt][img1], or PyBitmessage's <img src="data:...">.
+    static const QRegularExpression image("!\\[[^\\]\\n]*\\]\\[[^\\]\\n]+\\]|<img\\b[^>]*\\bsrc\\s*=\\s*[\"']data:image/",
+                                          QRegularExpression::CaseInsensitiveOption);
     return heading.match(text).hasMatch() || bold.match(text).hasMatch() ||
-           code.match(text).hasMatch() || link.match(text).hasMatch();
+           code.match(text).hasMatch() || link.match(text).hasMatch() ||
+           image.match(text).hasMatch();
 }
 BodyView detectBodyView(const QString &subject, const QString &text) {
     if (looksCryptic(subject, text))

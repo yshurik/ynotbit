@@ -878,6 +878,26 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>%1 found</source>
         <translation>已找到 %1 封</translation>
     </message>
+    <message>
+        <source>That file is not a picture ynotbit can read.</source>
+        <translation>该文件不是 ynotbit 能读取的图片。</translation>
+    </message>
+    <message>
+        <source>No room left in this letter for that picture.</source>
+        <translation>这封信已没有空间放下那张图片。</translation>
+    </message>
+    <message>
+        <source>Insert a picture. It travels inside the letter, made small enough to fit.</source>
+        <translation>插入图片。图片会随信一起发送，并缩小到能放进信中。</translation>
+    </message>
+    <message>
+        <source>Insert picture</source>
+        <translation>插入图片</translation>
+    </message>
+    <message>
+        <source>Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</source>
+        <translation>图片 (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

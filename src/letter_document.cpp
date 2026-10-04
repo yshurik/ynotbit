@@ -1,5 +1,8 @@
 #include "letter_document.h"
 #include "quoting.h"
+#include <QBuffer>
+#include <QImageReader>
+#include <QPainter>
 #include <QRegularExpression>
 #include <QStringList>
 #include <QTextBlock>
@@ -7,6 +10,7 @@
 #include <QTextDocument>
 #include <QTextDocumentFragment>
 #include <QTextList>
+#include <QUrl>
 
 namespace bm {
 namespace {
@@ -123,7 +127,10 @@ bool isSignatureDelimiter(const QTextBlock &block) {
 }
 // Inline formatting as Markdown. Spaces at a fragment's edges stay outside
 // the markers ("** bold **" would not parse).
-QString inlineMarkdown(const QTextBlock &block, const QString &continuation) {
+// Pictures become references ("![alt][img2]"); images collects their data:
+// URLs, written as definitions at the end of the letter.
+QString inlineMarkdown(const QTextBlock &block, const QString &continuation,
+                       QStringList &images) {
     const bool heading = block.blockFormat().headingLevel() > 0;
     QString out;
     for (auto it = block.begin(); !it.atEnd(); ++it) {
@@ -132,6 +139,23 @@ QString inlineMarkdown(const QTextBlock &block, const QString &continuation) {
             continue;
         auto text = fragment.text();
         const auto format = fragment.charFormat();
+        if (format.isImageFormat()) {
+            const auto image = format.toImageFormat();
+            const auto url = image.name();
+            if (!url.startsWith("data:", Qt::CaseInsensitive))
+                continue;
+            auto alt = image.property(QTextFormat::ImageAltText).toString();
+            static const QRegularExpression unsafe("[\\[\\]\\n\\x{2028}]");
+            alt.remove(unsafe);
+            if (!images.contains(url))
+                images << url;
+            const auto reference =
+                "![" + alt + "][img" + QString::number(images.indexOf(url) + 1) + ']';
+            // Identical pictures side by side share one fragment.
+            for (int i = 0; i < text.size(); ++i)
+                out += reference;
+            continue;
+        }
         int lead = 0, trail = 0;
         while (lead < text.size() && text[lead].isSpace())
             ++lead;
@@ -187,7 +211,9 @@ void loadLetter(QTextDocument *doc, const QString &body, bool markdown) {
             insertRun(doc, cursor, first, runLevel, run.join('\n'), markdown);
         run.clear();
     };
-    for (const auto &line : normalizeQuotes(body).split('\n')) {
+    const auto source = markdown ? inlineImageReferences(normalizeQuotes(body))
+                                 : normalizeQuotes(body);
+    for (const auto &line : source.split('\n')) {
         int length = 0;
         const int level = quoteLevel(line, &length);
         // A blank line between two quoted runs belongs to neither.
@@ -205,7 +231,7 @@ void loadLetter(QTextDocument *doc, const QString &body, bool markdown) {
     doc->clearUndoRedoStacks();
 }
 QString letterMarkdown(const QTextDocument *doc) {
-    QStringList out;
+    QStringList out, images;
     QTextBlock previous;
     bool fenced = false;
     for (auto block = doc->begin(); block.isValid(); block = block.next()) {
@@ -263,7 +289,7 @@ QString letterMarkdown(const QTextDocument *doc) {
                 prefix += indent + marker;
                 continuation += indent + QString(marker.size(), ' ');
             }
-            auto text = inlineMarkdown(block, continuation);
+            auto text = inlineMarkdown(block, continuation, images);
             // A paragraph that happens to start like Markdown syntax.
             static const QRegularExpression looksLikeSyntax("^(#{1,6}\\s|>|[-*+]\\s|\\d+[.)]\\s)");
             if (prefix == quote && looksLikeSyntax.match(text).hasMatch())
@@ -276,6 +302,140 @@ QString letterMarkdown(const QTextDocument *doc) {
         out << QString(blockQuoteLevel(previous), '>') + (blockQuoteLevel(previous) ? " " : "") + "```";
     while (!out.isEmpty() && out.last().trimmed().isEmpty())
         out.removeLast();
+    if (!images.isEmpty()) {
+        out << QString();
+        for (int i = 0; i < images.size(); ++i)
+            out << "[img" + QString::number(i + 1) + "]: " + images[i];
+    }
     return out.join('\n');
+}
+namespace {
+const QStringList kImageTypes{"image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"};
+const QList<QByteArray> kImageFormats{"png", "jpeg", "gif", "webp"};
+// Comfortably more than one Bitmessage object carries.
+constexpr qsizetype kMaxImageUrl = 400 * 1024;
+QString referenceLabel(const QString &label) {
+    return label.simplified().toCaseFolded();
+}
+} // namespace
+QImage letterImage(const QUrl &url) {
+    if (url.scheme().compare("data", Qt::CaseInsensitive) != 0)
+        return {};
+    const auto spec = url.path(QUrl::FullyDecoded);
+    const auto comma = spec.indexOf(',');
+    if (comma < 0 || spec.size() > kMaxImageUrl)
+        return {};
+    const auto header = spec.left(comma).toLower().split(';');
+    if (!kImageTypes.contains(header.first().trimmed()) || !header.contains("base64"))
+        return {};
+    auto decoded = QByteArray::fromBase64Encoding(spec.mid(comma + 1).toLatin1(),
+                                                  QByteArray::AbortOnBase64DecodingErrors);
+    if (!decoded)
+        return {};
+    QBuffer buffer(&*decoded);
+    QImageReader reader(&buffer);
+    reader.setDecideFormatFromContent(true);
+    // The declared type is only a label: what decodes is decided by the bytes,
+    // and only the raster formats above (never SVG) are accepted.
+    if (!reader.canRead() || !kImageFormats.contains(reader.format()))
+        return {};
+    const auto size = reader.size();
+    if (!size.isValid() || size.width() > kMaxLetterImageSide ||
+        size.height() > kMaxLetterImageSide)
+        return {};
+    reader.setAutoTransform(true);
+    return reader.read();
+}
+QString imageDataUrl(const QImage &source, int budget) {
+    if (source.isNull() || budget <= 0)
+        return {};
+    // No larger than a reading pane shows anyway.
+    QSize size = source.size().scaled(1600, 1600, Qt::KeepAspectRatio).boundedTo(source.size());
+    bool transparent = source.hasAlphaChannel();
+    const auto fits = [budget](const QByteArray &bytes, const char *type) {
+        return qsizetype(strlen(type)) + 13 + (bytes.size() + 2) / 3 * 4 <= budget;
+    };
+    const auto url = [](const QByteArray &bytes, const char *type) {
+        return QString("data:%1;base64,%2").arg(type, QString::fromLatin1(bytes.toBase64()));
+    };
+    while (size.width() >= 16 && size.height() >= 16) {
+        // Redrawn onto a fresh image: nothing of the original file (EXIF,
+        // location, comments) comes along.
+        QImage image(size, transparent ? QImage::Format_ARGB32 : QImage::Format_RGB32);
+        image.fill(transparent ? Qt::transparent : Qt::white);
+        {
+            QPainter painter(&image);
+            painter.setRenderHint(QPainter::SmoothPixmapTransform);
+            painter.drawImage(QRect(QPoint(), size), source);
+        }
+        const auto encode = [&image](const char *format, int quality) {
+            QByteArray bytes;
+            QBuffer buffer(&bytes);
+            buffer.open(QIODevice::WriteOnly);
+            image.save(&buffer, format, quality);
+            return bytes;
+        };
+        // Lossless when it fits (drawings, screenshots); else a photo's JPEG.
+        if (const auto png = encode("PNG", -1); fits(png, "image/png"))
+            return url(png, "image/png");
+        if (transparent) {
+            transparent = false; // a white background, then try again as a photo
+            continue;
+        }
+        for (int quality : {85, 75, 60, 45})
+            if (const auto jpeg = encode("JPEG", quality); fits(jpeg, "image/jpeg"))
+                return url(jpeg, "image/jpeg");
+        size = size * 3 / 4;
+    }
+    return {};
+}
+QString inlineImageReferences(const QString &markdown) {
+    static const QRegularExpression definition(
+        "^ {0,3}\\[([^\\]\\n]+)\\]:[ \\t]*<?(data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=]+)>?"
+        "[ \\t]*$");
+    QHash<QString, QString> urls;
+    QStringList kept;
+    for (const auto &line : markdown.split('\n')) {
+        int length = 0;
+        quoteLevel(line, &length);
+        if (const auto match = definition.match(line.mid(length)); match.hasMatch()) {
+            urls.insert(referenceLabel(match.captured(1)), match.captured(2));
+            continue;
+        }
+        kept << line;
+    }
+    // PyBitmessage's HTML pictures: <img src="data:...">, shown only for data:
+    // URLs there too (its safe HTML parser).
+    static const QRegularExpression html(
+        "<img\\b[^>]*?\\bsrc\\s*=\\s*[\"'](data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=\\s]+)"
+        "[\"'][^>]*>",
+        QRegularExpression::CaseInsensitiveOption);
+    auto text = kept.join('\n');
+    for (auto match = html.match(text); match.hasMatch(); match = html.match(text, match.capturedStart() + 1)) {
+        auto url = match.captured(1);
+        url.remove(QRegularExpression("\\s"));
+        text.replace(match.capturedStart(), match.capturedLength(), "![image](" + url + ')');
+    }
+    // Qt's Markdown import drops a picture with no alt text.
+    static const QRegularExpression noAlt("!\\[\\]\\(");
+    text.replace(noAlt, "![image](");
+    if (urls.isEmpty())
+        return text;
+    // ![alt][label], ![alt][] and ![alt]; not ![alt](inline).
+    static const QRegularExpression reference("!\\[([^\\]\\n]*)\\](?:\\[([^\\]\\n]*)\\])?(?!\\()");
+    QString out;
+    qsizetype done = 0;
+    for (auto it = reference.globalMatch(text); it.hasNext();) {
+        const auto match = it.next();
+        const auto label = match.captured(2).isEmpty() ? match.captured(1) : match.captured(2);
+        const auto url = urls.value(referenceLabel(label));
+        if (url.isEmpty())
+            continue;
+        out += text.mid(done, match.capturedStart() - done);
+        const auto alt = match.captured(1).isEmpty() ? QStringLiteral("image") : match.captured(1);
+        out += "![" + alt + "](" + url + ')';
+        done = match.capturedEnd();
+    }
+    return out + text.mid(done);
 }
 } // namespace bm

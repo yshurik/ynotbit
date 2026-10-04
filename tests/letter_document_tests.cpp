@@ -2,7 +2,10 @@
 // headings, lists and line breaks survive at every quote level.
 #include "letter_document.h"
 #include "quoting.h"
+#include <QBuffer>
 #include <QGuiApplication>
+#include <QPainter>
+#include <QUrl>
 #include <QTextBlock>
 #include <QTextDocument>
 #include <QTextList>
@@ -30,6 +33,23 @@ static QTextBlock blockWith(const QTextDocument &doc, const QString &text) {
         if (block.text().contains(text))
             return block;
     return {};
+}
+// The pictures in a document, by their URLs (one entry per picture).
+static QStringList pictures(const QTextDocument &doc) {
+    QStringList urls;
+    for (auto block = doc.begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it)
+            if (it.fragment().charFormat().isImageFormat())
+                for (int i = 0; i < it.fragment().length(); ++i)
+                    urls << it.fragment().charFormat().toImageFormat().name();
+    return urls;
+}
+static QString pngUrl(const QImage &image) {
+    QByteArray bytes;
+    QBuffer buffer(&bytes);
+    buffer.open(QIODevice::WriteOnly);
+    image.save(&buffer, "PNG");
+    return "data:image/png;base64," + QString::fromLatin1(bytes.toBase64());
 }
 int main(int argc, char **argv) {
     QGuiApplication app(argc, argv);
@@ -75,6 +95,65 @@ int main(int argc, char **argv) {
         }
         require(!roundTrip("x\n\n\\-- sent by ynotbit").contains("\\--"),
                 "an older draft's escaped \"\\--\" signature is not sent escaped again");
+        {
+            // Pictures: made for a letter, read back, and nothing else loads.
+            QImage photo(900, 600, QImage::Format_RGB32);
+            {
+                QPainter p(&photo);
+                QLinearGradient sky(0, 0, 900, 600);
+                sky.setColorAt(0, Qt::darkBlue);
+                sky.setColorAt(1, QColor(250, 180, 90));
+                p.fillRect(photo.rect(), sky);
+                for (int i = 0; i < 300; ++i)
+                    p.fillRect((i * 37) % 900, (i * 53) % 600, 9, 9, QColor::fromHsv(i % 360, 200, 200));
+            }
+            photo.setText("GPSPosition", "52.37N 4.89E secret");
+            const auto url = bm::imageDataUrl(photo, 40000);
+            require(url.startsWith("data:image/") && url.size() <= 40000,
+                    "a picture is shrunk to fit its budget");
+            require(!QByteArray::fromBase64(url.section(',', 1).toLatin1()).contains("secret"),
+                    "the picture's metadata is left behind");
+            const auto back = bm::letterImage(QUrl(url));
+            require(!back.isNull() && qAbs(back.width() * 2 - back.height() * 3) <= 6,
+                    "it decodes again, the same shape");
+            require(bm::imageDataUrl(photo, 100).isEmpty(), "no room, no picture");
+            QImage icon(32, 32, QImage::Format_ARGB32);
+            icon.fill(Qt::transparent);
+            QPainter(&icon).fillRect(8, 8, 16, 16, Qt::red);
+            require(bm::imageDataUrl(icon, 40000).startsWith("data:image/png;"),
+                    "a small transparent picture stays PNG");
+            require(bm::letterImage(QUrl("https://example.com/a.png")).isNull(),
+                    "a remote picture is never loaded");
+            const QByteArray svg = "<svg xmlns='http://www.w3.org/2000/svg' width='9' height='9'/>";
+            require(bm::letterImage(QUrl("data:image/svg+xml;base64," + svg.toBase64())).isNull() &&
+                        bm::letterImage(QUrl("data:image/png;base64," + svg.toBase64())).isNull(),
+                    "SVG is refused, whatever the label says");
+            require(bm::letterImage(QUrl(pngUrl(QImage(5000, 8, QImage::Format_RGB32)))).isNull(),
+                    "an oversized picture is refused before it is decoded");
+            require(bm::letterImage(QUrl("data:image/png;base64,@@not base64@@")).isNull(),
+                    "broken base64 is refused");
+
+            // In a letter: by reference, the definitions at the end.
+            const auto dot = pngUrl(icon);
+            const QString letter = "Look:\n\n![sky][img1]\n\n-- \nsent by ynotbit\n\n[img1]: " + dot;
+            same(letter, "a letter with a picture round trips, the definition at the end");
+            QTextDocument doc;
+            bm::loadLetter(&doc, letter, true);
+            require(pictures(doc) == QStringList{dot}, "the reference becomes the picture");
+            bm::loadLetter(&doc, "> On Monday, Bob wrote:\n> ![x][A]\n> [a]: " + dot, true);
+            require(pictures(doc) == QStringList{dot} &&
+                        bm::blockQuoteLevel(blockWith(doc, QString(QChar::ObjectReplacementCharacter))) == 1,
+                    "a quoted picture resolves its definition, labels case-insensitive");
+            bm::loadLetter(&doc, "Inline ![a](" + dot + ") and again ![b](" + dot + ")", true);
+            require(bm::letterMarkdown(&doc) ==
+                        "Inline ![a][img1] and again ![b][img1]\n\n[img1]: " + dot,
+                    "inline pictures are written by reference, one definition per picture");
+            bm::loadLetter(&doc, "Sun:\n\n<img src=\"" + dot + "\"/>", true);
+            require(pictures(doc) == QStringList{dot}, "PyBitmessage's <img src=data:> shows too");
+            bm::loadLetter(&doc, "![x](https://example.com/a.png)", true);
+            require(bm::letterImage(QUrl(pictures(doc).value(0))).isNull(),
+                    "a remote picture in Markdown stays unloaded");
+        }
         std::cout << "PASS: letter document round trips (plain, quoted Markdown, nesting, lists, code)\n";
         return 0;
     } catch (const std::exception &e) {

@@ -878,6 +878,26 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>%1 found</source>
         <translation>%1 件見つかりました</translation>
     </message>
+    <message>
+        <source>That file is not a picture ynotbit can read.</source>
+        <translation>このファイルは ynotbit で読み込める画像ではありません。</translation>
+    </message>
+    <message>
+        <source>No room left in this letter for that picture.</source>
+        <translation>この手紙には、その画像を入れる余裕がありません。</translation>
+    </message>
+    <message>
+        <source>Insert a picture. It travels inside the letter, made small enough to fit.</source>
+        <translation>画像を挿入します。画像は手紙の中に収まるよう小さくして送られます。</translation>
+    </message>
+    <message>
+        <source>Insert picture</source>
+        <translation>画像を挿入</translation>
+    </message>
+    <message>
+        <source>Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</source>
+        <translation>画像 (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

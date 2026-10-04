@@ -960,6 +960,72 @@ int main(int argc, char **argv) {
             require(!bigDraft.isEmpty() &&
                         session.message(bigDraft)["body"].toString().size() == 270000,
                     "a letter over the network limit is still kept as a draft");
+            // --- Pictures: inserted from a file, carried in the letter, shown
+            // by the reader. ---
+            const auto picturePath = temp.filePath("holiday.png");
+            {
+                QImage photo(2400, 1600, QImage::Format_RGB32);
+                QPainter p(&photo);
+                for (int y = 0; y < 1600; y += 40)
+                    for (int x = 0; x < 2400; x += 40)
+                        p.fillRect(x, y, 40, 40, QColor::fromHsv((x + y) % 360, 180, 220));
+                require(photo.save(picturePath), "write a picture to insert");
+            }
+            QString pictureDraft;
+            QTimer::singleShot(30, &window, [&] {
+                auto dialog = window.findChild<QDialog *>("composer");
+                dialog->findChild<QLineEdit *>("recipientField")->setText(address);
+                dialog->findChild<QLineEdit *>("subjectField")->setText("With a picture");
+                auto body = dialog->findChild<QTextEdit *>("bodyField");
+                QTest::keyClicks(body, "From the beach:");
+                auto pick = new QTimer(dialog);
+                QObject::connect(pick, &QTimer::timeout, dialog, [pick, picturePath] {
+                    if (auto d = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
+                        pick->stop();
+                        d->selectFile(picturePath);
+                        static_cast<QDialog *>(d)->accept();
+                    }
+                });
+                pick->start(10);
+                dialog->findChild<QToolButton *>("insertPictureButton")->click();
+                bool shown = false;
+                for (auto block = body->document()->begin(); block.isValid(); block = block.next())
+                    for (auto it = block.begin(); !it.atEnd(); ++it)
+                        if (it.fragment().charFormat().isImageFormat())
+                            shown = !body->document()
+                                         ->resource(QTextDocument::ImageResource,
+                                                    QUrl(it.fragment().charFormat().toImageFormat().name()))
+                                         .value<QImage>()
+                                         .isNull();
+                require(shown, "the inserted picture shows in the composer");
+                dialog->findChild<QPushButton *>("saveDraftButton")->click();
+            });
+            window.compose();
+            QCoreApplication::processEvents();
+            for (auto m : session.messagePage("Drafts", {}, 0, 100))
+                if (m.toMap()["subject"].toString() == "With a picture")
+                    pictureDraft = m.toMap()["hash"].toString();
+            {
+                const auto saved = session.message(pictureDraft)["body"].toString();
+                require(saved.startsWith("From the beach:\n\n![holiday][img1]") &&
+                            saved.contains("\n[img1]: data:image/") &&
+                            bm::letterTextBytes("With a picture", saved) <= bm::kMaxLetterText,
+                        "the picture is saved by reference, shrunk to fit one letter");
+                folders->setCurrentRow(1);
+                QCoreApplication::processEvents();
+                window.selectMessage(pictureDraft);
+                auto reader = window.findChild<QTextBrowser *>("readerBody");
+                const auto url = saved.section("[img1]: ", 1).trimmed();
+                require(!reader->toPlainText().contains("data:image") &&
+                            !reader->document()
+                                 ->resource(QTextDocument::ImageResource, QUrl(url))
+                                 .value<QImage>()
+                                 .isNull(),
+                        "the reader shows the picture, not its base64");
+                session.moveLetter(pictureDraft, "Trash");
+                folders->setCurrentRow(0);
+                QCoreApplication::processEvents();
+            }
             // A draft that can't be saved doesn't trap its window.
             bool asked = false;
             QTimer::singleShot(30, &window, [&] {

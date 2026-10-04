@@ -731,6 +731,42 @@ class Composer : public QDialog {
         // headings and joins the line after a list into the list.
         return bodyEdited_ ? letterMarkdown(body_->document()) : original_;
     }
+    // A picture from a file, into the letter at the cursor as a data: URL
+    // (see imageDataUrl): shrunk to the room the letter has left.
+    void insertPicture(const QString &path) {
+        QImageReader reader(path);
+        reader.setAutoTransform(true);
+        const auto image = reader.read();
+        const auto fail = [this](const QString &text) {
+            status_->setText(text);
+            status_->show();
+        };
+        if (image.isNull()) {
+            fail(DesktopWindow::tr("That file is not a picture ynotbit can read."));
+            return;
+        }
+        // Room for the reference and its definition line besides the URL.
+        const int room = kMaxLetterText - letterTextBytes(subject_->text(), bodyText()) - 64;
+        const auto url = imageDataUrl(image, qMin(room, kMaxLetterPicture));
+        if (url.isEmpty()) {
+            fail(DesktopWindow::tr("No room left in this letter for that picture."));
+            return;
+        }
+        QTextImageFormat format;
+        format.setName(url);
+        format.setProperty(QTextFormat::ImageAltText, QFileInfo(path).completeBaseName());
+        auto cursor = body_->textCursor();
+        cursor.beginEditBlock();
+        if (!cursor.block().text().isEmpty())
+            cursor.insertBlock();
+        cursor.insertImage(format);
+        cursor.insertBlock();
+        cursor.endEditBlock();
+        body_->setTextCursor(cursor);
+        body_->setFocus();
+        status_->hide();
+        measure();
+    }
     // The letter's size against the most one Bitmessage object carries; a
     // letter over it can still be kept as a draft, but not sent.
     void measure() {
@@ -1096,6 +1132,21 @@ class Composer : public QDialog {
             QDialog::done(QDialog::Rejected);
         });
         discard->setObjectName("discardButton");
+        auto picture = new QToolButton;
+        picture->setObjectName("insertPictureButton");
+        picture->setIcon(icon("image"));
+        picture->setIconSize(QSize(22, 22));
+        picture->setAutoRaise(true);
+        picture->setToolTip(DesktopWindow::tr("Insert a picture. It travels inside the letter, "
+                                              "made small enough to fit."));
+        connect(picture, &QToolButton::clicked, this, [this] {
+            const auto path = QFileDialog::getOpenFileName(
+                this, DesktopWindow::tr("Insert picture"), {},
+                DesktopWindow::tr("Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)"));
+            if (!path.isEmpty())
+                insertPicture(path);
+        });
+        actions->addWidget(picture);
         actions->addStretch();
         // The size meter, beside the buttons it decides about.
         auto meter = new QWidget;
