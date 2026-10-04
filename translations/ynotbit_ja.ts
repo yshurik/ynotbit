@@ -898,6 +898,21 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</source>
         <translation>画像 (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</translation>
     </message>
+    <message>
+        <source>Insert image...</source>
+        <translation>画像を挿入...</translation>
+    </message>
+    <message>
+        <source>Forward</source>
+        <translation>転送</translation>
+    </message>
+    <message>
+        <source>-------- Forwarded message --------
+From: %2
+Date: %1
+</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -912,10 +927,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Cannot queue encrypted object for relay</source>
         <translation>暗号化オブジェクトをリレー用のキューに追加できません</translation>
-    </message>
-    <message>
-        <source>Cannot read a cached object; checkpoint preserved</source>
-        <translation>キャッシュのオブジェクトを読み取れません。チェックポイントは保持されます</translation>
     </message>
     <message>
         <source>Letter is too large</source>
@@ -1018,10 +1029,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>ID が見つかりません</translation>
     </message>
     <message>
-        <source>Invalid relay packet</source>
-        <translation>無効なリレーパケット</translation>
-    </message>
-    <message>
         <source>Unsupported proof-of-work requirement</source>
         <translation>対応していないプルーフ・オブ・ワーク要件</translation>
     </message>
@@ -1110,14 +1117,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>すでにこのチャンネルに参加しています</translation>
     </message>
     <message>
-        <source>A retained object cannot be read; scan checkpoint preserved</source>
-        <translation>保持中のオブジェクトを読み取れません。スキャンのチェックポイントは保持されます</translation>
-    </message>
-    <message>
-        <source>Cached object exceeds protocol limit</source>
-        <translation>キャッシュのオブジェクトがプロトコルの上限を超えています</translation>
-    </message>
-    <message>
         <source>Cannot open mailbox</source>
         <translation>メールボックスを開けません</translation>
     </message>
@@ -1153,10 +1152,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>%1 からの投稿はまだありません。ブロードキャストはネットワーク上に最大28日間保持されます。</translation>
     </message>
     <message>
-        <source>Add to contacts</source>
-        <translation>連絡先に追加</translation>
-    </message>
-    <message>
         <source>Open link</source>
         <translation>リンクを開く</translation>
     </message>
@@ -1189,6 +1184,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Unread</source>
         <translation>未読</translation>
+    </message>
+    <message>
+        <source>Forward</source>
+        <translation>転送</translation>
     </message>
 </context>
 <context>

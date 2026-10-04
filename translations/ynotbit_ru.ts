@@ -898,6 +898,21 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</source>
         <translation>Изображения (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</translation>
     </message>
+    <message>
+        <source>Insert image...</source>
+        <translation>Вставить изображение...</translation>
+    </message>
+    <message>
+        <source>Forward</source>
+        <translation>Переслать</translation>
+    </message>
+    <message>
+        <source>-------- Forwarded message --------
+From: %2
+Date: %1
+</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -912,10 +927,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Cannot queue encrypted object for relay</source>
         <translation>Не удалось поставить зашифрованный объект в очередь на ретрансляцию</translation>
-    </message>
-    <message>
-        <source>Cannot read a cached object; checkpoint preserved</source>
-        <translation>Не удалось прочитать объект из кэша; контрольная точка сохранена</translation>
     </message>
     <message>
         <source>Letter is too large</source>
@@ -1018,10 +1029,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>Идентичность не найдена</translation>
     </message>
     <message>
-        <source>Invalid relay packet</source>
-        <translation>Недопустимый пакет ретранслятора</translation>
-    </message>
-    <message>
         <source>Unsupported proof-of-work requirement</source>
         <translation>Неподдерживаемое требование к доказательству работы</translation>
     </message>
@@ -1110,14 +1117,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>Вы уже в этом канале</translation>
     </message>
     <message>
-        <source>A retained object cannot be read; scan checkpoint preserved</source>
-        <translation>Сохранённый объект не читается; контрольная точка проверки сохранена</translation>
-    </message>
-    <message>
-        <source>Cached object exceeds protocol limit</source>
-        <translation>Объект в кэше превышает предел протокола</translation>
-    </message>
-    <message>
         <source>Cannot open mailbox</source>
         <translation>Не удаётся открыть почтовый ящик</translation>
     </message>
@@ -1153,10 +1152,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>От %1 пока нет публикаций. Рассылки хранятся в сети до 28 дней.</translation>
     </message>
     <message>
-        <source>Add to contacts</source>
-        <translation>Добавить в контакты</translation>
-    </message>
-    <message>
         <source>Open link</source>
         <translation>Открыть ссылку</translation>
     </message>
@@ -1189,6 +1184,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Unread</source>
         <translation>Не прочитано</translation>
+    </message>
+    <message>
+        <source>Forward</source>
+        <translation>Переслать</translation>
     </message>
 </context>
 <context>

@@ -23,7 +23,7 @@ class DesktopWindow : public QMainWindow {
     Q_OBJECT
   public:
     explicit DesktopWindow(Session &session);
-    void compose(QVariantMap letter = {}, bool reply = false);
+    void compose(QVariantMap letter = {}, bool reply = false, bool forward = false);
     void selectMessage(const QString &id);
 
   private:

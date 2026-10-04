@@ -307,7 +307,6 @@ void FeedView::trackReading() {
 }
 QWidget *FeedView::makeCard(const QVariantMap &letter) {
     const auto hash = letter["hash"].toString();
-    const auto from = letter["from"].toString();
     const auto subject = letter["subject"].toString();
     const auto text = letter["body"].toString();
     const auto storedAt = QDateTime::fromSecsSinceEpoch(letter["storedAt"].toLongLong());
@@ -322,24 +321,17 @@ QWidget *FeedView::makeCard(const QVariantMap &letter) {
 
     auto head = new QHBoxLayout;
     head->setSpacing(8);
-    auto icon = new QLabel;
-    icon->setFixedSize(32, 32);
-    icon->setPixmap(identiconPixmap(from, 32));
-    head->addWidget(icon);
-    const auto name = session_.nameFor(from);
-    auto sender = new QLabel(name.isEmpty() ? from : name);
-    sender->setObjectName("feedSender");
-    sender->setTextFormat(Qt::PlainText);
-    sender->setStyleSheet("font-weight:600;");
-    if (name.isEmpty())
-        sender->setFont(addressFont());
-    sender->setToolTip(from);
-    head->addWidget(sender);
-    auto addContact = actionButton("feedAddContact", "personAdd", tr("Add to contacts"), dark_);
-    addContact->setVisible(session_.contactProblem(from).isEmpty() && !session_.isContact(from));
-    connect(addContact, &QToolButton::clicked, this, [this, from] { emit addContactRequested(from); });
-    head->addWidget(addContact);
-    head->addStretch();
+    if (!subject.trimmed().isEmpty()) {
+        auto title = new QLabel(subject);
+        title->setObjectName("feedSubject");
+        title->setTextFormat(Qt::PlainText);
+        title->setWordWrap(true);
+        title->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        title->setStyleSheet("font-size:15px;font-weight:600;");
+        head->addWidget(title, 1);
+    } else {
+        head->addStretch();
+    }
     auto dot = new QLabel;
     dot->setObjectName("feedUnreadDot");
     dot->setFixedSize(8, 8);
@@ -351,18 +343,11 @@ QWidget *FeedView::makeCard(const QVariantMap &letter) {
     time->setToolTip(letter["received"].toString());
     time->setStyleSheet("color:palette(mid);font-size:12px;");
     head->addWidget(time);
+    // Ensure time and dot are top-aligned if the subject spans multiple lines
+    head->setAlignment(dot, Qt::AlignTop);
+    head->setAlignment(time, Qt::AlignTop);
     column->addLayout(head);
     setUnread(card, letter["unread"].toBool());
-
-    if (!subject.trimmed().isEmpty()) {
-        auto title = new QLabel(subject);
-        title->setObjectName("feedSubject");
-        title->setTextFormat(Qt::PlainText);
-        title->setWordWrap(true);
-        title->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        title->setStyleSheet("font-size:15px;font-weight:600;");
-        column->addWidget(title);
-    }
     auto body = new FeedBody;
     body->setObjectName("feedBody");
     // A feed reads in proportional type: plain posts as the reader's Text view
@@ -376,12 +361,32 @@ QWidget *FeedView::makeCard(const QVariantMap &letter) {
                                       .arg(url.toDisplayString())) == QMessageBox::Yes)
             QDesktopServices::openUrl(url);
     });
-    column->addWidget(body);
+    auto bodyRow = new QHBoxLayout;
+    bodyRow->setSpacing(8);
+    bodyRow->addWidget(body, 1);
 
-    auto actions = new QHBoxLayout;
-    actions->setSpacing(2);
+    auto actionsWidget = new QWidget;
+    actionsWidget->setObjectName("feedActions");
+    QString borderColor = dark_ ? "#4d4d4d" : "#e5e5e5";
+    QString hoverColor = dark_ ? "#555555" : "#dddddd";
+    actionsWidget->setStyleSheet(
+        QString("QWidget#feedActions{border:1px solid %1;border-radius:7px;background:transparent;} "
+                "QWidget#feedActions QToolButton{border:0;border-radius:0;background:transparent;padding:4px;margin:0;} "
+                "QWidget#feedActions QToolButton:hover{background:%2;} "
+                "QWidget#feedActions QToolButton#feedReply{border-top-left-radius:6px;border-top-right-radius:6px;border-bottom:1px solid %1;} "
+                "QWidget#feedActions QToolButton#feedForward{border-bottom:1px solid %1;} "
+                "QWidget#feedActions QToolButton#feedCopy{border-bottom:1px solid %1;} "
+                "QWidget#feedActions QToolButton#feedOpen{border-bottom:1px solid %1;} "
+                "QWidget#feedActions QToolButton#feedArchive{border-bottom:1px solid %1;} "
+                "QWidget#feedActions QToolButton#feedTrash{border-bottom-left-radius:6px;border-bottom-right-radius:6px;} ")
+            .arg(borderColor, hoverColor));
+    auto actions = new QVBoxLayout(actionsWidget);
+    actions->setContentsMargins(0, 0, 0, 0);
+    actions->setSpacing(0);
     auto reply = actionButton("feedReply", "reply", tr("Reply privately"), dark_);
     connect(reply, &QToolButton::clicked, this, [this, letter] { emit replyRequested(letter); });
+    auto forwardBtn = actionButton("feedForward", "forward", tr("Forward"), dark_);
+    connect(forwardBtn, &QToolButton::clicked, this, [this, letter] { emit forwardRequested(letter); });
     auto copy = actionButton("feedCopy", "copy", tr("Copy text"), dark_);
     connect(copy, &QToolButton::clicked, this, [subject, text] {
         QApplication::clipboard()->setText(subject.trimmed().isEmpty() ? text
@@ -401,12 +406,15 @@ QWidget *FeedView::makeCard(const QVariantMap &letter) {
             card->hide();
             card->deleteLater(); // its own button is mid-click
         });
-    for (auto b : {reply, copy, open})
+    for (auto b : {reply, forwardBtn, copy, open, archive, trash}) {
         actions->addWidget(b);
-    actions->addStretch();
-    actions->addWidget(archive);
-    actions->addWidget(trash);
-    column->addLayout(actions);
+    }
+    auto actionsColumn = new QVBoxLayout;
+    actionsColumn->setContentsMargins(0, 0, 0, 0);
+    actionsColumn->addWidget(actionsWidget);
+    actionsColumn->addStretch();
+    bodyRow->addLayout(actionsColumn);
+    column->addLayout(bodyRow);
     return card;
 }
 } // namespace bm

@@ -443,7 +443,19 @@ class MarkdownEdit : public QTextEdit {
         setTextCursor(c);
     }
 
+    std::function<void(const QString &)> onInsertImageRequested;
+
   protected:
+    void contextMenuEvent(QContextMenuEvent *event) override {
+        std::unique_ptr<QMenu> menu(createStandardContextMenu());
+        menu->addSeparator();
+        auto action = menu->addAction(DesktopWindow::tr("Insert image..."));
+        connect(action, &QAction::triggered, this, [this] {
+            if (onInsertImageRequested)
+                onInsertImageRequested(QString());
+        });
+        menu->exec(event->globalPos());
+    }
     void paintEvent(QPaintEvent *event) override {
         QTextEdit::paintEvent(event);
         paintQuoteBars(this);
@@ -456,6 +468,17 @@ class MarkdownEdit : public QTextEdit {
         QTextEdit::keyPressEvent(event);
     }
     void insertFromMimeData(const QMimeData *source) override {
+        if (source->hasUrls()) {
+            bool handled = false;
+            for (const auto &url : source->urls()) {
+                if (url.isLocalFile()) {
+                    if (onInsertImageRequested)
+                        onInsertImageRequested(url.toLocalFile());
+                    handled = true;
+                }
+            }
+            if (handled) return;
+        }
         if (source->hasText() && looksLikeMarkdown(source->text())) {
             insertMarkdown(source->text());
             return;
@@ -596,6 +619,12 @@ class HeadingGutter : public QWidget {
             action->setShortcutContext(Qt::WidgetShortcut);
             action->setShortcutVisibleInContextMenu(true);
         }
+        menu->addSeparator();
+        auto insertImageAction = menu->addAction(DesktopWindow::tr("Insert image..."), editor_, [this] {
+            if (editor_->onInsertImageRequested)
+                editor_->onInsertImageRequested(QString());
+        });
+        insertImageAction->setObjectName("insertImage");
         menu->addSeparator();
         const struct {
             QString name, text;
@@ -810,11 +839,11 @@ class Composer : public QDialog {
     }
 
   public:
-    Composer(Session &session, QVariantMap letter, bool reply, bool dark, QWidget *parent)
+    Composer(Session &session, QVariantMap letter, bool reply, bool forward, bool dark, QWidget *parent)
         : QDialog(parent), session_(session) {
         setObjectName("composer");
         setWindowIcon(windowLogo());
-        setWindowTitle(reply ? DesktopWindow::tr("Reply") : DesktopWindow::tr("Write a letter"));
+        setWindowTitle(forward ? DesktopWindow::tr("Forward") : (reply ? DesktopWindow::tr("Reply") : DesktopWindow::tr("Write a letter")));
         resize(740, 650);
         setModal(true);
         // The letter's envelope: the same striped border as the reader, for
@@ -923,7 +952,7 @@ class Composer : public QDialog {
         to_->setObjectName("recipientField");
         to_->setPlaceholderText(DesktopWindow::tr("Recipient · BM-address"));
         to_->setText(reply ? letter[letter["folder"] == "Channels" ? "to" : "from"].toString()
-                           : letter["to"].toString());
+                           : (forward ? QString() : letter["to"].toString()));
         // The address book, three ways: completion on name or address, a
         // picker listing every contact, and a line naming the recipient.
         const auto contacts = session.contacts();
@@ -971,20 +1000,34 @@ class Composer : public QDialog {
         auto subject = singleLine(letter["subject"].toString());
         if (reply && !subject.startsWith("Re:", Qt::CaseInsensitive))
             subject.prepend("Re: ");
+        if (forward && !subject.startsWith("Fwd:", Qt::CaseInsensitive))
+            subject.prepend("Fwd: ");
         subject_->setText(subject);
         fields->addWidget(fieldLabel(DesktopWindow::tr("Subject:"), subject_), 2, 0);
         fields->addWidget(subject_, 2, 1);
         body_ = new MarkdownEdit;
         body_->setObjectName("bodyField");
         body_->setAcceptRichText(false);
+        body_->onInsertImageRequested = [this](const QString &path) {
+            if (path.isEmpty()) {
+                const auto selectedPath = QFileDialog::getOpenFileName(
+                    this, DesktopWindow::tr("Insert picture"), {},
+                    DesktopWindow::tr("Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)"),
+                    nullptr, QFileDialog::DontUseNativeDialog);
+                if (!selectedPath.isEmpty())
+                    insertPicture(selectedPath);
+            } else {
+                insertPicture(path);
+            }
+        };
         auto doc = new SafeDocument(body_);
         body_->setDocument(doc);
         new AddressHighlighter(doc);
-        original_ = reply ? QString() : letter["body"].toString();
-        const bool freshLetter = reply || letter["hash"].toString().isEmpty();
+        original_ = (reply || forward) ? QString() : letter["body"].toString();
+        const bool freshLetter = (reply || forward) || letter["hash"].toString().isEmpty();
         if (freshLetter)
             original_ = "-- \nsent by ynotbit";
-        if (reply) {
+        if (reply || forward) {
             // Email style: room to write at the top, the signature, then the
             // letter being answered, quoted with ">" under an attribution --
             // all in this one editor. Quoted paragraphs can be edited but keep
@@ -994,7 +1037,10 @@ class Composer : public QDialog {
             const auto when = QDateTime::fromSecsSinceEpoch(letter["storedAt"].toLongLong());
             original_ += "\n\n" +
                          quoteForReply(letter["body"].toString(),
-                                       DesktopWindow::tr("On %1, %2 wrote:")
+                                       forward 
+                                         ? DesktopWindow::tr("-------- Forwarded message --------\nFrom: %2\nDate: %1\n")
+                                           .arg(formatDateTime(when), name.isEmpty() ? from : name)
+                                         : DesktopWindow::tr("On %1, %2 wrote:")
                                            .arg(formatDateTime(when), name.isEmpty() ? from : name));
         }
         loadLetter(doc, original_, true);
@@ -1132,22 +1178,7 @@ class Composer : public QDialog {
             QDialog::done(QDialog::Rejected);
         });
         discard->setObjectName("discardButton");
-        auto picture = new QToolButton;
-        picture->setObjectName("insertPictureButton");
-        picture->setIcon(icon("image"));
-        picture->setIconSize(QSize(22, 22));
-        picture->setAutoRaise(true);
-        picture->setToolTip(DesktopWindow::tr("Insert a picture. It travels inside the letter, "
-                                              "made small enough to fit."));
-        connect(picture, &QToolButton::clicked, this, [this] {
-            const auto path = QFileDialog::getOpenFileName(
-                this, DesktopWindow::tr("Insert picture"), {},
-                DesktopWindow::tr("Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)"),
-                nullptr, QFileDialog::DontUseNativeDialog);
-            if (!path.isEmpty())
-                insertPicture(path);
-        });
-        actions->addWidget(picture);
+
         actions->addStretch();
         // The size meter, beside the buttons it decides about.
         auto meter = new QWidget;
@@ -1174,6 +1205,16 @@ class Composer : public QDialog {
         meterLayout->addWidget(sizeLabel_, 0, Qt::AlignRight);
         meterLayout->addWidget(sizeBar_, 0, Qt::AlignRight);
         actions->addWidget(meter, 0, Qt::AlignVCenter);
+        auto addMenuBtn = new QPushButton("+");
+        addMenuBtn->setObjectName("addMenuButton");
+        auto addMenu = new QMenu(addMenuBtn);
+        auto insertImageAction = addMenu->addAction(DesktopWindow::tr("Insert image..."));
+        connect(insertImageAction, &QAction::triggered, this, [this] {
+            if (body_->onInsertImageRequested)
+                body_->onInsertImageRequested(QString());
+        });
+        addMenuBtn->setMenu(addMenu);
+        actions->addWidget(addMenuBtn);
         button(DesktopWindow::tr("Save a draft"), actions, [this] {
             dirty_ = true;
             if (save())
@@ -1190,8 +1231,8 @@ class Composer : public QDialog {
         });
         send->setObjectName("sendButton");
         send->setDefault(true);
-        id_ = reply ? QString() : letter["hash"].toString();
-        dirty_ = reply;
+        id_ = (reply || forward) ? QString() : letter["hash"].toString();
+        dirty_ = (reply || forward);
         auto changed = [this] {
             dirty_ = true;
             autosave_.start(800);
@@ -1454,7 +1495,12 @@ class MessageWindow : public QDialog {
         toolbar->setIconSize(QSize(22, 22));
         auto replyAction = toolbar->addAction(materialIcon("reply", iconColor(dark)), DesktopWindow::tr("Reply"));
         connect(replyAction, &QAction::triggered, this, [this] {
-            Composer dialog(session_, letter_, true, dark_, this);
+            Composer dialog(session_, letter_, true, false, dark_, this);
+            dialog.exec();
+        });
+        auto forwardAction = toolbar->addAction(materialIcon("forward", iconColor(dark)), DesktopWindow::tr("Forward"));
+        connect(forwardAction, &QAction::triggered, this, [this] {
+            Composer dialog(session_, letter_, false, true, dark_, this);
             dialog.exec();
         });
         auto archiveAction = toolbar->addAction(materialIcon("archive", iconColor(dark)), DesktopWindow::tr("Archive"));
@@ -1820,7 +1866,10 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     connect(editAction, &QAction::triggered, this, [this] { compose(selected_); });
     auto replyAction = toolbar->addAction(materialIcon("reply", iconColor(appearance_.dark())), tr("Reply"));
     replyAction->setObjectName("replyAction");
-    connect(replyAction, &QAction::triggered, this, [this] { compose(selected_, true); });
+    connect(replyAction, &QAction::triggered, this, [this] { compose(selected_, true, false); });
+    auto forwardAction = toolbar->addAction(materialIcon("forward", iconColor(appearance_.dark())), tr("Forward"));
+    forwardAction->setObjectName("forwardAction");
+    connect(forwardAction, &QAction::triggered, this, [this] { compose(selected_, false, true); });
     auto archiveAction =
         toolbar->addAction(materialIcon("archive", iconColor(appearance_.dark())), tr("Archive"));
     archiveAction->setObjectName("archiveAction");
@@ -2134,7 +2183,9 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     feed_->hide();
     read->addWidget(feed_, 1);
     connect(feed_, &FeedView::replyRequested, this,
-            [this](const QVariantMap &letter) { compose(letter, true); });
+            [this](const QVariantMap &letter) { compose(letter, true, false); });
+    connect(feed_, &FeedView::forwardRequested, this,
+            [this](const QVariantMap &letter) { compose(letter, false, true); });
     connect(feed_, &FeedView::openRequested, this, [this](const QVariantMap &letter) {
         (new MessageWindow(session_, letter, appearance_.dark(), this))->show();
     });
@@ -2445,6 +2496,7 @@ void DesktopWindow::updateTheme() {
     const auto color = iconColor(dark);
     findChild<QAction *>("editAction")->setIcon(materialIcon("edit", color));
     findChild<QAction *>("replyAction")->setIcon(materialIcon("reply", color));
+    findChild<QAction *>("forwardAction")->setIcon(materialIcon("forward", color));
     findChild<QAction *>("archiveAction")->setIcon(materialIcon("archive", color));
     findChild<QAction *>("trashAction")->setIcon(materialIcon("delete", color));
     findChild<QAction *>("openWindowAction")->setIcon(materialIcon("openWindow", color));
@@ -2900,12 +2952,12 @@ void DesktopWindow::renderSelectedBody() {
     showLetterBody(body_, subject_, selected_["subject"].toString(), selected_["body"].toString(),
                    static_cast<ViewSwitch *>(viewSwitch_)->mode());
 }
-void DesktopWindow::compose(QVariantMap letter, bool reply) {
+void DesktopWindow::compose(QVariantMap letter, bool reply, bool forward) {
     if (!session_.mailboxOpen())
         return;
     if (letter.contains("hash"))
         letter = session_.message(letter["hash"].toString());
-    Composer dialog(session_, letter, reply, appearance_.dark(), this);
+    Composer dialog(session_, letter, reply, forward, appearance_.dark(), this);
     dialog.exec();
 }
 void DesktopWindow::showVaultPasswordFor(QString path, bool create) {

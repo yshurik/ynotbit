@@ -898,6 +898,21 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</source>
         <translation>그림 (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</translation>
     </message>
+    <message>
+        <source>Insert image...</source>
+        <translation>이미지 삽입...</translation>
+    </message>
+    <message>
+        <source>Forward</source>
+        <translation>전달</translation>
+    </message>
+    <message>
+        <source>-------- Forwarded message --------
+From: %2
+Date: %1
+</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -912,10 +927,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Cannot queue encrypted object for relay</source>
         <translation>암호화된 객체를 릴레이 대기열에 넣을 수 없습니다</translation>
-    </message>
-    <message>
-        <source>Cannot read a cached object; checkpoint preserved</source>
-        <translation>캐시된 객체를 읽을 수 없습니다. 체크포인트는 유지됩니다</translation>
     </message>
     <message>
         <source>Letter is too large</source>
@@ -1018,10 +1029,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>신원을 찾을 수 없습니다</translation>
     </message>
     <message>
-        <source>Invalid relay packet</source>
-        <translation>잘못된 릴레이 패킷</translation>
-    </message>
-    <message>
         <source>Unsupported proof-of-work requirement</source>
         <translation>지원하지 않는 작업 증명 요구 사항</translation>
     </message>
@@ -1110,14 +1117,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>이미 참여한 채널입니다</translation>
     </message>
     <message>
-        <source>A retained object cannot be read; scan checkpoint preserved</source>
-        <translation>보존된 객체를 읽을 수 없습니다. 검사 체크포인트는 유지됩니다</translation>
-    </message>
-    <message>
-        <source>Cached object exceeds protocol limit</source>
-        <translation>캐시된 객체가 프로토콜 한도를 넘습니다</translation>
-    </message>
-    <message>
         <source>Cannot open mailbox</source>
         <translation>메일함을 열 수 없습니다</translation>
     </message>
@@ -1153,10 +1152,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>%1의 게시물이 아직 없습니다. 브로드캐스트는 네트워크에 최대 28일간 보관됩니다.</translation>
     </message>
     <message>
-        <source>Add to contacts</source>
-        <translation>연락처에 추가</translation>
-    </message>
-    <message>
         <source>Open link</source>
         <translation>링크 열기</translation>
     </message>
@@ -1189,6 +1184,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Unread</source>
         <translation>읽지 않음</translation>
+    </message>
+    <message>
+        <source>Forward</source>
+        <translation>전달</translation>
     </message>
 </context>
 <context>

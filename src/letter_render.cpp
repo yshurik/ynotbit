@@ -286,6 +286,16 @@ QIcon materialIcon(const QString &name, QColor color) {
         arrow.lineTo(11, 26);
         arrow.lineTo(18, 33);
         p.drawPath(arrow);
+    } else if (name == "forward") {
+        QPainterPath path;
+        path.moveTo(12, 13);
+        path.cubicTo(12, 23, 21, 26, 28, 26);
+        p.drawPath(path);
+        QPainterPath arrow;
+        arrow.moveTo(22, 19);
+        arrow.lineTo(29, 26);
+        arrow.lineTo(22, 33);
+        p.drawPath(arrow);
     } else if (name == "archive") {
         p.drawRoundedRect(8, 9, 24, 7, 2, 2);
         p.drawRect(10, 16, 20, 15);

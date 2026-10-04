@@ -39,6 +39,7 @@ class FeedView : public QWidget {
 
   signals:
     void replyRequested(const QVariantMap &letter);
+    void forwardRequested(const QVariantMap &letter);
     void openRequested(const QVariantMap &letter);
     void addContactRequested(const QString &address);
 

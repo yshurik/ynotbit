@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="uk">
 <context>
@@ -92,7 +92,7 @@
         <translation>Публічний лист</translation>
     </message>
     <message>
-        <source>Encrypted to the channel's shared address. Anyone who knows the channel phrase can read it.</source>
+        <source>Encrypted to the channel&apos;s shared address. Anyone who knows the channel phrase can read it.</source>
         <translation>Зашифровано для спільної адреси каналу. Прочитати зможе будь-хто, хто знає фразу каналу.</translation>
     </message>
     <message>
@@ -100,7 +100,7 @@
         <translation>Зашифровано для одного одержувача. Прочитати зможе лише він.</translation>
     </message>
     <message>
-        <source>Sent as the channel to everyone subscribed. Your own identity isn't revealed.</source>
+        <source>Sent as the channel to everyone subscribed. Your own identity isn&apos;t revealed.</source>
         <translation>Надсилається від імені каналу всім підписникам. Ваша ідентичність не розкривається.</translation>
     </message>
     <message>
@@ -193,7 +193,7 @@
     </message>
     <message>
         <source>Name</source>
-        <translation>Ім'я</translation>
+        <translation>Ім&apos;я</translation>
     </message>
     <message>
         <source>How this person appears in ynotbit</source>
@@ -391,7 +391,7 @@
     </message>
     <message>
         <source>Filter by name or address</source>
-        <translation>Фільтр за ім'ям або адресою</translation>
+        <translation>Фільтр за ім&apos;ям або адресою</translation>
     </message>
     <message>
         <source>File</source>
@@ -475,7 +475,7 @@
     </message>
     <message>
         <source>Inspect retained objects again</source>
-        <translation>Знову перевірити збережені об'єкти</translation>
+        <translation>Знову перевірити збережені об&apos;єкти</translation>
     </message>
     <message>
         <source>Appearance</source>
@@ -567,7 +567,7 @@
     </message>
     <message>
         <source>cached objects: %1 · %2 MB</source>
-        <translation>об'єктів у кеші: %1 · %2 МБ</translation>
+        <translation>об&apos;єктів у кеші: %1 · %2 МБ</translation>
     </message>
     <message>
         <source>Join or create a chan</source>
@@ -807,11 +807,11 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>Завелике для надсилання: Bitmessage передає не більше %1 на лист. Скоротіть його або обріжте цитату.</translation>
     </message>
     <message>
-        <source>The letter's size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
-        <translation>Розмір листа відносно максимуму одного об'єкта Bitmessage. Більші листи також довше готуються (доказ роботи).</translation>
+        <source>The letter&apos;s size, out of the most one Bitmessage object carries. Larger letters also take longer to prepare (proof of work).</source>
+        <translation>Розмір листа відносно максимуму одного об&apos;єкта Bitmessage. Більші листи також довше готуються (доказ роботи).</translation>
     </message>
     <message>
-        <source>This draft couldn't be saved: %1</source>
+        <source>This draft couldn&apos;t be saved: %1</source>
         <translation>Не вдалося зберегти чернетку: %1</translation>
     </message>
     <message>
@@ -898,6 +898,21 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</source>
         <translation>Зображення (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</translation>
     </message>
+    <message>
+        <source>Insert image...</source>
+        <translation>Вставити зображення...</translation>
+    </message>
+    <message>
+        <source>Forward</source>
+        <translation>Переслати</translation>
+    </message>
+    <message>
+        <source>-------- Forwarded message --------
+From: %2
+Date: %1
+</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -907,15 +922,11 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Invalid outgoing object</source>
-        <translation>Неприпустимий вихідний об'єкт</translation>
+        <translation>Неприпустимий вихідний об&apos;єкт</translation>
     </message>
     <message>
         <source>Cannot queue encrypted object for relay</source>
-        <translation>Не вдалося поставити зашифрований об'єкт у чергу на ретрансляцію</translation>
-    </message>
-    <message>
-        <source>Cannot read a cached object; checkpoint preserved</source>
-        <translation>Не вдалося прочитати об'єкт із кешу; контрольну точку збережено</translation>
+        <translation>Не вдалося поставити зашифрований об&apos;єкт у чергу на ретрансляцію</translation>
     </message>
     <message>
         <source>Letter is too large</source>
@@ -975,7 +986,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Invalid network object size</source>
-        <translation>Неприпустимий розмір мережевого об'єкта</translation>
+        <translation>Неприпустимий розмір мережевого об&apos;єкта</translation>
     </message>
     <message>
         <source>Recipient proof-of-work requirement exceeds supported limits</source>
@@ -991,7 +1002,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>A contact needs an address and a name</source>
-        <translation>Контакт повинен мати адресу та ім'я</translation>
+        <translation>Контакт повинен мати адресу та ім&apos;я</translation>
     </message>
     <message>
         <source>Invalid destination folder</source>
@@ -1018,16 +1029,12 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>Ідентичність не знайдено</translation>
     </message>
     <message>
-        <source>Invalid relay packet</source>
-        <translation>Неприпустимий пакет ретранслятора</translation>
-    </message>
-    <message>
         <source>Unsupported proof-of-work requirement</source>
         <translation>Непідтримувана вимога до доказу роботи</translation>
     </message>
     <message>
         <source>Invalid proof-of-work object</source>
-        <translation>Неприпустимий об'єкт доказу роботи</translation>
+        <translation>Неприпустимий об&apos;єкт доказу роботи</translation>
     </message>
     <message>
         <source>Invalid identity address</source>
@@ -1110,14 +1117,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>Ви вже в цьому каналі</translation>
     </message>
     <message>
-        <source>A retained object cannot be read; scan checkpoint preserved</source>
-        <translation>Збережений об'єкт не читається; контрольну точку перевірки збережено</translation>
-    </message>
-    <message>
-        <source>Cached object exceeds protocol limit</source>
-        <translation>Об'єкт у кеші перевищує межу протоколу</translation>
-    </message>
-    <message>
         <source>Cannot open mailbox</source>
         <translation>Не вдається відкрити поштову скриньку</translation>
     </message>
@@ -1153,10 +1152,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>Від %1 поки немає публікацій. Розсилки зберігаються в мережі до 28 днів.</translation>
     </message>
     <message>
-        <source>Add to contacts</source>
-        <translation>Додати до контактів</translation>
-    </message>
-    <message>
         <source>Open link</source>
         <translation>Відкрити посилання</translation>
     </message>
@@ -1190,6 +1185,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Unread</source>
         <translation>Не прочитано</translation>
     </message>
+    <message>
+        <source>Forward</source>
+        <translation>Переслати</translation>
+    </message>
 </context>
 <context>
     <name>bm::Session</name>
@@ -1219,19 +1218,19 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Waiting for network objects</source>
-        <translation>Очікування мережевих об'єктів</translation>
+        <translation>Очікування мережевих об&apos;єктів</translation>
     </message>
     <message>
         <source>Offline · outgoing objects stay queued</source>
-        <translation>Не в мережі · вихідні об'єкти залишаються в черзі</translation>
+        <translation>Не в мережі · вихідні об&apos;єкти залишаються в черзі</translation>
     </message>
     <message>
         <source>Node stopped · outgoing objects stay queued</source>
-        <translation>Вузол зупинено · вихідні об'єкти залишаються в черзі</translation>
+        <translation>Вузол зупинено · вихідні об&apos;єкти залишаються в черзі</translation>
     </message>
     <message>
         <source>Node starting · connecting to peers</source>
-        <translation>Вузол запускається · під'єднання до пірів</translation>
+        <translation>Вузол запускається · під&apos;єднання до пірів</translation>
     </message>
     <message>
         <source>Node status unavailable</source>
@@ -1239,15 +1238,15 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Connected peers: %1 · receiving and relaying</source>
-        <translation>Під'єднано пірів: %1 · приймання й ретрансляція</translation>
+        <translation>Під&apos;єднано пірів: %1 · приймання й ретрансляція</translation>
     </message>
     <message>
         <source>No connected peers · waiting for network</source>
-        <translation>Немає під'єднаних пірів · очікування мережі</translation>
+        <translation>Немає під&apos;єднаних пірів · очікування мережі</translation>
     </message>
     <message>
         <source>objects downloading: %1</source>
-        <translation>завантажується об'єктів: %1</translation>
+        <translation>завантажується об&apos;єктів: %1</translation>
     </message>
     <message>
         <source>No mailbox open</source>
@@ -1283,7 +1282,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Vault unlocked. Open a mailbox to inspect cached objects.</source>
-        <translation>Сховище розблоковано. Відкрийте поштову скриньку, щоб перевірити об'єкти в кеші.</translation>
+        <translation>Сховище розблоковано. Відкрийте поштову скриньку, щоб перевірити об&apos;єкти в кеші.</translation>
     </message>
     <message>
         <source>Vault is already unlocked</source>
@@ -1295,7 +1294,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Choose a new filename; existing vaults are never overwritten</source>
-        <translation>Виберіть нове ім'я файлу; наявні сховища ніколи не перезаписуються</translation>
+        <translation>Виберіть нове ім&apos;я файлу; наявні сховища ніколи не перезаписуються</translation>
     </message>
     <message>
         <source>Unlock a vault first</source>
@@ -1311,7 +1310,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Choose a new filename; existing mailbox documents are never overwritten</source>
-        <translation>Виберіть нове ім'я файлу; наявні поштові скриньки ніколи не перезаписуються</translation>
+        <translation>Виберіть нове ім&apos;я файлу; наявні поштові скриньки ніколи не перезаписуються</translation>
     </message>
     <message>
         <source>Mailbox is in use</source>
@@ -1335,7 +1334,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Vault locked. Objects remain cached for later inspection.</source>
-        <translation>Сховище заблоковано. Об'єкти залишаються в кеші для подальшої перевірки.</translation>
+        <translation>Сховище заблоковано. Об&apos;єкти залишаються в кеші для подальшої перевірки.</translation>
     </message>
     <message>
         <source>New identity</source>
@@ -1347,7 +1346,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Identity created. Retained objects will be inspected again.</source>
-        <translation>Ідентичність створено. Збережені об'єкти буде перевірено знову.</translation>
+        <translation>Ідентичність створено. Збережені об&apos;єкти буде перевірено знову.</translation>
     </message>
     <message>
         <source>Join or create chan</source>
@@ -1367,7 +1366,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Chan joined. The address appears in Identities.</source>
-        <translation>Ви приєдналися до каналу. Його адреса з'явилася в розділі «Ідентичності».</translation>
+        <translation>Ви приєдналися до каналу. Його адреса з&apos;явилася в розділі «Ідентичності».</translation>
     </message>
     <message>
         <source>Import notbit / PyBitmessage identities</source>
@@ -1411,11 +1410,11 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Mailbox up to date with retained objects</source>
-        <translation>Поштова скринька відповідає збереженим об'єктам</translation>
+        <translation>Поштова скринька відповідає збереженим об&apos;єктам</translation>
     </message>
     <message>
         <source>Inspecting cached objects · checkpoint %1</source>
-        <translation>Перевірка об'єктів у кеші · контрольна точка %1</translation>
+        <translation>Перевірка об&apos;єктів у кеші · контрольна точка %1</translation>
     </message>
     <message>
         <source>Preparing outgoing proof of work · locking pauses preparation</source>
@@ -1423,7 +1422,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Retention cleanup removed older objects · Some older letters may no longer be recoverable</source>
-        <translation>Очищення видалило старі об'єкти · деякі старі листи вже може бути неможливо відновити</translation>
+        <translation>Очищення видалило старі об&apos;єкти · деякі старі листи вже може бути неможливо відновити</translation>
     </message>
     <message>
         <source>Choose a sender from this vault</source>
@@ -1535,15 +1534,15 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     </message>
     <message>
         <source>Retained network objects</source>
-        <translation>Зберігання мережевих об'єктів</translation>
+        <translation>Зберігання мережевих об&apos;єктів</translation>
     </message>
     <message>
         <source>Maximum MB of encrypted network objects. Older objects are discarded; saved mailbox letters are preserved.</source>
-        <translation>Максимальний обсяг зашифрованих мережевих об'єктів у МБ. Старі об'єкти видаляються; листи, збережені в поштовій скриньці, залишаються.</translation>
+        <translation>Максимальний обсяг зашифрованих мережевих об&apos;єктів у МБ. Старі об&apos;єкти видаляються; листи, збережені в поштовій скриньці, залишаються.</translation>
     </message>
     <message>
         <source>Keep network objects for at most this many days</source>
-        <translation>Зберігати мережеві об'єкти не довше стількох днів</translation>
+        <translation>Зберігати мережеві об&apos;єкти не довше стількох днів</translation>
     </message>
     <message>
         <source>Retention settings saved</source>

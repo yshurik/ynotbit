@@ -898,6 +898,21 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <source>Pictures (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</source>
         <translation>图片 (*.png *.jpg *.jpeg *.gif *.webp *.bmp)</translation>
     </message>
+    <message>
+        <source>Insert image...</source>
+        <translation>插入图片...</translation>
+    </message>
+    <message>
+        <source>Forward</source>
+        <translation>转发</translation>
+    </message>
+    <message>
+        <source>-------- Forwarded message --------
+From: %2
+Date: %1
+</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -912,10 +927,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Cannot queue encrypted object for relay</source>
         <translation>无法将加密对象加入中继队列</translation>
-    </message>
-    <message>
-        <source>Cannot read a cached object; checkpoint preserved</source>
-        <translation>无法读取缓存对象；检查点已保留</translation>
     </message>
     <message>
         <source>Letter is too large</source>
@@ -1018,10 +1029,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>找不到身份</translation>
     </message>
     <message>
-        <source>Invalid relay packet</source>
-        <translation>无效的中继数据包</translation>
-    </message>
-    <message>
         <source>Unsupported proof-of-work requirement</source>
         <translation>不支持的工作量证明要求</translation>
     </message>
@@ -1110,14 +1117,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>已加入该频道</translation>
     </message>
     <message>
-        <source>A retained object cannot be read; scan checkpoint preserved</source>
-        <translation>无法读取保留的对象；扫描检查点已保留</translation>
-    </message>
-    <message>
-        <source>Cached object exceeds protocol limit</source>
-        <translation>缓存对象超出协议限制</translation>
-    </message>
-    <message>
         <source>Cannot open mailbox</source>
         <translation>无法打开邮箱</translation>
     </message>
@@ -1153,10 +1152,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>%1 尚无帖子。广播在网络上最多保留 28 天。</translation>
     </message>
     <message>
-        <source>Add to contacts</source>
-        <translation>添加到联系人</translation>
-    </message>
-    <message>
         <source>Open link</source>
         <translation>打开链接</translation>
     </message>
@@ -1189,6 +1184,10 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Unread</source>
         <translation>未读</translation>
+    </message>
+    <message>
+        <source>Forward</source>
+        <translation>转发</translation>
     </message>
 </context>
 <context>
