@@ -31,6 +31,15 @@ if(MSVC)
 else()
  target_compile_options(notbit_codec PRIVATE -Wno-deprecated-declarations -include sys/types.h)
 endif()
+# The node's network objects in one SQLite file (objects.sqlite): the engine
+# writes it; the app reads it, and its tests write fixtures through it.
+add_library(ntb_object_db STATIC ${NTB}/src/ntb-object-db.c)
+set_target_properties(ntb_object_db PROPERTIES C_STANDARD 11)
+target_include_directories(ntb_object_db PUBLIC ${NTB}/src ${SQLCIPHER_INCLUDE_DIRS}/..)
+target_link_libraries(ntb_object_db PUBLIC PkgConfig::SQLCIPHER OpenSSL::Crypto)
+if(MSVC)
+ target_compile_definitions(ntb_object_db PRIVATE _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
+endif()
 # libsecp256k1, for the ECDH that decrypting tries on every incoming message
 # against every identity: 10-20x OpenSSL's generic curve code. Pinned and
 # checksummed; built static, nothing installed.
@@ -57,6 +66,9 @@ enable_testing()
 add_executable(peer_policy_tests tests/peer_policy_tests.c)
 target_include_directories(peer_policy_tests PRIVATE ${NTB}/src)
 add_test(NAME peer-policy COMMAND peer_policy_tests)
+add_executable(object_db_tests tests/object_db_tests.c)
+target_link_libraries(object_db_tests PRIVATE ntb_object_db)
+add_test(NAME object-db COMMAND object_db_tests ${CMAKE_CURRENT_BINARY_DIR}/object-db-test)
 add_test(NAME core COMMAND core_tests)
 
 target_compile_definitions(bmcore PUBLIC SQLITE_HAS_CODEC)
@@ -67,7 +79,7 @@ else()
 endif()
 
 file(GLOB NTB_ENGINE_SOURCES CONFIGURE_DEPENDS ${NTB}/src/*.c)
-list(FILTER NTB_ENGINE_SOURCES EXCLUDE REGEX "/(main|dump-store|ntb-address|ntb-base58|ntb-buffer|ntb-util|ntb-error|ntb-ecc|ntb-proto|ntb-netaddress)\\.c$")
+list(FILTER NTB_ENGINE_SOURCES EXCLUDE REGEX "/(main|dump-store|ntb-object-db|ntb-address|ntb-base58|ntb-buffer|ntb-util|ntb-error|ntb-ecc|ntb-proto|ntb-netaddress)\\.c$")
 if(WIN32)
  # The IPC socket and its sendmail/keygen clients are Unix-socket only, and
  # ynotbit uses neither: the desktop talks to the engine through files.

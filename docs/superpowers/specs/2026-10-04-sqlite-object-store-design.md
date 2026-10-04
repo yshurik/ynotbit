@@ -57,8 +57,12 @@ The cost is two processes coordinating through a folder.
   CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL); -- 'cache_id'
   ```
 
-- A `user_version` other than the one the code expects means the node deletes the
-  file and creates it afresh.
+- A `user_version` other than the one the code expects means the node empties the
+  file in place (drops the tables, sets `auto_vacuum`, `VACUUM`, recreates them with
+  a new `cache_id`). It never deletes the file: Windows refuses to delete a file the
+  app has open, and on macOS the app would keep reading the deleted copy.
+- One extra index, `objects_listing(expires, hash, size)`, lets the startup listing
+  and the size totals run from the index instead of reading every object's bytes.
 - When the node creates the file it writes a random `cache_id` to `meta`. The
   mailbox binds to it as it does today; a new file means a new id, and the mailbox
   re-reads from the start.
