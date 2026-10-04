@@ -1,7 +1,7 @@
 #include "scanner.h"
+#include "ntb-object-db.h"
 #include "protocol.h"
 #include <QCryptographicHash>
-#include <QFile>
 namespace bm {
 int scanMailbox(Cache &cache, Mailbox &mailbox, const Vault &vault, int limit) {
     if (!vault.unlocked() || !mailbox.isOpen())
@@ -15,17 +15,11 @@ int scanMailbox(Cache &cache, Mailbox &mailbox, const Vault &vault, int limit) {
             .toHex()));
     int decodedCount = 0;
     for (const auto &o : cache.after(mailbox.checkpoint(), limit)) {
-        QFile f(o.path);
-        if (!f.open(QIODevice::ReadOnly)) {
-            if (!QFile::exists(o.path)) {
-                mailbox.advance(o.sequence);
-                continue;
-            }
-            throw std::runtime_error("A retained object cannot be read; scan checkpoint preserved");
+        if (o.payload.size() > NTB_OBJECT_DB_MAX_OBJECT_SIZE) {
+            mailbox.advance(o.sequence);
+            continue;
         }
-        if (f.size() > 262144)
-            throw std::runtime_error("Cached object exceeds protocol limit");
-        auto data = f.readAll();
+        const auto data = o.payload;
         bool found = false;
         for (const auto &i : vault.identities()) {
             auto decoded = Protocol::decodeMessage(data, i);

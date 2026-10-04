@@ -59,7 +59,7 @@ FetchContent_Declare(secp256k1
 FetchContent_MakeAvailable(secp256k1)
 add_library(bmcore src/storage.cpp src/mailbox_ops.cpp src/protocol.cpp src/protocol_wire.cpp src/pow.cpp src/delivery.cpp src/cache.cpp src/scanner.cpp src/updates.cpp src/message_search.cpp)
 target_include_directories(bmcore PUBLIC src)
-target_link_libraries(bmcore PUBLIC Threads::Threads notbit_codec secp256k1 Qt6::Core PkgConfig::SODIUM PkgConfig::SQLCIPHER OpenSSL::Crypto)
+target_link_libraries(bmcore PUBLIC Threads::Threads notbit_codec secp256k1 Qt6::Core PkgConfig::SODIUM PkgConfig::SQLCIPHER OpenSSL::Crypto ntb_object_db)
 add_executable(core_tests tests/core_tests.cpp)
 target_link_libraries(core_tests PRIVATE bmcore)
 enable_testing()

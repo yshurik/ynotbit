@@ -1,16 +1,37 @@
 #include "cache.h"
+#include "ntb-object-db.h"
 #include "protocol.h"
 #include "scanner.h"
 #include "storage.h"
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
 #include <iostream>
+#include <sqlcipher/sqlite3.h>
 using namespace bm;
 static void require(bool b, const char *m) {
     if (!b)
         throw std::runtime_error(m);
+}
+// Writes an object the way the node does: through its own store.
+static void putObject(const QString &root, const QByteArray &object) {
+    QDir().mkpath(root);
+    auto db = ntb_object_db_open(QFile::encodeName(root).constData());
+    require(db, "open the node's object store");
+    const auto hash = QByteArray::fromHex(Protocol::inventoryHash(object).toLatin1());
+    const bool saved = ntb_object_db_save(db, reinterpret_cast<const uint8_t *>(hash.constData()),
+                                          reinterpret_cast<const uint8_t *>(object.constData()),
+                                          size_t(object.size()), QDateTime::currentSecsSinceEpoch());
+    ntb_object_db_close(db);
+    require(saved, "save an object");
+}
+static void pruneAll(const QString &root) {
+    auto db = ntb_object_db_open(QFile::encodeName(root).constData());
+    require(db, "open the node's object store");
+    ntb_object_db_prune(db, 0, 0);
+    ntb_object_db_close(db);
 }
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
@@ -27,20 +48,29 @@ int main(int argc, char **argv) {
         auto mp = d.filePath("mail.bmmail");
         Mailbox mailbox;
         mailbox.create(mp, key, vault.mailboxKey(key));
-        Cache cache(d.filePath("node"));
+        const auto node = d.filePath("node");
+        QDir().mkpath(node);
+        {
+            QFile old(node + "/cache.sqlite");
+            require(old.open(QIODevice::WriteOnly), "an index left by the file-based version");
+        }
+        Cache cache(node);
+        require(!QFile::exists(node + "/cache.sqlite"),
+                "the file-based version's cache.sqlite is removed");
+        require(cache.id().isEmpty() && cache.after(0).isEmpty() && cache.firstSequence() == 0,
+                "nothing to read before the store exists");
         mailbox.bindCache(cache.id());
         auto sender = Protocol::identity("Alice");
         auto object = Protocol::encodeMessage(sender, vault.identities()[0], "Queued while locked",
                                               "Retained correspondence", 1700000000);
         mailbox.close();
         vault.lock();
-        auto hash = Protocol::inventoryHash(object);
-        QFile f(d.filePath("node/objects/") + hash);
-        require(f.open(QIODevice::WriteOnly), "cache file");
-        f.write(object);
-        f.close();
-        cache.discover();
-        require(cache.count() == 1, "objects cached while locked");
+        putObject(node, object);
+        require(cache.after(0).size() == 1 && cache.after(0).first().payload == object,
+                "objects stored while locked are readable, bytes intact");
+        require(cache.after(0).first().hash == Protocol::inventoryHash(object),
+                "a cached object's hash is the lowercase hex inventory hash");
+        require(!cache.id().isEmpty(), "the node's store has a cache id");
         require(scanMailbox(cache, mailbox, vault) == 0, "locked scanner must be idle");
         vault.unlock(vp, "testing password");
         mailbox.open(mp, vault.mailboxKey(key));
@@ -56,11 +86,7 @@ int main(int argc, char **argv) {
         auto later = Protocol::channel("a later imported chan", "Later");
         auto retained = Protocol::encodeMessage(sender, later, "Earlier object",
                                                 "A newly joined identity", 1700000000);
-        QFile oldObject(d.filePath("node/objects/") + Protocol::inventoryHash(retained));
-        require(oldObject.open(QIODevice::WriteOnly), "retained foreign object");
-        oldObject.write(retained);
-        oldObject.close();
-        cache.discover();
+        putObject(node, retained);
         scanMailbox(cache, mailbox, vault);
         require(mailbox.messages().size() == 1, "unknown identity not decoded yet");
         mailbox.close();
@@ -70,106 +96,53 @@ int main(int argc, char **argv) {
         scanMailbox(cache, mailbox, vault);
         require(mailbox.messages().size() == 2,
                 "identity added with mailbox closed must rescan retained objects");
+        // A peer's object larger than the protocol allows is skipped, not fatal.
+        putObject(node, QByteArray(NTB_OBJECT_DB_MAX_OBJECT_SIZE + 1, 'z'));
+        const auto oversized = cache.after(mailbox.checkpoint()).last().sequence;
+        scanMailbox(cache, mailbox, vault);
+        require(mailbox.checkpoint() == oversized, "an oversized object is skipped");
+        putObject(d.filePath("other-node"), retained);
         Cache other(d.filePath("other-node"));
         mailbox.bindCache(other.id());
         require(mailbox.checkpoint() == 0,
                 "moving mailbox resets checkpoint for a different cache");
-        auto before = cache.after(0).first().sequence;
-        cache.prune(0, 90);
-        require(cache.count() == 0 && !QFile::exists(f.fileName()), "bounded cache pruning");
+        auto before = cache.after(0).last().sequence;
+        pruneAll(node);
+        require(cache.after(0).isEmpty() && cache.firstSequence() == 0, "pruned objects are gone");
         auto second = Protocol::encodeMessage(sender, vault.identities()[0], "New", "After pruning",
                                               1700000000);
-        QFile next(d.filePath("node/objects/") + Protocol::inventoryHash(second));
-        require(next.open(QIODevice::WriteOnly), "new cache file");
-        next.write(second);
-        next.close();
-        cache.discover();
+        putObject(node, second);
         require(cache.after(0).first().sequence > before, "cache sequences never reused");
+        require(cache.firstSequence() == cache.after(0).first().sequence,
+                "the first sequence is the oldest object still stored");
+        require(cache.hasAfter(before) && !cache.hasAfter(cache.after(0).first().sequence),
+                "hasAfter says whether anything newer is stored");
+        // The node empties the store on a schema change; the app's open
+        // connection must see the new cache id.
+        const auto idBefore = cache.id();
+        {
+            sqlite3 *raw = nullptr;
+            require(sqlite3_open(QFile::encodeName(node + "/" NTB_OBJECT_DB_FILE).constData(), &raw) ==
+                        SQLITE_OK,
+                    "open the store directly");
+            require(sqlite3_exec(raw, "PRAGMA user_version=99", nullptr, nullptr, nullptr) ==
+                        SQLITE_OK,
+                    "mark the store as another schema version");
+            sqlite3_close(raw);
+        }
+        require(cache.id().isEmpty(), "a store of another version is not read");
+        ntb_object_db_close(ntb_object_db_open(QFile::encodeName(node).constData()));
+        require(!cache.id().isEmpty() && cache.id() != idBefore && cache.after(0).isEmpty(),
+                "a recreated store has a new cache id and no objects");
         // The two-byte coordinate size used to permit an out-of-bounds read in notbit.
         auto malformed = object;
         malformed[40] = char(0xff);
         malformed[41] = char(0xff);
         require(!Protocol::decodeMessage(malformed, vault.identities()[0]),
                 "reject oversized EC coordinate");
-        // Regression: discover() used to rebuild its directory iterator from
-        // scratch whenever the objects dir's mtime had changed since that
-        // iterator was built, on the theory that a file added mid-backlog
-        // shouldn't stay invisible until the backlog finished draining. Under
-        // real sustained write traffic the directory's mtime changes on nearly
-        // every call, so that reset fired almost every time and progress
-        // through a large/growing directory could never get past whatever a
-        // fresh scan examines first -- confirmed against a real user's node
-        // directory, where 4405 of 17486 cached object files (25%) were never
-        // registered despite existing correctly on disk.
-        //
-        // Assert forward progress deterministically rather than racing a
-        // timer: with more objects than one discover() call examines (128),
-        // two calls with a write (and thus an mtime bump) in between must
-        // register substantially more than one call's worth -- a reset before
-        // every call would keep re-scanning close to the same first ~128.
-        Cache churn(d.filePath("churn-node"));
-        auto writeChurnObject = [&](int n) {
-            auto obj = Protocol::encodeMessage(sender, vault.identities()[0],
-                                               "Churn " + QString::number(n), "x", 1700000000);
-            QFile f(d.filePath("churn-node/objects/") + Protocol::inventoryHash(obj));
-            require(f.open(QIODevice::WriteOnly), "churn object file");
-            f.write(obj);
-        };
-        for (int n = 0; n < 300; ++n)
-            writeChurnObject(n);
-        int written = 300;
-        int calls = 0;
-        while (churn.count() < written && calls < 60) {
-            churn.discover();
-            // Session::tick() calls prune() right after discover() on every cycle;
-            // with default retention this is a routine no-op call (nothing over
-            // the size/age limits), which must not undo discover()'s progress.
-            churn.prune(512ll * 1024 * 1024, 90);
-            ++calls;
-            if (written < 320) {
-                writeChurnObject(written);
-                ++written;
-            }
-        }
-        require(churn.count() == written,
-                "discover() drains a directory within a bounded number of calls even with "
-                "a write (and thus an mtime change) and a routine no-op prune() before "
-                "almost every call, instead of "
-                "resetting progress back toward the same prefix each time");
-        // At the size cap, a full node's normal state, nearly every new object
-        // pushes the cache over and prune() deletes something. prune() used to
-        // restart discovery whenever it deleted, so each call re-examined the
-        // same first entries and later ones waited indefinitely: on a real node
-        // a just-sent broadcast took 12-20 minutes to be registered.
-        Cache full(d.filePath("full-node"));
-        auto writeFullObject = [&](int n) {
-            auto obj = Protocol::encodeMessage(sender, vault.identities()[0],
-                                               "Full " + QString::number(n), "x", 1700000000);
-            QFile f(d.filePath("full-node/objects/") + Protocol::inventoryHash(obj));
-            require(f.open(QIODevice::WriteOnly), "full object file");
-            f.write(obj);
-        };
-        for (int n = 0; n < 300; ++n)
-            writeFullObject(n);
-        const auto onDisk = [&] {
-            return QDir(d.filePath("full-node/objects")).entryList(QDir::Files).size();
-        };
-        int fullCalls = 0;
-        while (full.count() < onDisk() && fullCalls < 30) {
-            full.discover();
-            full.prune(full.bytes() - 1, 90); // just over the cap: prune() must delete
-            ++fullCalls;
-        }
-        require(full.count() == onDisk(),
-                "a prune() that deletes objects does not restart discovery: everything on "
-                "disk is registered within a bounded number of calls at the size cap");
-        const auto cap = full.bytes() - 1;
-        full.prune(cap, 90);
-        require(full.bytes() <= cap * 95 / 100,
-                "over the size cap, prune() frees down to 95% so the next arrival does not "
-                "trigger it again");
         std::cout << "PASS: locked collection, unlock scan, expired local object, crash replay, "
-                     "cache relocation, retention, malformed ECIES, discover() under write churn\n";
+                     "cache relocation, retention, oversized objects, store recreation, "
+                     "malformed ECIES\n";
     } catch (const std::exception &e) {
         std::cerr << "FAIL: " << e.what() << '\n';
         return 1;

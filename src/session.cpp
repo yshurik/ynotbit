@@ -383,13 +383,17 @@ void Session::createMailbox() {
             mailPath_ = p;
             mailKey_ = id;
             rememberMailbox(p);
-            mailbox_.bindCache(cache_->id());
+            bindMailboxToCache();
             refresh();
         } catch (...) {
             mailLock_.reset();
             throw;
         }
     });
+}
+void Session::bindMailboxToCache() {
+    boundCacheId_ = cache_->id();
+    mailbox_.bindCache(boundCacheId_);
 }
 void Session::openMailboxPath(const QString &p) {
     delivery_->stop();
@@ -403,7 +407,7 @@ void Session::openMailboxPath(const QString &p) {
         try {
             mailbox_.open(p, vault_.mailboxKey(id));
             check(mailbox_.keyId() == id, tr("Mailbox key identifier mismatch"));
-            mailbox_.bindCache(cache_->id());
+            bindMailboxToCache();
             try {
                 seedSubscriptions();
             } catch (...) {
@@ -650,22 +654,34 @@ void Session::tick() {
     if (busy_)
         return;
     try {
-        cache_->discover();
-        cache_->prune(qint64(retentionMB_) * 1024 * 1024, retentionDays_);
+        // The node rewrites status.json every second; offline, its last values stand.
+        QFile nodeStatus(root_ + "/status.json");
+        if (nodeStatus.open(QIODevice::ReadOnly)) {
+            const auto node = QJsonDocument::fromJson(nodeStatus.read(4096)).object();
+            if (node.contains("objects")) {
+                objectCount_ = node.value("objects").toInteger();
+                objectBytes_ = node.value("object_bytes").toInteger();
+            }
+        }
         if (mailboxOpen()) {
+            // A new id means the node created or emptied its store: read it from the start.
+            if (cache_->id() != boundCacheId_)
+                bindMailboxToCache();
+            if (cache_->firstSequence() > mailbox_.checkpoint() + 1)
+                prunedUnread_ = true;
             // A time budget, not a count: catching up (a new identity, first
             // sync) goes as fast as the window can spare, ~150 ms per tick.
             delivery_->scan(*cache_, mailbox_, vault_, 512, 150);
             delivery_->tick(mailbox_, vault_, !offline_ && node_.state() == QProcess::Running);
             refresh();
-            activity_ = cache_->after(mailbox_.checkpoint(), 1).isEmpty()
+            activity_ = !cache_->hasAfter(mailbox_.checkpoint())
                             ? tr("Mailbox up to date with retained objects")
                             : tr("Inspecting cached objects · checkpoint %1")
                                   .arg(mailbox_.checkpoint());
         }
         if (delivery_->working())
             activity_ = tr("Preparing outgoing proof of work · locking pauses preparation");
-        if (cache_->pruned() > 0)
+        if (prunedUnread_)
             activity_ = tr("Retention cleanup removed older objects · Some older letters may no "
                            "longer be recoverable");
     } catch (const std::exception &e) {

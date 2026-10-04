@@ -1,35 +1,28 @@
 #pragma once
+#include <QByteArray>
 #include <QString>
 #include <QVector>
-#include <QDirIterator>
-#include <memory>
 struct sqlite3;
 namespace bm {
 struct CachedObject {
     qint64 sequence;
-    QString hash, path;
+    QString hash; // lowercase hex, as Protocol::inventoryHash() spells it
+    QByteArray payload;
 };
+// Reads the node's object store (objects.sqlite). Only the node writes it.
 class Cache {
     sqlite3 *db_ = nullptr;
-    QString root_, id_;
-    qint64 pruned_ = 0;
-    std::unique_ptr<QDirIterator> discovery_;
+    QString root_;
+    bool ready();
 
   public:
     explicit Cache(const QString &root);
     ~Cache();
     Cache(const Cache &) = delete;
     Cache &operator=(const Cache &) = delete;
-    void discover();
-    QVector<CachedObject> after(qint64 sequence, int limit = 32) const;
-    qint64 count() const;
-    qint64 bytes() const;
-    qint64 pruned() const {
-        return pruned_;
-    }
-    QString id() const {
-        return id_;
-    }
-    void prune(qint64 maximumBytes = 512ll * 1024 * 1024, int maximumDays = 90);
+    QVector<CachedObject> after(qint64 sequence, int limit = 32);
+    bool hasAfter(qint64 sequence);
+    qint64 firstSequence(); // 0 when nothing is stored
+    QString id();           // empty until the node has created its store
 };
 } // namespace bm

@@ -1,5 +1,6 @@
 #include "desktop_window.h"
 #include "session.h"
+#include "ntb-object-db.h"
 #include "updates.h"
 #include "feed_view.h"
 #include "protocol.h"
@@ -2218,6 +2219,36 @@ int main(int argc, char **argv) {
             QTest::qWait(300);
             require(list->model()->rowCount() == 300 && countLabel->text() == "300 total",
                     "clearing the filter lists every letter again");
+        }
+        {
+            // The node's object count and size come from its status.json, and
+            // the last values stay shown while it isn't running.
+            QFile status(temp.filePath("node/status.json"));
+            require(status.open(QIODevice::WriteOnly), "write a node status");
+            status.write(R"({"objects":42,"object_bytes":1048576,"time":0})");
+            status.close();
+            QTest::qWait(900);
+            require(session.objectCount() == 42 && session.cacheBytes() == 1048576,
+                    "the object count and size come from the node's status.json");
+            require(!session.activity().contains("no longer be recoverable"),
+                    "no lost-letters warning while nothing unread was pruned");
+            // Retention deleted objects this mailbox never read: say so.
+            auto db = ntb_object_db_open(QFile::encodeName(temp.filePath("node")).constData());
+            require(db, "open the node's object store");
+            for (int n = 0; n < 3; ++n) {
+                QByteArray object(64, 'j');
+                object[0] = char(n);
+                const auto hash = QByteArray::fromHex(bm::Protocol::inventoryHash(object).toLatin1());
+                ntb_object_db_save(db, reinterpret_cast<const uint8_t *>(hash.constData()),
+                                   reinterpret_cast<const uint8_t *>(object.constData()),
+                                   size_t(object.size()), QDateTime::currentSecsSinceEpoch());
+                if (n == 1)
+                    ntb_object_db_prune(db, 0, 0); // the first two go before the mailbox read them
+            }
+            ntb_object_db_close(db);
+            QTest::qWait(1600);
+            require(session.activity().contains("no longer be recoverable"),
+                    "objects pruned before the mailbox read them raise the lost-letters warning");
         }
         session.lock();
         std::cout << "PASS Widgets mailbox selection, rendering and lock\n";

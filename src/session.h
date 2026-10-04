@@ -41,6 +41,10 @@ class Session : public QObject {
     bool offline_ = false;
     mutable QJsonObject lastNodeStatus_; // last status.json read, see status()
     int retentionMB_ = 512, retentionDays_ = 90;
+    qint64 objectCount_ = 0, objectBytes_ = 0;
+    QString boundCacheId_;
+    bool prunedUnread_ = false; // retention removed objects this mailbox never read
+    void bindMailboxToCache();
     void startNode();
     void attempt(const std::function<void()> &f);
     void refresh();
@@ -71,10 +75,10 @@ class Session : public QObject {
     MessageModel *messageModel() const { return messageModel_.get(); }
     QVariantList identities() const;
     qint64 objectCount() const {
-        return cache_ ? cache_->count() : 0;
+        return objectCount_;
     }
     qint64 cacheBytes() const {
-        return cache_ ? cache_->bytes() : 0;
+        return objectBytes_;
     }
     bool networkEnabled() const {
         return !offline_;

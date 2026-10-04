@@ -2,6 +2,7 @@
 #include "protocol.h"
 #include "protocol_wire.h"
 #include "updates.h"
+#include "ntb-object-db.h"
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
@@ -337,10 +338,9 @@ int Delivery::catchUpBroadcasts(Cache &cache, Mailbox &m, const QString &publish
                 break;
             }
             from = o.sequence;
-            QFile file(o.path);
-            if (!file.open(QIODevice::ReadOnly))
+            if (o.payload.size() > NTB_OBJECT_DB_MAX_OBJECT_SIZE)
                 continue;
-            const auto data = file.read(262145);
+            const auto data = o.payload;
             const auto h = Wire::header(data);
             if (h && h->type == 1 && h->expires > now()) {
                 for (const auto &item : m.outbox())
@@ -416,18 +416,11 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int limit, int budg
     for (const auto &o : cache.after(m.checkpoint(), limit)) {
         if (budgetMs > 0 && spent.elapsed() >= budgetMs)
             break;
-        QFile file(o.path);
-        if (!file.open(QIODevice::ReadOnly)) {
-            if (!file.exists()) {
-                passed = o.sequence;
-                continue;
-            }
-            if (passed)
-                m.advance(passed);
-            batch.commit(); // keep what was done before the unreadable object
-            throw std::runtime_error("Cannot read a cached object; checkpoint preserved");
+        if (o.payload.size() > NTB_OBJECT_DB_MAX_OBJECT_SIZE) {
+            passed = o.sequence; // larger than the protocol allows: not a letter
+            continue;
         }
-        auto data = file.read(262145);
+        const auto data = o.payload;
         auto h = Wire::header(data);
         if (!h) {
             passed = o.sequence;

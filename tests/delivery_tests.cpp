@@ -2,6 +2,7 @@
 #include "protocol.h"
 #include "protocol_wire.h"
 #include "updates.h"
+#include "ntb-object-db.h"
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -23,9 +24,17 @@ static void write(const QString &path, const QByteArray &bytes) {
     require(f.open(QIODevice::WriteOnly), "open fixture");
     require(f.write(bytes) == bytes.size(), "write fixture");
 }
+// Writes an object the way the node does: through its own store.
 static void cacheObject(const QString &root, const QByteArray &bytes) {
-    QDir().mkpath(root + "/objects");
-    write(root + "/objects/" + Protocol::inventoryHash(bytes), bytes);
+    QDir().mkpath(root);
+    auto db = ntb_object_db_open(QFile::encodeName(root).constData());
+    require(db, "open the node's object store");
+    const auto hash = QByteArray::fromHex(Protocol::inventoryHash(bytes).toLatin1());
+    const bool saved = ntb_object_db_save(db, reinterpret_cast<const uint8_t *>(hash.constData()),
+                                          reinterpret_cast<const uint8_t *>(bytes.constData()),
+                                          size_t(bytes.size()), QDateTime::currentSecsSinceEpoch());
+    ntb_object_db_close(db);
+    require(saved, "save a fixture object");
 }
 static int transfer(const QString &source, const QString &destination) {
     int count = 0;
@@ -75,7 +84,6 @@ int main(int argc, char **argv) {
         ad.stop();
         // Existing retained pubkey: authenticated by the codec, even if cached before send.
         cacheObject(a, Wire::encodePubkey(bv.identities()[0], expires));
-        ac.discover();
         ad.scan(ac, am, av);
         require(bool(am.publicKey(bob, QDateTime::currentSecsSinceEpoch())),
                 "recipient public key saved");
@@ -96,12 +104,9 @@ int main(int argc, char **argv) {
                am.outgoing(id).state != "acknowledged") {
             ad.tick(am, av, true);
             transfer(a, b);
-            bc.discover();
             if (!bv.unlocked()) {
                 for (const auto &cached : bc.after(0, 100)) {
-                    QFile f(cached.path);
-                    require(f.open(QIODevice::ReadOnly), "locked retained object");
-                    auto raw = f.readAll();
+                    const auto raw = cached.payload;
                     auto header = Wire::header(raw);
                     if (header && header->type == 2 && Wire::acknowledgmentToken(raw).isEmpty()) {
                         require(!bm.isOpen(), "mailbox remains closed during receipt");
@@ -118,7 +123,6 @@ int main(int argc, char **argv) {
             // Bob's incoming ACK is already solved; no recipient identity goes to the relay.
             bd.tick(bm, bv, true);
             transfer(b, a);
-            ac.discover();
             ad.scan(ac, am, av);
             QThread::msleep(5);
         }
@@ -147,13 +151,15 @@ int main(int argc, char **argv) {
         auto broadcast =
             Wire::encodeBroadcast(av.identities()[0], "Announcement", "Subscriber only", expires);
         bm.subscribe(alice, "Alice's announcements");
+        // A peer's object larger than the protocol allows: skipped, and the
+        // broadcast stored after it is still read.
+        cacheObject(b, QByteArray(NTB_OBJECT_DB_MAX_OBJECT_SIZE + 1, 'z'));
         cacheObject(b, broadcast);
         // discover() is a bounded, incremental scan (like Session::tick() calls it in
         // production): one call isn't guaranteed to finish, especially under slow I/O.
         bool found = false;
         const auto broadcastDeadline = QDateTime::currentMSecsSinceEpoch() + 5000;
         while (!found && QDateTime::currentMSecsSinceEpoch() < broadcastDeadline) {
-            bc.discover();
             bd.scan(bc, bm, bv, 100);
             for (const auto &m : bm.messages())
                 if (m.folder == "Broadcasts" && m.subject == "Announcement")
@@ -173,7 +179,6 @@ int main(int argc, char **argv) {
         bool chanFound = false;
         const auto chanDeadline = QDateTime::currentMSecsSinceEpoch() + 5000;
         while (!chanFound && QDateTime::currentMSecsSinceEpoch() < chanDeadline) {
-            bc.discover();
             bd.scan(bc, bm, bv, 100);
             for (const auto &m : bm.messages())
                 if (m.folder == "Channels" && m.subject == "Chan announcement")
@@ -202,7 +207,6 @@ int main(int argc, char **argv) {
         auto scanFor = [&](const std::function<bool()> &done, int ms) {
             const auto deadline = QDateTime::currentMSecsSinceEpoch() + ms;
             while (!done() && QDateTime::currentMSecsSinceEpoch() < deadline) {
-                bc.discover();
                 bd.scan(bc, bm, bv, 100);
                 if (!done())
                     QThread::msleep(5);
@@ -234,7 +238,6 @@ int main(int argc, char **argv) {
         auto drain = [&] {
             const auto deadline = QDateTime::currentMSecsSinceEpoch() + 5000;
             while (QDateTime::currentMSecsSinceEpoch() < deadline) {
-                bc.discover();
                 bd.scan(bc, bm, bv, 100);
                 if (bc.after(bm.checkpoint(), 1).isEmpty())
                     return;
