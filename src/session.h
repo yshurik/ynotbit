@@ -40,7 +40,7 @@ class Session : public QObject {
     bool busy_ = false;
     bool offline_ = false;
     mutable QJsonObject lastNodeStatus_; // last status.json read, see status()
-    int retentionMB_ = 512, retentionDays_ = 90;
+    int retentionMB_ = 2048, retentionDays_ = 90;
     qint64 objectCount_ = 0, objectBytes_ = 0;
     QString boundCacheId_;
     bool prunedUnread_ = false; // retention removed objects this mailbox never read
@@ -87,6 +87,7 @@ class Session : public QObject {
     Q_INVOKABLE void configureNode();
     Q_INVOKABLE void configureRetention();
     Q_INVOKABLE void restartNode();
+    QStringList nodeArguments() const;
     Q_INVOKABLE void createVault();
     Q_INVOKABLE void openVault();
     Q_INVOKABLE void unlockVault();

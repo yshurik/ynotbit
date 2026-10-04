@@ -94,7 +94,7 @@ Session::Session(QString root, bool offline, QObject *parent)
     mailPath_ = recent.value("mailbox").toString();
     recentVaultPaths_ = recent.value("recentVaults").toStringList();
     recentMailboxPaths_ = recent.value("recentMailboxes").toStringList();
-    retentionMB_ = std::clamp(recent.value("retentionMB", 512).toInt(), 64, 32768);
+    retentionMB_ = std::clamp(recent.value("retentionMB", 2048).toInt(), 64, 32768);
     retentionDays_ = std::clamp(recent.value("retentionDays", 90).toInt(), 1, 3650);
     connect(&node_, &QProcess::readyReadStandardOutput, this,
             [this] { node_.readAllStandardOutput(); });
@@ -1007,20 +1007,24 @@ void Session::closeMailbox() {
     mailKey_.clear();
     emit changed();
 }
-void Session::startNode() {
-    if (offline_)
-        return;
+QStringList Session::nodeArguments() const {
     QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
-    QStringList args{"--node", "-D", root_, "-m", root_ + "/unused-maildir", "-i"};
+    QStringList args{"--node", "-D", root_, "-m", root_ + "/unused-maildir", "-i",
+                     "-R", QString::number(retentionMB_), "-A", QString::number(retentionDays_)};
     auto peer = config.value("peer").toString(), proxy = config.value("proxy").toString();
     if (!peer.isEmpty())
         args << "-P" << peer << "-L";
     if (!proxy.isEmpty())
         args << "-r" << proxy << "-B";
+    return args;
+}
+void Session::startNode() {
+    if (offline_)
+        return;
     QFile::remove(root_ + "/status.json");
     lastNodeStatus_ = {};
     node_.setProgram(QCoreApplication::applicationFilePath());
-    node_.setArguments(args);
+    node_.setArguments(nodeArguments());
     node_.start();
 }
 void Session::restartNode() {
@@ -1073,6 +1077,7 @@ void Session::configureNode() {
     });
 }
 void Session::configureRetention() {
+    bool saved = false;
     attempt([&] {
         bool ok = false;
         auto mb = QInputDialog::getInt(nullptr, tr("Retained network objects"),
@@ -1092,6 +1097,9 @@ void Session::configureRetention() {
         config.setValue("retentionMB", mb);
         config.setValue("retentionDays", days);
         activity_ = tr("Retention settings saved");
+        saved = true;
     });
+    if (saved)
+        restartNode();
 }
 } // namespace bm

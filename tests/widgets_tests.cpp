@@ -2220,6 +2220,17 @@ int main(int argc, char **argv) {
             require(list->model()->rowCount() == 300 && countLabel->text() == "300 total",
                     "clearing the filter lists every letter again");
         }
+        require(session.nodeArguments().join(' ').contains("-R 2048 -A 90"),
+                "the node gets the retention limits, 2048 MiB and 90 days by default");
+        {
+            QDir().mkpath(temp.filePath("retention-node"));
+            QSettings config(temp.filePath("retention-node/desktop.ini"), QSettings::IniFormat);
+            config.setValue("retentionMB", 1024);
+            config.setValue("retentionDays", 30);
+        }
+        bm::Session configured(temp.filePath("retention-node"), true);
+        require(configured.nodeArguments().join(' ').contains("-R 1024 -A 30"),
+                "saved retention settings reach the node's arguments");
         {
             // The node's object count and size come from its status.json, and
             // the last values stay shown while it isn't running.
