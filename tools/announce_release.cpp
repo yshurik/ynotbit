@@ -6,6 +6,8 @@
 //   build/announce_release --keys release_key.dat --version 0.5.1 --notes notes.md
 //
 // Without --send it stays offline and only prints the letter it would publish.
+// With --chan <phrase> (repeatable) the letter goes to those chans, from the
+// release address, instead of being broadcast.
 #include "publish_broadcast.h"
 #include "updates.h"
 #include <QApplication>
@@ -26,7 +28,8 @@ int main(int argc, char **argv) {
     const auto version = tools::option(args, "--version"), notes = tools::option(args, "--notes");
     if (b.keys.isEmpty() || version.isEmpty() || notes.isEmpty())
         return tools::fail(b.tool, "usage: announce_release --keys <keys.dat> --version <X.Y.Z> "
-                                   "--notes <file> [--send] [--linger <minutes>]");
+                                   "--notes <file> [--chan <phrase>]... [--send] "
+                                   "[--linger <minutes>]");
     b.subject = "ynotbit " + version;
     if (bm::updates::announcedVersion(b.subject) != version)
         return tools::fail(b.tool, "\"" + b.subject + "\" is not a subject ynotbit reads as a release");
@@ -36,6 +39,7 @@ int main(int argc, char **argv) {
     b.body = QString::fromUtf8(notesFile.readAll()).trimmed();
     if (b.body.isEmpty())
         return tools::fail(b.tool, notes + " is empty");
+    b.chans = tools::options(args, "--chan");
     if (!tools::sendOptions(args, b))
         return 1;
     b.from = bm::updates::publisherAddress();

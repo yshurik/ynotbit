@@ -12,11 +12,14 @@ struct Broadcast {
     QString from;    // the address it must be sent from
     QString subject;
     QString body;
+    QStringList chans; // chan passphrases: the letter goes to each instead of a broadcast
     bool send = false; // otherwise a dry run: offline, prints the letter
     int linger = 10;   // minutes the node stays up after peers were offered it
 };
 // "--name value" from the command line, or empty.
 QString option(const QStringList &args, const QString &name);
+// Every "--name value" from the command line, in order.
+QStringList options(const QStringList &args, const QString &name);
 // Reads --send and --linger into the broadcast; false (with a message) when
 // --linger is not a number of minutes.
 bool sendOptions(const QStringList &args, Broadcast &broadcast);
