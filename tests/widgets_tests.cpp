@@ -34,6 +34,15 @@ static bool searched(bm::MessageModel *model) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
     return !model->searching();
 }
+// Answers an open file dialog. QFileDialog::selectFile() won't overwrite the
+// name box while it has focus, and on a busy machine it has focus by the time
+// a test answers: the dialog then stays open, empty, and the test hangs.
+static void chooseFile(QFileDialog *d, const QString &path) {
+    if (auto focused = d->focusWidget())
+        focused->clearFocus();
+    d->selectFile(path);
+    static_cast<QDialog *>(d)->accept(); // QFileDialog's own accept() is protected
+}
 int main(int argc, char **argv) {
     // Unbuffered: a run that hangs and is killed by ctest still shows how far it got.
     std::cout << std::unitbuf;
@@ -1001,8 +1010,7 @@ int main(int argc, char **argv) {
                 QObject::connect(pick, &QTimer::timeout, dialog, [pick, picturePath] {
                     if (auto d = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
                         pick->stop();
-                        d->selectFile(picturePath);
-                        static_cast<QDialog *>(d)->accept();
+                        chooseFile(d, picturePath);
                     }
                 });
                 pick->start(10);
@@ -1737,8 +1745,7 @@ int main(int argc, char **argv) {
             }
             bool picked = false;
             onDialog((QFileDialog *)nullptr, [&](QFileDialog *d) {
-                d->selectFile(temp.filePath("import-keys.dat"));
-                static_cast<QDialog *>(d)->accept(); // QFileDialog's own is protected
+                chooseFile(d, temp.filePath("import-keys.dat"));
                 picked = true;
             });
             menuItem("Import keys.dat…")->trigger();
