@@ -176,6 +176,14 @@ qt_add_executable(readme_screenshots EXCLUDE_FROM_ALL tools/readme_screenshots.c
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(readme_screenshots PRIVATE third_party/qrcodegen)
 target_link_libraries(readme_screenshots PRIVATE bmcore Qt6::Widgets Qt6::Network Qt6::Test)
+# How smoothly the Subscriptions feed scrolls (frame times); built only on request:
+#   cmake --build build --target feed_scroll_bench && build/feed_scroll_bench
+qt_add_executable(feed_scroll_bench EXCLUDE_FROM_ALL tools/feed_scroll_bench.cpp
+ src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp
+ src/desktop_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/appearance.cpp src/appearance.h assets/icons.qrc
+ third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
+target_include_directories(feed_scroll_bench PRIVATE third_party/qrcodegen)
+target_link_libraries(feed_scroll_bench PRIVATE bmcore Qt6::Widgets Qt6::Network)
 # Release announcement broadcast ("ynotbit X.Y.Z" from the release address);
 # built only on request. Dry run unless --send:
 #   cmake --build build --target announce_release
@@ -246,6 +254,13 @@ target_include_directories(letter_document_tests PRIVATE src)
 target_link_libraries(letter_document_tests PRIVATE Qt6::Gui)
 add_test(NAME letter-document COMMAND letter_document_tests)
 set_tests_properties(letter-document PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+qt_add_executable(picture_tests tests/picture_tests.cpp src/letter_render.cpp src/letter_render.h
+ src/letter_document.cpp src/quoting.cpp src/appearance.cpp src/appearance.h)
+target_include_directories(picture_tests PRIVATE src)
+target_link_libraries(picture_tests PRIVATE Qt6::Widgets)
+add_test(NAME pictures COMMAND picture_tests)
+# As on a Retina screen: pictures are kept at twice their size in points.
+set_tests_properties(pictures PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=2")
 qt_add_executable(i18n_tests tests/i18n_tests.cpp src/i18n.cpp src/i18n.h)
 target_include_directories(i18n_tests PRIVATE src)
 target_link_libraries(i18n_tests PRIVATE Qt6::Core)
