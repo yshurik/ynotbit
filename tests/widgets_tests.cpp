@@ -35,6 +35,8 @@ static bool searched(bm::MessageModel *model) {
     return !model->searching();
 }
 int main(int argc, char **argv) {
+    // Unbuffered: a run that hangs and is killed by ctest still shows how far it got.
+    std::cout << std::unitbuf;
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc, argv);
     app.setOrganizationName("YnotbitTests");
@@ -2208,8 +2210,14 @@ int main(int argc, char **argv) {
             meter.start(5);
             last = stall.elapsed();
             QTest::keyClicks(searchBox, "cool am", Qt::NoModifier, 40);
-            QTest::qWait(300);
-            const bool finished = searched(session.messageModel());
+            // The box applies its text 250 ms after the last key, later on a
+            // busy machine: wait for the text to arrive, then for the search.
+            const bool finished = QTest::qWaitFor(
+                [&] {
+                    return session.messageModel()->search() == "cool am" &&
+                           !session.messageModel()->searching();
+                },
+                20000);
             QTest::qWait(20);
             meter.stop();
             std::cout << "Filter over 300 x 150 KB letters: worst UI stall " << worst << "ms\n";
@@ -2222,8 +2230,12 @@ int main(int argc, char **argv) {
             require(!progress->isVisible() && countLabel->text() == "1 found",
                     "a finished search hides its progress and says what it found");
             searchBox->clear();
-            QTest::qWait(300);
-            require(list->model()->rowCount() == 300 && countLabel->text() == "300 total",
+            require(QTest::qWaitFor(
+                        [&] {
+                            return list->model()->rowCount() == 300 &&
+                                   countLabel->text() == "300 total";
+                        },
+                        5000),
                     "clearing the filter lists every letter again");
         }
         require(session.nodeArguments().join(' ').contains("-R 2048 -A 90"),
