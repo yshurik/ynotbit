@@ -1,7 +1,7 @@
 # ynotbit — why not bit?
 
 A compact desktop Bitmessage client based on [notbit](https://github.com/bpeel/notbit),
-by [yshurik](https://github.com/yshurik). **Current release: 0.5.1.**
+by [yshurik](https://github.com/yshurik). **Current release: 0.6.0.**
 
 ynotbit keeps identity keys in a password-protected vault and correspondence in a
 separate encrypted mailbox document. Its keyless relay continues collecting
@@ -16,7 +16,7 @@ and saves matching letters to the mailbox.
 
 ## Download
 
-[**v0.5.1 release**](https://github.com/yshurik/ynotbit/releases/tag/v0.5.1) — prebuilt,
+[**v0.6.0 release**](https://github.com/yshurik/ynotbit/releases/tag/v0.6.0) — prebuilt,
 CI-tested downloads for Linux (x86_64), macOS (Apple Silicon), and Windows (x86_64).
 See [Current boundaries](#current-boundaries) below for what each build does and doesn't
 guarantee.
