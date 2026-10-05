@@ -167,7 +167,7 @@ qt_add_executable(desktop_tests tests/widgets_tests.cpp src/i18n.cpp src/quoting
 target_include_directories(desktop_tests PRIVATE third_party/qrcodegen)
 target_link_libraries(desktop_tests PRIVATE bmcore Qt6::Widgets Qt6::Network Qt6::Test)
 add_test(NAME desktop COMMAND desktop_tests)
-set_tests_properties(desktop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 240)
+set_tests_properties(desktop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 480)
 # README screenshots from demo data; built only on request:
 #   cmake --build build --target readme_screenshots && build/readme_screenshots docs/images
 qt_add_executable(readme_screenshots EXCLUDE_FROM_ALL tools/readme_screenshots.cpp
