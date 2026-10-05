@@ -614,11 +614,13 @@ int main(int argc, char **argv) {
         window.selectMessage(formatted);
         auto reader = window.findChild<QTextBrowser *>("readerBody");
         require(reader->toPlainText().contains("A readable list"), "Markdown renders lists");
-        require(reader->document()
-                    ->resource(QTextDocument::ImageResource, QUrl("file:///etc/passwd"))
-                    .value<QImage>()
-                    .isNull(),
-                "reader blocks local resources");
+        const auto stand = [reader](const QString &name) {
+            return reader->document()
+                ->resource(QTextDocument::ImageResource, QUrl(name))
+                .value<QImage>();
+        };
+        require(stand("file:///etc/passwd") == stand("https://example.com/a.png"),
+                "reader blocks local resources, as remote ones");
         {
             // Scoped to the reader's own switch: a pop-out window carries an
             // identical one, and it is a child of this window too.

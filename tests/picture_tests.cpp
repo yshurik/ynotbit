@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QBuffer>
 #include <QPainter>
+#include <QTemporaryDir>
 #include <QTextBlock>
 #include <iostream>
 #include <stdexcept>
@@ -48,6 +49,13 @@ struct View {
         view.grab();
     }
 };
+static bool hasColor(const QImage &image, QColor color) {
+    for (int y = 0; y < image.height(); ++y)
+        for (int x = 0; x < image.width(); ++x)
+            if (image.pixelColor(x, y) == color)
+                return true;
+    return false;
+}
 static QString letterWith(const QString &url) {
     return "From the hill:\n\n![harbour][img1]\n\nMore next week.\n\n[img1]: " + url;
 }
@@ -104,10 +112,13 @@ int main(int argc, char **argv) {
         require(pictures(document)[0].width() == 640, "a wide column gives it back its size");
         const auto shortName = pictures(document)[0].name();
         reader.show("The next letter, no pictures.");
-        require(document->resource(QTextDocument::ImageResource, QUrl(shortName))
-                    .value<QPixmap>()
-                    .isNull(),
-                "the next letter forgets the last one's pictures");
+        const auto stand = [document](const QString &name) {
+            return document->resource(QTextDocument::ImageResource, QUrl(name))
+                .value<QPixmap>()
+                .toImage();
+        };
+        require(stand(shortName) == stand("https://example.com/a.png"),
+                "the next letter forgets the last one's pictures: a placeholder stands in");
 
         // The composer keeps the letter's data: URLs, as it writes them out.
         bm::SafeDocument composer;
@@ -117,10 +128,27 @@ int main(int argc, char **argv) {
         require(!first.value<QPixmap>().isNull() && bm::pictureDecodes() <= decodes + 1 &&
                     again.value<QPixmap>().cacheKey() == first.value<QPixmap>().cacheKey(),
                 "a picture by its data: URL is decoded once too");
-        require(composer.resource(QTextDocument::ImageResource, QUrl("file:///etc/passwd"))
+
+        // A picture by a local path or file: URL is never loaded, in the
+        // reader or the composer: a placeholder stands in, as for a remote one.
+        QTemporaryDir dir;
+        QImage red(60, 60, QImage::Format_RGB32);
+        red.fill(Qt::red);
+        const auto file = dir.filePath("red.png");
+        require(red.save(file), "test sanity: a local picture");
+        View local(400);
+        local.show("By path: ![a](" + file + ")\n\nBy URL: ![b](" +
+                   QUrl::fromLocalFile(file).toString() + ")");
+        require(!hasColor(local.view.grab().toImage(), Qt::red),
+                "a letter never shows a local file, by path or file: URL");
+        require(
+            composer.resource(QTextDocument::ImageResource, QUrl::fromLocalFile(file))
                     .value<QPixmap>()
-                    .isNull(),
-                "local files are never loaded");
+                    .toImage() ==
+                composer.resource(QTextDocument::ImageResource, QUrl("https://example.com/a.png"))
+                    .value<QPixmap>()
+                    .toImage(),
+            "...refused just like a remote picture");
         // Many pictures: the least recently shown make way, so memory stays
         // bounded. 61 photos at 1280x960 pixels would take 300 MB.
         View many(900);

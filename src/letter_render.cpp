@@ -160,6 +160,18 @@ QCache<QString, QPixmap> &shownPictures() {
     return cache;
 }
 int decodes = 0;
+// What a letter shows for a picture it does not load (remote, local, or one
+// that will not decode). Never nothing: given no picture, Qt goes and loads
+// the name as a local file.
+QPixmap placeholder() {
+    const qreal ratio = qGuiApp->devicePixelRatio();
+    const auto key = QString("placeholder@%1").arg(ratio);
+    if (const auto cached = shownPictures().object(key))
+        return *cached;
+    const auto pixmap = materialIcon("image", QColor("#8a96a0")).pixmap(QSize(16, 16), ratio);
+    shownPictures().insert(key, new QPixmap(pixmap), 1);
+    return pixmap;
+}
 // As large as the picture, but no wider than room.
 QSize shownSize(QSize size, int room) {
     if (size.width() <= room)
@@ -243,7 +255,8 @@ QVariant SafeDocument::loadResource(int type, const QUrl &name) {
     const auto text = name.toString();
     const auto shown = type == QTextDocument::ImageResource ? picture(text, &key) : nullptr;
     if (!shown)
-        return QVariant::fromValue(QPixmap());
+        return QVariant::fromValue(type == QTextDocument::ImageResource ? placeholder()
+                                                                        : QPixmap());
     // The size a short name gives; for a data: URL, what the text width allows.
     const int width =
         text.startsWith(kPictureScheme) ? text.section('/', 1).toInt() : pictureRoom();
@@ -253,7 +266,7 @@ QVariant SafeDocument::loadResource(int type, const QUrl &name) {
     const auto cacheKey =
         QString("%1/%2x%3@%4").arg(key).arg(size.width()).arg(size.height()).arg(ratio);
     if (const auto cached = shownPictures().object(cacheKey))
-        return QVariant::fromValue(*cached);
+        return QVariant::fromValue(cached->isNull() ? placeholder() : *cached);
     ++decodes;
     auto image = letterImage(QUrl(shown->url));
     const QSize pixels = (QSizeF(size) * ratio).toSize();
@@ -264,7 +277,7 @@ QVariant SafeDocument::loadResource(int type, const QUrl &name) {
     // Kept even when it would not decode, so it is not tried at every paint.
     shownPictures().insert(cacheKey, new QPixmap(pixmap),
                            qMax(1, int(qint64(pixmap.width()) * pixmap.height() * 4 / 1024)));
-    return QVariant::fromValue(pixmap);
+    return QVariant::fromValue(pixmap.isNull() ? placeholder() : pixmap);
 }
 // Markdown with quoting, through loadLetter: each quote level is read on its
 // own, so quoted headings, lists and emphasis keep their quote.
