@@ -10,6 +10,10 @@ and saves matching letters to the mailbox.
 
 ![ynotbit reading a Markdown letter from a named contact](docs/images/desktop.png)
 
+| Subscriptions | Pictures in a letter | Replying |
+|---|---|---|
+| ![Followed senders and one sender's posts as a feed](docs/images/subscriptions.png) | ![A letter carrying a picture](docs/images/pictures.png) | ![A reply quoting the letter in the same editor](docs/images/reply.png) |
+
 | Chans | Contacts | Writing to a contact |
 |---|---|---|
 | ![A chan with member posts](docs/images/channels.png) | ![The address book](docs/images/contacts.png) | ![The composer naming the recipient](docs/images/composer.png) |
@@ -29,7 +33,7 @@ guarantee.
 3. Choose **Write a letter**, select the sender, and pick a recipient: type a
    contact's name or a BM-address, or use the contacts button beside **To**.
    Changes automatically save in the encrypted mailbox.
-4. Choose **Send letter**. Existing drafts have an **Edit / Send** control.
+4. Choose **Send**. Existing drafts have an **Edit / Send** control.
 5. Follow progress in **Outbox**. Key lookup and proof of work can take time;
    recipient acknowledgment is asynchronous and is not a read receipt.
 6. Lock the vault when finished. Preparation pauses, the mailbox closes, and
@@ -38,6 +42,13 @@ guarantee.
 To name someone, click the person-plus button beside their address in a letter,
 or use **Contacts → Add contact…**. Names then appear in the message list, the
 reader and the composer, always next to the full address.
+
+To follow a sender's broadcasts, open **Subscriptions** and choose **+ Subscribe…**
+(or **Identity → Subscribe to broadcasts…**); their posts appear as a feed. New
+mailboxes already follow the Bitmessage digest, and ynotbit's own update notices.
+
+To add a picture to a letter, use the **+** button in the composer, the
+right-click menu, or drop image files on the letter.
 
 **File → Back up mailbox and vault** saves both documents. Keep both: a mailbox
 alone cannot recover its encryption key. Changing a password does not invalidate
@@ -69,20 +80,34 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
 - Message details align sender and recipient addresses, color successful
   acknowledgment, and show the recorded delivery timeline: prepared, key
   available, sent to peers, acknowledged, or received in the mailbox.
-- Broadcast publishing/subscriptions (v4/v5 objects), shared chans, folder search,
-  read state, archive, trash/restore, and explicit permanent deletion.
+- Broadcast publishing (v4/v5 objects) and **Subscriptions**: followed senders in a
+  rail like the chan list, and each sender's posts as a feed of cards with Reply
+  privately, Forward, Copy text, Open in window, Archive and Trash. New mailboxes
+  follow the Bitmessage digest. Shared chans, folder search that runs in the
+  background, read state, archive, trash/restore, and explicit permanent deletion.
+- Update notices: signed broadcasts from ynotbit's release address
+  (`BM-2666hf5eAbjCJMaPwC7eG3Um55QJGM`) show a banner when a newer version is out,
+  without subscribing; **Network → Notify about new ynotbit versions** turns them off.
 - A separate notbit relay, on Linux, macOS and Windows, receives no vault or
   mailbox keys. It identifies itself to peers as `/ynotbit:<version>/`. Its bounded local
   queue accepts network objects, validates proof of work, and records acceptance,
   rejection, and offers to connected peers. Receipt state survives restarts.
-- A Qt-native bounded relay remains available as a fallback (`--qt-node`), with
-  the same object limits, persistence, SOCKS5 support, peer admission rules, and
-  publication receipts.
+- Network objects live in one SQLite file, `objects.sqlite`, which the relay writes
+  and prunes to the retention limits and the app reads, so new objects reach the
+  mailbox on the next refresh.
 - The desktop uses Qt Widgets, without QML or Qt Quick. A painted list keeps at
   most three pages of 100 message summaries, loading only the selected body.
-- The composer is a visual Markdown editor. Rendered messages use a safe Markdown
-  document that does not fetch local files or remote images. Appearance follows the
-  system color scheme by default and can be set to light or dark.
+- The composer is a visual Markdown editor. The mark beside each paragraph (¶,
+  H1–H6, list, code) opens **Turn into**, as in MarkText. Replies quote the letter
+  email-style with `>` in the same editor: quoted text can be edited but stays
+  quoted, and the reader shows quote levels as coloured bars. Letters can be
+  forwarded.
+- Pictures travel inside the letter as standard Markdown `data:` URLs, shrunk to
+  fit one letter, since Bitmessage has no attachments. The reader shows them, and
+  PyBitmessage's inline pictures too; only PNG, JPEG, GIF and WebP load.
+  Rendered messages use a safe Markdown document that does not fetch local files
+  or remote images. Appearance follows the system color scheme by default and can
+  be set to light or dark.
 - Interface in English, Simplified and Traditional Chinese, Japanese, Korean,
   Russian and Ukrainian. It follows the system language, or pick one under
   **Appearance → Language** (applies after a restart). Dates follow the chosen language.
@@ -157,7 +182,8 @@ uses Qt's application-data location. Its internal application identifier remains
 `./notbit-data/node` relative to the launch directory. `--offline` starts without
 network connections. The relay stops when the application exits.
 
-Default network retention is 512 MiB / 90 days; change it under **Network**.
+Default network retention is 2 GiB / 90 days, kept by the relay in `objects.sqlite`
+in the node folder; change it under **Network → Retention settings…**.
 Local retention can outlive protocol expiry, allowing later unlocked inspection.
 Discarding a retained object can prevent later recovery; already saved mailbox
 letters are unaffected. Proof of work uses one background CPU thread.
@@ -176,9 +202,9 @@ runtime dependencies. It is ad-hoc signed, not Developer ID signed or notarized.
 Since 0.5.0 the Windows build runs the notbit engine too, through a small
 Winsock layer (`third_party/notbit/src/ntb-win32.c`). Windows has no signal the
 app can send the node to stop cleanly, so the node is terminated on exit; work
-the store had queued but not yet written is dropped, as the Qt relay's was.
-The Linux download is a single AppImage. Attachment UI and configurable CPU
-parallelism are not implemented.
+the store had queued but not yet written is dropped.
+The Linux download is a single AppImage. File attachments (other than pictures
+carried inside a letter) and configurable CPU parallelism are not implemented.
 
 `.github/workflows/release.yml` builds, tests, and packages Linux, macOS, and
 Windows on every `v*` tag push (or manual dispatch), then attaches the three

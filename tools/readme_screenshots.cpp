@@ -27,6 +27,35 @@ int main(int argc, char **argv) {
     const auto alice = bm::Protocol::identity("readme Alice").address;
     const auto bob = bm::Protocol::identity("readme Bob").address;
     const auto carol = bm::Protocol::identity("readme Carol").address;
+    const auto news = bm::Protocol::identity("readme Mesh news").address;
+    // A picture travels inside the letter, as a data: URL the reader shows.
+    QString beach;
+    {
+        QImage photo(720, 440, QImage::Format_RGB32);
+        QPainter p(&photo);
+        p.setRenderHint(QPainter::Antialiasing);
+        QLinearGradient sky(0, 0, 0, 260);
+        sky.setColorAt(0, QColor("#3f7cc4"));
+        sky.setColorAt(1, QColor("#f3c98b"));
+        p.fillRect(0, 0, 720, 260, sky);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor("#ffe9a8"));
+        p.drawEllipse(QPointF(520, 210), 46, 46);
+        QLinearGradient sea(0, 250, 0, 330);
+        sea.setColorAt(0, QColor("#2f6f9a"));
+        sea.setColorAt(1, QColor("#3d9bb3"));
+        p.fillRect(0, 250, 720, 80, sea);
+        QLinearGradient sand(0, 330, 0, 440);
+        sand.setColorAt(0, QColor("#e8d3a2"));
+        sand.setColorAt(1, QColor("#d1b47c"));
+        p.fillRect(0, 330, 720, 110, sand);
+        p.end();
+        QByteArray jpeg;
+        QBuffer buffer(&jpeg);
+        buffer.open(QIODevice::WriteOnly);
+        photo.save(&buffer, "JPG", 82);
+        beach = "data:image/jpeg;base64," + QString::fromLatin1(jpeg.toBase64());
+    }
 
     bm::Vault vault;
     vault.create(temp.filePath("vault"), "demo password");
@@ -41,7 +70,9 @@ int main(int argc, char **argv) {
                      const QString &body, const QString &folder) {
         mailbox.store("demo-" + QString::number(++n), from, to, subject, body, n, folder);
     };
-    store(carol, me, "Photos from Saturday", "They came out great -- sending the best ones next week.",
+    store(carol, me, "Photos from Saturday",
+          "They came out great -- here is the best one:\n\n![Saturday at the beach][img1]\n\n"
+          "More next week.\n\n[img1]: " + beach,
           "Inbox");
     store(bob, me, "Re: node on the Raspberry Pi",
           "It has been up for nine days now and relays happily. Memory stays under 60 MB.",
@@ -61,6 +92,27 @@ int main(int argc, char **argv) {
           "Curious how the new release behaves there.", "Channels");
     store(carol, general, "Re: Anyone running ynotbit on Windows?",
           "Yes -- the network engine is the same as on Linux now. Works well.", "Channels");
+    // A sender followed on the Subscriptions page; a broadcast's recipient is its sender.
+    mailbox.subscribe(news, "Mesh networking notes");
+    store(news, news, "A month on a solar-powered relay",
+          "The Raspberry Pi node has now run for **31 days** on a 20 W panel.\n\n"
+          "- Uptime: 99.2%, two short stops on cloudy mornings\n"
+          "- Memory: under 60 MB the whole time\n"
+          "- Objects relayed: about 14,000 a day\n\n"
+          "Next: a second node at the allotment.",
+          "Broadcasts");
+    store(news, news, "Bitmessage over Tor, revisited",
+          "Routing the node through a local Tor proxy still works well.\n\n"
+          "## Two tips\n\n"
+          "- Expect slower first contact with peers, then normal traffic\n"
+          "- Keep incoming connections off when running behind Tor",
+          "Broadcasts");
+    store(news, news, "Reading list",
+          "## This week\n\n"
+          "1. How proof of work keeps the network quiet\n"
+          "2. Chans: shared addresses, shared keys\n"
+          "3. Why every message reaches every node",
+          "Broadcasts");
     mailbox.saveContact(alice, "Alice Liddell");
     mailbox.saveContact(bob, "Bob");
     mailbox.saveContact(carol, "Carol");
@@ -129,6 +181,26 @@ int main(int argc, char **argv) {
     }
     shot("channels.png");
 
+    // Subscriptions: the senders followed, one sender's posts as a feed.
+    folders->setCurrentRow(5);
+    settle();
+    for (auto chip : window.findChildren<QPushButton *>("channelChip"))
+        if (chip->text() == "Mesh networking notes")
+            chip->click();
+    shot("subscriptions.png");
+
+    // A picture carried inside a letter.
+    folders->setCurrentRow(0);
+    settle();
+    for (int row = 0; row < list->model()->rowCount(); ++row) {
+        const auto index = list->model()->index(row, 0);
+        if (index.data(Qt::UserRole + 4).toString() == "Photos from Saturday") {
+            list->setCurrentIndex(index);
+            window.selectMessage(index.data(Qt::UserRole + 1).toString());
+        }
+    }
+    shot("pictures.png");
+
     // The address book.
     folders->setCurrentRow(9);
     shot("contacts.png");
@@ -146,5 +218,24 @@ int main(int argc, char **argv) {
         }
     });
     window.compose({{"to", alice}});
+
+    // Replying: the letter is quoted in the same editor, one level deeper.
+    QString notes;
+    for (const auto &m : session.messagePage("Inbox", {}, 0, 100))
+        if (m.toMap()["subject"].toString() == "Notes for Thursday")
+            notes = m.toMap()["hash"].toString();
+    QTimer::singleShot(200, &window, [&] {
+        if (auto dialog = window.findChild<QDialog *>("composer")) {
+            if (auto body = dialog->findChild<QTextEdit *>("bodyField")) {
+                body->moveCursor(QTextCursor::Start);
+                body->insertPlainText("Sounds good. I will bring the release checklist.");
+            }
+            settle();
+            dialog->grab().save(out + "/reply.png");
+            std::cout << (out + "/reply.png").toStdString() << "\n";
+            dialog->reject();
+        }
+    });
+    window.compose(session.message(notes), true);
     return 0;
 }
