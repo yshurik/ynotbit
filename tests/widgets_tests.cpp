@@ -39,6 +39,22 @@ int main(int argc, char **argv) {
     std::cout << std::unitbuf;
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc, argv);
+    // A modal dialog nobody answers blocks until ctest's 240 s timeout, without
+    // a clue: before that, name the windows still open, then fail.
+    QTimer watchdog;
+    watchdog.setSingleShot(true);
+    QObject::connect(&watchdog, &QTimer::timeout, [] {
+        std::cerr << "HUNG: still running after 225 s; open windows:\n";
+        for (auto w : QApplication::topLevelWidgets())
+            if (w->isVisible())
+                std::cerr << "  " << w->metaObject()->className() << " \""
+                          << w->objectName().toStdString() << "\" \""
+                          << w->windowTitle().toStdString() << '"'
+                          << (w == QApplication::activeModalWidget() ? " (active modal)" : "")
+                          << '\n';
+        std::_Exit(3);
+    });
+    watchdog.start(225000);
     app.setOrganizationName("YnotbitTests");
     app.setApplicationName("Widgets");
     QTemporaryDir temp;
