@@ -42,6 +42,13 @@ int main(int argc, char **argv) {
             "Sounds good.\n\n> earlier point\n\n-- \nsent by ynotbit", "On 29 Sep 2026, Alice wrote:");
         require(quoted == "On 29 Sep 2026, Alice wrote:\n> Sounds good.\n>\n>> earlier point",
                 "a reply quotes one level deeper, keeps blank lines, drops the signature");
+        require(bm::quoteForReply("Sounds good.\n\n> earlier point\n\n" + bm::kSignature,
+                                  "On 29 Sep 2026, Alice wrote:") ==
+                    "On 29 Sep 2026, Alice wrote:\n> Sounds good.\n>\n>> earlier point",
+                "ynotbit's one-line signature is dropped from the quote too");
+        require(bm::quoteForReply("-- not a signature, just a dash\nmore", "A:") ==
+                    "A:\n> -- not a signature, just a dash\n> more",
+                "other lines starting with \"-- \" are kept");
         require(bm::quoteForReply("hi\n\n" + dashes + "\nold", "A:") == "A:\n> hi\n>> old",
                 "a PyBitmessage thread is quoted as nested levels");
 

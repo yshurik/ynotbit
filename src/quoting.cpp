@@ -70,10 +70,11 @@ QString normalizeQuotes(const QString &body) {
 }
 QString quoteForReply(const QString &body, const QString &attribution) {
     auto lines = normalizeQuotes(body).split('\n');
-    // Drop the sender's own signature: from a "-- " line at the letter's own
-    // level up to where quoted history resumes.
+    // Drop the sender's own signature: from a "-- " line, or ynotbit's one-line
+    // signature, at the letter's own level up to where quoted history resumes.
     for (int i = 0; i < lines.size(); ++i) {
-        if (quoteLevel(lines[i]) == 0 && (lines[i] == "-- " || lines[i] == "--")) {
+        if (quoteLevel(lines[i]) == 0 &&
+            (lines[i] == "-- " || lines[i] == "--" || lines[i] == kSignature)) {
             int end = i;
             while (end < lines.size() && quoteLevel(lines[end]) == 0)
                 ++end;

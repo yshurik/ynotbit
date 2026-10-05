@@ -1028,7 +1028,7 @@ class Composer : public QDialog {
         original_ = (reply || forward) ? QString() : letter["body"].toString();
         const bool freshLetter = (reply || forward) || letter["hash"].toString().isEmpty();
         if (freshLetter)
-            original_ = "-- sent by y*notbit*";
+            original_ = kSignature;
         if (reply || forward) {
             // Email style: room to write at the top, the signature, then the
             // letter being answered, quoted with ">" under an attribution --
