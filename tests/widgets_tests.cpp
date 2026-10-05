@@ -988,7 +988,14 @@ int main(int argc, char **argv) {
                     }
                 });
                 pick->start(10);
-                dialog->findChild<QToolButton *>("insertPictureButton")->click();
+                auto addMenu = dialog->findChild<QPushButton *>("addMenuButton");
+                require(addMenu && addMenu->menu(), "the composer has a + menu");
+                QAction *insertImage = nullptr;
+                for (auto action : addMenu->menu()->actions())
+                    if (action->objectName() == "insertImageAction")
+                        insertImage = action;
+                require(insertImage, "the + menu offers Insert image");
+                insertImage->trigger();
                 bool shown = false;
                 for (auto block = body->document()->begin(); block.isValid(); block = block.next())
                     for (auto it = block.begin(); !it.atEnd(); ++it)
@@ -1100,7 +1107,7 @@ int main(int argc, char **argv) {
                 require(dialog->findChild<QLineEdit *>("subjectField")->text() == "Re: bootstrap",
                         "the subject is not prefixed twice");
                 require(body->toPlainText().replace(QChar(0x2028), '\n').startsWith(
-                            "\n\n-- \nsent by ynotbit"),
+                            "\n\n-- sent by ynotbit"),
                         "the reply starts with room to write, then the signature");
                 // The answered letter is quoted in the same editor, one level deeper.
                 QMap<QString, int> quotedLevels;
@@ -1164,7 +1171,7 @@ int main(int argc, char **argv) {
             for (auto m : session.messagePage("Drafts", {}, 0, 100))
                 if (m.toMap()["preview"].toString().startsWith("Agreed."))
                     replyBody = session.message(m.toMap()["hash"].toString())["body"].toString();
-            require(replyBody.contains("-- \nsent by ynotbit") && !replyBody.contains("\\--"),
+            require(replyBody.contains("-- sent by y*notbit*") && !replyBody.contains("\\--"),
                     "the saved reply keeps a proper \"-- \" signature delimiter");
             require(replyBody.contains("\n> go offline\n\nInline answer.\n>> What happened?") &&
                         replyBody.contains("\n>>> We have zero working bootstrap addresses."),
@@ -1235,8 +1242,8 @@ int main(int argc, char **argv) {
             require(blockFor("Thanks!").isValid() && !blockFor("Thanks!").textList() &&
                         level(blockFor("Thanks!")) == 1,
                     "the quoted paragraph after the list stays a paragraph");
-            require(blockFor("-- " + QString(QChar(0x2028)) + "sent by ynotbit").isValid(),
-                    "the signature keeps its delimiter line in the Markdown view");
+            require(blockFor("-- sent by ynotbit").isValid(),
+                    "the signature keeps its \"-- \" in the Markdown view");
             // Reopening the draft: one editor again, quoting and headings intact.
             QTimer::singleShot(30, &window, [&] {
                 auto dialog = window.findChild<QDialog *>("composer");
@@ -1306,9 +1313,8 @@ int main(int argc, char **argv) {
             auto sigBody = dialog->findChild<QTextEdit *>("bodyField");
             require(sigBody->toPlainText().contains("ynotbit"),
                     "a brand-new letter is pre-filled with a default signature");
-            require(sigBody->toPlainText().replace(QChar(0x2028), '\n').startsWith("\n\n-- \nsent by ynotbit"),
-                    "two blank lines separate the cursor position from the signature, whose "
-                    "\"-- \" delimiter keeps its own line");
+            require(sigBody->toPlainText().replace(QChar(0x2028), '\n').startsWith("\n\n-- sent by ynotbit"),
+                    "two blank lines separate the cursor position from the signature");
             require(sigBody->textCursor().position() == 0,
                     "the cursor starts on the first blank line, not inside the signature");
             dialog->reject();

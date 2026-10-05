@@ -1211,6 +1211,7 @@ class Composer : public QDialog {
         addMenuBtn->setObjectName("addMenuButton");
         auto addMenu = new QMenu(addMenuBtn);
         auto insertImageAction = addMenu->addAction(DesktopWindow::tr("Insert image..."));
+        insertImageAction->setObjectName("insertImageAction");
         connect(insertImageAction, &QAction::triggered, this, [this] {
             if (body_->onInsertImageRequested)
                 body_->onInsertImageRequested(QString());
