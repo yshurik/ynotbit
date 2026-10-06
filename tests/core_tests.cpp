@@ -1,11 +1,16 @@
 #include "message_search.h"
+#include "pow.h"
 #include "protocol.h"
+#include "protocol_wire.h"
 #include "storage.h"
 #include <QCoreApplication>
 #include <QDataStream>
+#include <QDateTime>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QTemporaryDir>
+#include <QThread>
+#include <algorithm>
 #include <functional>
 #include <iostream>
 #include <sqlcipher/sqlite3.h>
@@ -303,6 +308,48 @@ int main(int argc, char **argv) {
                         "a closed search reports failure instead of hanging");
             }
             filterBox.close();
+        }
+        {
+            // Proof of work runs on several cores and still yields one valid object.
+            const unsigned cores = std::max(1u, std::thread::hardware_concurrency());
+            require(ProofOfWork::workerCount() == std::max(1u, cores - 1),
+                    "proof of work leaves one core for the window");
+            const auto now = QDateTime::currentSecsSinceEpoch();
+            const auto object = Wire::acknowledgment(QByteArray(32, 'p'), now + 3600);
+            ProofOfWork pow;
+            const auto waitDone = [&](int ms) {
+                QElapsedTimer t;
+                t.start();
+                while (!pow.done() && t.elapsed() < ms)
+                    QThread::msleep(5);
+                return pow.done();
+            };
+            pow.start(object);
+            require(waitDone(120000), "proof of work finishes");
+            const auto solved = pow.take();
+            require(ProofOfWork::valid(solved, now), "solved object passes the network check");
+            require(solved.mid(8) == object.mid(8), "only the nonce changes");
+            require(!pow.done() && pow.take().isEmpty(), "a result is taken once");
+
+            // Stopping a search nobody can finish returns at once, and the
+            // same instance then solves the next object.
+            pow.start(object, 1000000, 1000000);
+            QThread::msleep(100);
+            QElapsedTimer stopping;
+            stopping.start();
+            pow.stop();
+            require(stopping.elapsed() < 1000, "stop() ends every worker promptly");
+            require(!pow.done() && pow.take().isEmpty(), "a stopped search has no result");
+            pow.start(object);
+            require(waitDone(120000), "a restarted search finishes");
+            require(ProofOfWork::valid(pow.take(), now), "restarted result is valid");
+
+            // Destroying a running search must not hang or crash.
+            {
+                ProofOfWork running;
+                running.start(object, 1000000, 1000000);
+                QThread::msleep(50);
+            }
         }
         std::cout << "PASS: vault, password rotation, SQLCipher, deduplication, backup, chan "
                      "fixture, authenticated message codec\n";

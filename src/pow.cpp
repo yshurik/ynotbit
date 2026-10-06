@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QtEndian>
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <openssl/sha.h>
 #include <stdexcept>
@@ -25,7 +26,11 @@ static quint64 value(const unsigned char *nonce, const unsigned char *initial) {
     SHA512_Update(&ctx, nonce, 8);
     SHA512_Update(&ctx, initial, 64);
     SHA512_Final(first, &ctx);
-    SHA512(first, 64, second);
+    // Not the one-shot SHA512(): in OpenSSL 3 it looks the digest up under a
+    // global lock, which serialises the workers.
+    SHA512_Init(&ctx);
+    SHA512_Update(&ctx, first, 64);
+    SHA512_Final(second, &ctx);
     return qFromBigEndian<quint64>(second);
 }
 bool ProofOfWork::valid(const QByteArray &object, qint64 now, quint64 trials, quint64 extra) {
@@ -51,28 +56,47 @@ void ProofOfWork::start(QByteArray object, quint64 trials, quint64 extra) {
         target(object.size(), h->expires - QDateTime::currentSecsSinceEpoch(), trials, extra);
     cancel_ = false;
     done_ = false;
-    worker_ = std::thread([this, object = std::move(object), threshold]() mutable {
-        unsigned char initial[64], nonceBytes[8];
-        SHA512(reinterpret_cast<const unsigned char *>(object.constData() + 8), object.size() - 8,
-               initial);
-        // A resumed job must not repeatedly search the same nonce prefix after each lock.
-        quint64 firstNonce;
-        randombytes_buf(&firstNonce, sizeof firstNonce);
-        for (quint64 nonce = firstNonce; !cancel_; ++nonce) {
-            qToBigEndian(nonce, nonceBytes);
-            if (value(nonceBytes, initial) <= threshold) {
+    unsigned char initial[64];
+    SHA512(reinterpret_cast<const unsigned char *>(object.constData() + 8), object.size() - 8,
+           initial);
+    // A resumed job must not repeatedly search the same nonce prefix after each lock.
+    quint64 firstNonce;
+    randombytes_buf(&firstNonce, sizeof firstNonce);
+    const unsigned count = workerCount();
+    for (unsigned i = 0; i < count; ++i) {
+        // Worker i tries firstNonce + i, + i + count, ...: no two try the same nonce.
+        workers_.emplace_back([this, object, initial = std::to_array(initial), threshold,
+                               first = firstNonce + i, count]() mutable {
+            unsigned char nonceBytes[8];
+            for (quint64 nonce = first; !cancel_; nonce += count) {
+                qToBigEndian(nonce, nonceBytes);
+                if (value(nonceBytes, initial.data()) > threshold)
+                    continue;
+                std::lock_guard lock(resultMutex_);
+                if (done_ || cancel_)
+                    return;
                 std::copy(nonceBytes, nonceBytes + 8, object.data());
                 result_ = std::move(object);
                 done_ = true;
+                cancel_ = true; // the others stop at their next nonce
                 return;
             }
-        }
-    });
+        });
+    }
+}
+unsigned ProofOfWork::workerCount() {
+    const unsigned cores = std::thread::hardware_concurrency();
+    return cores > 1 ? cores - 1 : 1;
+}
+void ProofOfWork::join() {
+    for (auto &worker : workers_)
+        if (worker.joinable())
+            worker.join();
+    workers_.clear();
 }
 void ProofOfWork::stop() {
     cancel_ = true;
-    if (worker_.joinable())
-        worker_.join();
+    join();
     result_.fill(0);
     result_.clear();
     done_ = false;
@@ -80,7 +104,7 @@ void ProofOfWork::stop() {
 QByteArray ProofOfWork::take() {
     if (!done_)
         return {};
-    worker_.join();
+    join();
     auto result = std::move(result_);
     done_ = false;
     return result;
