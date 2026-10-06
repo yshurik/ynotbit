@@ -1,4 +1,5 @@
 #include "pow.h"
+#include "gpu_pow.h"
 #include "protocol_wire.h"
 #include <QDateTime>
 #include <QtEndian>
@@ -8,6 +9,7 @@
 #include <openssl/sha.h>
 #include <stdexcept>
 namespace bm {
+static std::atomic_bool gpuOn{true};
 static quint64 target(qsizetype size, qint64 ttl, quint64 trials, quint64 extra) {
     if (size < 22 || size > 262144 || trials > 1000000 || extra > 1000000)
         throw std::runtime_error("Unsupported proof-of-work requirement");
@@ -62,27 +64,57 @@ void ProofOfWork::start(QByteArray object, quint64 trials, quint64 extra) {
     // A resumed job must not repeatedly search the same nonce prefix after each lock.
     quint64 firstNonce;
     randombytes_buf(&firstNonce, sizeof firstNonce);
+    // The first worker to find a nonce keeps it; the others stop at their next one.
+    const auto win = [this](QByteArray &object, const unsigned char *nonceBytes) {
+        std::lock_guard lock(resultMutex_);
+        if (done_ || cancel_)
+            return;
+        std::copy(nonceBytes, nonceBytes + 8, object.data());
+        result_ = std::move(object);
+        done_ = true;
+        cancel_ = true;
+    };
     const unsigned count = workerCount();
     for (unsigned i = 0; i < count; ++i) {
         // Worker i tries firstNonce + i, + i + count, ...: no two try the same nonce.
-        workers_.emplace_back([this, object, initial = std::to_array(initial), threshold,
+        workers_.emplace_back([this, win, object, initial = std::to_array(initial), threshold,
                                first = firstNonce + i, count]() mutable {
             unsigned char nonceBytes[8];
             for (quint64 nonce = first; !cancel_; nonce += count) {
                 qToBigEndian(nonce, nonceBytes);
-                if (value(nonceBytes, initial.data()) > threshold)
-                    continue;
-                std::lock_guard lock(resultMutex_);
-                if (done_ || cancel_)
-                    return;
-                std::copy(nonceBytes, nonceBytes + 8, object.data());
-                result_ = std::move(object);
-                done_ = true;
-                cancel_ = true; // the others stop at their next nonce
-                return;
+                if (value(nonceBytes, initial.data()) <= threshold)
+                    return win(object, nonceBytes);
             }
         });
     }
+    if (!gpuOn)
+        return;
+    // The GPU searches the other half of the nonce space. Opening it the first
+    // time takes about a second, so that happens here and not in start().
+    workers_.emplace_back([this, win, object, initial = std::to_array(initial), threshold,
+                           first = firstNonce ^ (quint64(1) << 63)]() mutable {
+        auto &gpu = GpuSolver::instance();
+        const auto nonce = gpu.search(initial.data(), threshold, first, cancel_);
+        if (!nonce)
+            return;
+        unsigned char nonceBytes[8];
+        qToBigEndian(*nonce, nonceBytes);
+        // A driver bug must never send a letter the network rejects.
+        if (value(nonceBytes, initial.data()) > threshold)
+            return gpu.disable("the GPU returned a wrong proof of work");
+        win(object, nonceBytes);
+    });
+}
+void ProofOfWork::setGpuEnabled(bool on) {
+    gpuOn = on;
+}
+bool ProofOfWork::gpuEnabled() {
+    return gpuOn;
+}
+quint64 ProofOfWork::trialValue(quint64 nonce, const unsigned char initial[64]) {
+    unsigned char nonceBytes[8];
+    qToBigEndian(nonce, nonceBytes);
+    return value(nonceBytes, initial);
 }
 unsigned ProofOfWork::workerCount() {
     const unsigned cores = std::thread::hardware_concurrency();
