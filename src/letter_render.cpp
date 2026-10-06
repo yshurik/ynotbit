@@ -149,14 +149,135 @@ void paintQuoteBars(QTextEdit *edit) {
                        quoteColor(i));
     }
 }
-QVariant SafeDocument::loadResource(int type, const QUrl &name) {
-    auto image = type == QTextDocument::ImageResource ? letterImage(name) : QImage();
+namespace {
+constexpr int kWidestPicture = 640, kNarrowestPicture = 160;
+const QString kPictureScheme = QStringLiteral("ynotbit-picture:");
+// Pictures as shown, shared by every letter view: once they would take more
+// than this (KiB), the least recently shown go first.
+constexpr int kShownPicturesKiB = 64 * 1024;
+QCache<QString, QPixmap> &shownPictures() {
+    static QCache<QString, QPixmap> cache(kShownPicturesKiB);
+    return cache;
+}
+int decodes = 0;
+// What a letter shows for a picture it does not load (remote, local, or one
+// that will not decode). Never nothing: given no picture, Qt goes and loads
+// the name as a local file.
+QPixmap placeholder() {
+    const qreal ratio = qGuiApp->devicePixelRatio();
+    const auto key = QString("placeholder@%1").arg(ratio);
+    if (const auto cached = shownPictures().object(key))
+        return *cached;
+    const auto pixmap = materialIcon("image", QColor("#8a96a0")).pixmap(QSize(16, 16), ratio);
+    shownPictures().insert(key, new QPixmap(pixmap), 1);
+    return pixmap;
+}
+// As large as the picture, but no wider than room.
+QSize shownSize(QSize size, int room) {
+    if (size.width() <= room)
+        return size;
+    return {room, qMax(1, qRound(size.height() * qreal(room) / size.width()))};
+}
+} // namespace
+int pictureDecodes() {
+    return decodes;
+}
+int SafeDocument::pictureRoom() const {
     // As wide as the text at most, and never wider than a comfortable column.
-    const int room = textWidth() > 0 ? int(textWidth() - 2 * documentMargin()) : 640;
-    const int width = qBound(160, room, 640);
-    if (image.width() > width)
-        image = image.scaledToWidth(width, Qt::SmoothTransformation);
-    return QVariant::fromValue(image);
+    const int room = textWidth() > 0 ? int(textWidth() - 2 * documentMargin()) : kWidestPicture;
+    return qBound(kNarrowestPicture, room, kWidestPicture);
+}
+const SafeDocument::Picture *SafeDocument::picture(const QString &name, QString *key) {
+    if (name.startsWith(kPictureScheme)) {
+        *key = name.mid(kPictureScheme.size()).section('/', 0, 0);
+    } else if (name.startsWith("data:", Qt::CaseInsensitive)) {
+        auto known = keys_.constFind(name);
+        if (known == keys_.cend()) {
+            QString found;
+            if (const auto size = letterImageSize(QUrl(name)); size.isValid()) {
+                found = QString::fromLatin1(
+                    QCryptographicHash::hash(name.toUtf8(), QCryptographicHash::Sha256).toHex());
+                pictures_.insert(found, {name, size});
+            }
+            known = keys_.insert(name, found);
+        }
+        *key = *known;
+    } else {
+        return nullptr;
+    }
+    const auto it = pictures_.constFind(*key);
+    return it == pictures_.cend() ? nullptr : &*it;
+}
+void SafeDocument::fitPictures() {
+    const int room = pictureRoom();
+    struct Change {
+        int position, length;
+        QTextImageFormat format;
+    };
+    QList<Change> changes;
+    for (auto block = begin(); block.isValid(); block = block.next())
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const auto fragment = it.fragment();
+            if (!fragment.isValid() || !fragment.charFormat().isImageFormat())
+                continue;
+            auto format = fragment.charFormat().toImageFormat();
+            QString key;
+            const auto shown = picture(format.name(), &key);
+            if (!shown)
+                continue;
+            const auto size = shownSize(shown->size, room);
+            const auto name = kPictureScheme + key + '/' + QString::number(size.width());
+            if (format.name() == name && qRound(format.width()) == size.width() &&
+                qRound(format.height()) == size.height())
+                continue;
+            format.setName(name);
+            format.setWidth(size.width());
+            format.setHeight(size.height());
+            changes << Change{fragment.position(), fragment.length(), format};
+        }
+    if (changes.isEmpty())
+        return;
+    // A read-only letter: nothing to undo.
+    const bool undo = isUndoRedoEnabled();
+    setUndoRedoEnabled(false);
+    QTextCursor cursor(this);
+    cursor.beginEditBlock();
+    for (const auto &change : changes) {
+        cursor.setPosition(change.position);
+        cursor.setPosition(change.position + change.length, QTextCursor::KeepAnchor);
+        cursor.setCharFormat(change.format);
+    }
+    cursor.endEditBlock();
+    setUndoRedoEnabled(undo);
+}
+QVariant SafeDocument::loadResource(int type, const QUrl &name) {
+    QString key;
+    const auto text = name.toString();
+    const auto shown = type == QTextDocument::ImageResource ? picture(text, &key) : nullptr;
+    if (!shown)
+        return QVariant::fromValue(type == QTextDocument::ImageResource ? placeholder()
+                                                                        : QPixmap());
+    // The size a short name gives; for a data: URL, what the text width allows.
+    const int width =
+        text.startsWith(kPictureScheme) ? text.section('/', 1).toInt() : pictureRoom();
+    const auto size = shownSize(shown->size, width);
+    // Drawn pixel for pixel: as many pixels as the screen has for its points.
+    const qreal ratio = qGuiApp->devicePixelRatio();
+    const auto cacheKey =
+        QString("%1/%2x%3@%4").arg(key).arg(size.width()).arg(size.height()).arg(ratio);
+    if (const auto cached = shownPictures().object(cacheKey))
+        return QVariant::fromValue(cached->isNull() ? placeholder() : *cached);
+    ++decodes;
+    auto image = letterImage(QUrl(shown->url));
+    const QSize pixels = (QSizeF(size) * ratio).toSize();
+    if (!image.isNull() && image.size() != pixels)
+        image = image.scaled(pixels, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    auto pixmap = QPixmap::fromImage(std::move(image));
+    pixmap.setDevicePixelRatio(ratio);
+    // Kept even when it would not decode, so it is not tried at every paint.
+    shownPictures().insert(cacheKey, new QPixmap(pixmap),
+                           qMax(1, int(qint64(pixmap.width()) * pixmap.height() * 4 / 1024)));
+    return QVariant::fromValue(pixmap.isNull() ? placeholder() : pixmap);
 }
 // Markdown with quoting, through loadLetter: each quote level is read on its
 // own, so quoted headings, lists and emphasis keep their quote.
@@ -173,6 +294,8 @@ void renderMarkdown(QTextBrowser *body, const QString &text) {
         format.setBottomMargin(block.textList() ? 3 : 10);
         blockCursor.setBlockFormat(format);
     }
+    if (auto safe = dynamic_cast<SafeDocument *>(doc))
+        safe->fitPictures();
     doc->setLayoutEnabled(true);
     body->moveCursor(QTextCursor::Start);
     body->verticalScrollBar()->setValue(0);

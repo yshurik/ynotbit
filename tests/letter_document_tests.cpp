@@ -132,6 +132,33 @@ int main(int argc, char **argv) {
                     "an oversized picture is refused before it is decoded");
             require(bm::letterImage(QUrl("data:image/png;base64,@@not base64@@")).isNull(),
                     "broken base64 is refused");
+            require(bm::letterImageSize(QUrl(pngUrl(icon))) == QSize(32, 32),
+                    "a picture's size is read from its header");
+            const QUrl oversized(pngUrl(QImage(5000, 8, QImage::Format_RGB32)));
+            require(!bm::letterImageSize(oversized).isValid() &&
+                        !bm::letterImageSize(QUrl("https://example.com/a.png")).isValid(),
+                    "...only for pictures a letter shows");
+            {
+                // A phone photo: stored sideways, with an EXIF orientation
+                // (6: turn 90 degrees clockwise) right after the JPEG's start.
+                QImage wide(40, 20, QImage::Format_RGB32);
+                wide.fill(Qt::gray);
+                QByteArray bytes;
+                QBuffer buffer(&bytes);
+                buffer.open(QIODevice::WriteOnly);
+                wide.save(&buffer, "JPG");
+                const QByteArray exif("\xff\xe1\x00\x22"
+                                      "Exif\x00\x00MM\x00\x2a\x00\x00\x00\x08"
+                                      "\x00\x01\x01\x12\x00\x03\x00\x00\x00\x01\x00\x06\x00\x00"
+                                      "\x00\x00\x00\x00",
+                                      36);
+                bytes.insert(2, exif);
+                const QUrl turned("data:image/jpeg;base64," +
+                                  QString::fromLatin1(bytes.toBase64()));
+                require(bm::letterImageSize(turned) == QSize(20, 40) &&
+                            bm::letterImage(turned).size() == QSize(20, 40),
+                        "a turned photo's size is its upright size, as it is shown");
+            }
 
             // In a letter: by reference, the definitions at the end.
             const auto dot = pngUrl(icon);

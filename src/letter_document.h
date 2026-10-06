@@ -39,6 +39,9 @@ constexpr int kMaxLetterImageSide = 4096;
 // ~255 KB): room left for words, and a shorter proof of work.
 constexpr int kMaxLetterPicture = 160 * 1024;
 QImage letterImage(const QUrl &url);
+// Its size as shown (upright), read from the header without decoding it;
+// invalid wherever letterImage would refuse the picture.
+QSize letterImageSize(const QUrl &url);
 // A picture ready for a letter: redrawn (its metadata dropped) and shrunk
 // until its data: URL fits in budget characters; empty if it cannot.
 QString imageDataUrl(const QImage &image, int budget);

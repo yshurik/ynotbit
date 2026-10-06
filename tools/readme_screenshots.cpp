@@ -19,7 +19,18 @@ int main(int argc, char **argv) {
         return 2;
     }
     const QString out = QString::fromLocal8Bit(argv[1]);
-    bm::installTranslations(argc > 2 ? QString::fromLocal8Bit(argv[2]) : QString("en"));
+    const QString language = argc > 2 ? QString::fromLocal8Bit(argv[2]) : QString("en");
+    bm::installTranslations(language);
+    // The demo letters in Japanese for Japanese screenshots; in English otherwise.
+    const bool japanese = language.startsWith("ja");
+    const auto text = [japanese](const char *english, const char *inJapanese) {
+        return QString::fromUtf8(japanese ? inJapanese : english);
+    };
+    const auto notesSubject = text("Notes for Thursday", "木曜日のメモ");
+    const auto photosSubject = text("Photos from Saturday", "土曜日の写真");
+    const auto newsLabel = text("Mesh networking notes", "メッシュネットワーク通信");
+    const auto answer = text("Sounds good. I will bring the release checklist.",
+                             "了解です。リリースのチェックリストを持っていきます。");
     QDir().mkpath(out);
     QTemporaryDir temp;
 
@@ -59,7 +70,7 @@ int main(int argc, char **argv) {
 
     bm::Vault vault;
     vault.create(temp.filePath("vault"), "demo password");
-    const auto me = vault.addIdentity("Personal");
+    const auto me = vault.addIdentity(text("Personal", "個人用"));
     const auto general = vault.addChannel("general", {});
     vault.addChannel("privacy", {});
     auto key = vault.addMailboxKey();
@@ -68,56 +79,88 @@ int main(int argc, char **argv) {
     qint64 n = 0;
     auto store = [&](const QString &from, const QString &to, const QString &subject,
                      const QString &body, const QString &folder) {
-        mailbox.store("demo-" + QString::number(++n), from, to, subject, body, n, folder);
+        ++n;
+        mailbox.store("demo-" + QString::number(n), from, to, subject, body, n, folder);
     };
-    store(carol, me, "Photos from Saturday",
-          "They came out great -- here is the best one:\n\n![Saturday at the beach][img1]\n\n"
-          "More next week.\n\n[img1]: " + beach,
+    store(carol, me, photosSubject,
+          text("They came out great -- here is the best one:\n\n![Saturday at the beach][img1]\n\n"
+               "More next week.",
+               "とてもきれいに撮れました。いちばんの一枚をどうぞ:\n\n![土曜日の海辺][img1]\n\n"
+               "続きはまた来週に。") +
+              "\n\n[img1]: " + beach,
           "Inbox");
-    store(bob, me, "Re: node on the Raspberry Pi",
-          "It has been up for nine days now and relays happily. Memory stays under 60 MB.",
+    store(bob, me, text("Re: node on the Raspberry Pi", "Re: Raspberry Pi のノード"),
+          text("It has been up for nine days now and relays happily. Memory stays under 60 MB.",
+               "もう 9 日間動いていて、問題なく中継しています。メモリは 60 MB 未満のままです。"),
           "Inbox");
-    store(alice, me, "Notes for Thursday",
-          "Hi,\n\nHere is the plan for **Thursday**:\n\n"
-          "## Agenda\n\n"
-          "1. Walk through the new address book\n"
-          "2. Decide on the release date\n"
-          "3. Anything else you bring\n\n"
-          "> Keep it short -- we have the room for an hour.\n\n"
-          "See you there,\nAlice",
+    store(alice, me, notesSubject,
+          text("Hi,\n\nHere is the plan for **Thursday**:\n\n"
+               "## Agenda\n\n"
+               "1. Walk through the new address book\n"
+               "2. Decide on the release date\n"
+               "3. Anything else you bring\n\n"
+               "> Keep it short -- we have the room for an hour.\n\n"
+               "See you there,\nAlice",
+               "こんにちは。\n\n**木曜日**の予定です:\n\n"
+               "## 議題\n\n"
+               "1. 新しいアドレス帳の確認\n"
+               "2. リリース日の決定\n"
+               "3. その他、持ち込みの議題\n\n"
+               "> 部屋は 1 時間だけなので手短に。\n\n"
+               "ではまた、\n花子"),
           "Inbox");
-    store(bob, general, "Welcome to the general chan",
-          "Say hello, share what you are working on, and be kind.", "Channels");
-    store(general, general, "Anyone running ynotbit on Windows?",
-          "Curious how the new release behaves there.", "Channels");
-    store(carol, general, "Re: Anyone running ynotbit on Windows?",
-          "Yes -- the network engine is the same as on Linux now. Works well.", "Channels");
+    store(bob, general, text("Welcome to the general chan", "general チャンネルへようこそ"),
+          text("Say hello, share what you are working on, and be kind.",
+               "あいさつや取り組んでいることを気軽にどうぞ。お互いに親切に。"),
+          "Channels");
+    const auto windowsQuestion =
+        text("Anyone running ynotbit on Windows?", "Windows で ynotbit を使っている人はいますか?");
+    store(general, general, windowsQuestion,
+          text("Curious how the new release behaves there.",
+               "新しいリリースが Windows でどう動くか気になっています。"),
+          "Channels");
+    store(carol, general, "Re: " + windowsQuestion,
+          text("Yes -- the network engine is the same as on Linux now. Works well.",
+               "はい。ネットワークエンジンは Linux と同じになりました。よく動いています。"),
+          "Channels");
     // A sender followed on the Subscriptions page; a broadcast's recipient is its sender.
-    mailbox.subscribe(news, "Mesh networking notes");
-    store(news, news, "A month on a solar-powered relay",
-          "The Raspberry Pi node has now run for **31 days** on a 20 W panel.\n\n"
-          "- Uptime: 99.2%, two short stops on cloudy mornings\n"
-          "- Memory: under 60 MB the whole time\n"
-          "- Objects relayed: about 14,000 a day\n\n"
-          "Next: a second node at the allotment.",
+    mailbox.subscribe(news, newsLabel);
+    store(news, news, text("A month on a solar-powered relay", "太陽光で動く中継ノードの 1 か月"),
+          text("The Raspberry Pi node has now run for **31 days** on a 20 W panel.\n\n"
+               "- Uptime: 99.2%, two short stops on cloudy mornings\n"
+               "- Memory: under 60 MB the whole time\n"
+               "- Objects relayed: about 14,000 a day\n\n"
+               "Next: a second node at the allotment.",
+               "Raspberry Pi のノードが 20 W のパネルで **31 日間** 動き続けました。\n\n"
+               "- 稼働率: 99.2%、曇りの朝に 2 回短く停止\n"
+               "- メモリ: 期間中ずっと 60 MB 未満\n"
+               "- 中継したオブジェクト: 1 日あたり約 14,000\n\n"
+               "次は市民農園に 2 台目を置く予定です。"),
           "Broadcasts");
-    store(news, news, "Bitmessage over Tor, revisited",
-          "Routing the node through a local Tor proxy still works well.\n\n"
-          "## Two tips\n\n"
-          "- Expect slower first contact with peers, then normal traffic\n"
-          "- Keep incoming connections off when running behind Tor",
+    store(news, news, text("Bitmessage over Tor, revisited", "Tor 経由の Bitmessage、再び"),
+          text("Routing the node through a local Tor proxy still works well.\n\n"
+               "## Two tips\n\n"
+               "- Expect slower first contact with peers, then normal traffic\n"
+               "- Keep incoming connections off when running behind Tor",
+               "ローカルの Tor プロキシ経由でも、ノードは問題なく動いています。\n\n"
+               "## コツを 2 つ\n\n"
+               "- 最初のピア接続は遅めですが、その後は通常どおりです\n"
+               "- Tor の背後では着信接続をオフにしておきましょう"),
           "Broadcasts");
-    store(news, news, "Reading list",
-          "## This week\n\n"
-          "1. How proof of work keeps the network quiet\n"
-          "2. Chans: shared addresses, shared keys\n"
-          "3. Why every message reaches every node",
+    store(news, news, text("Reading list", "読書リスト"),
+          text("## This week\n\n"
+               "1. How proof of work keeps the network quiet\n"
+               "2. Chans: shared addresses, shared keys\n"
+               "3. Why every message reaches every node",
+               "## 今週\n\n"
+               "1. プルーフ・オブ・ワークがネットワークを静かに保つ仕組み\n"
+               "2. チャンネル: 共有アドレスと共有鍵\n"
+               "3. すべてのメッセージがすべてのノードに届く理由"),
           "Broadcasts");
-    mailbox.saveContact(alice, "Alice Liddell");
-    mailbox.saveContact(bob, "Bob");
-    mailbox.saveContact(carol, "Carol");
-    const auto sent = mailbox.saveDraft({}, me, alice, "Re: Notes for Thursday",
-                                        "Sounds good. I will bring the release checklist.");
+    mailbox.saveContact(alice, text("Alice Liddell", "佐藤 花子"));
+    mailbox.saveContact(bob, text("Bob", "鈴木 健太"));
+    mailbox.saveContact(carol, text("Carol", "高橋 美咲"));
+    const auto sent = mailbox.saveDraft({}, me, alice, "Re: " + notesSubject, answer);
     mailbox.queueDraft(sent, "direct", QDateTime::currentSecsSinceEpoch() + 86400);
     mailbox.setDelivery(sent, "acknowledged");
     mailbox.close();
@@ -160,7 +203,7 @@ int main(int argc, char **argv) {
     settle();
     for (int row = 0; row < list->model()->rowCount(); ++row) {
         const auto index = list->model()->index(row, 0);
-        if (index.data(Qt::UserRole + 4).toString() == "Notes for Thursday") {
+        if (index.data(Qt::UserRole + 4).toString() == notesSubject) {
             list->setCurrentIndex(index);
             window.selectMessage(index.data(Qt::UserRole + 1).toString());
         }
@@ -185,7 +228,7 @@ int main(int argc, char **argv) {
     folders->setCurrentRow(5);
     settle();
     for (auto chip : window.findChildren<QPushButton *>("channelChip"))
-        if (chip->text() == "Mesh networking notes")
+        if (chip->text() == newsLabel)
             chip->click();
     shot("subscriptions.png");
 
@@ -194,7 +237,7 @@ int main(int argc, char **argv) {
     settle();
     for (int row = 0; row < list->model()->rowCount(); ++row) {
         const auto index = list->model()->index(row, 0);
-        if (index.data(Qt::UserRole + 4).toString() == "Photos from Saturday") {
+        if (index.data(Qt::UserRole + 4).toString() == photosSubject) {
             list->setCurrentIndex(index);
             window.selectMessage(index.data(Qt::UserRole + 1).toString());
         }
@@ -208,9 +251,10 @@ int main(int argc, char **argv) {
     // Writing to a contact.
     QTimer::singleShot(200, &window, [&] {
         if (auto dialog = window.findChild<QDialog *>("composer")) {
-            dialog->findChild<QLineEdit *>("subjectField")->setText("Thursday");
+            dialog->findChild<QLineEdit *>("subjectField")->setText(text("Thursday", "木曜日"));
             if (auto body = dialog->findChild<QTextEdit *>("bodyField"))
-                body->setPlainText("Looking forward to it -- see you at ten.");
+                body->setPlainText(text("Looking forward to it -- see you at ten.",
+                                        "楽しみにしています。10 時にお会いしましょう。"));
             settle();
             dialog->grab().save(out + "/composer.png");
             std::cout << (out + "/composer.png").toStdString() << "\n";
@@ -222,13 +266,13 @@ int main(int argc, char **argv) {
     // Replying: the letter is quoted in the same editor, one level deeper.
     QString notes;
     for (const auto &m : session.messagePage("Inbox", {}, 0, 100))
-        if (m.toMap()["subject"].toString() == "Notes for Thursday")
+        if (m.toMap()["subject"].toString() == notesSubject)
             notes = m.toMap()["hash"].toString();
     QTimer::singleShot(200, &window, [&] {
         if (auto dialog = window.findChild<QDialog *>("composer")) {
             if (auto body = dialog->findChild<QTextEdit *>("bodyField")) {
                 body->moveCursor(QTextCursor::Start);
-                body->insertPlainText("Sounds good. I will bring the release checklist.");
+                body->insertPlainText(answer);
             }
             settle();
             dialog->grab().save(out + "/reply.png");

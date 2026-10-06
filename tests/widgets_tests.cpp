@@ -614,11 +614,13 @@ int main(int argc, char **argv) {
         window.selectMessage(formatted);
         auto reader = window.findChild<QTextBrowser *>("readerBody");
         require(reader->toPlainText().contains("A readable list"), "Markdown renders lists");
-        require(reader->document()
-                    ->resource(QTextDocument::ImageResource, QUrl("file:///etc/passwd"))
-                    .value<QImage>()
-                    .isNull(),
-                "reader blocks local resources");
+        const auto stand = [reader](const QString &name) {
+            return reader->document()
+                ->resource(QTextDocument::ImageResource, QUrl(name))
+                .value<QImage>();
+        };
+        require(stand("file:///etc/passwd") == stand("https://example.com/a.png"),
+                "reader blocks local resources, as remote ones");
         {
             // Scoped to the reader's own switch: a pop-out window carries an
             // identical one, and it is a child of this window too.
@@ -1894,6 +1896,35 @@ int main(int argc, char **argv) {
                 auto body = card->findChild<QTextBrowser *>("feedBody");
                 require(body->height() >= int(body->document()->size().height()),
                         "a card's text is never cut: the card grows with it");
+                // Shorter than the action buttons beside it, the text must still
+                // start at the top, not centred in the height the buttons take.
+                auto actions = card->findChild<QWidget *>("feedActions");
+                require(body->height() < actions->height(), "test sanity: a short post");
+                require(qAbs(body->mapTo(card, QPoint()).y() - actions->mapTo(card, QPoint()).y()) <= 2,
+                        "a short post's text starts at the top of its card, beside the actions");
+                // The buttons flow into columns beside a short post, so the card is
+                // no taller than its text needs; a long post keeps one column.
+                QList<QToolButton *> buttons;
+                for (auto name : {"feedReply", "feedForward", "feedCopy", "feedOpen", "feedArchive",
+                                  "feedTrash"})
+                    buttons << card->findChild<QToolButton *>(name);
+                const auto columns = [&] {
+                    QSet<int> xs;
+                    for (auto b : buttons)
+                        xs << b->x();
+                    return xs.size();
+                };
+                require(columns() > 1, "beside a short post the buttons flow into columns");
+                require(actions->height() < 3 * buttons.first()->height(),
+                        "...so the card is shorter than a column of buttons");
+                auto ordered = buttons;
+                std::sort(ordered.begin(), ordered.end(), [](QToolButton *a, QToolButton *b) {
+                    return a->x() != b->x() ? a->x() < b->x() : a->y() < b->y();
+                });
+                require(ordered == buttons, "the buttons keep their order, column by column");
+                body->setPlainText(QString("A long post.\n").repeated(20));
+                QTest::qWait(30);
+                require(columns() == 1, "beside a long post the buttons stay in one column");
             }
             chipNamed("ynotbit updates")->click();
             QTest::qWait(30);

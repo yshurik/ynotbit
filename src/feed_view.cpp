@@ -4,7 +4,10 @@
 #include <QAbstractTextDocumentLayout>
 #include <QDesktopServices>
 #include <QtWidgets>
+#include <algorithm>
 #include <cmath>
+#include <functional>
+#include <memory>
 
 namespace bm {
 namespace {
@@ -27,12 +30,16 @@ class FeedBody : public LetterView {
         connect(document()->documentLayout(),
                 &QAbstractTextDocumentLayout::documentSizeChanged, this, [this] { fit(); });
     }
+    // Called after every fit, so the card can arrange its buttons beside the text.
+    std::function<void()> fitted;
     void fit() {
         const auto bar = horizontalScrollBar();
         const int h = int(std::ceil(document()->size().height())) + 2 * frameWidth() +
                       (bar->maximum() > 0 ? bar->sizeHint().height() : 0);
         if (h != height())
             setFixedHeight(h);
+        if (fitted)
+            fitted();
     }
 
   protected:
@@ -363,24 +370,28 @@ QWidget *FeedView::makeCard(const QVariantMap &letter) {
     });
     auto bodyRow = new QHBoxLayout;
     bodyRow->setSpacing(8);
-    bodyRow->addWidget(body, 1);
+    // Top: the body's height is its text's, and a short post would otherwise
+    // be centred in the height the action buttons give the row.
+    bodyRow->addWidget(body, 1, Qt::AlignTop);
 
     auto actionsWidget = new QWidget;
     actionsWidget->setObjectName("feedActions");
     QString borderColor = dark_ ? "#4d4d4d" : "#e5e5e5";
     QString hoverColor = dark_ ? "#555555" : "#dddddd";
+    // Dividers and rounded corners follow each button's place in the grid (see
+    // arrange below), so the buttons read as one control in any shape.
     actionsWidget->setStyleSheet(
         QString("QWidget#feedActions{border:1px solid %1;border-radius:7px;background:transparent;} "
                 "QWidget#feedActions QToolButton{border:0;border-radius:0;background:transparent;padding:4px;margin:0;} "
                 "QWidget#feedActions QToolButton:hover{background:%2;} "
-                "QWidget#feedActions QToolButton#feedReply{border-top-left-radius:6px;border-top-right-radius:6px;border-bottom:1px solid %1;} "
-                "QWidget#feedActions QToolButton#feedForward{border-bottom:1px solid %1;} "
-                "QWidget#feedActions QToolButton#feedCopy{border-bottom:1px solid %1;} "
-                "QWidget#feedActions QToolButton#feedOpen{border-bottom:1px solid %1;} "
-                "QWidget#feedActions QToolButton#feedArchive{border-bottom:1px solid %1;} "
-                "QWidget#feedActions QToolButton#feedTrash{border-bottom-left-radius:6px;border-bottom-right-radius:6px;} ")
+                "QWidget#feedActions QToolButton[lastRow=\"false\"]{border-bottom:1px solid %1;} "
+                "QWidget#feedActions QToolButton[lastColumn=\"false\"]{border-right:1px solid %1;} "
+                "QWidget#feedActions QToolButton[roundTL=\"true\"]{border-top-left-radius:6px;} "
+                "QWidget#feedActions QToolButton[roundTR=\"true\"]{border-top-right-radius:6px;} "
+                "QWidget#feedActions QToolButton[roundBL=\"true\"]{border-bottom-left-radius:6px;} "
+                "QWidget#feedActions QToolButton[roundBR=\"true\"]{border-bottom-right-radius:6px;} ")
             .arg(borderColor, hoverColor));
-    auto actions = new QVBoxLayout(actionsWidget);
+    auto actions = new QGridLayout(actionsWidget);
     actions->setContentsMargins(0, 0, 0, 0);
     actions->setSpacing(0);
     auto reply = actionButton("feedReply", "reply", tr("Reply privately"), dark_);
@@ -406,9 +417,48 @@ QWidget *FeedView::makeCard(const QVariantMap &letter) {
             card->hide();
             card->deleteLater(); // its own button is mid-click
         });
-    for (auto b : {reply, forwardBtn, copy, open, archive, trash}) {
-        actions->addWidget(b);
-    }
+    // The buttons fill columns top to bottom, as many rows as fit beside the
+    // text, so a short post's card is no taller than its text.
+    const QList<QToolButton *> buttons{reply, forwardBtn, copy, open, archive, trash};
+    const auto arrange = [actions, buttons](int columns) {
+        const int rows = int(buttons.size()) / columns;
+        for (int i = 0; i < buttons.size(); ++i) {
+            auto b = buttons[i];
+            const int row = i % rows, column = i / rows;
+            actions->removeWidget(b);
+            actions->addWidget(b, row, column);
+            b->setProperty("lastRow", row == rows - 1);
+            b->setProperty("lastColumn", column == columns - 1);
+            b->setProperty("roundTL", row == 0 && column == 0);
+            b->setProperty("roundTR", row == 0 && column == columns - 1);
+            b->setProperty("roundBL", row == rows - 1 && column == 0);
+            b->setProperty("roundBR", row == rows - 1 && column == columns - 1);
+            b->style()->unpolish(b);
+            b->style()->polish(b);
+        }
+    };
+    arrange(1);
+    struct Fit {
+        int columns = 1, cardWidth = -1, bodyWidth = -1;
+    };
+    auto fit = std::make_shared<Fit>();
+    body->fitted = [card, body, buttons, arrange, fit] {
+        // The text narrowing because the buttons took another column is the
+        // grid's own doing: acting on it again could flip back and forth.
+        if (card->width() == fit->cardWidth && body->width() != fit->bodyWidth) {
+            fit->bodyWidth = body->width();
+            return;
+        }
+        fit->cardWidth = card->width();
+        fit->bodyWidth = body->width();
+        const int rowHeight = std::max(1, buttons.first()->sizeHint().height());
+        const int rows = std::clamp(body->height() / rowHeight, 1, int(buttons.size()));
+        const int columns = (int(buttons.size()) + rows - 1) / rows; // 1, 2, 3 or 6: full grids
+        if (columns != fit->columns) {
+            fit->columns = columns;
+            arrange(columns);
+        }
+    };
     auto actionsColumn = new QVBoxLayout;
     actionsColumn->setContentsMargins(0, 0, 0, 0);
     actionsColumn->addWidget(actionsWidget);

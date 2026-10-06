@@ -318,33 +318,55 @@ QString referenceLabel(const QString &label) {
     return label.simplified().toCaseFolded();
 }
 } // namespace
-QImage letterImage(const QUrl &url) {
+namespace {
+// Sets reader up on a picture's bytes if the URL carries one a letter may
+// show; only the header is read.
+bool openLetterImage(const QUrl &url, QByteArray &bytes, QBuffer &buffer, QImageReader &reader) {
     if (url.scheme().compare("data", Qt::CaseInsensitive) != 0)
-        return {};
+        return false;
     const auto spec = url.path(QUrl::FullyDecoded);
     const auto comma = spec.indexOf(',');
     if (comma < 0 || spec.size() > kMaxImageUrl)
-        return {};
+        return false;
     const auto header = spec.left(comma).toLower().split(';');
     if (!kImageTypes.contains(header.first().trimmed()) || !header.contains("base64"))
-        return {};
+        return false;
     auto decoded = QByteArray::fromBase64Encoding(spec.mid(comma + 1).toLatin1(),
                                                   QByteArray::AbortOnBase64DecodingErrors);
     if (!decoded)
-        return {};
-    QBuffer buffer(&*decoded);
-    QImageReader reader(&buffer);
+        return false;
+    bytes = std::move(*decoded);
+    buffer.setBuffer(&bytes);
+    reader.setDevice(&buffer);
     reader.setDecideFormatFromContent(true);
     // The declared type is only a label: what decodes is decided by the bytes,
     // and only the raster formats above (never SVG) are accepted.
     if (!reader.canRead() || !kImageFormats.contains(reader.format()))
-        return {};
+        return false;
     const auto size = reader.size();
     if (!size.isValid() || size.width() > kMaxLetterImageSide ||
         size.height() > kMaxLetterImageSide)
-        return {};
+        return false;
     reader.setAutoTransform(true);
-    return reader.read();
+    return true;
+}
+} // namespace
+QImage letterImage(const QUrl &url) {
+    QByteArray bytes;
+    QBuffer buffer;
+    QImageReader reader;
+    return openLetterImage(url, bytes, buffer, reader) ? reader.read() : QImage();
+}
+QSize letterImageSize(const QUrl &url) {
+    QByteArray bytes;
+    QBuffer buffer;
+    QImageReader reader;
+    if (!openLetterImage(url, bytes, buffer, reader))
+        return {};
+    auto size = reader.size();
+    if (reader.transformation() & QImageIOHandler::TransformationRotate90)
+        size.transpose();
+    return size;
 }
 QString imageDataUrl(const QImage &source, int budget) {
     if (source.isNull() || budget <= 0)
