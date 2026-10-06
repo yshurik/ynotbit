@@ -6,10 +6,14 @@
 #include <mutex>
 #include <optional>
 namespace bm {
-// Proof of work on a GPU through OpenCL, when the system has it. OpenCL is
-// loaded at run time from the graphics driver, so nothing is linked or shipped
-// and a machine without it simply gets available() == false; the CPU search in
-// ProofOfWork then does the work alone. Every nonce found here is checked
+namespace gpu {
+class Backend;
+}
+// Proof of work on a GPU, when the system has one: through Metal on macOS,
+// through OpenCL elsewhere (and on a Mac whose Metal fails). OpenCL is loaded
+// at run time from the graphics driver, so nothing is linked or shipped for it,
+// and a machine without a GPU simply gets available() == false; the CPU search
+// in ProofOfWork then does the work alone. Every nonce found here is checked
 // again on the CPU before it is used.
 class GpuSolver {
   public:
@@ -19,6 +23,8 @@ class GpuSolver {
     // Why the GPU is not used, for diagnostics; empty when it is.
     QString problem();
     QString deviceName();
+    // "Metal" or "OpenCL"; empty without a GPU.
+    QString api();
     // Searches nonces from `first` upward for one whose trial value is at most
     // `target`, in batches of about 30 ms, until found or `cancel` is set.
     // One search at a time; a second caller waits for the first.
@@ -30,11 +36,11 @@ class GpuSolver {
 
   private:
     GpuSolver() = default;
-    struct State;
     void open();
     std::once_flag opened_;
     std::mutex use_;
-    std::unique_ptr<State> s_;
+    std::unique_ptr<gpu::Backend> backend_;
+    quint32 perItem_ = 16; // nonces per work item, tuned towards short batches
     QString problem_, device_;
     std::atomic_bool ok_{false};
 };

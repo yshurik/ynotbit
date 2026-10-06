@@ -64,7 +64,8 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
   records, acknowledgment tokens, subscriptions, and checkpoints remain encrypted.
   Existing v1 mailbox documents migrate transactionally without losing drafts.
 - Sending with public recipient keys; v2/v3/v4 public-key lookup and responses;
-  cancellable background proof of work; persistent outbox and delivery history.
+  cancellable background proof of work on every CPU core but one and on the GPU
+  (Metal on macOS, OpenCL elsewhere); persistent outbox and delivery history.
 - Direct-message decryption and sender verification; acknowledgments; bounded
   automatic expiry retries; manual retry and cancellation; reply using the
   authenticated sender key. Cancellation cannot recall objects already relayed.
@@ -189,7 +190,8 @@ Default network retention is 2 GiB / 90 days, kept by the relay in `objects.sqli
 in the node folder; change it under **Network → Retention settings…**.
 Local retention can outlive protocol expiry, allowing later unlocked inspection.
 Discarding a retained object can prevent later recovery; already saved mailbox
-letters are unaffected. Proof of work uses one background CPU thread.
+letters are unaffected. Proof of work runs on every CPU core but one, and on the
+GPU when there is one; `YNOTBIT_NO_GPU=1` leaves it to the CPU.
 
 ## Current boundaries
 

@@ -1,3 +1,4 @@
+#include "gpu_backend.h"
 #include "gpu_pow.h"
 #include "message_search.h"
 #include "pow.h"
@@ -11,6 +12,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QtEndian>
 #include <algorithm>
 #include <functional>
 #include <iostream>
@@ -392,6 +394,46 @@ int main(int argc, char **argv) {
                 require(!none.has_value(), "a cancelled GPU search has no result");
                 require(t.elapsed() < 1500, "a GPU search stops promptly");
             }
+        }
+        {
+            // Every GPU backend this machine opens computes the trial values
+            // exactly: over one batch it finds the very nonce the CPU ranks
+            // lowest, and nothing for a target no nonce meets.
+            unsigned char initial[64];
+            for (int i = 0; i < 64; ++i)
+                initial[i] = static_cast<unsigned char>(i * 53 + 7);
+            quint64 words[8];
+            for (int i = 0; i < 8; ++i)
+                words[i] = qFromBigEndian<quint64>(initial + 8 * i);
+            const auto check = [&](bm::gpu::Backend &gpu) {
+                std::cout << gpu.api().toStdString() << ": " << gpu.device().toStdString() << "\n";
+                const quint64 base = 1000003;
+                quint64 best = base, bestValue = std::numeric_limits<quint64>::max();
+                for (quint64 nonce = base; nonce < base + gpu.width(); ++nonce)
+                    if (const auto value = ProofOfWork::trialValue(nonce, initial);
+                        value < bestValue) {
+                        best = nonce;
+                        bestValue = value;
+                    }
+                require(gpu.begin(words).isEmpty(), "a GPU takes the initial hash");
+                const auto found = gpu.run(base, 1, bestValue);
+                require(found.error.isEmpty() && found.nonce == best,
+                        "a GPU finds exactly the nonce the CPU ranks lowest");
+                require(gpu.begin(words).isEmpty() && !gpu.run(base, 1, 0).nonce,
+                        "...and none for a target no nonce meets");
+            };
+            QString problem;
+            auto opencl = bm::gpu::openOpenCL(&problem);
+            if (opencl)
+                check(*opencl);
+#ifdef Q_OS_MACOS
+            auto metal = bm::gpu::openMetal(&problem);
+            require(metal || !opencl, "a Mac whose GPU OpenCL finds opens it through Metal too");
+            if (metal) {
+                check(*metal);
+                require(GpuSolver::instance().api() == "Metal", "on a Mac the solver uses Metal");
+            }
+#endif
         }
         std::cout << "PASS: vault, password rotation, SQLCipher, deduplication, backup, chan "
                      "fixture, authenticated message codec\n";

@@ -57,9 +57,16 @@ FetchContent_Declare(secp256k1
  URL https://github.com/bitcoin-core/secp256k1/archive/refs/tags/v0.6.0.tar.gz
  URL_HASH SHA256=785bb98e7d6705c51c8dfa8ac3af6aa2ccfa3774714d51c0b9e28fac1146e9f1)
 FetchContent_MakeAvailable(secp256k1)
-add_library(bmcore src/storage.cpp src/mailbox_ops.cpp src/protocol.cpp src/protocol_wire.cpp src/pow.cpp src/gpu_pow.cpp src/delivery.cpp src/cache.cpp src/scanner.cpp src/updates.cpp src/message_search.cpp)
+add_library(bmcore src/storage.cpp src/mailbox_ops.cpp src/protocol.cpp src/protocol_wire.cpp src/pow.cpp src/gpu_pow.cpp src/gpu_opencl.cpp src/delivery.cpp src/cache.cpp src/scanner.cpp src/updates.cpp src/message_search.cpp)
 target_include_directories(bmcore PUBLIC src)
 target_link_libraries(bmcore PUBLIC Threads::Threads notbit_codec secp256k1 Qt6::Core PkgConfig::SODIUM PkgConfig::SQLCIPHER OpenSSL::Crypto ntb_object_db)
+if(APPLE)
+ # Proof of work on the GPU through Metal (src/gpu_metal.mm).
+ enable_language(OBJCXX)
+ target_sources(bmcore PRIVATE src/gpu_metal.mm)
+ set_source_files_properties(src/gpu_metal.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+ target_link_libraries(bmcore PUBLIC "-framework Metal" "-framework Foundation" "-framework IOKit")
+endif()
 add_executable(core_tests tests/core_tests.cpp)
 target_link_libraries(core_tests PRIVATE bmcore)
 enable_testing()
@@ -184,6 +191,10 @@ qt_add_executable(feed_scroll_bench EXCLUDE_FROM_ALL tools/feed_scroll_bench.cpp
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(feed_scroll_bench PRIVATE third_party/qrcodegen)
 target_link_libraries(feed_scroll_bench PRIVATE bmcore Qt6::Widgets Qt6::Network)
+# Proof-of-work speed on the CPU and on each GPU backend; built only on request:
+#   cmake --build build --target pow_bench && build/pow_bench
+add_executable(pow_bench EXCLUDE_FROM_ALL tools/pow_bench.cpp)
+target_link_libraries(pow_bench PRIVATE bmcore)
 # Release announcement broadcast ("ynotbit X.Y.Z" from the release address);
 # built only on request. Dry run unless --send:
 #   cmake --build build --target announce_release
