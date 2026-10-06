@@ -1,3 +1,4 @@
+#include "gpu_pow.h"
 #include "message_search.h"
 #include "pow.h"
 #include "protocol.h"
@@ -13,6 +14,7 @@
 #include <algorithm>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <sqlcipher/sqlite3.h>
 using namespace bm;
 static void require(bool b, const char *m) {
@@ -349,6 +351,46 @@ int main(int argc, char **argv) {
                 ProofOfWork running;
                 running.start(object, 1000000, 1000000);
                 QThread::msleep(50);
+            }
+
+            // With the GPU switched off the CPU alone still solves.
+            ProofOfWork::setGpuEnabled(false);
+            require(!ProofOfWork::gpuEnabled(), "GPU can be switched off");
+            pow.start(object);
+            require(waitDone(120000), "CPU-only search finishes");
+            require(ProofOfWork::valid(pow.take(), now), "CPU-only result is valid");
+            ProofOfWork::setGpuEnabled(true);
+        }
+        {
+            // The GPU, when this machine has one, computes the same trial values.
+            auto &gpu = GpuSolver::instance();
+            if (!gpu.available()) {
+                std::cout << "note: no OpenCL GPU here (" << gpu.problem().toStdString()
+                          << "); GPU checks skipped\n";
+            } else {
+                std::cout << "GPU: " << gpu.deviceName().toStdString() << "\n";
+                unsigned char initial[64];
+                for (int i = 0; i < 64; ++i)
+                    initial[i] = static_cast<unsigned char>(i * 37 + 11);
+                const quint64 easy = std::numeric_limits<quint64>::max() >> 12;
+                std::atomic_bool cancel{false};
+                const auto nonce = gpu.search(initial, easy, 12345, cancel);
+                require(nonce.has_value(), "GPU finds an easy nonce");
+                require(ProofOfWork::trialValue(*nonce, initial) <= easy,
+                        "GPU nonce passes the CPU check");
+
+                // Cancelling an impossible search returns within a batch or two.
+                std::thread canceller([&] {
+                    QThread::msleep(100);
+                    cancel = true;
+                });
+                QElapsedTimer t;
+                t.start();
+                cancel = false;
+                const auto none = gpu.search(initial, 0, 0, cancel);
+                canceller.join();
+                require(!none.has_value(), "a cancelled GPU search has no result");
+                require(t.elapsed() < 1500, "a GPU search stops promptly");
             }
         }
         std::cout << "PASS: vault, password rotation, SQLCipher, deduplication, backup, chan "
