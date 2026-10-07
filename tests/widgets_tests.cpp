@@ -5,6 +5,7 @@
 #include "feed_view.h"
 #include "protocol.h"
 #include "letter_document.h"
+#include "pow.h"
 #include <QElapsedTimer>
 #include <QFileDialog>
 #include <QTest>
@@ -2303,6 +2304,32 @@ int main(int argc, char **argv) {
         bm::Session configured(temp.filePath("retention-node"), true);
         require(configured.nodeArguments().join(' ').contains("-R 1024 -A 30"),
                 "saved retention settings reach the node's arguments");
+        {
+            // The settings window's node settings: validated, saved, and one
+            // node restart for a burst of changes.
+            bm::Session s(temp.filePath("settings-node"), true);
+            require(!s.setProxy("not an address") && s.proxy().isEmpty(),
+                    "an invalid proxy is refused and not saved");
+            require(s.setProxy(" 127.0.0.1:9050 ") && s.proxy() == "127.0.0.1:9050",
+                    "a valid proxy is saved, trimmed");
+            require(s.setPeer("[::1]:8444") && s.peer() == "[::1]:8444", "a valid peer is saved");
+            s.setRetention(1024, 30);
+            require(s.retentionMB() == 1024 && s.retentionDays() == 30 &&
+                        s.nodeArguments().join(' ').contains("-R 1024 -A 30"),
+                    "retention set through the session reaches the node arguments");
+            const int before = s.nodeRestarts();
+            QTest::qWait(1300);
+            require(s.nodeRestarts() == before + 1,
+                    "a burst of node setting changes restarts the node once");
+            s.setRetention(1024, 30);
+            QTest::qWait(1300);
+            require(s.nodeRestarts() == before + 1, "an unchanged retention does not restart");
+            s.setGpuEnabled(false);
+            require(!s.gpuEnabled() && !bm::ProofOfWork::gpuEnabled() &&
+                        !QSettings().value("gpu", true).toBool(),
+                    "the GPU switch is saved and applied");
+            s.setGpuEnabled(true);
+        }
         {
             // The node's object count and size come from its status.json, and
             // the last values stay shown while it isn't running.

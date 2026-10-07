@@ -41,6 +41,8 @@ class Session : public QObject {
     bool offline_ = false;
     mutable QJsonObject lastNodeStatus_; // last status.json read, see status()
     int retentionMB_ = 2048, retentionDays_ = 90;
+    QTimer restartSoon_;   // see scheduleRestart()
+    int nodeRestarts_ = 0;
     qint64 objectCount_ = 0, objectBytes_ = 0;
     QString boundCacheId_;
     bool prunedUnread_ = false; // retention removed objects this mailbox never read
@@ -88,6 +90,28 @@ class Session : public QObject {
     Q_INVOKABLE void configureRetention();
     Q_INVOKABLE void restartNode();
     QStringList nodeArguments() const;
+    // An empty string or IP:port, as the node accepts for -P and -r.
+    static bool validEndpoint(const QString &text);
+    QString peer() const;
+    QString proxy() const;
+    // Save a valid value (trimmed; empty clears it) and restart the node soon.
+    // false, and nothing saved, when the value is not an IP:port.
+    bool setPeer(QString value);
+    bool setProxy(QString value);
+    int retentionMB() const {
+        return retentionMB_;
+    }
+    int retentionDays() const {
+        return retentionDays_;
+    }
+    void setRetention(int mb, int days);
+    // One node restart 1 s after the last call, so a burst of changes restarts once.
+    void scheduleRestart();
+    int nodeRestarts() const {
+        return nodeRestarts_;
+    }
+    bool gpuEnabled() const;
+    Q_INVOKABLE void setGpuEnabled(bool on);
     Q_INVOKABLE void createVault();
     Q_INVOKABLE void openVault();
     Q_INVOKABLE void unlockVault();

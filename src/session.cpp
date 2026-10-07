@@ -2,6 +2,7 @@
 #include "i18n.h"
 #include "appearance.h"
 #include "message_model.h"
+#include "pow.h"
 #include "protocol.h"
 #include "protocol_wire.h"
 #include "scanner.h"
@@ -96,6 +97,10 @@ Session::Session(QString root, bool offline, QObject *parent)
     recentMailboxPaths_ = recent.value("recentMailboxes").toStringList();
     retentionMB_ = std::clamp(recent.value("retentionMB", 2048).toInt(), 64, 32768);
     retentionDays_ = std::clamp(recent.value("retentionDays", 90).toInt(), 1, 3650);
+    restartSoon_.setSingleShot(true);
+    restartSoon_.setInterval(1000);
+    connect(&restartSoon_, &QTimer::timeout, this, &Session::restartNode);
+    ProofOfWork::setGpuEnabled(QSettings().value("gpu", true).toBool());
     connect(&node_, &QProcess::readyReadStandardOutput, this,
             [this] { node_.readAllStandardOutput(); });
     connect(&node_, &QProcess::readyReadStandardError, this, [this] {
@@ -1028,6 +1033,7 @@ void Session::startNode() {
     node_.start();
 }
 void Session::restartNode() {
+    ++nodeRestarts_;
     attempt([&] {
         if (node_.state() != QProcess::NotRunning) {
             node_.terminate();
@@ -1043,7 +1049,7 @@ void Session::setNetworkEnabled(bool enabled) {
     offline_ = !enabled;
     restartNode();
 }
-static bool endpoint(const QString &text) {
+bool Session::validEndpoint(const QString &text) {
     if (text.isEmpty())
         return true;
     QUrl url("tcp://" + text);
@@ -1062,7 +1068,7 @@ void Session::configureNode() {
                         .trimmed();
         if (!ok)
             return;
-        check(endpoint(peer), tr("Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444"));
+        check(validEndpoint(peer), tr("Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444"));
         auto proxy =
             QInputDialog::getText(nullptr, tr("SOCKS5 proxy"),
                                   tr("Proxy IP:port (empty for direct; Tor typically 127.0.0.1:9050)"),
@@ -1070,7 +1076,7 @@ void Session::configureNode() {
                 .trimmed();
         if (!ok)
             return;
-        check(endpoint(proxy), tr("Enter a proxy IP address and port"));
+        check(validEndpoint(proxy), tr("Enter a proxy IP address and port"));
         config.setValue("peer", peer);
         config.setValue("proxy", proxy);
         activity_ = tr("Network settings saved. Restart the node to apply them.");
@@ -1101,5 +1107,66 @@ void Session::configureRetention() {
     });
     if (saved)
         restartNode();
+}
+QString Session::peer() const {
+    return QSettings(root_ + "/desktop.ini", QSettings::IniFormat).value("peer").toString();
+}
+QString Session::proxy() const {
+    return QSettings(root_ + "/desktop.ini", QSettings::IniFormat).value("proxy").toString();
+}
+// Saves one IP:port node setting; see setPeer().
+static bool saveEndpoint(const QString &root, const char *key, const QString &value,
+                         bool *changed) {
+    if (!Session::validEndpoint(value))
+        return false;
+    QSettings config(root + "/desktop.ini", QSettings::IniFormat);
+    *changed = config.value(key).toString() != value;
+    if (*changed)
+        config.setValue(key, value);
+    return true;
+}
+bool Session::setPeer(QString value) {
+    bool changed = false;
+    if (!saveEndpoint(root_, "peer", value.trimmed(), &changed))
+        return false;
+    if (changed) {
+        scheduleRestart();
+        emit this->changed();
+    }
+    return true;
+}
+bool Session::setProxy(QString value) {
+    bool changed = false;
+    if (!saveEndpoint(root_, "proxy", value.trimmed(), &changed))
+        return false;
+    if (changed) {
+        scheduleRestart();
+        emit this->changed();
+    }
+    return true;
+}
+void Session::setRetention(int mb, int days) {
+    mb = std::clamp(mb, 64, 32768);
+    days = std::clamp(days, 1, 3650);
+    if (mb == retentionMB_ && days == retentionDays_)
+        return;
+    retentionMB_ = mb;
+    retentionDays_ = days;
+    QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
+    config.setValue("retentionMB", mb);
+    config.setValue("retentionDays", days);
+    scheduleRestart();
+    emit changed();
+}
+void Session::scheduleRestart() {
+    restartSoon_.start();
+}
+bool Session::gpuEnabled() const {
+    return QSettings().value("gpu", true).toBool();
+}
+void Session::setGpuEnabled(bool on) {
+    QSettings().setValue("gpu", on);
+    ProofOfWork::setGpuEnabled(on);
+    emit changed();
 }
 } // namespace bm
