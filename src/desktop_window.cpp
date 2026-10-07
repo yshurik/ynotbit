@@ -1,4 +1,5 @@
 #include "desktop_window.h"
+#include "settings_window.h"
 #include "session.h"
 #include "i18n.h"
 #include "quoting.h"
@@ -2254,6 +2255,10 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     file->addAction(tr("Close mailbox"), &session_, &Session::closeMailbox);
     file->addAction(tr("Back up mailbox and vault…"), &session_, &Session::backup);
     file->addAction(tr("Lock vault"), QKeySequence("Ctrl+L"), &session_, &Session::lock);
+    auto settingsAction = file->addAction(tr("Settings…"), QKeySequence(Qt::CTRL | Qt::Key_Comma),
+                                          this, &DesktopWindow::openSettings);
+    settingsAction->setObjectName("settingsAction");
+    settingsAction->setMenuRole(QAction::PreferencesRole); // the app menu on macOS
     auto network = menuBar()->addMenu(tr("Network"));
     auto enabled = network->addAction(tr("Network enabled"));
     enabled->setCheckable(true);
@@ -3253,5 +3258,12 @@ void DesktopWindow::refreshContacts() {
         contactLayout_->addWidget(empty);
     }
     contactLayout_->addStretch();
+}
+void DesktopWindow::openSettings() {
+    if (!settings_)
+        settings_ = new SettingsWindow(session_, this);
+    settings_->show();
+    settings_->raise();
+    settings_->activateWindow();
 }
 } // namespace bm

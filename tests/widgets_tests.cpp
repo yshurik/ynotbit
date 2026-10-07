@@ -6,6 +6,7 @@
 #include "protocol.h"
 #include "letter_document.h"
 #include "pow.h"
+#include "settings_window.h"
 #include <QElapsedTimer>
 #include <QFileDialog>
 #include <QTest>
@@ -2329,6 +2330,39 @@ int main(int argc, char **argv) {
                         !QSettings().value("gpu", true).toBool(),
                     "the GPU switch is saved and applied");
             s.setGpuEnabled(true);
+        }
+        {
+            auto open = window.findChild<QAction *>("settingsAction");
+            require(open, "File has a Settings action");
+            open->trigger();
+            auto settings = window.findChild<bm::SettingsWindow *>();
+            require(settings && settings->isVisible(), "Settings opens a window");
+            open->trigger();
+            require(window.findChildren<bm::SettingsWindow *>().size() == 1,
+                    "opening Settings again raises the same window");
+            auto proxy = settings->findChild<QLineEdit *>("proxyEdit");
+            auto proxyError = settings->findChild<QLabel *>("proxyError");
+            proxy->clear();
+            QTest::keyClicks(proxy, "nonsense");
+            require(!proxyError->isHidden(), "an invalid proxy shows an error under the field");
+            emit proxy->editingFinished();
+            require(session.proxy().isEmpty(), "an invalid proxy is not saved");
+            proxy->clear();
+            QTest::keyClicks(proxy, "127.0.0.1:9050");
+            require(proxyError->isHidden(), "a valid proxy clears the error");
+            emit proxy->editingFinished();
+            require(session.proxy() == "127.0.0.1:9050", "a valid proxy is saved when editing ends");
+            session.setProxy("");
+            auto mb = settings->findChild<QSpinBox *>("retentionMBSpin");
+            mb->setValue(512);
+            emit mb->editingFinished();
+            require(session.retentionMB() == 512, "the Storage page saves the retention size");
+            session.setRetention(2048, 90);
+            require(settings->findChild<QLabel *>("storageUsage")->text().contains("objects"),
+                    "the Storage page shows the current usage");
+            settings->close();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            require(!window.findChild<bm::SettingsWindow *>(), "closing Settings deletes it");
         }
         {
             // The node's object count and size come from its status.json, and

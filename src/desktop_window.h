@@ -1,4 +1,5 @@
 #pragma once
+#include <QPointer>
 #include "appearance.h"
 #include "letter_render.h"
 #include <QMainWindow>
@@ -19,6 +20,7 @@ class QAbstractItemDelegate;
 namespace bm {
 class Session;
 class FeedView;
+class SettingsWindow;
 class DesktopWindow : public QMainWindow {
     Q_OBJECT
   public:
@@ -47,6 +49,7 @@ class DesktopWindow : public QMainWindow {
     QLabel *heading_, *status_, *error_, *updateLabel_;
     QWidget *updateBanner_;
     QAction *updateNoticesAction_;
+    QPointer<SettingsWindow> settings_;
     QTextEdit *subject_;
     QLabel *fromAddress_, *toAddress_, *deliveryStatus_, *deliveryError_;
     QLabel *fromName_, *toName_, *toLabel_;
@@ -85,6 +88,7 @@ class DesktopWindow : public QMainWindow {
     void refreshChannels();
     void updateRailTexts(); // the rail heading and add button for its page
     void setListDensity(QString density);
+    void openSettings();
     void setChannelRailCollapsed(bool collapsed);
     void updateListCount();
     void showVaultPasswordFor(QString path, bool create);

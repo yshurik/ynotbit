@@ -117,7 +117,7 @@ endif()
 qt_add_executable(ynotbit MACOSX_BUNDLE src/main.cpp src/i18n.cpp src/i18n.h src/quoting.cpp src/quoting.h src/letter_document.cpp src/letter_document.h src/letter_document.cpp src/letter_document.h src/session.cpp src/session.h
  assets/icons.qrc
  src/appearance.cpp src/appearance.h
- src/desktop_window.cpp src/desktop_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/message_model.cpp src/message_model.h
+ src/desktop_window.cpp src/desktop_window.h src/settings_window.cpp src/settings_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/message_model.cpp src/message_model.h
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(ynotbit PRIVATE third_party/qrcodegen)
 if(APPLE)
@@ -168,7 +168,7 @@ set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen
 add_test(NAME node-rejects-bad-retention COMMAND ynotbit --node -D ${CMAKE_CURRENT_BINARY_DIR}/bad-retention-node -R 0)
 add_test(NAME node-rejects-bad-age COMMAND ynotbit --node -D ${CMAKE_CURRENT_BINARY_DIR}/bad-retention-node -A x)
 set_tests_properties(node-rejects-bad-retention node-rejects-bad-age PROPERTIES WILL_FAIL TRUE TIMEOUT 10)
-qt_add_executable(desktop_tests tests/widgets_tests.cpp src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/appearance.cpp src/appearance.h
+qt_add_executable(desktop_tests tests/widgets_tests.cpp src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/settings_window.cpp src/settings_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/appearance.cpp src/appearance.h
  assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(desktop_tests PRIVATE third_party/qrcodegen)
@@ -178,7 +178,7 @@ set_tests_properties(desktop PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" 
 # README screenshots from demo data; built only on request:
 #   cmake --build build --target readme_screenshots && build/readme_screenshots docs/images
 qt_add_executable(readme_screenshots EXCLUDE_FROM_ALL tools/readme_screenshots.cpp
- src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp
+ src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/settings_window.cpp src/settings_window.h
  src/desktop_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/appearance.cpp src/appearance.h assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(readme_screenshots PRIVATE third_party/qrcodegen)
@@ -186,7 +186,7 @@ target_link_libraries(readme_screenshots PRIVATE bmcore Qt6::Widgets Qt6::Networ
 # How smoothly the Subscriptions feed scrolls (frame times); built only on request:
 #   cmake --build build --target feed_scroll_bench && build/feed_scroll_bench
 qt_add_executable(feed_scroll_bench EXCLUDE_FROM_ALL tools/feed_scroll_bench.cpp
- src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp
+ src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/settings_window.cpp src/settings_window.h
  src/desktop_window.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/appearance.cpp src/appearance.h assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
 target_include_directories(feed_scroll_bench PRIVATE third_party/qrcodegen)
@@ -240,7 +240,7 @@ foreach(lang IN LISTS YNOTBIT_LANGUAGES)
  list(APPEND YNOTBIT_TS_FILES ${CMAKE_CURRENT_SOURCE_DIR}/translations/ynotbit_${lang}.ts)
 endforeach()
 qt_add_lupdate(TS_FILES ${YNOTBIT_TS_FILES}
- SOURCES src/desktop_window.cpp src/session.cpp src/feed_view.cpp src/updates.cpp src/i18n/error_catalog.cpp
+ SOURCES src/desktop_window.cpp src/settings_window.cpp src/session.cpp src/feed_view.cpp src/updates.cpp src/i18n/error_catalog.cpp
  LUPDATE_TARGET update_translations
  OPTIONS -no-obsolete -locations none)
 qt_add_lrelease(TS_FILES ${YNOTBIT_TS_FILES} QM_FILES_OUTPUT_VARIABLE YNOTBIT_QM_FILES
