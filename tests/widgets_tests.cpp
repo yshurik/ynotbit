@@ -2393,15 +2393,45 @@ int main(int argc, char **argv) {
             QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         }
         {
+            bm::Session n(temp.filePath("listen-node"), true);
+            auto noListen = [&] { return n.nodeArguments().contains("-i"); };
+            require(n.listenEnabled() && n.upnpEnabled() && !noListen(),
+                    "by default the node listens and UPnP is on");
+            n.setListenEnabled(false);
+            require(noListen(), "listening off passes -i to the node");
+            n.setListenEnabled(true);
+            n.setProxy("127.0.0.1:9050");
+            require(noListen(), "with a proxy the node never listens");
+            n.setProxy("");
+            require(!noListen(), "without the proxy it listens again");
+        }
+        {
+            window.findChild<QAction *>("settingsAction")->trigger();
+            auto settings = window.findChild<bm::SettingsWindow *>();
+            session.setProxy("127.0.0.1:9050");
+            require(!settings->findChild<QCheckBox *>("listenCheck")->isEnabled() &&
+                        !settings->findChild<QCheckBox *>("upnpCheck")->isEnabled() &&
+                        !settings->findChild<QLabel *>("proxyNote")->isHidden(),
+                    "a proxy disables listening and UPnP and says why");
+            session.setProxy("");
+            require(settings->findChild<QCheckBox *>("listenCheck")->isEnabled() &&
+                        settings->findChild<QLabel *>("proxyNote")->isHidden(),
+                    "without a proxy listening can be switched again");
+            settings->close();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        }
+        {
             // The node's object count and size come from its status.json, and
             // the last values stay shown while it isn't running.
             QFile status(temp.filePath("node/status.json"));
             require(status.open(QIODevice::WriteOnly), "write a node status");
-            status.write(R"({"objects":42,"object_bytes":1048576,"time":0})");
+            status.write(R"({"objects":42,"object_bytes":1048576,"established_incoming":2,"time":0})");
             status.close();
             QTest::qWait(900);
             require(session.objectCount() == 42 && session.cacheBytes() == 1048576,
                     "the object count and size come from the node's status.json");
+            require(session.incomingConnections() == 2,
+                    "incoming connections come from the node's status.json");
             require(!session.activity().contains("no longer be recoverable"),
                     "no lost-letters warning while nothing unread was pruned");
             // Retention deleted objects this mailbox never read: say so.

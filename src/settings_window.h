@@ -27,7 +27,8 @@ class SettingsWindow : public QWidget {
     Appearance &appearance_;
     QListWidget *sections_;
     QStackedWidget *pages_;
-    QCheckBox *networkEnabled_, *updateNotices_;
+    QCheckBox *networkEnabled_, *updateNotices_, *listen_, *upnp_;
+    QLabel *proxyNote_, *incoming_;
     QComboBox *density_;
     QLabel *usage_;
     QPushButton *changePassword_;

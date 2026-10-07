@@ -83,6 +83,20 @@ QWidget *SettingsWindow::networkPage() {
     networkEnabled_->setObjectName("networkEnabledCheck");
     connect(networkEnabled_, &QCheckBox::toggled, &session_, &Session::setNetworkEnabled);
     column->addWidget(networkEnabled_);
+    column->addWidget(heading(tr("Incoming connections")));
+    listen_ = new QCheckBox(tr("Accept incoming connections"));
+    listen_->setObjectName("listenCheck");
+    connect(listen_, &QCheckBox::toggled, &session_, &Session::setListenEnabled);
+    upnp_ = new QCheckBox(tr("Open the port on the router (UPnP)"));
+    upnp_->setObjectName("upnpCheck");
+    connect(upnp_, &QCheckBox::toggled, &session_, &Session::setUpnpEnabled);
+    proxyNote_ = note(tr("Off while a proxy is set: listening would reveal your real IP address."),
+                      "proxyNote");
+    incoming_ = note({}, "incomingStatus");
+    column->addWidget(listen_);
+    column->addWidget(upnp_);
+    column->addWidget(proxyNote_);
+    column->addWidget(incoming_);
     // An IP:port field: checked as it is typed, saved when editing ends.
     auto endpointField = [&](const QString &name, const QString &title, const QString &hint,
                              const QString &value, const QString &problem,
@@ -245,5 +259,19 @@ void SettingsWindow::refresh() {
     }
     updateNotices_->setEnabled(session_.mailboxOpen() && !updates::publisherAddress().isEmpty());
     changePassword_->setEnabled(session_.unlocked());
+    const bool proxied = !session_.proxy().isEmpty();
+    {
+        QSignalBlocker a(listen_), b(upnp_);
+        listen_->setChecked(session_.listenEnabled());
+        upnp_->setChecked(session_.upnpEnabled());
+    }
+    listen_->setEnabled(!proxied);
+    upnp_->setEnabled(!proxied && session_.listenEnabled());
+    proxyNote_->setVisible(proxied);
+    const int incoming = session_.incomingConnections();
+    incoming_->setText(proxied || !session_.listenEnabled() ? QString()
+                       : incoming > 0
+                           ? tr("Reachable from outside ✓ (incoming connections: %1)").arg(incoming)
+                           : tr("No incoming connections yet"));
 }
 } // namespace bm

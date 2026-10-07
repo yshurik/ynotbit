@@ -666,6 +666,7 @@ void Session::tick() {
             if (node.contains("objects")) {
                 objectCount_ = node.value("objects").toInteger();
                 objectBytes_ = node.value("object_bytes").toInteger();
+                incoming_ = node.value("established_incoming").toInt();
             }
         }
         if (mailboxOpen()) {
@@ -1014,9 +1015,13 @@ void Session::closeMailbox() {
 }
 QStringList Session::nodeArguments() const {
     QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
-    QStringList args{"--node", "-D", root_, "-m", root_ + "/unused-maildir", "-i",
-                     "-R", QString::number(retentionMB_), "-A", QString::number(retentionDays_)};
     auto peer = config.value("peer").toString(), proxy = config.value("proxy").toString();
+    // Listening next to a proxy would publish the real IP the proxy hides.
+    const bool listen = config.value("listen", true).toBool() && proxy.isEmpty();
+    QStringList args{"--node", "-D", root_, "-m", root_ + "/unused-maildir"};
+    if (!listen)
+        args << "-i";
+    args << "-R" << QString::number(retentionMB_) << "-A" << QString::number(retentionDays_);
     if (!peer.isEmpty())
         args << "-P" << peer << "-L";
     if (!proxy.isEmpty())
@@ -1117,6 +1122,25 @@ bool Session::gpuEnabled() const {
 void Session::setGpuEnabled(bool on) {
     QSettings().setValue("gpu", on);
     ProofOfWork::setGpuEnabled(on);
+    emit changed();
+}
+bool Session::listenEnabled() const {
+    return QSettings(root_ + "/desktop.ini", QSettings::IniFormat).value("listen", true).toBool();
+}
+void Session::setListenEnabled(bool on) {
+    if (on == listenEnabled())
+        return;
+    QSettings(root_ + "/desktop.ini", QSettings::IniFormat).setValue("listen", on);
+    scheduleRestart();
+    emit changed();
+}
+bool Session::upnpEnabled() const {
+    return QSettings(root_ + "/desktop.ini", QSettings::IniFormat).value("upnp", true).toBool();
+}
+void Session::setUpnpEnabled(bool on) {
+    if (on == upnpEnabled())
+        return;
+    QSettings(root_ + "/desktop.ini", QSettings::IniFormat).setValue("upnp", on);
     emit changed();
 }
 } // namespace bm

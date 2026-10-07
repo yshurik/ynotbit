@@ -44,6 +44,7 @@ class Session : public QObject {
     QTimer restartSoon_;   // see scheduleRestart()
     int nodeRestarts_ = 0;
     qint64 objectCount_ = 0, objectBytes_ = 0;
+    int incoming_ = 0; // established_incoming from the node's status.json
     QString boundCacheId_;
     bool prunedUnread_ = false; // retention removed objects this mailbox never read
     void bindMailboxToCache();
@@ -110,6 +111,15 @@ class Session : public QObject {
     }
     bool gpuEnabled() const;
     Q_INVOKABLE void setGpuEnabled(bool on);
+    // Incoming connections (default on); never while a proxy is set.
+    bool listenEnabled() const;
+    Q_INVOKABLE void setListenEnabled(bool on);
+    // Open the node's port on the router with UPnP (default on).
+    bool upnpEnabled() const;
+    Q_INVOKABLE void setUpnpEnabled(bool on);
+    int incomingConnections() const {
+        return incoming_;
+    }
     Q_INVOKABLE void createVault();
     Q_INVOKABLE void openVault();
     Q_INVOKABLE void unlockVault();
