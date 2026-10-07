@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <stdexcept>
 namespace bm {
+static constexpr quint16 kNodePort = 8444; // the node's NTB_PROTO_DEFAULT_PORT
 static QString addressInput(const QString &title, const QString &label, bool *accepted) {
     QInputDialog dialog;
     dialog.setWindowTitle(title);
@@ -116,6 +117,8 @@ Session::Session(QString root, bool offline, QObject *parent)
     });
     connect(&node_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
             [this](int, QProcess::ExitStatus) { emit changed(); });
+    portMapper_ = std::make_unique<PortMapper>(miniupnpcBackend());
+    connect(portMapper_.get(), &PortMapper::changed, this, &Session::changed);
     startNode();
     connect(&timer_, &QTimer::timeout, this, &Session::tick);
     timer_.start(750);
@@ -1029,6 +1032,7 @@ QStringList Session::nodeArguments() const {
     return args;
 }
 void Session::startNode() {
+    updatePortMapping();
     if (offline_)
         return;
     QFile::remove(root_ + "/status.json");
@@ -1141,6 +1145,13 @@ void Session::setUpnpEnabled(bool on) {
     if (on == upnpEnabled())
         return;
     QSettings(root_ + "/desktop.ini", QSettings::IniFormat).setValue("upnp", on);
+    updatePortMapping();
     emit changed();
+}
+void Session::updatePortMapping() {
+    if (wantsPortMapping(!offline_, listenEnabled(), upnpEnabled(), proxy()))
+        portMapper_->start(kNodePort);
+    else
+        portMapper_->stop();
 }
 } // namespace bm

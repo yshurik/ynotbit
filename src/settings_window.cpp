@@ -2,6 +2,7 @@
 #include "appearance.h"
 #include "gpu_pow.h"
 #include "i18n.h"
+#include "port_mapper.h"
 #include "pow.h"
 #include "session.h"
 #include "updates.h"
@@ -95,6 +96,8 @@ QWidget *SettingsWindow::networkPage() {
     incoming_ = note({}, "incomingStatus");
     column->addWidget(listen_);
     column->addWidget(upnp_);
+    upnpStatus_ = note({}, "upnpStatus");
+    column->addWidget(upnpStatus_);
     column->addWidget(proxyNote_);
     column->addWidget(incoming_);
     // An IP:port field: checked as it is typed, saved when editing ends.
@@ -273,5 +276,27 @@ void SettingsWindow::refresh() {
                        : incoming > 0
                            ? tr("Reachable from outside ✓ (incoming connections: %1)").arg(incoming)
                            : tr("No incoming connections yet"));
+    const auto &mapper = session_.portMapper();
+    QString router;
+    switch (mapper.state()) {
+    case PortMapper::State::Off:
+        break;
+    case PortMapper::State::Searching:
+        router = tr("Looking for the router…");
+        break;
+    case PortMapper::State::Mapped:
+        router = tr("Port %1 is open on the router, external IP %2")
+                     .arg(mapper.port())
+                     .arg(mapper.externalIp());
+        break;
+    case PortMapper::State::NoGateway:
+        router = tr("The router does not support UPnP; forward TCP %1 manually").arg(mapper.port());
+        break;
+    case PortMapper::State::Failed:
+        router = tr("The router refused the mapping: %1").arg(mapper.error());
+        break;
+    }
+    upnpStatus_->setText(router);
+    upnpStatus_->setVisible(!router.isEmpty());
 }
 } // namespace bm

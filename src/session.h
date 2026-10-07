@@ -3,6 +3,7 @@
 #include "delivery.h"
 #include <utility>
 #include "message_model.h"
+#include "port_mapper.h"
 #include "storage.h"
 #include <QJsonObject>
 #include <QLockFile>
@@ -45,6 +46,8 @@ class Session : public QObject {
     int nodeRestarts_ = 0;
     qint64 objectCount_ = 0, objectBytes_ = 0;
     int incoming_ = 0; // established_incoming from the node's status.json
+    std::unique_ptr<PortMapper> portMapper_;
+    void updatePortMapping();
     QString boundCacheId_;
     bool prunedUnread_ = false; // retention removed objects this mailbox never read
     void bindMailboxToCache();
@@ -119,6 +122,12 @@ class Session : public QObject {
     Q_INVOKABLE void setUpnpEnabled(bool on);
     int incomingConnections() const {
         return incoming_;
+    }
+    PortMapper &portMapper() {
+        return *portMapper_;
+    }
+    static bool wantsPortMapping(bool online, bool listen, bool upnp, const QString &proxy) {
+        return online && listen && upnp && proxy.isEmpty();
     }
     Q_INVOKABLE void createVault();
     Q_INVOKABLE void openVault();

@@ -2420,6 +2420,14 @@ int main(int argc, char **argv) {
             settings->close();
             QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         }
+        require(bm::Session::wantsPortMapping(true, true, true, {}) &&
+                    !bm::Session::wantsPortMapping(false, true, true, {}) &&
+                    !bm::Session::wantsPortMapping(true, false, true, {}) &&
+                    !bm::Session::wantsPortMapping(true, true, false, {}) &&
+                    !bm::Session::wantsPortMapping(true, true, true, "127.0.0.1:9050"),
+                "UPnP runs only online, listening, switched on and without a proxy");
+        require(session.portMapper().state() == bm::PortMapper::State::Off,
+                "an offline session never talks to the router");
         {
             // The node's object count and size come from its status.json, and
             // the last values stay shown while it isn't running.
