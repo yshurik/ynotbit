@@ -1,6 +1,7 @@
 #include "gpu_backend.h"
 #include "gpu_pow.h"
 #include "message_search.h"
+#include "port_mapper.h"
 #include "pow.h"
 #include "protocol.h"
 #include "protocol_wire.h"
@@ -14,6 +15,7 @@
 #include <QThread>
 #include <QtEndian>
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -31,6 +33,39 @@ static void rejects(const std::function<void()> &f) {
         bad = true;
     }
     require(bad, "expected rejection");
+}
+// A router for PortMapper tests: counts calls; answers as told.
+struct RouterLog {
+    std::atomic_int maps{0}, unmaps{0};
+    std::atomic_bool gateway{true}, refuse{false};
+};
+struct FakeRouter : bm::PortMapperBackend {
+    RouterLog &log;
+    explicit FakeRouter(RouterLog &l) : log(l) {}
+    Result map(quint16, int) override {
+        ++log.maps;
+        Result r;
+        if (!log.gateway) {
+            r.noGateway = true;
+            r.error = "no UPnP router found";
+        } else if (log.refuse) {
+            r.error = "ConflictInMappingEntry";
+        } else {
+            r.ok = true;
+            r.externalIp = "203.0.113.7";
+        }
+        return r;
+    }
+    void unmap(quint16) override { ++log.unmaps; }
+};
+static bool waitFor(const std::function<bool()> &done) {
+    QElapsedTimer clock;
+    clock.start();
+    while (!done() && clock.elapsed() < 3000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        QThread::msleep(5);
+    }
+    return done();
 }
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
@@ -434,6 +469,40 @@ int main(int argc, char **argv) {
                 require(GpuSolver::instance().api() == "Metal", "on a Mac the solver uses Metal");
             }
 #endif
+        }
+        {
+            RouterLog log;
+            using State = bm::PortMapper::State;
+            {
+                bm::PortMapper mapper(std::make_unique<FakeRouter>(log), 100);
+                require(mapper.state() == State::Off, "a new port mapper is off");
+                mapper.start(8444);
+                require(mapper.state() == State::Searching, "starting looks for the router");
+                require(waitFor([&] { return mapper.state() == State::Mapped; }) &&
+                            mapper.externalIp() == "203.0.113.7" && mapper.port() == 8444,
+                        "the port is mapped and the external IP reported");
+                require(waitFor([&] { return log.maps >= 3; }), "the mapping is renewed on a timer");
+                mapper.stop();
+                require(mapper.state() == State::Off && waitFor([&] { return log.unmaps == 1; }),
+                        "stopping removes the mapping");
+                log.gateway = false;
+                mapper.start(8444);
+                require(waitFor([&] { return mapper.state() == State::NoGateway; }),
+                        "no router is reported as such");
+                mapper.stop();
+                log.gateway = true;
+                log.refuse = true;
+                mapper.start(8444);
+                require(waitFor([&] { return mapper.state() == State::Failed; }) &&
+                            mapper.error().contains("Conflict"),
+                        "a refused mapping is reported with the router's error");
+                log.refuse = false;
+                mapper.stop();
+                mapper.start(8444);
+                require(waitFor([&] { return mapper.state() == State::Mapped; }),
+                        "a later start maps again");
+            }
+            require(log.unmaps == 4, "destroying the mapper removes the mapping it held");
         }
         std::cout << "PASS: vault, password rotation, SQLCipher, deduplication, backup, chan "
                      "fixture, authenticated message codec\n";
