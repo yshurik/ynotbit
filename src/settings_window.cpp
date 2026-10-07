@@ -1,17 +1,26 @@
 #include "settings_window.h"
 #include "appearance.h"
+#include "gpu_pow.h"
+#include "i18n.h"
+#include "pow.h"
 #include "session.h"
+#include "updates.h"
+#include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPointer>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QThreadPool>
 #include <QVBoxLayout>
+#include <algorithm>
 namespace bm {
 namespace {
 QLabel *heading(const QString &text) {
@@ -28,8 +37,9 @@ QLabel *note(const QString &text, const QString &name = {}) {
     return label;
 }
 } // namespace
-SettingsWindow::SettingsWindow(Session &session, QWidget *parent)
-    : QWidget(parent, Qt::Window), session_(session) {
+SettingsWindow::SettingsWindow(Session &session, Appearance &appearance, QString density,
+                               QWidget *parent)
+    : QWidget(parent, Qt::Window), session_(session), appearance_(appearance) {
     setObjectName("settingsWindow");
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(tr("Settings"));
@@ -44,6 +54,10 @@ SettingsWindow::SettingsWindow(Session &session, QWidget *parent)
     connect(sections_, &QListWidget::currentRowChanged, pages_, &QStackedWidget::setCurrentIndex);
     addPage("network", tr("Network"), networkPage());
     addPage("storage", tr("Storage"), storagePage());
+    addPage("sending", tr("Sending"), sendingPage());
+    addPage("appearance", tr("Appearance"), appearancePage(density));
+    addPage("notifications", tr("Notifications"), notificationsPage());
+    addPage("security", tr("Security"), securityPage());
     sections_->setCurrentRow(0);
     connect(&session_, &Session::changed, this, &SettingsWindow::refresh);
     refresh();
@@ -133,6 +147,90 @@ QWidget *SettingsWindow::storagePage() {
     form->addRow(rescan);
     return page;
 }
+QWidget *SettingsWindow::sendingPage() {
+    auto page = new QWidget;
+    auto column = new QVBoxLayout(page);
+    auto gpu = new QCheckBox(tr("Proof of work on the GPU"));
+    gpu->setObjectName("gpuCheck");
+    gpu->setChecked(session_.gpuEnabled());
+    connect(gpu, &QCheckBox::toggled, &session_, &Session::setGpuEnabled);
+    auto device = note(tr("Looking for a GPU…"), "gpuDevice");
+    // Opening the GPU compiles its kernel (about a second): not on the UI thread.
+    QPointer<QLabel> label = device;
+    QThreadPool::globalInstance()->start([label] {
+        auto &solver = GpuSolver::instance();
+        const QString text = solver.available() ? solver.api() + " · " + solver.deviceName()
+                                                : solver.problem();
+        QMetaObject::invokeMethod(qApp, [label, text] {
+            if (label)
+                label->setText(text);
+        });
+    });
+    column->addWidget(gpu);
+    column->addWidget(device);
+    column->addWidget(note(tr("CPU workers: %1").arg(ProofOfWork::workerCount()), "cpuWorkers"));
+    return page;
+}
+QWidget *SettingsWindow::appearancePage(const QString &density) {
+    auto page = new QWidget;
+    auto form = new QFormLayout(page);
+    auto theme = new QComboBox;
+    theme->setObjectName("themeCombo");
+    theme->addItem(tr("System"), QString("system"));
+    theme->addItem(tr("Light"), QString("light"));
+    theme->addItem(tr("Dark"), QString("dark"));
+    theme->setCurrentIndex(std::max(0, theme->findData(appearance_.mode())));
+    connect(theme, &QComboBox::currentIndexChanged, this,
+            [this, theme] { appearance_.setMode(theme->currentData().toString()); });
+    form->addRow(tr("Theme"), theme);
+    auto language = new QComboBox;
+    language->setObjectName("languageCombo");
+    language->addItem(tr("System default"), QString());
+    for (const auto &l : languages())
+        language->addItem(l.nativeName, l.code);
+    language->setCurrentIndex(std::max(0, language->findData(savedLanguage())));
+    auto restartNote = note(tr("Restart ynotbit to use the new language."), "languageNote");
+    restartNote->hide();
+    connect(language, &QComboBox::currentIndexChanged, this, [language, restartNote] {
+        saveLanguage(language->currentData().toString());
+        restartNote->show();
+    });
+    form->addRow(tr("Language"), language);
+    form->addRow(restartNote);
+    density_ = new QComboBox;
+    density_->setObjectName("densityCombo");
+    density_->addItem(tr("Comfortable"), QString("comfortable"));
+    density_->addItem(tr("Cozy"), QString("cozy"));
+    density_->addItem(tr("Compact"), QString("compact"));
+    density_->setCurrentIndex(std::max(0, density_->findData(density)));
+    connect(density_, &QComboBox::currentIndexChanged, this,
+            [this] { emit densityChosen(density_->currentData().toString()); });
+    form->addRow(tr("Letter list"), density_);
+    return page;
+}
+void SettingsWindow::showDensity(const QString &density) {
+    QSignalBlocker block(density_);
+    density_->setCurrentIndex(std::max(0, density_->findData(density)));
+}
+QWidget *SettingsWindow::notificationsPage() {
+    auto page = new QWidget;
+    auto column = new QVBoxLayout(page);
+    updateNotices_ = new QCheckBox(tr("Notify about new ynotbit versions"));
+    updateNotices_->setObjectName("updateNoticesCheck");
+    connect(updateNotices_, &QCheckBox::toggled, &session_, &Session::setUpdateNotices);
+    column->addWidget(updateNotices_);
+    column->addWidget(note(tr("Kept in the open mailbox.")));
+    return page;
+}
+QWidget *SettingsWindow::securityPage() {
+    auto page = new QWidget;
+    auto column = new QVBoxLayout(page);
+    changePassword_ = new QPushButton(tr("Change vault password…"));
+    changePassword_->setObjectName("changePasswordButton");
+    connect(changePassword_, &QPushButton::clicked, &session_, &Session::changePassword);
+    column->addWidget(changePassword_, 0, Qt::AlignLeft);
+    return page;
+}
 void SettingsWindow::refresh() {
     {
         QSignalBlocker block(networkEnabled_);
@@ -141,5 +239,11 @@ void SettingsWindow::refresh() {
     usage_->setText(tr("%1 objects, %2 MB")
                         .arg(session_.objectCount())
                         .arg(session_.cacheBytes() / 1048576.0, 0, 'f', 1));
+    {
+        QSignalBlocker block(updateNotices_);
+        updateNotices_->setChecked(session_.updateNotices());
+    }
+    updateNotices_->setEnabled(session_.mailboxOpen() && !updates::publisherAddress().isEmpty());
+    changePassword_->setEnabled(session_.unlocked());
 }
 } // namespace bm

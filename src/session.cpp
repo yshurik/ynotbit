@@ -1058,56 +1058,6 @@ bool Session::validEndpoint(const QString &text) {
            url.query().isEmpty() && url.fragment().isEmpty() && address.setAddress(url.host()) &&
            url.port() > 0 && url.port() <= 65535;
 }
-void Session::configureNode() {
-    attempt([&] {
-        QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
-        bool ok = false;
-        auto peer = QInputDialog::getText(nullptr, tr("Network settings"),
-                                          tr("Additional peer IP:port (empty for automatic discovery)"),
-                                          QLineEdit::Normal, config.value("peer").toString(), &ok)
-                        .trimmed();
-        if (!ok)
-            return;
-        check(validEndpoint(peer), tr("Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444"));
-        auto proxy =
-            QInputDialog::getText(nullptr, tr("SOCKS5 proxy"),
-                                  tr("Proxy IP:port (empty for direct; Tor typically 127.0.0.1:9050)"),
-                                  QLineEdit::Normal, config.value("proxy").toString(), &ok)
-                .trimmed();
-        if (!ok)
-            return;
-        check(validEndpoint(proxy), tr("Enter a proxy IP address and port"));
-        config.setValue("peer", peer);
-        config.setValue("proxy", proxy);
-        activity_ = tr("Network settings saved. Restart the node to apply them.");
-    });
-}
-void Session::configureRetention() {
-    bool saved = false;
-    attempt([&] {
-        bool ok = false;
-        auto mb = QInputDialog::getInt(nullptr, tr("Retained network objects"),
-                                       tr("Maximum MB of encrypted network objects. Older objects are "
-                                          "discarded; saved mailbox letters are preserved."),
-                                       retentionMB_, 64, 32768, 64, &ok);
-        if (!ok)
-            return;
-        auto days = QInputDialog::getInt(nullptr, tr("Retained network objects"),
-                                         tr("Keep network objects for at most this many days"),
-                                         retentionDays_, 1, 3650, 1, &ok);
-        if (!ok)
-            return;
-        retentionMB_ = mb;
-        retentionDays_ = days;
-        QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
-        config.setValue("retentionMB", mb);
-        config.setValue("retentionDays", days);
-        activity_ = tr("Retention settings saved");
-        saved = true;
-    });
-    if (saved)
-        restartNode();
-}
 QString Session::peer() const {
     return QSettings(root_ + "/desktop.ini", QSettings::IniFormat).value("peer").toString();
 }

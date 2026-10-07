@@ -86,8 +86,6 @@ class Session : public QObject {
         return !offline_;
     }
     Q_INVOKABLE void setNetworkEnabled(bool enabled);
-    Q_INVOKABLE void configureNode();
-    Q_INVOKABLE void configureRetention();
     Q_INVOKABLE void restartNode();
     QStringList nodeArguments() const;
     // An empty string or IP:port, as the node accepts for -P and -r.

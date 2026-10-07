@@ -2260,23 +2260,15 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     settingsAction->setObjectName("settingsAction");
     settingsAction->setMenuRole(QAction::PreferencesRole); // the app menu on macOS
     auto network = menuBar()->addMenu(tr("Network"));
-    auto enabled = network->addAction(tr("Network enabled"));
-    enabled->setCheckable(true);
-    enabled->setChecked(session_.networkEnabled());
-    connect(enabled, &QAction::toggled, &session_, &Session::setNetworkEnabled);
-    network->addAction(tr("Peer / proxy settings…"), &session_, &Session::configureNode);
+    networkEnabledAction_ = network->addAction(tr("Network enabled"));
+    networkEnabledAction_->setCheckable(true);
+    networkEnabledAction_->setChecked(session_.networkEnabled());
+    connect(networkEnabledAction_, &QAction::toggled, &session_, &Session::setNetworkEnabled);
     network->addAction(tr("Restart node"), &session_, &Session::restartNode);
-    network->addAction(tr("Retention settings…"), &session_, &Session::configureRetention);
-    network->addSeparator();
-    updateNoticesAction_ = network->addAction(tr("Notify about new ynotbit versions"));
-    updateNoticesAction_->setObjectName("updateNoticesAction");
-    updateNoticesAction_->setCheckable(true);
-    connect(updateNoticesAction_, &QAction::triggered, &session_, &Session::setUpdateNotices);
     auto identity = menuBar()->addMenu(tr("Identity"));
     identity->addAction(tr("Create identity…"), &session_, &Session::addIdentity);
     identity->addAction(tr("Join or create chan…"), &session_, &Session::joinChannel);
     identity->addAction(tr("Import keys.dat…"), &session_, &Session::importIdentities);
-    identity->addAction(tr("Change vault password…"), &session_, &Session::changePassword);
     identity->addAction(tr("Subscribe to broadcasts…"), &session_, &Session::subscribe);
     identity->addAction(tr("Manage subscriptions…"), this, [this] {
         QStringList labels, addresses;
@@ -2297,42 +2289,6 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         if (ok && labels.contains(value))
             session_.unsubscribe(addresses[labels.indexOf(value)]);
     });
-    identity->addAction(tr("Inspect retained objects again"), &session_, &Session::rescan);
-    auto appearance = menuBar()->addMenu(tr("Appearance"));
-    auto group = new QActionGroup(this);
-    const std::pair<QString, QString> modes[] = {
-        {"system", tr("System")}, {"light", tr("Light")}, {"dark", tr("Dark")}};
-    for (const auto &[mode, label] : modes) {
-        auto a = appearance->addAction(label);
-        a->setObjectName("appearance_" + mode);
-        a->setCheckable(true);
-        a->setChecked(appearance_.mode() == mode);
-        group->addAction(a);
-        connect(a, &QAction::triggered, this, [this, mode] { appearance_.setMode(mode); });
-    }
-    // Language, under Appearance: applied at startup, so a change takes effect
-    // on restart.
-    appearance->addSeparator();
-    auto languageMenu = appearance->addMenu(tr("Language"));
-    languageMenu->setObjectName("languageMenu");
-    auto languageGroup = new QActionGroup(this);
-    auto addLanguage = [&](const QString &code, const QString &label) {
-        auto a = languageMenu->addAction(label);
-        a->setCheckable(true);
-        a->setChecked(savedLanguage() == code);
-        languageGroup->addAction(a);
-        connect(a, &QAction::triggered, this, [this, code] {
-            if (code == savedLanguage())
-                return;
-            saveLanguage(code);
-            QMessageBox::information(this, tr("Language"),
-                                     tr("Restart ynotbit to use the new language."));
-        });
-    };
-    addLanguage({}, tr("System default"));
-    languageMenu->addSeparator();
-    for (const auto &language : languages())
-        addLanguage(language.code, language.nativeName);
     connect(&appearance_, &Appearance::changed, this, &DesktopWindow::updateTheme);
     connect(&session_, &Session::changed, this, &DesktopWindow::updateState);
     connect(&session_, &Session::messagesChanged, this, &DesktopWindow::refreshChannels);
@@ -2627,9 +2583,10 @@ void DesktopWindow::updateState() {
     updateLabel_->setText(tr("ynotbit %1 is available (you have %2).")
                               .arg(update, QCoreApplication::applicationVersion()));
     updateBanner_->setVisible(!update.isEmpty());
-    updateNoticesAction_->setEnabled(session_.mailboxOpen() &&
-                                     !updates::publisherAddress().isEmpty());
-    updateNoticesAction_->setChecked(session_.updateNotices());
+    {
+        QSignalBlocker block(networkEnabledAction_); // toggling it restarts the node
+        networkEnabledAction_->setChecked(session_.networkEnabled());
+    }
     findChild<QPushButton *>("lockButton")->setVisible(session_.unlocked());
     findChild<QPushButton *>("closeMailboxButton")->setVisible(session_.mailboxOpen());
     const bool channelPage = folders_->currentRow() == 4;
@@ -2884,6 +2841,10 @@ void DesktopWindow::setListDensity(QString density) {
         return;
     listDensity_ = density;
     QSettings().setValue("listDensity", density);
+    if (auto button = findChild<QToolButton *>("density_" + density))
+        button->setChecked(true);
+    if (settings_)
+        settings_->showDensity(density);
     delete letterDelegate_;
     letterDelegate_ = new LetterDelegate(letters_, density);
     letters_->setItemDelegate(letterDelegate_);
@@ -3260,8 +3221,10 @@ void DesktopWindow::refreshContacts() {
     contactLayout_->addStretch();
 }
 void DesktopWindow::openSettings() {
-    if (!settings_)
-        settings_ = new SettingsWindow(session_, this);
+    if (!settings_) {
+        settings_ = new SettingsWindow(session_, appearance_, listDensity_, this);
+        connect(settings_, &SettingsWindow::densityChosen, this, &DesktopWindow::setListDensity);
+    }
     settings_->show();
     settings_->raise();
     settings_->activateWindow();

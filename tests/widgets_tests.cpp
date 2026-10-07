@@ -7,6 +7,7 @@
 #include "letter_document.h"
 #include "pow.h"
 #include "settings_window.h"
+#include "i18n.h"
 #include <QElapsedTimer>
 #include <QFileDialog>
 #include <QTest>
@@ -291,21 +292,22 @@ int main(int argc, char **argv) {
             auto iconOf = [&](const char *id) {
                 return window.findChild<QToolButton *>(id)->icon().pixmap(12, 12).toImage();
             };
+            auto openSettings = [&] {
+                window.findChild<QAction *>("settingsAction")->trigger();
+                return window.findChild<bm::SettingsWindow *>();
+            };
             auto themeTo = [&](const char *mode) {
-                window.findChild<QAction *>(QString("appearance_") + mode)->trigger();
+                auto combo = openSettings()->findChild<QComboBox *>("themeCombo");
+                combo->setCurrentIndex(combo->findData(QString(mode)));
             };
             themeTo("light");
             {
-                auto language = window.findChild<QMenu *>("languageMenu");
-                auto appearance =
-                    window.findChild<QAction *>("appearance_light")->associatedObjects();
-                bool underAppearance = false;
-                for (auto owner : appearance)
-                    if (auto menu = qobject_cast<QMenu *>(owner))
-                        underAppearance |= menu->actions().contains(language->menuAction());
-                require(underAppearance &&
-                            !window.menuBar()->actions().contains(language->menuAction()),
-                        "Language is a submenu of Appearance, not its own top-level menu");
+                auto language = openSettings()->findChild<QComboBox *>("languageCombo");
+                require(language && language->count() == bm::languages().size() + 1,
+                        "Settings lists System default and every language");
+                for (auto action : window.menuBar()->actions())
+                    require(action->text() != "Appearance" && action->text() != "Language",
+                            "theme and language live in Settings, not in the menu bar");
             }
             // A stroke thinner than one pixel at the button's icon size only
             // ever renders as antialiased gray, which reads as a disabled
@@ -331,6 +333,8 @@ int main(int argc, char **argv) {
             require(iconOf("filter_unread") != lightFilter,
                     "filter icons recolour on a theme switch");
             themeTo("system");
+            openSettings()->close();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         }
         {
             window.selectMessage("0"); // marks a non-anonymous recipient-channel message read
@@ -576,16 +580,18 @@ int main(int argc, char **argv) {
             vault.lock();
             session.clearError();
             auto banner = window.findChild<QWidget *>("updateBanner");
-            auto toggle = window.findChild<QAction *>("updateNoticesAction");
+            window.findChild<QAction *>("settingsAction")->trigger();
+            auto settingsWindow = window.findChild<bm::SettingsWindow *>();
+            auto toggle = settingsWindow->findChild<QCheckBox *>("updateNoticesCheck");
             require(banner && !banner->isHidden() &&
                         window.findChild<QLabel *>("updateLabel")->text().contains("0.6.0"),
                     "a newer announced version shows the update banner");
             require(toggle && toggle->isEnabled() && toggle->isChecked(),
                     "update notices are on by default");
-            toggle->trigger();
+            toggle->click();
             require(banner->isHidden() && !session.updateNotices(),
                     "turning notices off hides the banner");
-            toggle->trigger();
+            toggle->click();
             require(!banner->isHidden(), "turning notices on again shows it");
             window.findChild<QPushButton *>("updateDismissButton")->click();
             require(banner->isHidden(), "a dismissed version is not shown again");
@@ -595,6 +601,8 @@ int main(int argc, char **argv) {
             bm::updates::setPublisherAddressForTesting({});
             session.clearError();
             require(!toggle->isEnabled(), "a build without a publisher has nothing to toggle");
+            settingsWindow->close();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         }
         footprint("After scrolling and selections");
         if (app.arguments().contains("--soak")) {
@@ -2363,6 +2371,26 @@ int main(int argc, char **argv) {
             settings->close();
             QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
             require(!window.findChild<bm::SettingsWindow *>(), "closing Settings deletes it");
+        }
+        {
+            window.findChild<QAction *>("settingsAction")->trigger();
+            auto settings = window.findChild<bm::SettingsWindow *>();
+            auto density = settings->findChild<QComboBox *>("densityCombo");
+            density->setCurrentIndex(density->findData(QString("compact")));
+            require(window.findChild<QToolButton *>("density_compact")->isChecked(),
+                    "density chosen in Settings moves the list's density switch");
+            window.findChild<QToolButton *>("density_comfortable")->click();
+            require(density->currentData().toString() == "comfortable",
+                    "the list's density switch moves the Settings choice");
+            require(settings->findChild<QCheckBox *>("gpuCheck") &&
+                        settings->findChild<QLabel *>("cpuWorkers")->text().contains(
+                            QString::number(bm::ProofOfWork::workerCount())),
+                    "the Sending page shows the GPU switch and CPU workers");
+            require(settings->findChild<QPushButton *>("changePasswordButton")->isEnabled() ==
+                        session.unlocked(),
+                    "changing the vault password needs an unlocked vault");
+            settings->close();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         }
         {
             // The node's object count and size come from its status.json, and

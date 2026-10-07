@@ -90,7 +90,7 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
   background, read state, archive, trash/restore, and explicit permanent deletion.
 - Update notices: signed broadcasts from ynotbit's release address
   (`BM-2666hf5eAbjCJMaPwC7eG3Um55QJGM`) show a banner when a newer version is out,
-  without subscribing; **Network → Notify about new ynotbit versions** turns them off.
+  without subscribing; **Settings → Notifications** turns them off.
 - A separate notbit relay, on Linux, macOS and Windows, receives no vault or
   mailbox keys. It identifies itself to peers as `/ynotbit:<version>/`. Its bounded local
   queue accepts network objects, validates proof of work, and records acceptance,
@@ -113,8 +113,9 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
   be set to light or dark.
 - Interface in English, Simplified and Traditional Chinese, Japanese, Korean,
   Russian and Ukrainian. It follows the system language, or pick one under
-  **Appearance → Language** (applies after a restart). Dates follow the chosen language.
-- Peer count, offline mode, node restart, additional peer and SOCKS5 proxy settings,
+  **Settings → Appearance** (applies after a restart). Dates follow the chosen language.
+- Peer count, offline mode, node restart, and one **File → Settings…** window for the
+  additional peer, SOCKS5 proxy, incoming connections, proof of work, theme and language;
   configurable network-cache retention, recent document paths, and combined backup.
 
 Delivery distinguishes **queued → requesting key → preparing receipt → proof of
@@ -187,7 +188,7 @@ uses Qt's application-data location. Its internal application identifier remains
 network connections. The relay stops when the application exits.
 
 Default network retention is 2 GiB / 90 days, kept by the relay in `objects.sqlite`
-in the node folder; change it under **Network → Retention settings…**.
+in the node folder; change it under **Settings → Storage**.
 Local retention can outlive protocol expiry, allowing later unlocked inspection.
 Discarding a retained object can prevent later recovery; already saved mailbox
 letters are unaffected. Proof of work runs on every CPU core but one, and on the

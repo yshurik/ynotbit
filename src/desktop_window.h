@@ -48,7 +48,7 @@ class DesktopWindow : public QMainWindow {
     QVariantList shownBroadcastSources_; // the Broadcasts rail's senders, last drawn
     QLabel *heading_, *status_, *error_, *updateLabel_;
     QWidget *updateBanner_;
-    QAction *updateNoticesAction_;
+    QAction *networkEnabledAction_;
     QPointer<SettingsWindow> settings_;
     QTextEdit *subject_;
     QLabel *fromAddress_, *toAddress_, *deliveryStatus_, *deliveryError_;
