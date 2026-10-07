@@ -426,16 +426,8 @@
         <translation>啟用網路</translation>
     </message>
     <message>
-        <source>Peer / proxy settings…</source>
-        <translation>對等節點 / 代理設定…</translation>
-    </message>
-    <message>
         <source>Restart node</source>
         <translation>重新啟動節點</translation>
-    </message>
-    <message>
-        <source>Retention settings…</source>
-        <translation>保留設定…</translation>
     </message>
     <message>
         <source>Identity</source>
@@ -454,10 +446,6 @@
         <translation>匯入 keys.dat…</translation>
     </message>
     <message>
-        <source>Change vault password…</source>
-        <translation>更改保險庫密碼…</translation>
-    </message>
-    <message>
         <source>Subscribe to broadcasts…</source>
         <translation>訂閱廣播…</translation>
     </message>
@@ -472,38 +460,6 @@
     <message>
         <source>Subscription</source>
         <translation>訂閱</translation>
-    </message>
-    <message>
-        <source>Inspect retained objects again</source>
-        <translation>重新檢查保留的物件</translation>
-    </message>
-    <message>
-        <source>Appearance</source>
-        <translation>外觀</translation>
-    </message>
-    <message>
-        <source>System</source>
-        <translation>跟隨系統</translation>
-    </message>
-    <message>
-        <source>Light</source>
-        <translation>淺色</translation>
-    </message>
-    <message>
-        <source>Dark</source>
-        <translation>深色</translation>
-    </message>
-    <message>
-        <source>Language</source>
-        <translation>語言</translation>
-    </message>
-    <message>
-        <source>Restart ynotbit to use the new language.</source>
-        <translation>重新啟動 ynotbit 以使用新語言。</translation>
-    </message>
-    <message>
-        <source>System default</source>
-        <translation>跟隨系統</translation>
     </message>
     <message>
         <source>Recipient acknowledged delivery. This is not a read receipt.</source>
@@ -835,10 +791,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>關閉</translation>
     </message>
     <message>
-        <source>Notify about new ynotbit versions</source>
-        <translation>通知 ynotbit 新版本</translation>
-    </message>
-    <message>
         <source>ynotbit %1 is available (you have %2).</source>
         <translation>ynotbit %1 已發佈（目前版本：%2）。</translation>
     </message>
@@ -887,10 +839,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>這封信已沒有空間放下那張圖片。</translation>
     </message>
     <message>
-        <source>Insert a picture. It travels inside the letter, made small enough to fit.</source>
-        <translation>插入圖片。圖片會隨信一起傳送，並縮小到能放進信中。</translation>
-    </message>
-    <message>
         <source>Insert picture</source>
         <translation>插入圖片</translation>
     </message>
@@ -911,7 +859,14 @@ Add one with “Add contact…” above, or with the person-plus button beside a
 From: %2
 Date: %1
 </source>
-        <translation>-------- 轉寄的郵件 --------&#xa;寄件人: %2&#xa;日期: %1&#xa;</translation>
+        <translation>-------- 轉寄的郵件 --------
+寄件人: %2
+日期: %1
+</translation>
+    </message>
+    <message>
+        <source>Settings…</source>
+        <translation>設定…</translation>
     </message>
 </context>
 <context>
@@ -1505,50 +1460,6 @@ Date: %1
         <translation>這將永久刪除此地址的私鑰。已傳送或已收到的郵件仍保留在信箱中，但你將無法再以此地址發信，也無法閱讀新傳送到此地址的內容。</translation>
     </message>
     <message>
-        <source>Network settings</source>
-        <translation>網路設定</translation>
-    </message>
-    <message>
-        <source>Additional peer IP:port (empty for automatic discovery)</source>
-        <translation>額外的對等節點 IP:埠（留空則自動發現）</translation>
-    </message>
-    <message>
-        <source>Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444</source>
-        <translation>請輸入 IP 地址和埠，例如 192.0.2.1:8444 或 [::1]:8444</translation>
-    </message>
-    <message>
-        <source>SOCKS5 proxy</source>
-        <translation>SOCKS5 代理</translation>
-    </message>
-    <message>
-        <source>Proxy IP:port (empty for direct; Tor typically 127.0.0.1:9050)</source>
-        <translation>代理 IP:埠（留空則直連；Tor 通常為 127.0.0.1:9050）</translation>
-    </message>
-    <message>
-        <source>Enter a proxy IP address and port</source>
-        <translation>請輸入代理 IP 地址和埠</translation>
-    </message>
-    <message>
-        <source>Network settings saved. Restart the node to apply them.</source>
-        <translation>網路設定已儲存。重新啟動節點後生效。</translation>
-    </message>
-    <message>
-        <source>Retained network objects</source>
-        <translation>保留的網路物件</translation>
-    </message>
-    <message>
-        <source>Maximum MB of encrypted network objects. Older objects are discarded; saved mailbox letters are preserved.</source>
-        <translation>加密網路物件的最大容量（MB）。較舊的物件會被丟棄；已儲存到信箱的信件會保留。</translation>
-    </message>
-    <message>
-        <source>Keep network objects for at most this many days</source>
-        <translation>網路物件最多保留的天數</translation>
-    </message>
-    <message>
-        <source>Retention settings saved</source>
-        <translation>保留設定已儲存</translation>
-    </message>
-    <message>
         <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
         <translation>這封信大小為 %1；Bitmessage 最多傳送 %2。請縮短內容或刪減引用。</translation>
     </message>
@@ -1559,6 +1470,201 @@ Date: %1
     <message>
         <source>Bitmessage digest</source>
         <translation>Bitmessage 摘要</translation>
+    </message>
+</context>
+<context>
+    <name>bm::SettingsWindow</name>
+    <message>
+        <source>Settings</source>
+        <translation>設定</translation>
+    </message>
+    <message>
+        <source>Network</source>
+        <translation>網路</translation>
+    </message>
+    <message>
+        <source>Storage</source>
+        <translation>儲存空間</translation>
+    </message>
+    <message>
+        <source>Sending</source>
+        <translation>傳送</translation>
+    </message>
+    <message>
+        <source>Appearance</source>
+        <translation>外觀</translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation>通知</translation>
+    </message>
+    <message>
+        <source>Security</source>
+        <translation>安全性</translation>
+    </message>
+    <message>
+        <source>Network enabled</source>
+        <translation>啟用網路</translation>
+    </message>
+    <message>
+        <source>Incoming connections</source>
+        <translation>傳入連線</translation>
+    </message>
+    <message>
+        <source>Accept incoming connections</source>
+        <translation>接受傳入連線</translation>
+    </message>
+    <message>
+        <source>Open the port on the router (UPnP)</source>
+        <translation>在路由器上開放連接埠 (UPnP)</translation>
+    </message>
+    <message>
+        <source>Off while a proxy is set: listening would reveal your real IP address.</source>
+        <translation>設定代理伺服器時關閉：監聽會暴露你的真實 IP 位址。</translation>
+    </message>
+    <message>
+        <source>SOCKS5 proxy</source>
+        <translation>SOCKS5 代理伺服器</translation>
+    </message>
+    <message>
+        <source>Empty for a direct connection; Tor is usually 127.0.0.1:9050</source>
+        <translation>留空則直接連線；Tor 通常為 127.0.0.1:9050</translation>
+    </message>
+    <message>
+        <source>Enter an IP address and port, e.g. 127.0.0.1:9050</source>
+        <translation>請輸入 IP 位址和連接埠，例如 127.0.0.1:9050</translation>
+    </message>
+    <message>
+        <source>Additional peer</source>
+        <translation>額外的對等節點</translation>
+    </message>
+    <message>
+        <source>Empty for automatic discovery</source>
+        <translation>留空則自動探索</translation>
+    </message>
+    <message>
+        <source>Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444</source>
+        <translation>請輸入 IP 位址和連接埠，例如 192.0.2.1:8444 或 [::1]:8444</translation>
+    </message>
+    <message>
+        <source>Restart node</source>
+        <translation>重新啟動節點</translation>
+    </message>
+    <message>
+        <source>Keep at most</source>
+        <translation>最多保留</translation>
+    </message>
+    <message>
+        <source>Days to keep</source>
+        <translation>保留天數</translation>
+    </message>
+    <message>
+        <source>Now</source>
+        <translation>目前</translation>
+    </message>
+    <message>
+        <source>Older objects are discarded first; letters saved in the mailbox are kept.</source>
+        <translation>先捨棄較舊的物件；已儲存在信箱中的信件會保留。</translation>
+    </message>
+    <message>
+        <source>Inspect retained objects again</source>
+        <translation>重新檢查保留的物件</translation>
+    </message>
+    <message>
+        <source>Proof of work on the GPU</source>
+        <translation>在 GPU 上計算工作量證明</translation>
+    </message>
+    <message>
+        <source>Looking for a GPU…</source>
+        <translation>正在尋找 GPU…</translation>
+    </message>
+    <message>
+        <source>CPU workers: %1</source>
+        <translation>CPU 工作執行緒：%1</translation>
+    </message>
+    <message>
+        <source>System</source>
+        <translation>跟隨系統</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>淺色</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>深色</translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation>主題</translation>
+    </message>
+    <message>
+        <source>System default</source>
+        <translation>系統預設</translation>
+    </message>
+    <message>
+        <source>Restart ynotbit to use the new language.</source>
+        <translation>重新啟動 ynotbit 以使用新語言。</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>語言</translation>
+    </message>
+    <message>
+        <source>Comfortable</source>
+        <translation>寬鬆</translation>
+    </message>
+    <message>
+        <source>Cozy</source>
+        <translation>適中</translation>
+    </message>
+    <message>
+        <source>Compact</source>
+        <translation>緊湊</translation>
+    </message>
+    <message>
+        <source>Letter list</source>
+        <translation>信件列表</translation>
+    </message>
+    <message>
+        <source>Notify about new ynotbit versions</source>
+        <translation>通知 ynotbit 新版本</translation>
+    </message>
+    <message>
+        <source>Kept in the open mailbox.</source>
+        <translation>儲存在目前開啟的信箱中。</translation>
+    </message>
+    <message>
+        <source>Change vault password…</source>
+        <translation>變更保險庫密碼…</translation>
+    </message>
+    <message>
+        <source>%1 objects, %2 MB</source>
+        <translation>%1 個物件，%2 MB</translation>
+    </message>
+    <message>
+        <source>Reachable from outside ✓ (incoming connections: %1)</source>
+        <translation>可從外部連線 ✓（傳入連線：%1）</translation>
+    </message>
+    <message>
+        <source>No incoming connections yet</source>
+        <translation>尚無傳入連線</translation>
+    </message>
+    <message>
+        <source>Looking for the router…</source>
+        <translation>正在尋找路由器…</translation>
+    </message>
+    <message>
+        <source>Port %1 is open on the router, external IP %2</source>
+        <translation>路由器上的連接埠 %1 已開放，外部 IP 為 %2</translation>
+    </message>
+    <message>
+        <source>The router does not support UPnP; forward TCP %1 manually</source>
+        <translation>路由器不支援 UPnP；請手動轉送 TCP %1</translation>
+    </message>
+    <message>
+        <source>The router refused the mapping: %1</source>
+        <translation>路由器拒絕了連接埠對應：%1</translation>
     </message>
 </context>
 </TS>

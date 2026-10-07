@@ -426,16 +426,8 @@
         <translation>ネットワークを有効化</translation>
     </message>
     <message>
-        <source>Peer / proxy settings…</source>
-        <translation>ピア / プロキシの設定…</translation>
-    </message>
-    <message>
         <source>Restart node</source>
         <translation>ノードを再起動</translation>
-    </message>
-    <message>
-        <source>Retention settings…</source>
-        <translation>保持期間の設定…</translation>
     </message>
     <message>
         <source>Identity</source>
@@ -454,10 +446,6 @@
         <translation>keys.dat をインポート…</translation>
     </message>
     <message>
-        <source>Change vault password…</source>
-        <translation>保管庫のパスワードを変更…</translation>
-    </message>
-    <message>
         <source>Subscribe to broadcasts…</source>
         <translation>ブロードキャストを購読…</translation>
     </message>
@@ -472,38 +460,6 @@
     <message>
         <source>Subscription</source>
         <translation>購読</translation>
-    </message>
-    <message>
-        <source>Inspect retained objects again</source>
-        <translation>保持中のオブジェクトを再検査</translation>
-    </message>
-    <message>
-        <source>Appearance</source>
-        <translation>外観</translation>
-    </message>
-    <message>
-        <source>System</source>
-        <translation>システムに従う</translation>
-    </message>
-    <message>
-        <source>Light</source>
-        <translation>ライト</translation>
-    </message>
-    <message>
-        <source>Dark</source>
-        <translation>ダーク</translation>
-    </message>
-    <message>
-        <source>Language</source>
-        <translation>言語</translation>
-    </message>
-    <message>
-        <source>Restart ynotbit to use the new language.</source>
-        <translation>新しい言語を使うには ynotbit を再起動してください。</translation>
-    </message>
-    <message>
-        <source>System default</source>
-        <translation>システムに従う</translation>
     </message>
     <message>
         <source>Recipient acknowledged delivery. This is not a read receipt.</source>
@@ -835,10 +791,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>閉じる</translation>
     </message>
     <message>
-        <source>Notify about new ynotbit versions</source>
-        <translation>ynotbit の新しいバージョンを通知</translation>
-    </message>
-    <message>
         <source>ynotbit %1 is available (you have %2).</source>
         <translation>ynotbit %1 が利用可能です（現在のバージョン: %2）。</translation>
     </message>
@@ -887,10 +839,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>この手紙には、その画像を入れる余裕がありません。</translation>
     </message>
     <message>
-        <source>Insert a picture. It travels inside the letter, made small enough to fit.</source>
-        <translation>画像を挿入します。画像は手紙の中に収まるよう小さくして送られます。</translation>
-    </message>
-    <message>
         <source>Insert picture</source>
         <translation>画像を挿入</translation>
     </message>
@@ -911,7 +859,14 @@ Add one with “Add contact…” above, or with the person-plus button beside a
 From: %2
 Date: %1
 </source>
-        <translation>-------- 転送されたメッセージ --------&#xa;差出人: %2&#xa;日付: %1&#xa;</translation>
+        <translation>-------- 転送されたメッセージ --------
+差出人: %2
+日付: %1
+</translation>
+    </message>
+    <message>
+        <source>Settings…</source>
+        <translation>設定…</translation>
     </message>
 </context>
 <context>
@@ -1505,50 +1460,6 @@ Date: %1
         <translation>このアドレスの秘密鍵を完全に削除します。送受信済みのメールはメールボックスに残りますが、このアドレスで送信したり、新たにこのアドレスに届いたものを読んだりすることはできなくなります。</translation>
     </message>
     <message>
-        <source>Network settings</source>
-        <translation>ネットワークの設定</translation>
-    </message>
-    <message>
-        <source>Additional peer IP:port (empty for automatic discovery)</source>
-        <translation>追加のピア IP:ポート（空欄で自動検出）</translation>
-    </message>
-    <message>
-        <source>Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444</source>
-        <translation>IP アドレスとポートを入力してください（例: 192.0.2.1:8444 または [::1]:8444）</translation>
-    </message>
-    <message>
-        <source>SOCKS5 proxy</source>
-        <translation>SOCKS5 プロキシ</translation>
-    </message>
-    <message>
-        <source>Proxy IP:port (empty for direct; Tor typically 127.0.0.1:9050)</source>
-        <translation>プロキシ IP:ポート（空欄で直接接続。Tor は通常 127.0.0.1:9050）</translation>
-    </message>
-    <message>
-        <source>Enter a proxy IP address and port</source>
-        <translation>プロキシの IP アドレスとポートを入力してください</translation>
-    </message>
-    <message>
-        <source>Network settings saved. Restart the node to apply them.</source>
-        <translation>ネットワークの設定を保存しました。適用するにはノードを再起動してください。</translation>
-    </message>
-    <message>
-        <source>Retained network objects</source>
-        <translation>保持するネットワークオブジェクト</translation>
-    </message>
-    <message>
-        <source>Maximum MB of encrypted network objects. Older objects are discarded; saved mailbox letters are preserved.</source>
-        <translation>暗号化されたネットワークオブジェクトの最大容量（MB）。古いオブジェクトは破棄されますが、メールボックスに保存したメールは残ります。</translation>
-    </message>
-    <message>
-        <source>Keep network objects for at most this many days</source>
-        <translation>ネットワークオブジェクトを保持する最大日数</translation>
-    </message>
-    <message>
-        <source>Retention settings saved</source>
-        <translation>保持期間の設定を保存しました</translation>
-    </message>
-    <message>
         <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
         <translation>この手紙は %1 です。Bitmessage で送れるのは最大 %2 です。短くするか、引用を削ってください。</translation>
     </message>
@@ -1559,6 +1470,201 @@ Date: %1
     <message>
         <source>Bitmessage digest</source>
         <translation>Bitmessage ダイジェスト</translation>
+    </message>
+</context>
+<context>
+    <name>bm::SettingsWindow</name>
+    <message>
+        <source>Settings</source>
+        <translation>設定</translation>
+    </message>
+    <message>
+        <source>Network</source>
+        <translation>ネットワーク</translation>
+    </message>
+    <message>
+        <source>Storage</source>
+        <translation>ストレージ</translation>
+    </message>
+    <message>
+        <source>Sending</source>
+        <translation>送信</translation>
+    </message>
+    <message>
+        <source>Appearance</source>
+        <translation>外観</translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation>通知</translation>
+    </message>
+    <message>
+        <source>Security</source>
+        <translation>セキュリティ</translation>
+    </message>
+    <message>
+        <source>Network enabled</source>
+        <translation>ネットワークを有効にする</translation>
+    </message>
+    <message>
+        <source>Incoming connections</source>
+        <translation>着信接続</translation>
+    </message>
+    <message>
+        <source>Accept incoming connections</source>
+        <translation>着信接続を受け付ける</translation>
+    </message>
+    <message>
+        <source>Open the port on the router (UPnP)</source>
+        <translation>ルーターでポートを開く (UPnP)</translation>
+    </message>
+    <message>
+        <source>Off while a proxy is set: listening would reveal your real IP address.</source>
+        <translation>プロキシの設定中はオフです。待ち受けると本当の IP アドレスが知られてしまいます。</translation>
+    </message>
+    <message>
+        <source>SOCKS5 proxy</source>
+        <translation>SOCKS5 プロキシ</translation>
+    </message>
+    <message>
+        <source>Empty for a direct connection; Tor is usually 127.0.0.1:9050</source>
+        <translation>空欄で直接接続。Tor は通常 127.0.0.1:9050</translation>
+    </message>
+    <message>
+        <source>Enter an IP address and port, e.g. 127.0.0.1:9050</source>
+        <translation>IP アドレスとポートを入力してください (例: 127.0.0.1:9050)</translation>
+    </message>
+    <message>
+        <source>Additional peer</source>
+        <translation>追加のピア</translation>
+    </message>
+    <message>
+        <source>Empty for automatic discovery</source>
+        <translation>空欄で自動検出</translation>
+    </message>
+    <message>
+        <source>Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444</source>
+        <translation>IP アドレスとポートを入力してください (例: 192.0.2.1:8444、[::1]:8444)</translation>
+    </message>
+    <message>
+        <source>Restart node</source>
+        <translation>ノードを再起動</translation>
+    </message>
+    <message>
+        <source>Keep at most</source>
+        <translation>最大保持量</translation>
+    </message>
+    <message>
+        <source>Days to keep</source>
+        <translation>保持日数</translation>
+    </message>
+    <message>
+        <source>Now</source>
+        <translation>現在</translation>
+    </message>
+    <message>
+        <source>Older objects are discarded first; letters saved in the mailbox are kept.</source>
+        <translation>古いオブジェクトから破棄されます。メールボックスに保存した手紙は残ります。</translation>
+    </message>
+    <message>
+        <source>Inspect retained objects again</source>
+        <translation>保持中のオブジェクトを再検査</translation>
+    </message>
+    <message>
+        <source>Proof of work on the GPU</source>
+        <translation>GPU でプルーフ・オブ・ワーク</translation>
+    </message>
+    <message>
+        <source>Looking for a GPU…</source>
+        <translation>GPU を探しています…</translation>
+    </message>
+    <message>
+        <source>CPU workers: %1</source>
+        <translation>CPU ワーカー: %1</translation>
+    </message>
+    <message>
+        <source>System</source>
+        <translation>システム</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>ライト</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>ダーク</translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation>テーマ</translation>
+    </message>
+    <message>
+        <source>System default</source>
+        <translation>システムの既定</translation>
+    </message>
+    <message>
+        <source>Restart ynotbit to use the new language.</source>
+        <translation>新しい言語を使うには ynotbit を再起動してください。</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>言語</translation>
+    </message>
+    <message>
+        <source>Comfortable</source>
+        <translation>ゆったり</translation>
+    </message>
+    <message>
+        <source>Cozy</source>
+        <translation>標準</translation>
+    </message>
+    <message>
+        <source>Compact</source>
+        <translation>コンパクト</translation>
+    </message>
+    <message>
+        <source>Letter list</source>
+        <translation>手紙の一覧</translation>
+    </message>
+    <message>
+        <source>Notify about new ynotbit versions</source>
+        <translation>ynotbit の新しいバージョンを通知</translation>
+    </message>
+    <message>
+        <source>Kept in the open mailbox.</source>
+        <translation>開いているメールボックスに保存されます。</translation>
+    </message>
+    <message>
+        <source>Change vault password…</source>
+        <translation>保管庫のパスワードを変更…</translation>
+    </message>
+    <message>
+        <source>%1 objects, %2 MB</source>
+        <translation>オブジェクト %1 件、%2 MB</translation>
+    </message>
+    <message>
+        <source>Reachable from outside ✓ (incoming connections: %1)</source>
+        <translation>外部から到達可能 ✓ (着信接続: %1)</translation>
+    </message>
+    <message>
+        <source>No incoming connections yet</source>
+        <translation>まだ着信接続はありません</translation>
+    </message>
+    <message>
+        <source>Looking for the router…</source>
+        <translation>ルーターを探しています…</translation>
+    </message>
+    <message>
+        <source>Port %1 is open on the router, external IP %2</source>
+        <translation>ルーターでポート %1 が開いています。外部 IP: %2</translation>
+    </message>
+    <message>
+        <source>The router does not support UPnP; forward TCP %1 manually</source>
+        <translation>ルーターが UPnP に対応していません。TCP %1 を手動で転送してください</translation>
+    </message>
+    <message>
+        <source>The router refused the mapping: %1</source>
+        <translation>ルーターがポート転送を拒否しました: %1</translation>
     </message>
 </context>
 </TS>

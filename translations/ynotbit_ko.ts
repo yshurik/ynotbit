@@ -426,16 +426,8 @@
         <translation>네트워크 사용</translation>
     </message>
     <message>
-        <source>Peer / proxy settings…</source>
-        <translation>피어 / 프록시 설정…</translation>
-    </message>
-    <message>
         <source>Restart node</source>
         <translation>노드 다시 시작</translation>
-    </message>
-    <message>
-        <source>Retention settings…</source>
-        <translation>보존 설정…</translation>
     </message>
     <message>
         <source>Identity</source>
@@ -454,10 +446,6 @@
         <translation>keys.dat 가져오기…</translation>
     </message>
     <message>
-        <source>Change vault password…</source>
-        <translation>보관함 암호 변경…</translation>
-    </message>
-    <message>
         <source>Subscribe to broadcasts…</source>
         <translation>브로드캐스트 구독…</translation>
     </message>
@@ -472,38 +460,6 @@
     <message>
         <source>Subscription</source>
         <translation>구독</translation>
-    </message>
-    <message>
-        <source>Inspect retained objects again</source>
-        <translation>보존된 객체 다시 검사</translation>
-    </message>
-    <message>
-        <source>Appearance</source>
-        <translation>모양</translation>
-    </message>
-    <message>
-        <source>System</source>
-        <translation>시스템 설정</translation>
-    </message>
-    <message>
-        <source>Light</source>
-        <translation>밝게</translation>
-    </message>
-    <message>
-        <source>Dark</source>
-        <translation>어둡게</translation>
-    </message>
-    <message>
-        <source>Language</source>
-        <translation>언어</translation>
-    </message>
-    <message>
-        <source>Restart ynotbit to use the new language.</source>
-        <translation>새 언어를 사용하려면 ynotbit을 다시 시작하세요.</translation>
-    </message>
-    <message>
-        <source>System default</source>
-        <translation>시스템 설정</translation>
     </message>
     <message>
         <source>Recipient acknowledged delivery. This is not a read receipt.</source>
@@ -835,10 +791,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>닫기</translation>
     </message>
     <message>
-        <source>Notify about new ynotbit versions</source>
-        <translation>새 ynotbit 버전 알림</translation>
-    </message>
-    <message>
         <source>ynotbit %1 is available (you have %2).</source>
         <translation>ynotbit %1 버전을 사용할 수 있습니다(현재 %2).</translation>
     </message>
@@ -887,10 +839,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>이 편지에는 그 그림을 넣을 공간이 없습니다.</translation>
     </message>
     <message>
-        <source>Insert a picture. It travels inside the letter, made small enough to fit.</source>
-        <translation>그림을 넣습니다. 그림은 편지 안에 맞도록 작게 줄여 함께 보내집니다.</translation>
-    </message>
-    <message>
         <source>Insert picture</source>
         <translation>그림 넣기</translation>
     </message>
@@ -911,7 +859,14 @@ Add one with “Add contact…” above, or with the person-plus button beside a
 From: %2
 Date: %1
 </source>
-        <translation>-------- 전달된 메시지 --------&#xa;보낸사람: %2&#xa;날짜: %1&#xa;</translation>
+        <translation>-------- 전달된 메시지 --------
+보낸사람: %2
+날짜: %1
+</translation>
+    </message>
+    <message>
+        <source>Settings…</source>
+        <translation>설정…</translation>
     </message>
 </context>
 <context>
@@ -1505,50 +1460,6 @@ Date: %1
         <translation>이 주소의 개인 키를 영구 삭제합니다. 이미 주고받은 편지는 메일함에 남지만, 더 이상 이 주소로 보내거나 이 주소로 새로 온 편지를 읽을 수 없습니다.</translation>
     </message>
     <message>
-        <source>Network settings</source>
-        <translation>네트워크 설정</translation>
-    </message>
-    <message>
-        <source>Additional peer IP:port (empty for automatic discovery)</source>
-        <translation>추가 피어 IP:포트(비워 두면 자동 검색)</translation>
-    </message>
-    <message>
-        <source>Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444</source>
-        <translation>IP 주소와 포트를 입력하세요(예: 192.0.2.1:8444 또는 [::1]:8444)</translation>
-    </message>
-    <message>
-        <source>SOCKS5 proxy</source>
-        <translation>SOCKS5 프록시</translation>
-    </message>
-    <message>
-        <source>Proxy IP:port (empty for direct; Tor typically 127.0.0.1:9050)</source>
-        <translation>프록시 IP:포트(비워 두면 직접 연결, Tor는 보통 127.0.0.1:9050)</translation>
-    </message>
-    <message>
-        <source>Enter a proxy IP address and port</source>
-        <translation>프록시 IP 주소와 포트를 입력하세요</translation>
-    </message>
-    <message>
-        <source>Network settings saved. Restart the node to apply them.</source>
-        <translation>네트워크 설정을 저장했습니다. 적용하려면 노드를 다시 시작하세요.</translation>
-    </message>
-    <message>
-        <source>Retained network objects</source>
-        <translation>보존할 네트워크 객체</translation>
-    </message>
-    <message>
-        <source>Maximum MB of encrypted network objects. Older objects are discarded; saved mailbox letters are preserved.</source>
-        <translation>암호화된 네트워크 객체의 최대 용량(MB)입니다. 오래된 객체는 삭제되지만 메일함에 저장한 편지는 유지됩니다.</translation>
-    </message>
-    <message>
-        <source>Keep network objects for at most this many days</source>
-        <translation>네트워크 객체를 보존할 최대 일수</translation>
-    </message>
-    <message>
-        <source>Retention settings saved</source>
-        <translation>보존 설정을 저장했습니다</translation>
-    </message>
-    <message>
         <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
         <translation>이 편지는 %1입니다. Bitmessage는 최대 %2까지 전송합니다. 내용을 줄이거나 인용을 줄이세요.</translation>
     </message>
@@ -1559,6 +1470,201 @@ Date: %1
     <message>
         <source>Bitmessage digest</source>
         <translation>Bitmessage 다이제스트</translation>
+    </message>
+</context>
+<context>
+    <name>bm::SettingsWindow</name>
+    <message>
+        <source>Settings</source>
+        <translation>설정</translation>
+    </message>
+    <message>
+        <source>Network</source>
+        <translation>네트워크</translation>
+    </message>
+    <message>
+        <source>Storage</source>
+        <translation>저장 공간</translation>
+    </message>
+    <message>
+        <source>Sending</source>
+        <translation>보내기</translation>
+    </message>
+    <message>
+        <source>Appearance</source>
+        <translation>모양</translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation>알림</translation>
+    </message>
+    <message>
+        <source>Security</source>
+        <translation>보안</translation>
+    </message>
+    <message>
+        <source>Network enabled</source>
+        <translation>네트워크 사용</translation>
+    </message>
+    <message>
+        <source>Incoming connections</source>
+        <translation>들어오는 연결</translation>
+    </message>
+    <message>
+        <source>Accept incoming connections</source>
+        <translation>들어오는 연결 허용</translation>
+    </message>
+    <message>
+        <source>Open the port on the router (UPnP)</source>
+        <translation>라우터에서 포트 열기 (UPnP)</translation>
+    </message>
+    <message>
+        <source>Off while a proxy is set: listening would reveal your real IP address.</source>
+        <translation>프록시를 설정한 동안에는 꺼집니다. 연결을 받으면 실제 IP 주소가 드러납니다.</translation>
+    </message>
+    <message>
+        <source>SOCKS5 proxy</source>
+        <translation>SOCKS5 프록시</translation>
+    </message>
+    <message>
+        <source>Empty for a direct connection; Tor is usually 127.0.0.1:9050</source>
+        <translation>비워 두면 직접 연결, Tor는 보통 127.0.0.1:9050</translation>
+    </message>
+    <message>
+        <source>Enter an IP address and port, e.g. 127.0.0.1:9050</source>
+        <translation>IP 주소와 포트를 입력하세요 (예: 127.0.0.1:9050)</translation>
+    </message>
+    <message>
+        <source>Additional peer</source>
+        <translation>추가 피어</translation>
+    </message>
+    <message>
+        <source>Empty for automatic discovery</source>
+        <translation>비워 두면 자동으로 찾기</translation>
+    </message>
+    <message>
+        <source>Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444</source>
+        <translation>IP 주소와 포트를 입력하세요 (예: 192.0.2.1:8444 또는 [::1]:8444)</translation>
+    </message>
+    <message>
+        <source>Restart node</source>
+        <translation>노드 다시 시작</translation>
+    </message>
+    <message>
+        <source>Keep at most</source>
+        <translation>최대 보관량</translation>
+    </message>
+    <message>
+        <source>Days to keep</source>
+        <translation>보관 일수</translation>
+    </message>
+    <message>
+        <source>Now</source>
+        <translation>현재</translation>
+    </message>
+    <message>
+        <source>Older objects are discarded first; letters saved in the mailbox are kept.</source>
+        <translation>오래된 객체부터 버립니다. 메일함에 저장된 편지는 남습니다.</translation>
+    </message>
+    <message>
+        <source>Inspect retained objects again</source>
+        <translation>보관된 객체 다시 검사</translation>
+    </message>
+    <message>
+        <source>Proof of work on the GPU</source>
+        <translation>GPU로 작업 증명</translation>
+    </message>
+    <message>
+        <source>Looking for a GPU…</source>
+        <translation>GPU를 찾는 중…</translation>
+    </message>
+    <message>
+        <source>CPU workers: %1</source>
+        <translation>CPU 작업자: %1</translation>
+    </message>
+    <message>
+        <source>System</source>
+        <translation>시스템</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>밝게</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>어둡게</translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation>테마</translation>
+    </message>
+    <message>
+        <source>System default</source>
+        <translation>시스템 기본값</translation>
+    </message>
+    <message>
+        <source>Restart ynotbit to use the new language.</source>
+        <translation>새 언어를 사용하려면 ynotbit을 다시 시작하세요.</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>언어</translation>
+    </message>
+    <message>
+        <source>Comfortable</source>
+        <translation>넉넉하게</translation>
+    </message>
+    <message>
+        <source>Cozy</source>
+        <translation>적당하게</translation>
+    </message>
+    <message>
+        <source>Compact</source>
+        <translation>촘촘하게</translation>
+    </message>
+    <message>
+        <source>Letter list</source>
+        <translation>편지 목록</translation>
+    </message>
+    <message>
+        <source>Notify about new ynotbit versions</source>
+        <translation>ynotbit 새 버전 알림</translation>
+    </message>
+    <message>
+        <source>Kept in the open mailbox.</source>
+        <translation>열려 있는 메일함에 저장됩니다.</translation>
+    </message>
+    <message>
+        <source>Change vault password…</source>
+        <translation>보관함 암호 변경…</translation>
+    </message>
+    <message>
+        <source>%1 objects, %2 MB</source>
+        <translation>객체 %1개, %2 MB</translation>
+    </message>
+    <message>
+        <source>Reachable from outside ✓ (incoming connections: %1)</source>
+        <translation>외부에서 접속 가능 ✓ (들어오는 연결: %1)</translation>
+    </message>
+    <message>
+        <source>No incoming connections yet</source>
+        <translation>아직 들어오는 연결이 없습니다</translation>
+    </message>
+    <message>
+        <source>Looking for the router…</source>
+        <translation>라우터를 찾는 중…</translation>
+    </message>
+    <message>
+        <source>Port %1 is open on the router, external IP %2</source>
+        <translation>라우터에서 포트 %1이(가) 열렸습니다. 외부 IP: %2</translation>
+    </message>
+    <message>
+        <source>The router does not support UPnP; forward TCP %1 manually</source>
+        <translation>라우터가 UPnP를 지원하지 않습니다. TCP %1을(를) 직접 포워딩하세요</translation>
+    </message>
+    <message>
+        <source>The router refused the mapping: %1</source>
+        <translation>라우터가 포트 포워딩을 거부했습니다: %1</translation>
     </message>
 </context>
 </TS>

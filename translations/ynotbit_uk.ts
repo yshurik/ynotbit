@@ -426,16 +426,8 @@
         <translation>Мережу ввімкнено</translation>
     </message>
     <message>
-        <source>Peer / proxy settings…</source>
-        <translation>Налаштування пірів і проксі…</translation>
-    </message>
-    <message>
         <source>Restart node</source>
         <translation>Перезапустити вузол</translation>
-    </message>
-    <message>
-        <source>Retention settings…</source>
-        <translation>Налаштування зберігання…</translation>
     </message>
     <message>
         <source>Identity</source>
@@ -454,10 +446,6 @@
         <translation>Імпортувати keys.dat…</translation>
     </message>
     <message>
-        <source>Change vault password…</source>
-        <translation>Змінити пароль сховища…</translation>
-    </message>
-    <message>
         <source>Subscribe to broadcasts…</source>
         <translation>Підписатися на розсилки…</translation>
     </message>
@@ -472,38 +460,6 @@
     <message>
         <source>Subscription</source>
         <translation>Підписка</translation>
-    </message>
-    <message>
-        <source>Inspect retained objects again</source>
-        <translation>Знову перевірити збережені об&apos;єкти</translation>
-    </message>
-    <message>
-        <source>Appearance</source>
-        <translation>Вигляд</translation>
-    </message>
-    <message>
-        <source>System</source>
-        <translation>Як у системі</translation>
-    </message>
-    <message>
-        <source>Light</source>
-        <translation>Світлий</translation>
-    </message>
-    <message>
-        <source>Dark</source>
-        <translation>Темний</translation>
-    </message>
-    <message>
-        <source>Language</source>
-        <translation>Мова</translation>
-    </message>
-    <message>
-        <source>Restart ynotbit to use the new language.</source>
-        <translation>Перезапустіть ynotbit, щоб застосувати нову мову.</translation>
-    </message>
-    <message>
-        <source>System default</source>
-        <translation>Як у системі</translation>
     </message>
     <message>
         <source>Recipient acknowledged delivery. This is not a read receipt.</source>
@@ -835,10 +791,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>Сховати</translation>
     </message>
     <message>
-        <source>Notify about new ynotbit versions</source>
-        <translation>Повідомляти про нові версії ynotbit</translation>
-    </message>
-    <message>
         <source>ynotbit %1 is available (you have %2).</source>
         <translation>Доступна версія ynotbit %1 (у вас %2).</translation>
     </message>
@@ -887,10 +839,6 @@ Add one with “Add contact…” above, or with the person-plus button beside a
         <translation>У цьому листі не залишилося місця для цього зображення.</translation>
     </message>
     <message>
-        <source>Insert a picture. It travels inside the letter, made small enough to fit.</source>
-        <translation>Вставити зображення. Воно передається всередині листа, зменшене так, щоб поміститися.</translation>
-    </message>
-    <message>
         <source>Insert picture</source>
         <translation>Вставити зображення</translation>
     </message>
@@ -911,7 +859,14 @@ Add one with “Add contact…” above, or with the person-plus button beside a
 From: %2
 Date: %1
 </source>
-        <translation>-------- Переслане повідомлення --------&#xa;Від: %2&#xa;Дата: %1&#xa;</translation>
+        <translation>-------- Переслане повідомлення --------
+Від: %2
+Дата: %1
+</translation>
+    </message>
+    <message>
+        <source>Settings…</source>
+        <translation>Налаштування…</translation>
     </message>
 </context>
 <context>
@@ -1505,50 +1460,6 @@ Date: %1
         <translation>Закритий ключ цієї адреси буде видалено назавжди. Уже надіслана й отримана пошта залишиться в поштовій скриньці, але ви більше не зможете надсилати листи з цієї адреси й читати нові листи, що надходять на неї.</translation>
     </message>
     <message>
-        <source>Network settings</source>
-        <translation>Налаштування мережі</translation>
-    </message>
-    <message>
-        <source>Additional peer IP:port (empty for automatic discovery)</source>
-        <translation>Додатковий пір IP:порт (порожньо — автоматичний пошук)</translation>
-    </message>
-    <message>
-        <source>Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444</source>
-        <translation>Введіть IP-адресу й порт, наприклад 192.0.2.1:8444 або [::1]:8444</translation>
-    </message>
-    <message>
-        <source>SOCKS5 proxy</source>
-        <translation>Проксі SOCKS5</translation>
-    </message>
-    <message>
-        <source>Proxy IP:port (empty for direct; Tor typically 127.0.0.1:9050)</source>
-        <translation>Проксі IP:порт (порожньо — напряму; для Tor зазвичай 127.0.0.1:9050)</translation>
-    </message>
-    <message>
-        <source>Enter a proxy IP address and port</source>
-        <translation>Введіть IP-адресу й порт проксі</translation>
-    </message>
-    <message>
-        <source>Network settings saved. Restart the node to apply them.</source>
-        <translation>Налаштування мережі збережено. Перезапустіть вузол, щоб застосувати їх.</translation>
-    </message>
-    <message>
-        <source>Retained network objects</source>
-        <translation>Зберігання мережевих об&apos;єктів</translation>
-    </message>
-    <message>
-        <source>Maximum MB of encrypted network objects. Older objects are discarded; saved mailbox letters are preserved.</source>
-        <translation>Максимальний обсяг зашифрованих мережевих об&apos;єктів у МБ. Старі об&apos;єкти видаляються; листи, збережені в поштовій скриньці, залишаються.</translation>
-    </message>
-    <message>
-        <source>Keep network objects for at most this many days</source>
-        <translation>Зберігати мережеві об&apos;єкти не довше стількох днів</translation>
-    </message>
-    <message>
-        <source>Retention settings saved</source>
-        <translation>Налаштування зберігання збережено</translation>
-    </message>
-    <message>
         <source>This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.</source>
         <translation>Розмір листа — %1; Bitmessage передає не більше %2. Скоротіть його або обріжте цитату.</translation>
     </message>
@@ -1559,6 +1470,201 @@ Date: %1
     <message>
         <source>Bitmessage digest</source>
         <translation>Дайджест Bitmessage</translation>
+    </message>
+</context>
+<context>
+    <name>bm::SettingsWindow</name>
+    <message>
+        <source>Settings</source>
+        <translation>Налаштування</translation>
+    </message>
+    <message>
+        <source>Network</source>
+        <translation>Мережа</translation>
+    </message>
+    <message>
+        <source>Storage</source>
+        <translation>Зберігання</translation>
+    </message>
+    <message>
+        <source>Sending</source>
+        <translation>Надсилання</translation>
+    </message>
+    <message>
+        <source>Appearance</source>
+        <translation>Вигляд</translation>
+    </message>
+    <message>
+        <source>Notifications</source>
+        <translation>Сповіщення</translation>
+    </message>
+    <message>
+        <source>Security</source>
+        <translation>Безпека</translation>
+    </message>
+    <message>
+        <source>Network enabled</source>
+        <translation>Мережу ввімкнено</translation>
+    </message>
+    <message>
+        <source>Incoming connections</source>
+        <translation>Вхідні з&apos;єднання</translation>
+    </message>
+    <message>
+        <source>Accept incoming connections</source>
+        <translation>Приймати вхідні з&apos;єднання</translation>
+    </message>
+    <message>
+        <source>Open the port on the router (UPnP)</source>
+        <translation>Відкрити порт на роутері (UPnP)</translation>
+    </message>
+    <message>
+        <source>Off while a proxy is set: listening would reveal your real IP address.</source>
+        <translation>Вимкнено, доки задано проксі: прослуховування розкрило б вашу справжню IP-адресу.</translation>
+    </message>
+    <message>
+        <source>SOCKS5 proxy</source>
+        <translation>Проксі SOCKS5</translation>
+    </message>
+    <message>
+        <source>Empty for a direct connection; Tor is usually 127.0.0.1:9050</source>
+        <translation>Порожньо — пряме з&apos;єднання; Tor зазвичай 127.0.0.1:9050</translation>
+    </message>
+    <message>
+        <source>Enter an IP address and port, e.g. 127.0.0.1:9050</source>
+        <translation>Введіть IP-адресу й порт, наприклад 127.0.0.1:9050</translation>
+    </message>
+    <message>
+        <source>Additional peer</source>
+        <translation>Додатковий пір</translation>
+    </message>
+    <message>
+        <source>Empty for automatic discovery</source>
+        <translation>Порожньо — шукати пірів автоматично</translation>
+    </message>
+    <message>
+        <source>Enter an IP address and port, e.g. 192.0.2.1:8444 or [::1]:8444</source>
+        <translation>Введіть IP-адресу й порт, наприклад 192.0.2.1:8444 або [::1]:8444</translation>
+    </message>
+    <message>
+        <source>Restart node</source>
+        <translation>Перезапустити вузол</translation>
+    </message>
+    <message>
+        <source>Keep at most</source>
+        <translation>Зберігати не більше</translation>
+    </message>
+    <message>
+        <source>Days to keep</source>
+        <translation>Скільки днів зберігати</translation>
+    </message>
+    <message>
+        <source>Now</source>
+        <translation>Зараз</translation>
+    </message>
+    <message>
+        <source>Older objects are discarded first; letters saved in the mailbox are kept.</source>
+        <translation>Спершу видаляються старі об&apos;єкти; листи, збережені в поштовій скриньці, лишаються.</translation>
+    </message>
+    <message>
+        <source>Inspect retained objects again</source>
+        <translation>Заново перевірити збережені об&apos;єкти</translation>
+    </message>
+    <message>
+        <source>Proof of work on the GPU</source>
+        <translation>Доказ роботи на відеокарті</translation>
+    </message>
+    <message>
+        <source>Looking for a GPU…</source>
+        <translation>Пошук відеокарти…</translation>
+    </message>
+    <message>
+        <source>CPU workers: %1</source>
+        <translation>Потоків CPU: %1</translation>
+    </message>
+    <message>
+        <source>System</source>
+        <translation>Як у системі</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>Світле</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>Темне</translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation>Тема</translation>
+    </message>
+    <message>
+        <source>System default</source>
+        <translation>Як у системі</translation>
+    </message>
+    <message>
+        <source>Restart ynotbit to use the new language.</source>
+        <translation>Перезапустіть ynotbit, щоб застосувати нову мову.</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>Мова</translation>
+    </message>
+    <message>
+        <source>Comfortable</source>
+        <translation>Просторо</translation>
+    </message>
+    <message>
+        <source>Cozy</source>
+        <translation>Зручно</translation>
+    </message>
+    <message>
+        <source>Compact</source>
+        <translation>Компактно</translation>
+    </message>
+    <message>
+        <source>Letter list</source>
+        <translation>Список листів</translation>
+    </message>
+    <message>
+        <source>Notify about new ynotbit versions</source>
+        <translation>Повідомляти про нові версії ynotbit</translation>
+    </message>
+    <message>
+        <source>Kept in the open mailbox.</source>
+        <translation>Зберігається у відкритій поштовій скриньці.</translation>
+    </message>
+    <message>
+        <source>Change vault password…</source>
+        <translation>Змінити пароль сховища…</translation>
+    </message>
+    <message>
+        <source>%1 objects, %2 MB</source>
+        <translation>Об&apos;єктів: %1, %2 МБ</translation>
+    </message>
+    <message>
+        <source>Reachable from outside ✓ (incoming connections: %1)</source>
+        <translation>Доступний ззовні ✓ (вхідних з&apos;єднань: %1)</translation>
+    </message>
+    <message>
+        <source>No incoming connections yet</source>
+        <translation>Вхідних з&apos;єднань поки немає</translation>
+    </message>
+    <message>
+        <source>Looking for the router…</source>
+        <translation>Пошук роутера…</translation>
+    </message>
+    <message>
+        <source>Port %1 is open on the router, external IP %2</source>
+        <translation>Порт %1 відкрито на роутері, зовнішній IP %2</translation>
+    </message>
+    <message>
+        <source>The router does not support UPnP; forward TCP %1 manually</source>
+        <translation>Роутер не підтримує UPnP; перенаправте TCP %1 вручну</translation>
+    </message>
+    <message>
+        <source>The router refused the mapping: %1</source>
+        <translation>Роутер відмовив у перенаправленні: %1</translation>
     </message>
 </context>
 </TS>
