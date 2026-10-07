@@ -472,6 +472,7 @@ int main(int argc, char **argv) {
         }
         {
             RouterLog log;
+            require(bm::miniupnpcBackend() != nullptr, "the UPnP backend is built in");
             using State = bm::PortMapper::State;
             {
                 bm::PortMapper mapper(std::make_unique<FakeRouter>(log), 100);

@@ -57,9 +57,21 @@ FetchContent_Declare(secp256k1
  URL https://github.com/bitcoin-core/secp256k1/archive/refs/tags/v0.6.0.tar.gz
  URL_HASH SHA256=785bb98e7d6705c51c8dfa8ac3af6aa2ccfa3774714d51c0b9e28fac1146e9f1)
 FetchContent_MakeAvailable(secp256k1)
-add_library(bmcore src/storage.cpp src/mailbox_ops.cpp src/protocol.cpp src/protocol_wire.cpp src/pow.cpp src/gpu_pow.cpp src/gpu_opencl.cpp src/delivery.cpp src/cache.cpp src/scanner.cpp src/updates.cpp src/message_search.cpp src/port_mapper.cpp)
+# miniupnpc, to open the node's port on a home router (UPnP IGD). Pinned and
+# checksummed; built static, nothing installed.
+set(UPNPC_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(UPNPC_BUILD_STATIC ON CACHE BOOL "" FORCE)
+set(UPNPC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(UPNPC_BUILD_SAMPLE OFF CACHE BOOL "" FORCE)
+set(UPNPC_NO_INSTALL ON CACHE BOOL "" FORCE)
+FetchContent_Declare(miniupnpc
+ URL https://github.com/miniupnp/miniupnp/archive/refs/tags/miniupnpc_2_3_3.tar.gz
+ URL_HASH SHA256=8cf2c833b3e76fc4893ff29c2a376e3394962449e5970e373c0a91421724d222
+ SOURCE_SUBDIR miniupnpc)
+FetchContent_MakeAvailable(miniupnpc)
+add_library(bmcore src/storage.cpp src/mailbox_ops.cpp src/protocol.cpp src/protocol_wire.cpp src/pow.cpp src/gpu_pow.cpp src/gpu_opencl.cpp src/delivery.cpp src/cache.cpp src/scanner.cpp src/updates.cpp src/message_search.cpp src/port_mapper.cpp src/port_mapper_miniupnpc.cpp)
 target_include_directories(bmcore PUBLIC src)
-target_link_libraries(bmcore PUBLIC Threads::Threads notbit_codec secp256k1 Qt6::Core PkgConfig::SODIUM PkgConfig::SQLCIPHER OpenSSL::Crypto ntb_object_db)
+target_link_libraries(bmcore PUBLIC Threads::Threads notbit_codec secp256k1 miniupnpc::miniupnpc Qt6::Core PkgConfig::SODIUM PkgConfig::SQLCIPHER OpenSSL::Crypto ntb_object_db)
 if(APPLE)
  # Proof of work on the GPU through Metal (src/gpu_metal.mm).
  enable_language(OBJCXX)
