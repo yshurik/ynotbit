@@ -292,6 +292,11 @@ void SettingsWindow::refresh() {
     case PortMapper::State::NoGateway:
         router = tr("The router does not support UPnP; forward TCP %1 manually").arg(mapper.port());
         break;
+    case PortMapper::State::CarrierNat:
+        router = tr("The router's internet address %1 is shared by the provider (carrier-grade "
+                    "NAT): incoming connections cannot reach it")
+                     .arg(mapper.externalIp());
+        break;
     case PortMapper::State::Failed:
         router = tr("The router refused the mapping: %1").arg(mapper.error());
         break;

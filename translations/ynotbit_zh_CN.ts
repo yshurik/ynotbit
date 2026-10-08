@@ -1666,5 +1666,9 @@ Date: %1
         <source>The router refused the mapping: %1</source>
         <translation>路由器拒绝了端口映射：%1</translation>
     </message>
+    <message>
+        <source>The router&apos;s internet address %1 is shared by the provider (carrier-grade NAT): incoming connections cannot reach it</source>
+        <translation>路由器的互联网地址 %1 由运营商共享（运营商级 NAT）：外部的传入连接无法到达</translation>
+    </message>
 </context>
 </TS>

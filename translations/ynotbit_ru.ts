@@ -1666,5 +1666,9 @@ Date: %1
         <source>The router refused the mapping: %1</source>
         <translation>Роутер отказал в пробросе: %1</translation>
     </message>
+    <message>
+        <source>The router&apos;s internet address %1 is shared by the provider (carrier-grade NAT): incoming connections cannot reach it</source>
+        <translation>Интернет-адрес роутера %1 провайдер делит между абонентами (CGNAT): входящие соединения до него не дойдут</translation>
+    </message>
 </context>
 </TS>

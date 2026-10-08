@@ -1666,5 +1666,9 @@ Date: %1
         <source>The router refused the mapping: %1</source>
         <translation>라우터가 포트 포워딩을 거부했습니다: %1</translation>
     </message>
+    <message>
+        <source>The router&apos;s internet address %1 is shared by the provider (carrier-grade NAT): incoming connections cannot reach it</source>
+        <translation>라우터의 인터넷 주소 %1은(는) 통신사가 여러 가입자와 공유합니다(캐리어급 NAT). 외부에서 들어오는 연결이 도달할 수 없습니다</translation>
+    </message>
 </context>
 </TS>

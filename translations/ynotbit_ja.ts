@@ -1666,5 +1666,9 @@ Date: %1
         <source>The router refused the mapping: %1</source>
         <translation>ルーターがポート転送を拒否しました: %1</translation>
     </message>
+    <message>
+        <source>The router&apos;s internet address %1 is shared by the provider (carrier-grade NAT): incoming connections cannot reach it</source>
+        <translation>ルーターのインターネットアドレス %1 はプロバイダーが共有しています（キャリアグレード NAT）。外部からの接続は届きません</translation>
+    </message>
 </context>
 </TS>

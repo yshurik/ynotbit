@@ -37,7 +37,7 @@ static void rejects(const std::function<void()> &f) {
 // A router for PortMapper tests: counts calls; answers as told.
 struct RouterLog {
     std::atomic_int maps{0}, unmaps{0};
-    std::atomic_bool gateway{true}, refuse{false};
+    std::atomic_bool gateway{true}, refuse{false}, carrierNat{false};
 };
 struct FakeRouter : bm::PortMapperBackend {
     RouterLog &log;
@@ -52,7 +52,7 @@ struct FakeRouter : bm::PortMapperBackend {
             r.error = "ConflictInMappingEntry";
         } else {
             r.ok = true;
-            r.externalIp = "203.0.113.7";
+            r.externalIp = log.carrierNat ? "100.72.14.3" : "203.0.113.7";
         }
         return r;
     }
@@ -499,11 +499,27 @@ int main(int argc, char **argv) {
                         "a refused mapping is reported with the router's error");
                 log.refuse = false;
                 mapper.stop();
+                log.carrierNat = true;
+                mapper.start(8444);
+                require(waitFor([&] { return mapper.state() == State::CarrierNat; }) &&
+                            mapper.externalIp() == "100.72.14.3",
+                        "a router behind carrier-grade NAT is reported as unreachable");
+                log.carrierNat = false;
+                mapper.stop();
                 mapper.start(8444);
                 require(waitFor([&] { return mapper.state() == State::Mapped; }),
                         "a later start maps again");
             }
-            require(log.unmaps == 4, "destroying the mapper removes the mapping it held");
+            for (const char *ip : {"10.1.2.3", "192.168.1.1", "172.16.0.9", "100.64.0.1",
+                                   "100.127.255.254", "127.0.0.1", "169.254.1.1", "fd00::1",
+                                   "fe80::1", ""})
+                require(!bm::PortMapper::reachableAddress(ip),
+                        (std::string(ip) + " is not reachable from outside").c_str());
+            for (const char *ip : {"203.0.113.7", "100.63.255.255", "100.128.0.1",
+                                   "209.198.157.200", "2a0d:3341:bb12:d10::1"})
+                require(bm::PortMapper::reachableAddress(ip),
+                        (std::string(ip) + " is a public address").c_str());
+            require(log.unmaps == 5, "destroying the mapper removes the mapping it held");
         }
         std::cout << "PASS: vault, password rotation, SQLCipher, deduplication, backup, chan "
                      "fixture, authenticated message codec\n";

@@ -1,4 +1,5 @@
 #include "port_mapper.h"
+#include <QHostAddress>
 namespace bm {
 static constexpr int kLeaseSeconds = 3600;
 PortMapper::PortMapper(std::unique_ptr<PortMapperBackend> backend, int renewMs, QObject *parent)
@@ -36,10 +37,19 @@ void PortMapper::request() {
 void PortMapper::finished(const PortMapperBackend::Result &result, int generation) {
     if (generation != generation_)
         return;
-    state_ = result.ok ? State::Mapped : result.noGateway ? State::NoGateway : State::Failed;
+    state_ = result.ok ? (reachableAddress(result.externalIp) ? State::Mapped : State::CarrierNat)
+             : result.noGateway ? State::NoGateway
+                                : State::Failed;
     externalIp_ = result.externalIp;
     error_ = result.error;
     emit changed();
+}
+bool PortMapper::reachableAddress(const QString &ip) {
+    const QHostAddress address(ip);
+    if (address.isNull() || address.isPrivateUse() || address.isLoopback() ||
+        address.isLinkLocal() || address.isUniqueLocalUnicast())
+        return false;
+    return !address.isInSubnet(QHostAddress(QStringLiteral("100.64.0.0")), 10);
 }
 void PortMapper::stop() {
     ++generation_;

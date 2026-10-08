@@ -71,7 +71,7 @@ FetchContent_Declare(miniupnpc
 FetchContent_MakeAvailable(miniupnpc)
 add_library(bmcore src/storage.cpp src/mailbox_ops.cpp src/protocol.cpp src/protocol_wire.cpp src/pow.cpp src/gpu_pow.cpp src/gpu_opencl.cpp src/delivery.cpp src/cache.cpp src/scanner.cpp src/updates.cpp src/message_search.cpp src/port_mapper.cpp src/port_mapper_miniupnpc.cpp)
 target_include_directories(bmcore PUBLIC src)
-target_link_libraries(bmcore PUBLIC Threads::Threads notbit_codec secp256k1 miniupnpc::miniupnpc Qt6::Core PkgConfig::SODIUM PkgConfig::SQLCIPHER OpenSSL::Crypto ntb_object_db)
+target_link_libraries(bmcore PUBLIC Threads::Threads notbit_codec secp256k1 miniupnpc::miniupnpc Qt6::Core Qt6::Network PkgConfig::SODIUM PkgConfig::SQLCIPHER OpenSSL::Crypto ntb_object_db)
 if(APPLE)
  # Proof of work on the GPU through Metal (src/gpu_metal.mm).
  enable_language(OBJCXX)

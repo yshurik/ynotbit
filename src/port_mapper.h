@@ -26,7 +26,10 @@ std::unique_ptr<PortMapperBackend> miniupnpcBackend();
 class PortMapper : public QObject {
     Q_OBJECT
   public:
-    enum class State { Off, Searching, Mapped, NoGateway, Failed };
+    // CarrierNat: the router mapped the port but its own internet address is a
+    // private or carrier-grade NAT one (100.64.0.0/10), so nobody outside can
+    // reach it: the provider shares one public address between customers.
+    enum class State { Off, Searching, Mapped, NoGateway, CarrierNat, Failed };
     explicit PortMapper(std::unique_ptr<PortMapperBackend> backend, int renewMs = 30 * 60 * 1000,
                         QObject *parent = nullptr);
     ~PortMapper() override; // removes the mapping, waiting up to 3 s
@@ -44,6 +47,8 @@ class PortMapper : public QObject {
     quint16 port() const {
         return port_;
     }
+    // False for private, carrier-grade NAT, loopback and link-local addresses.
+    static bool reachableAddress(const QString &ip);
   signals:
     void changed();
 
