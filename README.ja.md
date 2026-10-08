@@ -1,6 +1,6 @@
 # ynotbit — why not bit?
 
-[English](README.md) | **日本語**
+[English](README.md) | **日本語** | [한국어](README.ko.md)
 
 [notbit](https://github.com/bpeel/notbit) をベースにした、コンパクトなデスクトップ版 Bitmessage
 クライアントです。作者は [yshurik](https://github.com/yshurik)。**現在のリリース: 0.6.0**

@@ -1,6 +1,6 @@
 # ynotbit — why not bit?
 
-**English** | [日本語](README.ja.md)
+**English** | [日本語](README.ja.md) | [한국어](README.ko.md)
 
 A compact desktop Bitmessage client based on [notbit](https://github.com/bpeel/notbit),
 by [yshurik](https://github.com/yshurik). **Current release: 0.6.0.**
@@ -162,7 +162,8 @@ collected by `scripts/update-error-catalog.py`.
 The README screenshots come from demo data, not a real mailbox. Regenerate them
 with `cmake --build build --target readme_screenshots` and
 `QT_QPA_PLATFORM=offscreen build/readme_screenshots docs/images`; the Japanese
-ones, with Japanese demo letters, with `... docs/images/ja ja`.
+and Korean ones, with demo letters in those languages, with `... docs/images/ja ja`
+and `... docs/images/ko ko`.
 
 To package a build for redistribution, with Qt's runtime libraries bundled in:
 
