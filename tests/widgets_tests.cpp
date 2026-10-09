@@ -853,6 +853,30 @@ int main(int argc, char **argv) {
             const int stopped = bar->value();
             QTest::qWait(150);
             require(bar->value() == stopped, "releasing the button stops the scrolling");
+
+            // Leaving a hex letter must not lay its dump out again in the next
+            // letter's font and wrapping: the body is as tall as its text, so
+            // that is all of it, seconds for a big dump.
+            QByteArray bytes(64 * 1024, 0);
+            QRandomGenerator random(7);
+            for (auto &c : bytes)
+                c = char(random.bounded(256));
+            window.selectMessage(session.saveLetter({}, address, address, "Noise",
+                                                    QString::fromLatin1(bytes), "direct"));
+            QCoreApplication::processEvents();
+            require(window.findChild<QWidget *>("viewSwitch")
+                        ->findChild<QToolButton *>("view_hex")
+                        ->isChecked(),
+                    "big noise opens in hex (test sanity)");
+            qreal tallest = 0;
+            const auto watch = QObject::connect(
+                reader->document()->documentLayout(),
+                &QAbstractTextDocumentLayout::documentSizeChanged,
+                [&tallest](const QSizeF &size) { tallest = qMax(tallest, size.height()); });
+            window.selectMessage(acknowledged); // "A delivered letter."
+            QObject::disconnect(watch);
+            require(tallest <= 2 * reader->document()->size().height(),
+                    "leaving a hex letter does not lay its dump out again");
         }
         if (app.arguments().contains("--capture")) {
             folders->setCurrentRow(0);

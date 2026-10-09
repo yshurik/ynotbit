@@ -332,6 +332,9 @@ BodyView detectBodyView(const QString &subject, const QString &text) {
     return BodyView::Plain;
 }
 void renderBody(QTextBrowser *body, const QString &text, BodyView mode) {
+    // Out with the old text first: the font and wrapping below would lay it all
+    // out again, and the reader's body is as tall as its text.
+    body->setPlainText({});
     body->setFont(mode == BodyView::Text || mode == BodyView::Markdown ? QApplication::font()
                                                                        : addressFont());
     // A hex dump's columns only line up if the lines are left alone; everything
