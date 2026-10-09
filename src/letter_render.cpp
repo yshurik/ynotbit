@@ -56,24 +56,42 @@ bool looksCryptic(const QString &subject, const QString &body) {
 QString crypticLabel(const QString &hash) {
     return "<cryptic-" + hash.left(6) + ">";
 }
+// Written character by character into a string sized up front: a big letter's
+// dump runs to a million characters, and building it with QString::arg took
+// a hundred times longer.
 QString hexDump(const QByteArray &bytes) {
-    QString out;
-    for (int offset = 0; offset < bytes.size(); offset += 16) {
-        const auto line = bytes.mid(offset, 16);
-        QString hex, ascii;
+    static constexpr char digits[] = "0123456789abcdef";
+    QString out((bytes.size() + 15) / 16 * 79, Qt::Uninitialized);
+    auto o = out.data();
+    for (qsizetype offset = 0; offset < bytes.size(); offset += 16) {
+        for (int shift = 28; shift >= 0; shift -= 4)
+            *o++ = QLatin1Char(digits[(offset >> shift) & 0xf]);
+        *o++ = u' ';
+        *o++ = u' ';
+        const auto count = qMin<qsizetype>(16, bytes.size() - offset);
         for (int i = 0; i < 16; ++i) {
-            hex += i < line.size()
-                       ? QString("%1 ").arg(quint8(line[i]), 2, 16, QChar('0'))
-                       : QString("   ");
-            if (i == 7)
-                hex += ' ';
-            if (i < line.size()) {
-                const auto c = quint8(line[i]);
-                ascii += c >= 0x20 && c < 0x7f ? QChar(c) : QChar('.');
+            if (i < count) {
+                const auto c = quint8(bytes[offset + i]);
+                *o++ = QLatin1Char(digits[c >> 4]);
+                *o++ = QLatin1Char(digits[c & 0xf]);
+            } else {
+                *o++ = u' ';
+                *o++ = u' ';
             }
+            *o++ = u' ';
+            if (i == 7)
+                *o++ = u' ';
         }
-        out += QString("%1  %2 |%3|\n").arg(offset, 8, 16, QChar('0')).arg(hex, ascii);
+        *o++ = u' ';
+        *o++ = u'|';
+        for (qsizetype i = 0; i < count; ++i) {
+            const auto c = quint8(bytes[offset + i]);
+            *o++ = c >= 0x20 && c < 0x7f ? QChar(c) : QChar(u'.');
+        }
+        *o++ = u'|';
+        *o++ = u'\n';
     }
+    out.truncate(o - out.data());
     return out;
 }
 QString singleLine(QString text) {
@@ -335,8 +353,13 @@ void renderBody(QTextBrowser *body, const QString &text, BodyView mode) {
     // Out with the old text first: the font and wrapping below would lay it all
     // out again, and the reader's body is as tall as its text.
     body->setPlainText({});
-    body->setFont(mode == BodyView::Text || mode == BodyView::Markdown ? QApplication::font()
-                                                                       : addressFont());
+    auto font = mode == BodyView::Text || mode == BodyView::Markdown ? QApplication::font()
+                                                                     : addressFont();
+    // Hex digits and dots need no shaping, and going without halves the layout
+    // of a big dump.
+    if (mode == BodyView::Hex)
+        font.setStyleStrategy(QFont::PreferNoShaping);
+    body->setFont(font);
     // A hex dump's columns only line up if the lines are left alone; everything
     // else wraps to the pane.
     body->setLineWrapMode(mode == BodyView::Hex ? QTextEdit::NoWrap : QTextEdit::WidgetWidth);

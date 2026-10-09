@@ -651,6 +651,13 @@ int main(int argc, char **argv) {
             require(mode("view_hex")->isChecked(), "an unprintable body opens in hex mode");
             require(reader->toPlainText().contains("00000000  01 02 03 04"),
                     "hex mode dumps offsets and bytes");
+            require(bm::hexDump("ABCDEFGHIJKLMNOPQ\x01") ==
+                        "00000000  41 42 43 44 45 46 47 48  49 4a 4b 4c 4d 4e 4f 50  "
+                        "|ABCDEFGHIJKLMNOP|\n"
+                        "00000010  51 01" +
+                            QString(45, ' ') + "|Q.|\n",
+                    "a dump line: offset, sixteen bytes split eight and eight, the printable "
+                    "ones; a short last line keeps the columns");
             require(mono(reader->font()) && mono(subjectLabel->font()),
                     "hex mode puts body and subject in a fixed-width font");
             require(bm::crypticLabel("7687d8a1b2c3") == "<cryptic-7687d8>",
@@ -786,8 +793,18 @@ int main(int argc, char **argv) {
                 session.saveLetter({}, address, address, "A long letter", lines.join('\n'), "direct");
             const auto otherLong = session.saveLetter({}, address, address, "Another long letter",
                                                       lines.join("\n\n"), "direct");
+            // Finishes laying out the letter shown: a long one is laid out in
+            // steps after it first appears, and the body grows as they report.
+            const auto settle = [&] {
+                const int full = qCeil(reader->document()->size().height()); // the rest, now
+                QElapsedTimer limit;
+                limit.start();
+                while (reader->minimumHeight() < full && limit.elapsed() < 5000)
+                    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                QCoreApplication::processEvents();
+            };
             window.selectMessage(longLetter);
-            QCoreApplication::processEvents();
+            settle();
             auto bar = scroll->verticalScrollBar();
             auto viewport = scroll->viewport();
             auto subject = window.findChild<QTextEdit *>("subject");
@@ -805,7 +822,7 @@ int main(int argc, char **argv) {
             require(toolbar->mapTo(&window, QPoint()).y() == toolbarY,
                     "the toolbar stays put while the letter scrolls");
             window.selectMessage(otherLong);
-            QCoreApplication::processEvents();
+            settle();
             require(bar->maximum() > 0 && bar->value() == 0,
                     "the next letter opens at the top, not where the last one was left");
             bar->setValue(bar->maximum());
@@ -819,7 +836,7 @@ int main(int argc, char **argv) {
                     "and its body fills the rest of the pane");
 
             window.selectMessage(longLetter);
-            QCoreApplication::processEvents();
+            settle();
             const auto visible = reader->visibleRegion().boundingRect();
             QTest::wheelEvent(window.windowHandle(), reader->mapTo(&window, visible.center()),
                               QPoint(0, -120));
@@ -863,11 +880,15 @@ int main(int argc, char **argv) {
                 c = char(random.bounded(256));
             window.selectMessage(session.saveLetter({}, address, address, "Noise",
                                                     QString::fromLatin1(bytes), "direct"));
-            QCoreApplication::processEvents();
+            const int shownAt = reader->minimumHeight();
+            settle();
             require(window.findChild<QWidget *>("viewSwitch")
                         ->findChild<QToolButton *>("view_hex")
                         ->isChecked(),
                     "big noise opens in hex (test sanity)");
+            require(shownAt < reader->minimumHeight() &&
+                        reader->verticalScrollBar()->maximum() == 0,
+                    "a big dump is shown before all of it is laid out, then the body holds all of it");
             qreal tallest = 0;
             const auto watch = QObject::connect(
                 reader->document()->documentLayout(),

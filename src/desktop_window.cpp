@@ -1488,13 +1488,14 @@ class ReaderBody : public LetterView {
         setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded); // hex dumps don't wrap
         connect(document()->documentLayout(),
-                &QAbstractTextDocumentLayout::documentSizeChanged, this, [this] { fit(); });
+                &QAbstractTextDocumentLayout::documentSizeChanged, this,
+                [this](const QSizeF &size) { fit(size); });
     }
 
   protected:
     void resizeEvent(QResizeEvent *event) override {
         LetterView::resizeEvent(event);
-        fit();
+        fit(laidOut_);
     }
     void keyPressEvent(QKeyEvent *event) override {
         // The keys that paged the body on its own page the reader.
@@ -1553,9 +1554,13 @@ class ReaderBody : public LetterView {
     }
 
   private:
-    void fit() {
+    // As tall as the text laid out so far, as the layout reports it. Asking the
+    // document for its size would lay a long letter out in full before it is
+    // first shown; the layout does the rest in steps, reporting each.
+    void fit(const QSizeF &laidOut) {
+        laidOut_ = laidOut;
         const auto bar = horizontalScrollBar();
-        const int h = qCeil(document()->size().height()) + 2 * frameWidth() +
+        const int h = qCeil(laidOut.height()) + 2 * frameWidth() +
                       (bar->maximum() > 0 ? bar->sizeHint().height() : 0);
         if (h != minimumHeight())
             setMinimumHeight(h);
@@ -1567,6 +1572,7 @@ class ReaderBody : public LetterView {
         return y < 0 ? y : y > height ? y - height : 0;
     }
     QScrollArea *reader_;
+    QSizeF laidOut_;
     QBasicTimer autoScroll_;
     QPoint dragAt_;
 };
