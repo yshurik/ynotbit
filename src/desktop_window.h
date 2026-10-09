@@ -21,6 +21,7 @@ namespace bm {
 class Session;
 class FeedView;
 class SettingsWindow;
+class LetterPane;
 class DesktopWindow : public QMainWindow {
     Q_OBJECT
   public:
@@ -50,19 +51,11 @@ class DesktopWindow : public QMainWindow {
     QWidget *updateBanner_;
     QAction *networkEnabledAction_;
     QPointer<SettingsWindow> settings_;
-    QTextEdit *subject_;
-    QLabel *fromAddress_, *toAddress_, *deliveryStatus_, *deliveryError_;
-    QLabel *fromName_, *toName_, *toLabel_;
-    QWidget *addFromContact_, *addToContact_;
-    QLabel *timeline_;
-    QWidget *details_;
-    QTextBrowser *body_;
-    QWidget *actions_, *reader_, *identities_, *contacts_;
+    LetterPane *pane_; // the selected letter
+    QWidget *reader_, *identities_, *contacts_;
     FeedView *feed_ = nullptr; // the Subscriptions page: one sender's posts as a feed
     QVBoxLayout *contactLayout_;
     QLineEdit *contactsFilter_;
-    QWidget *letterStripe_;
-    QWidget *viewSwitch_;
     QWidget *sidebarWidget_, *listColumn_;
     QStackedWidget *welcomeStack_;
     QWidget *lockedPage_, *noMailboxPage_;
@@ -71,16 +64,10 @@ class DesktopWindow : public QMainWindow {
     QPushButton *vaultUnlockButton_;
     QVBoxLayout *lockedRecentsLayout_, *noMailboxRecentsLayout_;
     QVBoxLayout *identityLayout_;
-    QVariantMap selected_;
     QString targetVaultPath_;
     bool vaultCreateMode_ = false;
     void updateState();
     void updateTheme();
-    void clearDetails();
-    void renderSelectedBody();
-    void updateDeliveryStatus();
-    void updateTimeline();
-    void updateCorrespondents();
     // Add (or, with a label, rename) an address-book entry; true when saved.
     bool editContact(QString address, QString label = {});
     void refreshIdentities();

@@ -417,7 +417,7 @@ int main(int argc, char **argv) {
                     action->trigger();
             auto popped = window.findChild<QDialog *>("messageWindow");
             require(popped, "opens a separate message window");
-            auto poppedStripe = popped->findChild<QWidget *>("windowKindStripe");
+            auto poppedStripe = popped->findChild<QWidget *>("letterKindStripe");
             require(poppedStripe && poppedStripe->layout()->contentsMargins().left() > 0,
                     "a message opened in its own window still shows its envelope border");
             popped->close();
@@ -712,10 +712,10 @@ int main(int argc, char **argv) {
                 if (action->text() == "Open in new window")
                     action->trigger();
             auto popout = window.findChildren<QDialog *>("messageWindow").last();
-            auto popViews = popout->findChild<QWidget *>("windowViewSwitch");
+            auto popViews = popout->findChild<QWidget *>("viewSwitch");
             require(popViews, "the pop-out window has its own view switch");
             auto popMode = [&](const char *id) { return popViews->findChild<QToolButton *>(id); };
-            auto popBody = popout->findChild<QTextBrowser *>("windowBody");
+            auto popBody = popout->findChild<QTextBrowser *>("readerBody");
             require(popMode("view_hex")->isChecked() &&
                         popBody->toPlainText().contains("00000000  01 02 03 04"),
                     "the pop-out opens an unprintable body in hex too");
@@ -734,19 +734,19 @@ int main(int argc, char **argv) {
                 action->trigger();
         auto popped = window.findChild<QDialog *>("messageWindow");
         require(popped, "opens a separate message window");
-        require(popped->findChild<QTextBrowser *>("windowBody")->toPlainText().contains(
+        require(popped->findChild<QTextBrowser *>("readerBody")->toPlainText().contains(
                     "A readable list"),
                 "separate window renders the same markdown body");
         require(reader->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
                 "main window body always shows its scrollbar");
-        require(popped->findChild<QTextBrowser *>("windowBody")->verticalScrollBarPolicy() ==
+        require(popped->findChild<QTextBrowser *>("readerBody")->verticalScrollBarPolicy() ==
                     Qt::ScrollBarAlwaysOn,
                 "separate window body always shows its scrollbar");
         require(window.findChild<QToolBar *>("actionsToolbar")->mapTo(&window, QPoint()).y() <
                     window.findChild<QTextEdit *>("subject")->mapTo(&window, QPoint()).y(),
                 "main window toolbar renders above the subject");
-        require(popped->findChild<QToolBar *>("windowActionsToolbar")->mapTo(popped, QPoint()).y() <
-                    popped->findChild<QTextEdit *>("windowSubject")
+        require(popped->findChild<QToolBar *>("actionsToolbar")->mapTo(popped, QPoint()).y() <
+                    popped->findChild<QTextEdit *>("subject")
                         ->mapTo(popped, QPoint())
                         .y(),
                 "separate window toolbar renders above the subject");
@@ -823,7 +823,7 @@ int main(int argc, char **argv) {
                 action->trigger();
         auto longPopped = window.findChild<QDialog *>("messageWindow");
         require(longPopped, "opens a separate window for the long-subject letter too");
-        auto subjectScroll = longPopped->findChild<QTextEdit *>("windowSubject");
+        auto subjectScroll = longPopped->findChild<QTextEdit *>("subject");
         require(subjectScroll && subjectScroll->height() == subjectLabel->height(),
                 "the separate window's subject area is four lines tall too");
         longPopped->close();
@@ -1323,7 +1323,7 @@ int main(int argc, char **argv) {
         QCoreApplication::processEvents();
         auto bodyPopped = window.findChild<QDialog *>("messageWindow");
         require(bodyPopped, "opens a separate window for the long-body letter");
-        auto poppedBody = bodyPopped->findChild<QTextBrowser *>("windowBody");
+        auto poppedBody = bodyPopped->findChild<QTextBrowser *>("readerBody");
         require(poppedBody->verticalScrollBar()->maximum() > 0,
                 "long body is actually scrollable (test sanity)");
         require(poppedBody->verticalScrollBar()->value() == 0,
@@ -1340,7 +1340,7 @@ int main(int argc, char **argv) {
         QCoreApplication::processEvents();
         auto dPopped = window.findChild<QDialog *>("messageWindow");
         require(dPopped, "double-clicking a letter opens it in a separate window");
-        require(dPopped->findChild<QTextEdit *>("windowSubject")->toPlainText() == expectedSubject,
+        require(dPopped->findChild<QTextEdit *>("subject")->toPlainText() == expectedSubject,
                 "double-click opens the correct letter");
         dPopped->close();
         QCoreApplication::processEvents();

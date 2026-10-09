@@ -1477,107 +1477,362 @@ class ContactDialog : public QDialog {
     QLabel *note_;
     QPushButton *save_;
 };
-class MessageWindow : public QDialog {
+} // namespace
+// One letter as the reader pane and a message window both show it: its
+// actions and view switch, subject, From / To, delivery status and timeline,
+// and body, inside the envelope border of the letter's kind. The window that
+// holds it decides what composing, saving a contact and opening a window mean.
+class LetterPane : public KindFrame {
   public:
-    MessageWindow(Session &session, QVariantMap letter, bool dark, QWidget *parent)
-        : QDialog(parent), session_(session), letter_(std::move(letter)), dark_(dark) {
-        setObjectName("messageWindow");
-        setWindowIcon(windowLogo());
-        setAttribute(Qt::WA_DeleteOnClose);
-        setWindowTitle(singleLine(letter_["subject"].toString()).left(80));
-        resize(640, 560);
-        auto layout = new QVBoxLayout(this);
-        layout->setContentsMargins(0, 0, 0, 0);
-        layout->setSpacing(12);
-        auto letterFrame = new KindFrame;
-        letterFrame->setObjectName("windowKindStripe");
-        layout->addWidget(letterFrame, 1);
-        auto frame = letterFrame->contentLayout();
-        auto toolbar = new QToolBar;
-        toolbar->setObjectName("windowActionsToolbar");
-        toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
-        toolbar->setIconSize(QSize(22, 22));
-        auto replyAction = toolbar->addAction(materialIcon("reply", iconColor(dark)), DesktopWindow::tr("Reply"));
-        connect(replyAction, &QAction::triggered, this, [this] {
-            Composer dialog(session_, letter_, true, false, dark_, this);
-            dialog.exec();
-        });
-        auto forwardAction = toolbar->addAction(materialIcon("forward", iconColor(dark)), DesktopWindow::tr("Forward"));
-        connect(forwardAction, &QAction::triggered, this, [this] {
-            Composer dialog(session_, letter_, false, true, dark_, this);
-            dialog.exec();
-        });
-        auto archiveAction = toolbar->addAction(materialIcon("archive", iconColor(dark)), DesktopWindow::tr("Archive"));
-        connect(archiveAction, &QAction::triggered, this,
-                [this] { session_.moveLetter(letter_["hash"].toString(), "Archive"); });
-        auto trashAction = toolbar->addAction(materialIcon("delete", iconColor(dark)), DesktopWindow::tr("Trash"));
-        connect(trashAction, &QAction::triggered, this,
-                [this] { session_.moveLetter(letter_["hash"].toString(), "Trash"); });
-        const bool trashed = letter_["folder"] == "Trash";
-        const bool outgoing = letter_["folder"] == "Outbox";
-        auto folderAction = [&](const char *icon, const char *text, bool visible,
-                                void (Session::*act)(QString)) {
-            auto action = toolbar->addAction(materialIcon(icon, iconColor(dark)), DesktopWindow::tr(text));
-            action->setVisible(visible);
-            connect(action, &QAction::triggered, this,
-                    [this, act] { (session_.*act)(letter_["hash"].toString()); });
-        };
-        folderAction("restore", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Restore"), trashed, &Session::restoreLetter);
-        folderAction("deleteForever", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Delete permanently"), trashed, &Session::deleteLetter);
-        folderAction("retry", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Retry"), outgoing, &Session::retryLetter);
-        folderAction("cancel", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Cancel delivery"), outgoing, &Session::cancelLetter);
-        auto toolRow = new QHBoxLayout;
-        toolRow->setContentsMargins(0, 0, 0, 0);
-        toolRow->addWidget(toolbar);
-        toolRow->addStretch();
-        frame->addLayout(toolRow);
-        auto subject = subjectArea(frame, "windowSubject");
+    std::function<void(QVariantMap letter, bool reply, bool forward)> compose;
+    // Add an address to the book; true when saved.
+    std::function<bool(QString address)> addContact;
+    // Set only where the pane offers Open in new window.
+    std::function<void(QVariantMap letter)> openWindow;
 
-        // Each side as "Name BM-…" when it has a local name; the address stays.
-        const auto party = [this](const QString &address) {
-            const auto name = session_.nameFor(address);
-            return name.isEmpty() ? address : name + "  " + address;
+    LetterPane(Session &session, bool dark, bool withOpenWindow, QWidget *parent = nullptr)
+        : KindFrame(parent), session_(session), dark_(dark) {
+        setObjectName("letterKindStripe");
+        auto frame = contentLayout();
+        toolbar_ = new QToolBar;
+        toolbar_->setObjectName("actionsToolbar");
+        toolbar_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        toolbar_->setIconSize(QSize(22, 22));
+        const auto addAction = [this](const char *name, const char *icon, const char *text,
+                                std::function<void()> act) {
+            auto action = toolbar_->addAction(materialIcon(icon, iconColor(dark_)), DesktopWindow::tr(text));
+            action->setObjectName(name);
+            action->setProperty("materialIcon", icon);
+            connect(action, &QAction::triggered, this, std::move(act));
+            return action;
         };
-        auto addresses = new QLabel(party(letter_["from"].toString()) + "  →  " +
-                                    party(letter_["to"].toString()));
-        addresses->setObjectName("windowAddresses");
-        addresses->setFont(addressFont());
-        addresses->setTextFormat(Qt::PlainText);
-        addresses->setWordWrap(true);
-        addresses->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        frame->addWidget(addresses);
-        auto body = new LetterView;
-        body->setObjectName("windowBody");
-        body->setDocument(new SafeDocument(body));
-        new AddressHighlighter(body->document());
-        body->setOpenLinks(false);
-        body->setFrameShape(QFrame::NoFrame);
-        body->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
-        connect(body, &QTextBrowser::anchorClicked, this, [this](QUrl url) {
+        addAction("editAction", "edit", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Edit / Send"),
+            [this] { compose(letter_, false, false); });
+        addAction("replyAction", "reply", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Reply"),
+            [this] { compose(letter_, true, false); });
+        addAction("forwardAction", "forward", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Forward"),
+            [this] { compose(letter_, false, true); });
+        addAction("archiveAction", "archive", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Archive"),
+            [this] { session_.moveLetter(hash(), "Archive"); });
+        addAction("trashAction", "delete", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Trash"),
+            [this] { session_.moveLetter(hash(), "Trash"); });
+        // Trash- and Outbox-only actions; showLetter shows the ones that apply.
+        const struct { const char *name, *icon, *text; void (Session::*act)(QString); }
+            folderActions[] = {
+                {"restoreAction", "restore", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Restore"), &Session::restoreLetter},
+                {"deletePermanentlyAction", "deleteForever", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Delete permanently"), &Session::deleteLetter},
+                {"retryAction", "retry", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Retry"), &Session::retryLetter},
+                {"cancelDeliveryAction", "cancel", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Cancel delivery"), &Session::cancelLetter},
+            };
+        for (const auto &f : folderActions)
+            addAction(f.name, f.icon, f.text, [this, act = f.act] { (session_.*act)(hash()); })
+                ->setVisible(false);
+        if (withOpenWindow)
+            addAction("openWindowAction", "openWindow",
+                QT_TRANSLATE_NOOP("bm::DesktopWindow", "Open in new window"),
+                [this] { openWindow(letter_); });
+        // The letter's own actions on the left, how it is rendered on the right.
+        actions_ = new QWidget;
+        auto toolRow = new QHBoxLayout(actions_);
+        toolRow->setContentsMargins(0, 0, 0, 0);
+        toolRow->addWidget(toolbar_);
+        toolRow->addStretch();
+        viewSwitch_ = new ViewSwitch(iconColor(dark_), [this](BodyView) { renderBody(); });
+        viewSwitch_->setObjectName("viewSwitch");
+        toolRow->addWidget(viewSwitch_);
+        frame->addWidget(actions_);
+        subject_ = subjectArea(frame, "subject");
+        details_ = new QWidget;
+        auto metadata = new QGridLayout(details_);
+        metadata->setContentsMargins(0, 0, 0, 0);
+        metadata->setHorizontalSpacing(14);
+        metadata->setVerticalSpacing(6);
+        metadata->setColumnStretch(2, 1);
+        // From / To: the correspondent's local name (when there is one), then the
+        // address itself -- always shown, so a name can never stand in for a
+        // different sender -- then a button to save an unknown address.
+        fromAddress_ = new QLabel;
+        toAddress_ = new QLabel;
+        fromAddress_->setObjectName("messageAddresses");
+        toAddress_->setObjectName("toAddress");
+        fromName_ = new QLabel;
+        toName_ = new QLabel;
+        fromName_->setObjectName("fromName");
+        toName_->setObjectName("toName");
+        int addressRow = 0;
+        for (auto [name, field] : {std::pair{fromName_, fromAddress_}, {toName_, toAddress_}}) {
+            field->setFont(addressFont());
+            field->setTextFormat(Qt::PlainText);
+            field->setWordWrap(true);
+            field->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            name->setTextFormat(Qt::PlainText);
+            name->setStyleSheet("font-weight:600;");
+            name->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            name->hide();
+            auto add = new QToolButton;
+            add->setObjectName(addressRow == 0 ? "addSenderContact" : "addRecipientContact");
+            add->setIcon(materialIcon("personAdd", iconColor(dark_)));
+            add->setIconSize(QSize(16, 16));
+            add->setAutoRaise(true);
+            add->setCursor(Qt::PointingHandCursor);
+            add->setToolTip(DesktopWindow::tr("Add to contacts"));
+            add->hide();
+            connect(add, &QToolButton::clicked, this, [this, field] {
+                if (addContact(field->text()))
+                    updateCorrespondents();
+            });
+            (addressRow == 0 ? addFromContact_ : addToContact_) = add;
+            auto label = new QLabel(addressRow == 0 ? DesktopWindow::tr("From") : DesktopWindow::tr("To"));
+            if (addressRow == 1) {
+                label->setObjectName("toLabel");
+                toLabel_ = label;
+            }
+            metadata->addWidget(label, addressRow, 0, Qt::AlignTop);
+            metadata->addWidget(name, addressRow, 1, Qt::AlignTop);
+            auto addressCell = new QHBoxLayout;
+            addressCell->setContentsMargins(0, 0, 0, 0);
+            addressCell->setSpacing(4);
+            addressCell->addWidget(field);
+            addressCell->addWidget(add, 0, Qt::AlignTop);
+            addressCell->addStretch();
+            metadata->addLayout(addressCell, addressRow++, 2);
+        }
+        deliveryStatus_ = new QLabel;
+        deliveryStatus_->setObjectName("deliveryStatus");
+        deliveryStatus_->setTextFormat(Qt::PlainText);
+        metadata->addWidget(deliveryStatus_, 2, 1, 1, 2, Qt::AlignLeft);
+        deliveryError_ = new QLabel;
+        deliveryError_->setTextFormat(Qt::PlainText);
+        deliveryError_->setWordWrap(true);
+        metadata->addWidget(deliveryError_, 3, 1, 1, 2);
+        timeline_ = new QLabel;
+        timeline_->setObjectName("messageTimeline");
+        timeline_->setTextFormat(Qt::RichText);
+        timeline_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        timeline_->setToolTip(DesktopWindow::tr(
+            "Times are local. Received in mailbox is when the object was decrypted "
+            "and saved, which may be after network arrival while locked. Sent to "
+            "peers is a relay offer, not a read receipt."));
+        metadata->addWidget(timeline_, 4, 0, 1, 3);
+        frame->addWidget(details_);
+        body_ = new LetterView;
+        body_->setObjectName("readerBody");
+        body_->setDocument(new SafeDocument(body_));
+        new AddressHighlighter(body_->document());
+        body_->setOpenLinks(false);
+        body_->setFrameShape(QFrame::NoFrame);
+        body_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+        frame->addWidget(body_, 1);
+        connect(body_, &QTextBrowser::anchorClicked, this, [this](QUrl url) {
             if (url.scheme() == "https" &&
                 QMessageBox::question(this, DesktopWindow::tr("Open link"),
                                       DesktopWindow::tr("Open this link in your browser?\n%1")
                                           .arg(url.toDisplayString())) == QMessageBox::Yes)
                 QDesktopServices::openUrl(url);
         });
-        frame->addWidget(body, 1);
-        const auto text = letter_["body"].toString();
-        const auto subjectText = letter_["subject"].toString();
-        auto views = new ViewSwitch(iconColor(dark), [body, subject, subjectText, text](BodyView mode) {
-            showLetterBody(body, subject, subjectText, text, mode);
-        });
-        views->setObjectName("windowViewSwitch");
-        toolRow->addWidget(views);
-        views->setMode(detectBodyView(subjectText, text));
-        showLetterBody(body, subject, subjectText, text, views->mode());
-        letterFrame->setKind(classifyLetter(letter_["folder"].toString(),
-                                            letter_["from"].toString(), letter_["to"].toString()));
+        clear(DesktopWindow::tr("No letter selected"));
+    }
+    const QVariantMap &letter() const {
+        return letter_;
+    }
+    QString hash() const {
+        return letter_.value("hash").toString();
+    }
+    void showLetter(QVariantMap letter) {
+        letter_ = std::move(letter);
+        const auto folder = letter_["folder"].toString();
+        setKind(classifyLetter(folder, letter_["from"].toString(), letter_["to"].toString()));
+        fromAddress_->setText(letter_["from"].toString());
+        // A broadcast's recipient is its own sender: no To line.
+        const bool broadcast = folder == "Broadcasts";
+        toAddress_->setText(broadcast ? QString() : letter_["to"].toString());
+        toAddress_->setVisible(!broadcast);
+        toLabel_->setVisible(!broadcast);
+        updateCorrespondents();
+        deliveryError_->setText(letter_["deliveryError"].toString());
+        deliveryError_->setVisible(!deliveryError_->text().isEmpty());
+        details_->show();
+        refreshTimeline();
+        // Each letter opens in the mode its own content calls for; the switch is
+        // then free for the reader to override on this letter.
+        viewSwitch_->setMode(detectBodyView(letter_["subject"].toString(), letter_["body"].toString()));
+        renderBody();
+        actions_->show();
+        action("editAction")->setVisible(folder == "Drafts");
+        action("replyAction")->setVisible(folder != "Drafts");
+        action("restoreAction")->setVisible(folder == "Trash");
+        action("deletePermanentlyAction")->setVisible(folder == "Trash");
+        action("retryAction")->setVisible(folder == "Outbox");
+        action("cancelDeliveryAction")->setVisible(folder == "Outbox");
+    }
+    // No letter: the subject area carries what the pane shows instead.
+    void clear(const QString &subject) {
+        letter_.clear();
+        body_->clear();
+        setSubject(subject_, subject);
+        fromAddress_->clear();
+        toAddress_->clear();
+        updateCorrespondents();
+        deliveryStatus_->clear();
+        deliveryError_->clear();
+        timeline_->clear();
+        details_->hide();
+        actions_->hide();
+        setKind(LetterKind::Personal);
+    }
+    void refreshTimeline() {
+        if (hash().isEmpty())
+            return;
+        const auto events = session_.deliveryHistory(hash());
+        QString html = "<table cellspacing='0' cellpadding='2'>";
+        auto row = [&](const QString &label, const QString &time) {
+            html += "<tr><td style='padding-right:16px'>" + label.toHtmlEscaped() + "</td><td>" +
+                    time.toHtmlEscaped() + "</td></tr>";
+        };
+        if (events.isEmpty()) {
+            const auto folder = letter_.value("folder").toString();
+            const auto label = folder == "Drafts" ? DesktopWindow::tr("Draft saved")
+                                                  : (folder == "Inbox" || folder == "Channels" ||
+                                                             folder == "Broadcasts"
+                                                         ? DesktopWindow::tr("Received in mailbox")
+                                                         : DesktopWindow::tr("Saved in mailbox"));
+            row(label, formatDateTime(
+                           QDateTime::fromSecsSinceEpoch(letter_.value("storedAt").toLongLong()),
+                           true));
+        } else {
+            const QMap<QString, QString> labels{
+                {"queued", DesktopWindow::tr("Queued")},
+                {"awaiting_pubkey", DesktopWindow::tr("Requested recipient key")},
+                {"key_available", DesktopWindow::tr("Recipient key available")},
+                {"calculating_ack", DesktopWindow::tr("Receipt preparation started")},
+                {"calculating_message", DesktopWindow::tr("Message preparation started")},
+                {"prepared", DesktopWindow::tr("Prepared")},
+                {"publishing", DesktopWindow::tr("Submitted to relay")},
+                {"published", DesktopWindow::tr("Sent to peers")},
+                {"awaiting_ack", DesktopWindow::tr("Sent to peers")},
+                {"acknowledged", DesktopWindow::tr("Acknowledged")},
+                {"failed", DesktopWindow::tr("Failed")},
+                {"expired", DesktopWindow::tr("Expired")},
+                {"cancelled", DesktopWindow::tr("Cancelled")}};
+            // Show the latest occurrence of each recorded stage; the full history
+            // remains available in More, including retries and detailed explanations.
+            QMap<QString, int> latest;
+            for (int i = 0; i < events.size(); ++i)
+                latest[events[i].toMap().value("state").toString()] = i;
+            for (int i = 0; i < events.size(); ++i) {
+                const auto event = events[i].toMap();
+                const auto state = event.value("state").toString();
+                if (labels.contains(state) && latest.value(state) == i)
+                    row(labels.value(state), event.value("time").toString());
+                if (state != "key_available" && state != "prepared")
+                    letter_["state"] = state;
+            }
+            const auto current = letter_.value("state").toString();
+            bool currentShown = false;
+            for (const auto &event : events)
+                if (event.toMap().value("state").toString() == current)
+                    currentShown = true;
+            if (!current.isEmpty() && !currentShown) {
+                row(deliveryStateLabel(current), formatDateTime(QDateTime::currentDateTime(), true));
+            }
+        }
+        timeline_->setText(html + "</table>");
+        updateDeliveryStatus();
+    }
+    void updateCorrespondents() {
+        for (auto [name, field, add] : {std::tuple{fromName_, fromAddress_, addFromContact_},
+                                        {toName_, toAddress_, addToContact_}}) {
+            const auto address = field->text();
+            const auto known = session_.nameFor(address);
+            name->setText(known);
+            name->setVisible(!known.isEmpty());
+            // Offered for any foreign address not yet in the book -- including a
+            // subscription, whose label is not a contact.
+            add->setVisible(!address.isEmpty() && session_.contactProblem(address).isEmpty() &&
+                            !session_.isContact(address));
+        }
+    }
+    void setDark(bool dark) {
+        dark_ = dark;
+        const auto color = iconColor(dark);
+        for (auto action : toolbar_->actions())
+            action->setIcon(materialIcon(action->property("materialIcon").toString(), color));
+        viewSwitch_->setIconColor(color);
+        for (auto add : {addFromContact_, addToContact_})
+            add->setIcon(materialIcon("personAdd", color));
+        updateDeliveryStatus();
+    }
+
+  private:
+    QAction *action(const char *name) const {
+        return toolbar_->findChild<QAction *>(name);
+    }
+    void renderBody() {
+        showLetterBody(body_, subject_, letter_["subject"].toString(), letter_["body"].toString(),
+                       viewSwitch_->mode());
+    }
+    void updateDeliveryStatus() {
+        const auto state = letter_.value("state").toString();
+        const bool success = state == "acknowledged";
+        const auto label = deliveryStateLabel(state);
+        deliveryStatus_->setText(label);
+        deliveryStatus_->setVisible(!label.isEmpty());
+        deliveryStatus_->setToolTip(
+            success ? DesktopWindow::tr("Recipient acknowledged delivery. This is not a read receipt.")
+                    : QString());
+        deliveryStatus_->setStyleSheet(
+            QString("QLabel {color:%1;background:%2;border-radius:6px;padding:4px 9px;font-weight:600;}")
+                .arg(success ? (dark_ ? "#8ce0b2" : "#17643b") : (dark_ ? "#c1cdd7" : "#435867"),
+                     success ? (dark_ ? "#183d2b" : "#e0f3e7") : (dark_ ? "#263440" : "#e8edf1")));
+    }
+    Session &session_;
+    bool dark_;
+    QVariantMap letter_;
+    QToolBar *toolbar_;
+    ViewSwitch *viewSwitch_;
+    QWidget *actions_, *details_;
+    QTextEdit *subject_;
+    QLabel *fromAddress_, *toAddress_, *fromName_, *toName_, *toLabel_;
+    QLabel *deliveryStatus_, *deliveryError_, *timeline_;
+    QToolButton *addFromContact_, *addToContact_;
+    QTextBrowser *body_;
+};
+namespace {
+class MessageWindow : public QDialog {
+  public:
+    MessageWindow(Session &session, QVariantMap letter, bool dark, QWidget *parent)
+        : QDialog(parent), session_(session), dark_(dark) {
+        setObjectName("messageWindow");
+        setWindowIcon(windowLogo());
+        setAttribute(Qt::WA_DeleteOnClose);
+        setWindowTitle(singleLine(letter["subject"].toString()).left(80));
+        resize(720, 680);
+        auto layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        pane_ = new LetterPane(session_, dark, false);
+        pane_->compose = [this](QVariantMap letter, bool reply, bool forward) {
+            Composer dialog(session_, letter, reply, forward, dark_, this);
+            dialog.exec();
+        };
+        pane_->addContact = [this](QString address) {
+            ContactDialog dialog(session_, address, {}, this);
+            return dialog.exec() == QDialog::Accepted;
+        };
+        layout->addWidget(pane_);
+        pane_->showLetter(std::move(letter));
+        connect(&session_, &Session::messagesChanged, this, [this] { pane_->refreshTimeline(); },
+                Qt::QueuedConnection);
+        connect(&session_, &Session::changed, this, [this] { pane_->updateCorrespondents(); });
+    }
+    void setDark(bool dark) {
+        dark_ = dark;
+        pane_->setDark(dark);
     }
 
   private:
     Session &session_;
-    QVariantMap letter_;
     bool dark_;
+    LetterPane *pane_;
 };
 } // namespace
 DesktopWindow::DesktopWindow(Session &session) : session_(session) {
@@ -1860,160 +2115,15 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     auto read = new QVBoxLayout(reader_);
     read->setContentsMargins(0, 0, 0, 0);
     read->setSpacing(14);
-    auto toolbar = new QToolBar;
-    toolbar->setObjectName("actionsToolbar");
-    toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    toolbar->setIconSize(QSize(22, 22));
-    auto editAction =
-        toolbar->addAction(materialIcon("edit", iconColor(appearance_.dark())), tr("Edit / Send"));
-    editAction->setObjectName("editAction");
-    connect(editAction, &QAction::triggered, this, [this] { compose(selected_); });
-    auto replyAction = toolbar->addAction(materialIcon("reply", iconColor(appearance_.dark())), tr("Reply"));
-    replyAction->setObjectName("replyAction");
-    connect(replyAction, &QAction::triggered, this, [this] { compose(selected_, true, false); });
-    auto forwardAction = toolbar->addAction(materialIcon("forward", iconColor(appearance_.dark())), tr("Forward"));
-    forwardAction->setObjectName("forwardAction");
-    connect(forwardAction, &QAction::triggered, this, [this] { compose(selected_, false, true); });
-    auto archiveAction =
-        toolbar->addAction(materialIcon("archive", iconColor(appearance_.dark())), tr("Archive"));
-    archiveAction->setObjectName("archiveAction");
-    connect(archiveAction, &QAction::triggered, this,
-            [this] { session_.moveLetter(selected_["hash"].toString(), "Archive"); });
-    auto trashAction = toolbar->addAction(materialIcon("delete", iconColor(appearance_.dark())), tr("Trash"));
-    trashAction->setObjectName("trashAction");
-    connect(trashAction, &QAction::triggered, this,
-            [this] { session_.moveLetter(selected_["hash"].toString(), "Trash"); });
-    // Trash- and Outbox-only actions; selectMessage shows the ones
-    // that apply to the selected letter.
-    const struct { const char *name, *icon, *text; void (Session::*act)(QString); }
-        folderActions[] = {
-            {"restoreAction", "restore", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Restore"), &Session::restoreLetter},
-            {"deletePermanentlyAction", "deleteForever", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Delete permanently"), &Session::deleteLetter},
-            {"retryAction", "retry", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Retry"), &Session::retryLetter},
-            {"cancelDeliveryAction", "cancel", QT_TRANSLATE_NOOP("bm::DesktopWindow", "Cancel delivery"), &Session::cancelLetter},
-        };
-    for (const auto &f : folderActions) {
-        auto action = toolbar->addAction(materialIcon(f.icon, iconColor(appearance_.dark())), tr(f.text));
-        action->setObjectName(f.name);
-        action->setVisible(false);
-        connect(action, &QAction::triggered, this,
-                [this, act = f.act] { (session_.*act)(selected_["hash"].toString()); });
-    }
-    auto openWindowAction = toolbar->addAction(
-        materialIcon("openWindow", iconColor(appearance_.dark())), tr("Open in new window"));
-    openWindowAction->setObjectName("openWindowAction");
-    connect(openWindowAction, &QAction::triggered, this, [this] {
-        (new MessageWindow(session_, selected_, appearance_.dark(), this))->show();
-    });
-    auto letterFrame = new KindFrame;
-    letterFrame->setObjectName("letterKindStripe");
-    letterStripe_ = letterFrame;
-    auto frame = letterFrame->contentLayout();
-    // The letter's own actions on the left, how it is rendered on the right.
-    auto toolRow = new QWidget;
-    auto toolRowLayout = new QHBoxLayout(toolRow);
-    toolRowLayout->setContentsMargins(0, 0, 0, 0);
-    toolRowLayout->addWidget(toolbar);
-    toolRowLayout->addStretch();
-    auto viewSwitch = new ViewSwitch(iconColor(appearance_.dark()), [this](BodyView) { renderSelectedBody(); });
-    viewSwitch->setObjectName("viewSwitch");
-    viewSwitch_ = viewSwitch;
-    toolRowLayout->addWidget(viewSwitch);
-    actions_ = toolRow;
-    frame->addWidget(actions_);
-    read->addWidget(letterFrame, 1);
-    subject_ = subjectArea(frame, "subject");
-    setSubject(subject_, tr("No letter selected"));
-    details_ = new QWidget;
-    auto metadata = new QGridLayout(details_);
-    metadata->setContentsMargins(0, 0, 0, 0);
-    metadata->setHorizontalSpacing(14);
-    metadata->setVerticalSpacing(6);
-    metadata->setColumnStretch(1, 1);
-    // From / To: the correspondent's local name (when there is one), then the
-    // address itself -- always shown, so a name can never stand in for a
-    // different sender -- then a button to save an unknown address.
-    fromAddress_ = new QLabel;
-    toAddress_ = new QLabel;
-    fromAddress_->setObjectName("messageAddresses");
-    toAddress_->setObjectName("toAddress");
-    fromName_ = new QLabel;
-    toName_ = new QLabel;
-    fromName_->setObjectName("fromName");
-    toName_->setObjectName("toName");
-    metadata->setColumnStretch(1, 0);
-    metadata->setColumnStretch(2, 1);
-    int addressRow = 0;
-    for (auto [name, field] : {std::pair{fromName_, fromAddress_}, {toName_, toAddress_}}) {
-        field->setFont(addressFont());
-        field->setTextFormat(Qt::PlainText);
-        field->setWordWrap(true);
-        field->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        name->setTextFormat(Qt::PlainText);
-        name->setStyleSheet("font-weight:600;");
-        name->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        name->hide();
-        auto add = new QToolButton;
-        add->setObjectName(addressRow == 0 ? "addSenderContact" : "addRecipientContact");
-        add->setIcon(materialIcon("personAdd", iconColor(appearance_.dark())));
-        add->setIconSize(QSize(16, 16));
-        add->setAutoRaise(true);
-        add->setCursor(Qt::PointingHandCursor);
-        add->setToolTip(tr("Add to contacts"));
-        add->hide();
-        connect(add, &QToolButton::clicked, this, [this, field] {
-            if (editContact(field->text()))
-                updateCorrespondents();
-        });
-        (addressRow == 0 ? addFromContact_ : addToContact_) = add;
-        auto label = new QLabel(addressRow == 0 ? tr("From") : tr("To"));
-        if (addressRow == 1) {
-            label->setObjectName("toLabel");
-            toLabel_ = label;
-        }
-        metadata->addWidget(label, addressRow, 0, Qt::AlignTop);
-        metadata->addWidget(name, addressRow, 1, Qt::AlignTop);
-        auto addressCell = new QHBoxLayout;
-        addressCell->setContentsMargins(0, 0, 0, 0);
-        addressCell->setSpacing(4);
-        addressCell->addWidget(field);
-        addressCell->addWidget(add, 0, Qt::AlignTop);
-        addressCell->addStretch();
-        metadata->addLayout(addressCell, addressRow++, 2);
-    }
-    deliveryStatus_ = new QLabel;
-    deliveryStatus_->setObjectName("deliveryStatus");
-    deliveryStatus_->setTextFormat(Qt::PlainText);
-    metadata->addWidget(deliveryStatus_, 2, 1, 1, 2, Qt::AlignLeft);
-    deliveryError_ = new QLabel;
-    deliveryError_->setTextFormat(Qt::PlainText);
-    deliveryError_->setWordWrap(true);
-    metadata->addWidget(deliveryError_, 3, 1, 1, 2);
-    timeline_ = new QLabel;
-    timeline_->setObjectName("messageTimeline");
-    timeline_->setTextFormat(Qt::RichText);
-    timeline_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    timeline_->setToolTip(tr("Times are local. Received in mailbox is when the object was decrypted "
-                          "and saved, which may be after network arrival while locked. Sent to "
-                          "peers is a relay offer, not a read receipt."));
-    metadata->addWidget(timeline_, 4, 0, 1, 3);
-    details_->hide();
-    frame->addWidget(details_);
-    body_ = new LetterView;
-    body_->setObjectName("readerBody");
-    body_->setDocument(new SafeDocument(body_));
-    new AddressHighlighter(body_->document());
-    body_->setOpenLinks(false);
-    body_->setFrameShape(QFrame::NoFrame);
-    body_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
-    frame->addWidget(body_, 1);
-    connect(body_, &QTextBrowser::anchorClicked, this, [this](QUrl url) {
-        if (url.scheme() == "https" &&
-            QMessageBox::question(this, tr("Open link"),
-                                  tr("Open this link in your browser?\n%1")
-                                      .arg(url.toDisplayString())) == QMessageBox::Yes)
-            QDesktopServices::openUrl(url);
-    });
+    pane_ = new LetterPane(session_, appearance_.dark(), true);
+    pane_->compose = [this](QVariantMap letter, bool reply, bool forward) {
+        compose(letter, reply, forward);
+    };
+    pane_->addContact = [this](QString address) { return editContact(address); };
+    pane_->openWindow = [this](QVariantMap letter) {
+        (new MessageWindow(session_, letter, appearance_.dark(), this))->show();
+    };
+    read->addWidget(pane_, 1);
     welcomeStack_ = new QStackedWidget;
     welcomeStack_->setObjectName("welcomeStack");
     // State 1: vault locked (or none chosen yet). A vault target is shown with an
@@ -2295,8 +2405,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     connect(
         &session_, &Session::messagesChanged, this,
         [this] {
-            if (!selected_.value("hash").toString().isEmpty())
-                updateTimeline();
+            pane_->refreshTimeline();
         },
         Qt::QueuedConnection);
     // Let the controller leave its guarded operation before the inline password
@@ -2308,22 +2417,14 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         vaultRepeatField_->clear();
     });
     connect(&session_, &Session::aboutToCloseMailbox, this, [this] {
-        selected_.clear();
-        body_->clear();
-        setSubject(subject_, tr("No letter selected"));
-        clearDetails();
-        actions_->hide();
+        pane_->clear(tr("No letter selected"));
     });
     connect(letters_->selectionModel(), &QItemSelectionModel::currentChanged, this,
             [this](QModelIndex i) {
                 if (i.isValid())
                     selectMessage(i.data(Qt::UserRole + 1).toString());
                 else {
-                    selected_.clear();
-                    body_->clear();
-                    setSubject(subject_, tr("No letter selected"));
-                    clearDetails();
-                    actions_->hide();
+                    pane_->clear(tr("No letter selected"));
                 }
             });
     connect(letters_, &QListView::doubleClicked, this, [this](QModelIndex i) {
@@ -2336,7 +2437,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             (new MessageWindow(session_, message, appearance_.dark(), this))->show();
     });
     connect(session_.messageModel(), &QAbstractItemModel::modelReset, this, [this] {
-        const auto hash = selected_.value("hash").toString();
+        const auto hash = pane_->hash();
         const int row = session_.messageModel()->rowForHash(hash);
         if (row >= 0) {
             // New mail arriving reloads the whole model; re-anchor on the same
@@ -2347,11 +2448,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             letters_->scrollTo(idx);
             return;
         }
-        selected_.clear();
-        body_->clear();
-        setSubject(subject_, tr("No letter selected"));
-        clearDetails();
-        actions_->hide();
+        pane_->clear(tr("No letter selected"));
     });
     connect(folders_, &QListWidget::currentTextChanged, this, [this](QString folder) {
         if (auto icon = findChild<QToolButton *>("folderIcon_" + folder))
@@ -2361,13 +2458,9 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         if (folder == "Channels" || folder == "Broadcasts")
             refreshChannels();
         session_.messageModel()->setFolder(folder);
-        selected_.clear();
-        body_->clear();
-        setSubject(subject_, folder == "Identities" ? tr("Identities & chans")
-                             : folder == "Contacts" ? "Contacts"
-                                                    : tr("No letter selected"));
-        clearDetails();
-        actions_->hide();
+        pane_->clear(folder == "Identities" ? tr("Identities & chans")
+                      : folder == "Contacts"   ? "Contacts"
+                                               : tr("No letter selected"));
         if (folder == "Identities")
             refreshIdentities();
         if (folder == "Contacts")
@@ -2433,13 +2526,12 @@ void DesktopWindow::updateTheme() {
             "border-right:1px solid %4;} "
             "QWidget#filterSwitch QToolButton#filter_anonymous{"
             "border-top-right-radius:6px;border-bottom-right-radius:6px;} "
-            "QToolBar#actionsToolbar,QToolBar#windowActionsToolbar{"
+            "QToolBar#actionsToolbar{"
             "border:1px solid %4;border-radius:8px;background:transparent;"
             "spacing:0;padding:1px;} "
-            "QToolBar#actionsToolbar QToolButton,QToolBar#windowActionsToolbar QToolButton{"
+            "QToolBar#actionsToolbar QToolButton{"
             "border:0;border-radius:0;background:transparent;padding:2px;} "
-            "QToolBar#actionsToolbar QToolButton:hover,"
-            "QToolBar#windowActionsToolbar QToolButton:hover{background:%3;} "
+            "QToolBar#actionsToolbar QToolButton:hover{background:%3;} "
             "QWidget[viewSwitch=\"true\"]{border:1px solid %4;border-radius:7px;background:transparent;} "
             "QWidget[viewSwitch=\"true\"] QToolButton{border:0;border-radius:0;"
             "background:transparent;padding:0;} "
@@ -2456,20 +2548,11 @@ void DesktopWindow::updateTheme() {
                  dark ? "#1b2530" : "#ffffff", dark ? "#354553" : "#dbe3e8",
                  dark ? "#234b46" : "#dcebe8", dark ? "#73d8c7" : "#126d65"));
     letters_->viewport()->update();
-    updateDeliveryStatus();
+    pane_->setDark(dark);
+    for (auto window : findChildren<QDialog *>("messageWindow"))
+        static_cast<MessageWindow *>(window)->setDark(dark);
     const auto color = iconColor(dark);
-    findChild<QAction *>("editAction")->setIcon(materialIcon("edit", color));
-    findChild<QAction *>("replyAction")->setIcon(materialIcon("reply", color));
-    findChild<QAction *>("forwardAction")->setIcon(materialIcon("forward", color));
-    findChild<QAction *>("archiveAction")->setIcon(materialIcon("archive", color));
-    findChild<QAction *>("trashAction")->setIcon(materialIcon("delete", color));
-    findChild<QAction *>("openWindowAction")->setIcon(materialIcon("openWindow", color));
-    findChild<QAction *>("restoreAction")->setIcon(materialIcon("restore", color));
-    findChild<QAction *>("deletePermanentlyAction")->setIcon(materialIcon("deleteForever", color));
-    findChild<QAction *>("retryAction")->setIcon(materialIcon("retry", color));
-    findChild<QAction *>("cancelDeliveryAction")->setIcon(materialIcon("cancel", color));
     findChild<QPushButton *>("writeButton")->setIcon(materialIcon("compose", color));
-    static_cast<ViewSwitch *>(viewSwitch_)->setIconColor(color);
     for (const auto &[id, icon] : {std::pair{"density_comfortable", "densityComfortable"},
                                    {"density_cozy", "densityCozy"},
                                    {"density_compact", "densityCompact"},
@@ -2478,91 +2561,8 @@ void DesktopWindow::updateTheme() {
         findChild<QToolButton *>(id)->setIcon(materialIcon(icon, color));
     for (const auto &[label, iconName] : kFolderIcons)
         findChild<QToolButton *>("folderIcon_" + label)->setIcon(materialIcon(iconName, color));
-    for (auto add : {addFromContact_, addToContact_})
-        static_cast<QToolButton *>(add)->setIcon(materialIcon("personAdd", color));
     if (contacts_->isVisible())
         refreshContacts();
-}
-void DesktopWindow::clearDetails() {
-    fromAddress_->clear();
-    toAddress_->clear();
-    updateCorrespondents();
-    deliveryStatus_->clear();
-    deliveryError_->clear();
-    timeline_->clear();
-    details_->hide();
-    static_cast<KindFrame *>(letterStripe_)->setKind(LetterKind::Personal);
-}
-void DesktopWindow::updateDeliveryStatus() {
-    const auto state = selected_.value("state").toString();
-    const bool success = state == "acknowledged";
-    const auto label = deliveryStateLabel(state);
-    deliveryStatus_->setText(label);
-    deliveryStatus_->setVisible(!label.isEmpty());
-    deliveryStatus_->setToolTip(
-        success ? tr("Recipient acknowledged delivery. This is not a read receipt.") : QString());
-    const bool dark = appearance_.dark();
-    deliveryStatus_->setStyleSheet(
-        QString(
-            "QLabel {color:%1;background:%2;border-radius:6px;padding:4px 9px;font-weight:600;}")
-            .arg(success ? (dark ? "#8ce0b2" : "#17643b") : (dark ? "#c1cdd7" : "#435867"),
-                 success ? (dark ? "#183d2b" : "#e0f3e7") : (dark ? "#263440" : "#e8edf1")));
-}
-void DesktopWindow::updateTimeline() {
-    const auto events = session_.deliveryHistory(selected_.value("hash").toString());
-    QString html = "<table cellspacing='0' cellpadding='2'>";
-    auto row = [&](const QString &label, const QString &time) {
-        html += "<tr><td style='padding-right:16px'>" + label.toHtmlEscaped() + "</td><td>" +
-                time.toHtmlEscaped() + "</td></tr>";
-    };
-    if (events.isEmpty()) {
-        const auto folder = selected_.value("folder").toString();
-        const auto label = folder == "Drafts" ? tr("Draft saved")
-                                              : (folder == "Inbox" || folder == "Channels" ||
-                                                         folder == "Broadcasts"
-                                                     ? tr("Received in mailbox")
-                                                     : tr("Saved in mailbox"));
-        row(label, formatDateTime(
-                       QDateTime::fromSecsSinceEpoch(selected_.value("storedAt").toLongLong()),
-                       true));
-    } else {
-        const QMap<QString, QString> labels{{"queued", tr("Queued")},
-                                            {"awaiting_pubkey", tr("Requested recipient key")},
-                                            {"key_available", tr("Recipient key available")},
-                                            {"calculating_ack", tr("Receipt preparation started")},
-                                            {"calculating_message", tr("Message preparation started")},
-                                            {"prepared", tr("Prepared")},
-                                            {"publishing", tr("Submitted to relay")},
-                                            {"published", tr("Sent to peers")},
-                                            {"awaiting_ack", tr("Sent to peers")},
-                                            {"acknowledged", tr("Acknowledged")},
-                                            {"failed", tr("Failed")},
-                                            {"expired", tr("Expired")},
-                                            {"cancelled", tr("Cancelled")}};
-        // Show the latest occurrence of each recorded stage; the full history
-        // remains available in More, including retries and detailed explanations.
-        QMap<QString, int> latest;
-        for (int i = 0; i < events.size(); ++i)
-            latest[events[i].toMap().value("state").toString()] = i;
-        for (int i = 0; i < events.size(); ++i) {
-            const auto event = events[i].toMap();
-            const auto state = event.value("state").toString();
-            if (labels.contains(state) && latest.value(state) == i)
-                row(labels.value(state), event.value("time").toString());
-            if (state != "key_available" && state != "prepared")
-                selected_["state"] = state;
-        }
-        const auto current = selected_.value("state").toString();
-        bool currentShown = false;
-        for (const auto &event : events)
-            if (event.toMap().value("state").toString() == current)
-                currentShown = true;
-        if (!current.isEmpty() && !currentShown) {
-            row(deliveryStateLabel(current), formatDateTime(QDateTime::currentDateTime(), true));
-        }
-    }
-    timeline_->setText(html + "</table>");
-    updateDeliveryStatus();
 }
 void DesktopWindow::updateState() {
     // A mailbox opens on Subscriptions with the digest selected (the first
@@ -2639,11 +2639,11 @@ void DesktopWindow::updateState() {
     // view of names.
     if (const auto subscriptions = session_.subscriptions(); subscriptions != shownSubscriptions_) {
         shownSubscriptions_ = subscriptions;
-        updateCorrespondents();
+        pane_->updateCorrespondents();
     }
     if (const auto contacts = session_.contacts(); contacts != shownContacts_) {
         shownContacts_ = contacts;
-        updateCorrespondents();
+        pane_->updateCorrespondents();
         if (folders_->currentRow() == 9)
             refreshContacts();
     }
@@ -2674,9 +2674,7 @@ void DesktopWindow::updateState() {
                 vaultPasswordField_->setFocus();
         }
     }
-    subject_->setVisible(mailboxState && !identityPage && !feedPage);
-    body_->setVisible(mailboxState && !identityPage && !feedPage);
-    letterStripe_->setVisible(mailboxState && !identityPage && !feedPage);
+    pane_->setVisible(mailboxState && !identityPage && !feedPage);
     identities_->setVisible(identityPage && !contactsPage);
     contacts_->setVisible(contactsPage);
     status_->setText(
@@ -2862,64 +2860,20 @@ void DesktopWindow::updateListCount() {
                                             : tr("%1 of %2 total").arg(shown).arg(total));
 }
 void DesktopWindow::selectMessage(const QString &id) {
+    QVariantMap letter;
     try {
-        selected_ = session_.message(id);
+        letter = session_.message(id);
     } catch (const std::exception &e) {
         error_->setText(e.what());
         error_->show();
         return;
     }
-    static_cast<KindFrame *>(letterStripe_)
-        ->setKind(classifyLetter(selected_["folder"].toString(), selected_["from"].toString(),
-                                 selected_["to"].toString()));
-    fromAddress_->setText(selected_["from"].toString());
-    // A broadcast's recipient is its own sender: no To line.
-    const bool broadcast = selected_["folder"].toString() == "Broadcasts";
-    toAddress_->setText(broadcast ? QString() : selected_["to"].toString());
-    toAddress_->setVisible(!broadcast);
-    toLabel_->setVisible(!broadcast);
-    updateCorrespondents();
-    deliveryError_->setText(selected_["deliveryError"].toString());
-    deliveryError_->setVisible(!deliveryError_->text().isEmpty());
-    updateDeliveryStatus();
-    details_->show();
-    updateTimeline();
-    // Each letter opens in the mode its own content calls for; the switch is
-    // then free for the reader to override on this letter.
-    static_cast<ViewSwitch *>(viewSwitch_)
-        ->setMode(detectBodyView(selected_["subject"].toString(), selected_["body"].toString()));
-    renderSelectedBody();
-    actions_->show();
-    findChild<QAction *>("editAction")->setVisible(selected_["folder"] == "Drafts");
-    findChild<QAction *>("replyAction")->setVisible(selected_["folder"] != "Drafts");
-    const bool trashed = selected_["folder"] == "Trash";
-    findChild<QAction *>("restoreAction")->setVisible(trashed);
-    findChild<QAction *>("deletePermanentlyAction")->setVisible(trashed);
-    const bool outgoing = selected_["folder"] == "Outbox";
-    findChild<QAction *>("retryAction")->setVisible(outgoing);
-    findChild<QAction *>("cancelDeliveryAction")->setVisible(outgoing);
+    pane_->showLetter(letter);
     session_.readLetter(id);
-}
-void DesktopWindow::updateCorrespondents() {
-    for (auto [name, field, add] : {std::tuple{fromName_, fromAddress_, addFromContact_},
-                                    {toName_, toAddress_, addToContact_}}) {
-        const auto address = field->text();
-        const auto known = session_.nameFor(address);
-        name->setText(known);
-        name->setVisible(!known.isEmpty());
-        // Offered for any foreign address not yet in the book -- including a
-        // subscription, whose label is not a contact.
-        add->setVisible(!address.isEmpty() && session_.contactProblem(address).isEmpty() &&
-                        !session_.isContact(address));
-    }
 }
 bool DesktopWindow::editContact(QString address, QString label) {
     ContactDialog dialog(session_, address, label, this);
     return dialog.exec() == QDialog::Accepted;
-}
-void DesktopWindow::renderSelectedBody() {
-    showLetterBody(body_, subject_, selected_["subject"].toString(), selected_["body"].toString(),
-                   static_cast<ViewSwitch *>(viewSwitch_)->mode());
 }
 void DesktopWindow::compose(QVariantMap letter, bool reply, bool forward) {
     if (!session_.mailboxOpen())
