@@ -661,7 +661,7 @@ Add one with “Add contact…” above, or with the person-plus button beside a
     <message>
         <source>Published</source>
         <comment>delivery state</comment>
-        <translation>已釋出</translation>
+        <translation>已發布</translation>
     </message>
     <message>
         <source>Sent</source>

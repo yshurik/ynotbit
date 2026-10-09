@@ -1,6 +1,6 @@
 # ynotbit — why not bit?
 
-[English](README.md) | [日本語](README.ja.md) | **한국어**
+[English](README.md) | [日本語](README.ja.md) | **한국어** | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [Русский](README.ru.md) | [Українська](README.uk.md)
 
 [notbit](https://github.com/bpeel/notbit)을 기반으로 한 작고 가벼운 데스크톱 Bitmessage
 클라이언트입니다. 만든 사람은 [yshurik](https://github.com/yshurik)입니다. **현재 릴리스: 0.6.0**

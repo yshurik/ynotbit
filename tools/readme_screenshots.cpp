@@ -1,9 +1,10 @@
 // Renders the README screenshots from a throwaway demo vault and mailbox:
-//   readme_screenshots <output-dir> [language, e.g. ru or zh_CN]
+//   readme_screenshots <output-dir> [language: ja, ko, zh_CN, zh_TW, ru, uk, or another for English letters]
 // Not a test: it only builds realistic sample data and grabs the window.
 #include "desktop_window.h"
 #include "i18n.h"
 #include "protocol.h"
+#include "readme_demo_text.h"
 #include "session.h"
 #include <QTest>
 #include <QtWidgets>
@@ -21,85 +22,15 @@ int main(int argc, char **argv) {
     const QString out = QString::fromLocal8Bit(argv[1]);
     const QString language = argc > 2 ? QString::fromLocal8Bit(argv[2]) : QString("en");
     bm::installTranslations(language);
-    // The demo letters in Japanese or Korean for those screenshots; in English otherwise.
+    // The demo letters in the screenshot language where there is a version; in
+    // English otherwise. Japanese sits beside each English text below.
     const bool japanese = language.startsWith("ja");
-    const bool korean = language.startsWith("ko");
-    const QHash<QString, QString> inKorean{
-        {"Notes for Thursday", "목요일 메모"},
-        {"Photos from Saturday", "토요일 사진"},
-        {"Mesh networking notes", "메시 네트워크 소식"},
-        {"Sounds good. I will bring the release checklist.",
-         "좋아요. 릴리스 체크리스트를 가져갈게요."},
-        {"Personal", "개인"},
-        {"They came out great -- here is the best one:\n\n![Saturday at the beach][img1]\n\n"
-         "More next week.",
-         "정말 잘 나왔어요. 제일 좋은 한 장을 보내요:\n\n![토요일 바닷가][img1]\n\n"
-         "나머지는 다음 주에 보낼게요."},
-        {"Re: node on the Raspberry Pi", "Re: 라즈베리 파이 노드"},
-        {"It has been up for nine days now and relays happily. Memory stays under 60 MB.",
-         "벌써 9일째 잘 돌아가면서 문제없이 중계하고 있어요. 메모리는 60 MB 아래를 유지합니다."},
-        {"Hi,\n\nHere is the plan for **Thursday**:\n\n"
-         "## Agenda\n\n"
-         "1. Walk through the new address book\n"
-         "2. Decide on the release date\n"
-         "3. Anything else you bring\n\n"
-         "> Keep it short -- we have the room for an hour.\n\n"
-         "See you there,\nAlice",
-         "안녕하세요.\n\n**목요일** 일정입니다:\n\n"
-         "## 안건\n\n"
-         "1. 새 주소록 살펴보기\n"
-         "2. 릴리스 날짜 정하기\n"
-         "3. 그 밖에 가져오는 안건\n\n"
-         "> 회의실은 한 시간뿐이니 짧게 해요.\n\n"
-         "그때 봬요,\n지은"},
-        {"Welcome to the general chan", "general 채널에 오신 것을 환영합니다"},
-        {"Say hello, share what you are working on, and be kind.",
-         "인사도 하고 하는 일도 나눠 주세요. 서로 친절하게요."},
-        {"Anyone running ynotbit on Windows?", "Windows에서 ynotbit 쓰는 분 있나요?"},
-        {"Curious how the new release behaves there.",
-         "새 릴리스가 Windows에서 어떻게 동작하는지 궁금해요."},
-        {"Yes -- the network engine is the same as on Linux now. Works well.",
-         "네, 이제 네트워크 엔진이 Linux와 같아요. 잘 돌아갑니다."},
-        {"A month on a solar-powered relay", "태양광 중계 노드로 보낸 한 달"},
-        {"The Raspberry Pi node has now run for **31 days** on a 20 W panel.\n\n"
-         "- Uptime: 99.2%, two short stops on cloudy mornings\n"
-         "- Memory: under 60 MB the whole time\n"
-         "- Objects relayed: about 14,000 a day\n\n"
-         "Next: a second node at the allotment.",
-         "라즈베리 파이 노드가 20 W 패널로 **31일** 동안 돌아갔습니다.\n\n"
-         "- 가동률: 99.2%, 흐린 아침에 두 번 잠깐 멈춤\n"
-         "- 메모리: 내내 60 MB 미만\n"
-         "- 중계한 객체: 하루 약 14,000개\n\n"
-         "다음 목표: 주말농장에 두 번째 노드."},
-        {"Bitmessage over Tor, revisited", "Tor를 통한 Bitmessage, 다시 보기"},
-        {"Routing the node through a local Tor proxy still works well.\n\n"
-         "## Two tips\n\n"
-         "- Expect slower first contact with peers, then normal traffic\n"
-         "- Keep incoming connections off when running behind Tor",
-         "로컬 Tor 프록시를 거쳐도 노드는 여전히 잘 동작합니다.\n\n"
-         "## 두 가지 팁\n\n"
-         "- 피어와의 첫 연결은 느리지만, 그 뒤로는 평소와 같습니다\n"
-         "- Tor 뒤에서는 들어오는 연결을 꺼 두세요"},
-        {"Reading list", "읽을거리"},
-        {"## This week\n\n"
-         "1. How proof of work keeps the network quiet\n"
-         "2. Chans: shared addresses, shared keys\n"
-         "3. Why every message reaches every node",
-         "## 이번 주\n\n"
-         "1. 작업 증명이 네트워크를 조용하게 지키는 방법\n"
-         "2. 채널: 공유 주소, 공유 키\n"
-         "3. 모든 메시지가 모든 노드에 닿는 이유"},
-        {"Alice Liddell", "김지은"},
-        {"Bob", "박민수"},
-        {"Carol", "이서연"},
-        {"Thursday", "목요일"},
-        {"Looking forward to it -- see you at ten.", "기대할게요. 10시에 봬요."},
-    };
+    const auto translated = readmeDemoText(language);
     const auto text = [&](const char *english, const char *inJapanese) {
-        if (korean) {
-            if (!inKorean.contains(QString::fromUtf8(english)))
-                std::cerr << "no Korean demo text for: " << english << "\n";
-            return inKorean.value(QString::fromUtf8(english), QString::fromUtf8(english));
+        if (!translated.isEmpty()) {
+            if (!translated.contains(QString::fromUtf8(english)))
+                std::cerr << "no demo text in this language for: " << english << "\n";
+            return translated.value(QString::fromUtf8(english), QString::fromUtf8(english));
         }
         return QString::fromUtf8(japanese ? inJapanese : english);
     };
