@@ -276,6 +276,48 @@ int main(int argc, char **argv) {
             for (auto chip : chips)
                 activeKept = activeKept || chip->isChecked();
             require(activeKept, "the active chan stays selected while collapsed");
+            {
+                // Switching chans moves the selection without rebuilding the
+                // rail: rebuilt, it painted empty for a moment, a blink.
+                struct ChipPaints : QObject {
+                    QWidget *holder = nullptr;
+                    int bare = 0; // paints that found the rail without its chips
+                    bool eventFilter(QObject *watched, QEvent *event) override {
+                        if (watched == holder && event->type() == QEvent::Paint) {
+                            int shown = 0;
+                            for (auto chip : holder->findChildren<QPushButton *>("channelChip"))
+                                shown += chip->isVisible();
+                            bare += shown == 0;
+                        }
+                        return false;
+                    }
+                } paints;
+                QList<QPointer<QPushButton>> kept;
+                QPushButton *active = nullptr, *other = nullptr;
+                for (auto chip : chips) {
+                    kept << chip;
+                    (chip->isChecked() ? active : other) = chip;
+                }
+                paints.holder = active->parentWidget();
+                paints.holder->installEventFilter(&paints);
+                other->click();
+                QTest::qWait(50);
+                require(paints.bare == 0, "switching chans never paints the rail without its chips");
+                bool same = true;
+                for (const auto &chip : kept)
+                    same = same && chip;
+                require(same, "switching chans keeps the rail's chips; only the selection moves");
+                require(other->isChecked() && !active->isChecked(),
+                        "a click on a chan selects it, and only it");
+                active->click();
+                QTest::qWait(50);
+                active->click();
+                QTest::qWait(50);
+                paints.holder->removeEventFilter(&paints);
+                require(active->isChecked() && !other->isChecked(),
+                        "a click on the selected chan keeps it selected");
+                require(paints.bare == 0, "and the rail never paints without them");
+            }
             toggle->click();
             QCoreApplication::processEvents();
             require(rail->width() == wide && heading->text() == "CHANNELS" &&

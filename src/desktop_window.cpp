@@ -2818,19 +2818,9 @@ void DesktopWindow::refreshChannels() {
         stillJoined = stillJoined || v.toMap()["address"].toString() == active;
     if (!stillJoined)
         active = entries.isEmpty() ? QString() : entries.first().toMap()["address"].toString();
-    while (auto item = channelChipLayout_->takeAt(0)) {
-        delete item->widget();
-        delete item;
-    }
-    for (auto v : entries) {
-        auto item = v.toMap();
-        auto chipAddress = item["address"].toString();
-        auto label = item["label"].toString();
-        // Collapsed, the rail is a column of identicons; the name moves to
-        // the tooltip.
-        auto chip = new QPushButton(channelRailCollapsed_ ? QString() : label);
-        chip->setObjectName("channelChip");
-        chip->setCheckable(true);
+    // What a chip shows of its chan's state: whether it is the selected one, and
+    // unread mail.
+    const auto dress = [&](QPushButton *chip, const QString &chipAddress) {
         chip->setChecked(chipAddress == active);
         const bool unread = broadcasts ? session_.broadcastUnread(chipAddress)
                                        : session_.channelUnread(chipAddress);
@@ -2846,10 +2836,10 @@ void DesktopWindow::refreshChannels() {
                 // On the selected chip the background is the highlight colour
                 // itself, so the dot takes the text colour drawn on it.
                 const bool selected = chipAddress == active;
-                p.setPen(QPen(palette().color(selected ? QPalette::Highlight : QPalette::Window),
-                              1.5));
-                p.setBrush(palette().color(selected ? QPalette::HighlightedText
-                                                    : QPalette::Highlight));
+                p.setPen(
+                    QPen(palette().color(selected ? QPalette::Highlight : QPalette::Window), 1.5));
+                p.setBrush(
+                    palette().color(selected ? QPalette::HighlightedText : QPalette::Highlight));
                 p.drawEllipse(QRectF(16.5, 0.75, 7, 7));
             }
             p.end();
@@ -2859,32 +2849,65 @@ void DesktopWindow::refreshChannels() {
             chip->setIcon(QIcon(identiconPixmap(chipAddress, 18)));
             chip->setIconSize(QSize(18, 18));
         }
-        if (unread) {
-            auto f = chip->font();
-            f.setBold(true);
-            chip->setFont(f);
+        auto f = chip->font();
+        f.setBold(unread);
+        chip->setFont(f);
+    };
+    // The same chans as shown: only the selection and unread mail can have
+    // changed, so the chips stay. Made anew, the rail painted empty for a
+    // moment before they showed, a blink at every switch.
+    QString shown = QString("%1 %2").arg(broadcasts).arg(channelRailCollapsed_);
+    for (auto v : entries) {
+        const auto item = v.toMap();
+        shown += '\n' + item["address"].toString() + '\t' + item["label"].toString() + '\t' +
+                 QString::number(item["subscribed"].toBool()) +
+                 QString::number(item["updates"].toBool());
+    }
+    if (shown == railShown_) {
+        for (int i = 0; i < channelChipLayout_->count(); ++i)
+            if (auto chip = qobject_cast<QPushButton *>(channelChipLayout_->itemAt(i)->widget()))
+                dress(chip, chip->property("address").toString());
+    } else {
+        railShown_ = shown;
+        while (auto item = channelChipLayout_->takeAt(0)) {
+            delete item->widget();
+            delete item;
         }
-        chip->setStyleSheet(QString("QPushButton{text-align:%1;padding:%2;border:0;"
-                                    "border-radius:6px;} QPushButton:checked{"
-                                    "background:palette(highlight);"
-                                    "color:palette(highlighted-text);}")
-                                .arg(channelRailCollapsed_ ? "center" : "left",
-                                     channelRailCollapsed_ ? "5px 4px" : "8px 10px"));
-        chip->setCursor(Qt::PointingHandCursor);
-        chip->setToolTip((label != chipAddress ? "<b>" + label.toHtmlEscaped() + "</b>" : QString()) +
-                         "<pre>" + chipAddress.toHtmlEscaped() + "</pre>");
-        connect(chip, &QPushButton::clicked, this, [this, chipAddress, broadcasts] {
-            (broadcasts ? activeBroadcastAddress_ : activeChannelAddress_) = chipAddress;
-            session_.messageModel()->setChannel(chipAddress);
-            updateState();
-            QTimer::singleShot(0, this, [this] { refreshChannels(); });
-        });
-        if (broadcasts) {
-            // Right-click: copy the address, or stop following this sender.
-            const bool subscribed = item["subscribed"].toBool();
-            const bool updatesSource = item["updates"].toBool();
-            chip->setContextMenuPolicy(Qt::CustomContextMenu);
-            connect(chip, &QWidget::customContextMenuRequested, this,
+        for (auto v : entries) {
+            auto item = v.toMap();
+            auto chipAddress = item["address"].toString();
+            auto label = item["label"].toString();
+            // Collapsed, the rail is a column of identicons; the name moves to
+            // the tooltip.
+            auto chip = new QPushButton(channelRailCollapsed_ ? QString() : label);
+            chip->setObjectName("channelChip");
+            chip->setCheckable(true);
+            // One selected at a time, and a click on it keeps it selected.
+            chip->setAutoExclusive(true);
+            chip->setProperty("address", chipAddress);
+            chip->setStyleSheet(QString("QPushButton{text-align:%1;padding:%2;border:0;"
+                                        "border-radius:6px;} QPushButton:checked{"
+                                        "background:palette(highlight);"
+                                        "color:palette(highlighted-text);}")
+                                    .arg(channelRailCollapsed_ ? "center" : "left",
+                                         channelRailCollapsed_ ? "5px 4px" : "8px 10px"));
+            chip->setCursor(Qt::PointingHandCursor);
+            chip->setToolTip(
+                (label != chipAddress ? "<b>" + label.toHtmlEscaped() + "</b>" : QString()) +
+                "<pre>" + chipAddress.toHtmlEscaped() + "</pre>");
+            connect(chip, &QPushButton::clicked, this, [this, chipAddress, broadcasts] {
+                (broadcasts ? activeBroadcastAddress_ : activeChannelAddress_) = chipAddress;
+                session_.messageModel()->setChannel(chipAddress);
+                updateState();
+                QTimer::singleShot(0, this, [this] { refreshChannels(); });
+            });
+            if (broadcasts) {
+                // Right-click: copy the address, or stop following this sender.
+                const bool subscribed = item["subscribed"].toBool();
+                const bool updatesSource = item["updates"].toBool();
+                chip->setContextMenuPolicy(Qt::CustomContextMenu);
+                connect(
+                    chip, &QWidget::customContextMenuRequested, this,
                     [this, chip, chipAddress, subscribed, updatesSource](const QPoint &at) {
                         QMenu menu(this);
                         menu.setObjectName("broadcastSourceMenu");
@@ -2905,10 +2928,12 @@ void DesktopWindow::refreshChannels() {
                         else if (what == "unsubscribeSource")
                             session_.unsubscribe(chipAddress);
                     });
+            }
+            dress(chip, chipAddress);
+            channelChipLayout_->addWidget(chip);
         }
-        channelChipLayout_->addWidget(chip);
+        channelChipLayout_->addStretch();
     }
-    channelChipLayout_->addStretch();
     session_.messageModel()->setChannel(active);
     if (broadcasts) {
         QString label;

@@ -36,6 +36,7 @@ class DesktopWindow : public QMainWindow {
     QListWidget *folders_;
     QWidget *channelRail_;
     QVBoxLayout *channelChipLayout_;
+    QString railShown_; // which chans the rail's chips were made for, and how
     QString activeChannelAddress_, activeBroadcastAddress_;
     QString listDensity_;
     bool channelRailCollapsed_ = false;
