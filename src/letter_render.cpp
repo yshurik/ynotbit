@@ -301,8 +301,9 @@ void renderMarkdown(QTextBrowser *body, const QString &text) {
     body->verticalScrollBar()->setValue(0);
 }
 // Headings, paired **bold**/__bold__, `code`, and [text](url) links are
-// specific enough that even one match is enough. Dash and numbered lists are
-// not counted at all: plain-text letters use them all the time.
+// specific enough that even one match is enough, and so is ynotbit's own
+// signature line: those letters come from its Markdown composer. Dash and
+// numbered lists are not counted at all: plain-text letters use them all the time.
 bool looksLikeMarkdown(const QString &source) {
     // Quoted Markdown counts too: a plain answer to a Markdown letter.
     const auto text = withoutQuoteMarkers(source);
@@ -314,9 +315,11 @@ bool looksLikeMarkdown(const QString &source) {
     // A picture by reference, ![alt][img1], or PyBitmessage's <img src="data:...">.
     static const QRegularExpression image("!\\[[^\\]\\n]*\\]\\[[^\\]\\n]+\\]|<img\\b[^>]*\\bsrc\\s*=\\s*[\"']data:image/",
                                           QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression signature("^" + QRegularExpression::escape(kSignature) + "$",
+                                              QRegularExpression::MultilineOption);
     return heading.match(text).hasMatch() || bold.match(text).hasMatch() ||
            code.match(text).hasMatch() || link.match(text).hasMatch() ||
-           image.match(text).hasMatch();
+           image.match(text).hasMatch() || signature.match(text).hasMatch();
 }
 BodyView detectBodyView(const QString &subject, const QString &text) {
     if (looksCryptic(subject, text))

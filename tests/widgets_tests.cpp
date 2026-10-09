@@ -686,6 +686,16 @@ int main(int argc, char **argv) {
                 "direct"));
             require(mode("view_plain")->isChecked(),
                     "a dash or numbered list alone is not a markdown signal");
+            // ynotbit's signature means the letter came from its Markdown composer.
+            window.selectMessage(session.saveLetter({}, address, address, "Empty",
+                                                    "-- sent by y*notbit*", "direct"));
+            require(mode("view_markdown")->isChecked(),
+                    "a letter holding only ynotbit's signature opens in markdown mode");
+            window.selectMessage(session.saveLetter({}, address, address, "Short",
+                                                    "See you at 5.\n\n-- sent by y*notbit*",
+                                                    "direct"));
+            require(mode("view_markdown")->isChecked(),
+                    "plain words above ynotbit's signature open in markdown mode too");
             window.selectMessage(acknowledged); // "A delivered letter." -- neither, so plain
             require(mode("view_plain")->isChecked(),
                     "an ordinary body opens in plain mode, not markdown");
