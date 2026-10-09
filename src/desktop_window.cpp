@@ -1477,6 +1477,99 @@ class ContactDialog : public QDialog {
     QLabel *note_;
     QPushButton *save_;
 };
+// The reader's body: the letter's rendering, as tall as its text, in the reader
+// that scrolls it together with the subject and details. Never scrolling on its
+// own, it leaves the wheel to the reader; the paging keys move the reader too,
+// and a selection dragged past its edge scrolls it.
+class ReaderBody : public LetterView {
+  public:
+    explicit ReaderBody(QScrollArea *reader) : reader_(reader) {
+        setDocument(new SafeDocument(this));
+        setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded); // hex dumps don't wrap
+        connect(document()->documentLayout(),
+                &QAbstractTextDocumentLayout::documentSizeChanged, this, [this] { fit(); });
+    }
+
+  protected:
+    void resizeEvent(QResizeEvent *event) override {
+        LetterView::resizeEvent(event);
+        fit();
+    }
+    void keyPressEvent(QKeyEvent *event) override {
+        // The keys that paged the body on its own page the reader.
+        auto action = QAbstractSlider::SliderNoAction;
+        if (!(event->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier))) {
+            switch (event->key()) {
+            case Qt::Key_Space:
+                action = event->modifiers().testFlag(Qt::ShiftModifier)
+                             ? QAbstractSlider::SliderPageStepSub
+                             : QAbstractSlider::SliderPageStepAdd;
+                break;
+            case Qt::Key_PageUp: action = QAbstractSlider::SliderPageStepSub; break;
+            case Qt::Key_PageDown: action = QAbstractSlider::SliderPageStepAdd; break;
+            case Qt::Key_Up: action = QAbstractSlider::SliderSingleStepSub; break;
+            case Qt::Key_Down: action = QAbstractSlider::SliderSingleStepAdd; break;
+            case Qt::Key_Home: action = QAbstractSlider::SliderToMinimum; break;
+            case Qt::Key_End: action = QAbstractSlider::SliderToMaximum; break;
+            default: break;
+            }
+        }
+        if (action == QAbstractSlider::SliderNoAction) {
+            LetterView::keyPressEvent(event);
+            return;
+        }
+        reader_->verticalScrollBar()->triggerAction(action);
+        event->accept();
+    }
+    void mouseMoveEvent(QMouseEvent *event) override {
+        LetterView::mouseMoveEvent(event);
+        dragAt_ = event->globalPosition().toPoint();
+        if ((event->buttons() & Qt::LeftButton) && overEdge() != 0)
+            autoScroll_.start(40, this);
+        else
+            autoScroll_.stop();
+    }
+    void mouseReleaseEvent(QMouseEvent *event) override {
+        autoScroll_.stop();
+        LetterView::mouseReleaseEvent(event);
+    }
+    void timerEvent(QTimerEvent *event) override {
+        if (event->timerId() != autoScroll_.timerId()) {
+            LetterView::timerEvent(event);
+            return;
+        }
+        const int over = overEdge();
+        if (over == 0) {
+            autoScroll_.stop();
+            return;
+        }
+        auto bar = reader_->verticalScrollBar();
+        bar->setValue(bar->value() + over);
+        // The selection reaches what the pointer is over now.
+        QMouseEvent move(QEvent::MouseMove, viewport()->mapFromGlobal(dragAt_), dragAt_,
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        LetterView::mouseMoveEvent(&move);
+    }
+
+  private:
+    void fit() {
+        const auto bar = horizontalScrollBar();
+        const int h = qCeil(document()->size().height()) + 2 * frameWidth() +
+                      (bar->maximum() > 0 ? bar->sizeHint().height() : 0);
+        if (h != minimumHeight())
+            setMinimumHeight(h);
+    }
+    // How far the dragging pointer is above (negative) or below the reader's view.
+    int overEdge() const {
+        const int y = reader_->viewport()->mapFromGlobal(dragAt_).y();
+        const int height = reader_->viewport()->height();
+        return y < 0 ? y : y > height ? y - height : 0;
+    }
+    QScrollArea *reader_;
+    QBasicTimer autoScroll_;
+    QPoint dragAt_;
+};
 } // namespace
 // One letter as the reader pane and a message window both show it: its
 // actions and view switch, subject, From / To, delivery status and timeline,
@@ -1541,7 +1634,20 @@ class LetterPane : public KindFrame {
         viewSwitch_->setObjectName("viewSwitch");
         toolRow->addWidget(viewSwitch_);
         frame->addWidget(actions_);
-        subject_ = subjectArea(frame, "subject");
+        // Subject, details and body scroll as one under the toolbar, so a long
+        // letter gets the whole pane once scrolled down.
+        scroll_ = new QScrollArea;
+        scroll_->setObjectName("readerScroll");
+        scroll_->setWidgetResizable(true);
+        scroll_->setFrameShape(QFrame::NoFrame);
+        scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        // Always shown, so the text never re-wraps when the bar appears.
+        scroll_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+        auto content = new QWidget;
+        auto column = new QVBoxLayout(content);
+        column->setContentsMargins(0, 0, 0, 0);
+        column->setSpacing(frame->spacing());
+        subject_ = subjectArea(column, "subject");
         details_ = new QWidget;
         auto metadata = new QGridLayout(details_);
         metadata->setContentsMargins(0, 0, 0, 0);
@@ -1614,15 +1720,15 @@ class LetterPane : public KindFrame {
             "and saved, which may be after network arrival while locked. Sent to "
             "peers is a relay offer, not a read receipt."));
         metadata->addWidget(timeline_, 4, 0, 1, 3);
-        frame->addWidget(details_);
-        body_ = new LetterView;
+        column->addWidget(details_);
+        body_ = new ReaderBody(scroll_);
         body_->setObjectName("readerBody");
-        body_->setDocument(new SafeDocument(body_));
         new AddressHighlighter(body_->document());
         body_->setOpenLinks(false);
         body_->setFrameShape(QFrame::NoFrame);
-        body_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
-        frame->addWidget(body_, 1);
+        column->addWidget(body_, 1);
+        scroll_->setWidget(content);
+        frame->addWidget(scroll_, 1);
         connect(body_, &QTextBrowser::anchorClicked, this, [this](QUrl url) {
             if (url.scheme() == "https" &&
                 QMessageBox::question(this, DesktopWindow::tr("Open link"),
@@ -1770,6 +1876,8 @@ class LetterPane : public KindFrame {
     void renderBody() {
         showLetterBody(body_, subject_, letter_["subject"].toString(), letter_["body"].toString(),
                        viewSwitch_->mode());
+        // Each letter, and each view of it, starts at the top.
+        scroll_->verticalScrollBar()->setValue(0);
     }
     void updateDeliveryStatus() {
         const auto state = letter_.value("state").toString();
@@ -1791,6 +1899,7 @@ class LetterPane : public KindFrame {
     QToolBar *toolbar_;
     ViewSwitch *viewSwitch_;
     QWidget *actions_, *details_;
+    QScrollArea *scroll_;
     QTextEdit *subject_;
     QLabel *fromAddress_, *toAddress_, *fromName_, *toName_, *toLabel_;
     QLabel *deliveryStatus_, *deliveryError_, *timeline_;

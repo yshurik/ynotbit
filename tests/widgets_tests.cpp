@@ -747,11 +747,26 @@ int main(int argc, char **argv) {
         require(popped->findChild<QTextBrowser *>("readerBody")->toPlainText().contains(
                     "A readable list"),
                 "separate window renders the same markdown body");
-        require(reader->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
-                "main window body always shows its scrollbar");
-        require(popped->findChild<QTextBrowser *>("readerBody")->verticalScrollBarPolicy() ==
-                    Qt::ScrollBarAlwaysOn,
-                "separate window body always shows its scrollbar");
+        // Subject, details and body scroll as one: the scrollbar is the reader's,
+        // always shown, so text never re-wraps when it appears.
+        const auto readerScroll = [](QWidget *body) {
+            QScrollArea *scroll = nullptr;
+            for (auto w = body->parentWidget(); w && !scroll; w = w->parentWidget())
+                scroll = qobject_cast<QScrollArea *>(w);
+            return scroll;
+        };
+        auto scroll = readerScroll(reader);
+        auto poppedReaderBody = popped->findChild<QTextBrowser *>("readerBody");
+        auto poppedScroll = readerScroll(poppedReaderBody);
+        require(scroll && scroll->objectName() == "readerScroll" &&
+                    scroll->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn &&
+                    reader->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOff,
+                "main window reader always shows its scrollbar; the body has none of its own");
+        require(poppedScroll && poppedScroll != scroll &&
+                    poppedScroll->objectName() == "readerScroll" &&
+                    poppedScroll->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn &&
+                    poppedReaderBody->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOff,
+                "separate window reader always shows its scrollbar; the body has none of its own");
         require(window.findChild<QToolBar *>("actionsToolbar")->mapTo(&window, QPoint()).y() <
                     window.findChild<QTextEdit *>("subject")->mapTo(&window, QPoint()).y(),
                 "main window toolbar renders above the subject");
@@ -761,6 +776,84 @@ int main(int argc, char **argv) {
                         .y(),
                 "separate window toolbar renders above the subject");
         popped->close();
+        {
+            // A long letter: scrolled down, the body gets the whole pane, while
+            // the toolbar stays.
+            QStringList lines;
+            for (int i = 1; i <= 300; ++i)
+                lines << QString("Line %1 of a long letter.").arg(i);
+            const auto longLetter =
+                session.saveLetter({}, address, address, "A long letter", lines.join('\n'), "direct");
+            const auto otherLong = session.saveLetter({}, address, address, "Another long letter",
+                                                      lines.join("\n\n"), "direct");
+            window.selectMessage(longLetter);
+            QCoreApplication::processEvents();
+            auto bar = scroll->verticalScrollBar();
+            auto viewport = scroll->viewport();
+            auto subject = window.findChild<QTextEdit *>("subject");
+            auto toolbar = window.findChild<QToolBar *>("actionsToolbar");
+            const int toolbarY = toolbar->mapTo(&window, QPoint()).y();
+            require(bar->maximum() > 0 && reader->verticalScrollBar()->maximum() == 0,
+                    "a long letter scrolls the reader, not the body on its own");
+            require(bar->value() == 0 && subject->mapTo(viewport, QPoint()).y() >= 0,
+                    "a letter opens at the top, its subject in view");
+            bar->setValue(bar->maximum());
+            require(subject->mapTo(viewport, QPoint(0, subject->height())).y() <= 0,
+                    "scrolled down, the subject is out of view");
+            require(reader->mapTo(viewport, QPoint(0, reader->height())).y() <= viewport->height(),
+                    "and the end of the body is in view");
+            require(toolbar->mapTo(&window, QPoint()).y() == toolbarY,
+                    "the toolbar stays put while the letter scrolls");
+            window.selectMessage(otherLong);
+            QCoreApplication::processEvents();
+            require(bar->maximum() > 0 && bar->value() == 0,
+                    "the next letter opens at the top, not where the last one was left");
+            bar->setValue(bar->maximum());
+            window.findChild<QWidget *>("viewSwitch")->findChild<QToolButton *>("view_text")->click();
+            QCoreApplication::processEvents();
+            require(bar->value() == 0, "and so does another view of the same letter");
+            window.selectMessage(acknowledged); // "A delivered letter."
+            QCoreApplication::processEvents();
+            require(bar->value() == 0 && bar->maximum() == 0, "a short letter opens unscrolled");
+            require(reader->mapTo(viewport, QPoint(0, reader->height())).y() == viewport->height(),
+                    "and its body fills the rest of the pane");
+
+            window.selectMessage(longLetter);
+            QCoreApplication::processEvents();
+            const auto visible = reader->visibleRegion().boundingRect();
+            QTest::wheelEvent(window.windowHandle(), reader->mapTo(&window, visible.center()),
+                              QPoint(0, -120));
+            QCoreApplication::processEvents();
+            require(bar->value() > 0, "the wheel over the body scrolls the whole reader");
+
+            bar->setValue(0);
+            QTest::keyClick(reader, Qt::Key_PageDown);
+            require(bar->value() == bar->pageStep(), "Page Down in the body pages the reader");
+            QTest::keyClick(reader, Qt::Key_End);
+            require(bar->value() == bar->maximum(), "End goes to the end of the letter");
+            QTest::keyClick(reader, Qt::Key_Home);
+            require(bar->value() == 0, "Home goes back to the top");
+            QTest::keyClick(reader, Qt::Key_Space);
+            require(bar->value() == bar->pageStep(), "Space pages too");
+
+            // Selecting past the bottom edge scrolls on, the selection following.
+            bar->setValue(0);
+            auto bodyPort = reader->viewport();
+            const QPoint start = bodyPort->mapFrom(viewport, QPoint(20, viewport->height() - 40));
+            const QPoint below = bodyPort->mapFrom(viewport, QPoint(20, viewport->height() + 30));
+            QTest::mousePress(bodyPort, Qt::LeftButton, {}, start);
+            QMouseEvent drag(QEvent::MouseMove, below, bodyPort->mapToGlobal(below), Qt::NoButton,
+                             Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(bodyPort, &drag);
+            const int firstEnd = reader->textCursor().position();
+            QTest::qWait(300);
+            require(bar->value() > 0 && reader->textCursor().position() > firstEnd,
+                    "dragging a selection past the bottom scrolls the reader and extends the selection");
+            QTest::mouseRelease(bodyPort, Qt::LeftButton, {}, below);
+            const int stopped = bar->value();
+            QTest::qWait(150);
+            require(bar->value() == stopped, "releasing the button stops the scrolling");
+        }
         if (app.arguments().contains("--capture")) {
             folders->setCurrentRow(0);
             window.selectMessage(acknowledged);
@@ -1333,11 +1426,11 @@ int main(int argc, char **argv) {
         QCoreApplication::processEvents();
         auto bodyPopped = window.findChild<QDialog *>("messageWindow");
         require(bodyPopped, "opens a separate window for the long-body letter");
-        auto poppedBody = bodyPopped->findChild<QTextBrowser *>("readerBody");
-        require(poppedBody->verticalScrollBar()->maximum() > 0,
-                "long body is actually scrollable (test sanity)");
-        require(poppedBody->verticalScrollBar()->value() == 0,
-                "separate window opens scrolled to the beginning of the body, not the end");
+        auto poppedBar =
+            readerScroll(bodyPopped->findChild<QTextBrowser *>("readerBody"))->verticalScrollBar();
+        require(poppedBar->maximum() > 0, "long body is actually scrollable (test sanity)");
+        require(poppedBar->value() == 0,
+                "separate window opens scrolled to the beginning of the letter, not the end");
         bodyPopped->close();
         QCoreApplication::processEvents();
         folders->setCurrentRow(4);
