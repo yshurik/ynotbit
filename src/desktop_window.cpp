@@ -256,6 +256,20 @@ QPushButton *button(QString text, QBoxLayout *layout, std::function<void()> fn) 
     QObject::connect(b, &QPushButton::clicked, b, std::move(fn));
     return b;
 }
+// A card's icon buttons in a row, drawn as a feed card's actions.
+QWidget *cardActions(const QList<QToolButton *> &buttons, bool dark) {
+    auto group = new QWidget;
+    group->setObjectName("cardActions");
+    styleActionGroup(group, dark);
+    auto row = new QHBoxLayout(group);
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(0);
+    for (int i = 0; i < buttons.size(); ++i) {
+        row->addWidget(buttons[i]);
+        placeInActionGroup(buttons[i], 0, i, 1, int(buttons.size()));
+    }
+    return group;
+}
 // Folder names double as keys (English, untranslated); the markers let lupdate
 // collect them, and the rail and heading translate them for display.
 const QVector<QPair<QString, QString>> kFolderIcons = {
@@ -2701,6 +2715,8 @@ void DesktopWindow::updateTheme() {
         findChild<QToolButton *>("folderIcon_" + label)->setIcon(materialIcon(iconName, color));
     if (contacts_->isVisible())
         refreshContacts();
+    if (identities_->isVisible())
+        refreshIdentities(); // the cards' icons and action groups
 }
 void DesktopWindow::updateState() {
     // A mailbox opens on Subscriptions with the digest selected (the first
@@ -3193,12 +3209,7 @@ void DesktopWindow::refreshIdentities() {
             cardRow->addWidget(setDefaultButton);
         }
 
-        auto qrButton = new QToolButton;
-        qrButton->setObjectName("showQrButton");
-        qrButton->setIcon(materialIcon("qr", color));
-        qrButton->setAutoRaise(true);
-        qrButton->setCursor(Qt::PointingHandCursor);
-        qrButton->setToolTip(tr("Show QR code"));
+        auto qrButton = actionButton("showQrButton", "qr", tr("Show QR code"), appearance_.dark());
         connect(qrButton, &QToolButton::clicked, this, [this, address, label] {
             QDialog dialog(this);
             dialog.setObjectName("qrDialog");
@@ -3221,31 +3232,21 @@ void DesktopWindow::refreshIdentities() {
             qrLayout->addLayout(buttonsRow);
             dialog.exec();
         });
-        cardRow->addWidget(qrButton);
 
-        auto renameButton = new QToolButton;
-        renameButton->setObjectName("renameIdentityButton");
-        renameButton->setIcon(materialIcon("edit", color));
-        renameButton->setAutoRaise(true);
-        renameButton->setCursor(Qt::PointingHandCursor);
-        renameButton->setToolTip(tr("Rename"));
+        auto renameButton = actionButton("renameIdentityButton", "rename", tr("Rename identity"),
+                                         appearance_.dark());
         connect(renameButton, &QToolButton::clicked, this, [this, address] {
             session_.renameIdentity(address);
             QTimer::singleShot(0, this, [this] { refreshIdentities(); });
         });
-        cardRow->addWidget(renameButton);
 
-        auto deleteButton = new QToolButton;
-        deleteButton->setObjectName("deleteIdentityButton");
-        deleteButton->setIcon(materialIcon("delete", color));
-        deleteButton->setAutoRaise(true);
-        deleteButton->setCursor(Qt::PointingHandCursor);
-        deleteButton->setToolTip(tr("Delete"));
+        auto deleteButton = actionButton("deleteIdentityButton", "delete", tr("Delete identity"),
+                                         appearance_.dark());
         connect(deleteButton, &QToolButton::clicked, this, [this, address] {
             session_.deleteIdentity(address);
             QTimer::singleShot(0, this, [this] { refreshIdentities(); });
         });
-        cardRow->addWidget(deleteButton);
+        cardRow->addWidget(cardActions({qrButton, renameButton, deleteButton}, appearance_.dark()));
 
         identityLayout_->addWidget(card);
     }
@@ -3315,23 +3316,14 @@ void DesktopWindow::refreshContacts() {
         write->setCursor(Qt::PointingHandCursor);
         connect(write, &QPushButton::clicked, this, [this, address] { compose({{"to", address}}); });
         cardRow->addWidget(write);
-        auto rename = new QToolButton;
-        rename->setObjectName("renameContactButton");
-        rename->setIcon(materialIcon("edit", color));
-        rename->setAutoRaise(true);
-        rename->setCursor(Qt::PointingHandCursor);
-        rename->setToolTip(tr("Rename"));
+        auto rename =
+            actionButton("renameContactButton", "rename", tr("Rename contact"), appearance_.dark());
         connect(rename, &QToolButton::clicked, this, [this, address, label] {
             if (editContact(address, label))
                 QTimer::singleShot(0, this, [this] { refreshContacts(); });
         });
-        cardRow->addWidget(rename);
-        auto remove = new QToolButton;
-        remove->setObjectName("deleteContactButton");
-        remove->setIcon(materialIcon("delete", color));
-        remove->setAutoRaise(true);
-        remove->setCursor(Qt::PointingHandCursor);
-        remove->setToolTip(tr("Delete"));
+        auto remove =
+            actionButton("deleteContactButton", "delete", tr("Delete contact"), appearance_.dark());
         connect(remove, &QToolButton::clicked, this, [this, address, label] {
             if (QMessageBox::question(this, tr("Delete contact"),
                                       tr("Remove “%1” from contacts? Letters to and from "
@@ -3341,7 +3333,7 @@ void DesktopWindow::refreshContacts() {
             session_.removeContact(address);
             QTimer::singleShot(0, this, [this] { refreshContacts(); });
         });
-        cardRow->addWidget(remove);
+        cardRow->addWidget(cardActions({rename, remove}, appearance_.dark()));
         contactLayout_->addWidget(card);
     }
     if (shown == 0) {

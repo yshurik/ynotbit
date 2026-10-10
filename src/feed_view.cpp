@@ -51,6 +51,8 @@ class FeedBody : public LetterView {
         event->ignore();
     }
 };
+} // namespace
+
 QToolButton *actionButton(const QString &name, const QString &icon, const QString &tip,
                           bool dark) {
     auto b = new QToolButton;
@@ -62,7 +64,33 @@ QToolButton *actionButton(const QString &name, const QString &icon, const QStrin
     b->setCursor(Qt::PointingHandCursor);
     return b;
 }
-} // namespace
+void styleActionGroup(QWidget *group, bool dark) {
+    const QString border = dark ? "#4d4d4d" : "#e5e5e5", hover = dark ? "#555555" : "#dddddd";
+    // Dividers and rounded corners follow each button's place in the grid (see
+    // placeInActionGroup), so the buttons read as one control in any shape.
+    group->setStyleSheet(
+        QString(
+            "%3{border:1px solid %1;border-radius:7px;background:transparent;} "
+            "%3 QToolButton{border:0;border-radius:0;background:transparent;padding:4px;margin:0;} "
+            "%3 QToolButton:hover{background:%2;} "
+            "%3 QToolButton[lastRow=\"false\"]{border-bottom:1px solid %1;} "
+            "%3 QToolButton[lastColumn=\"false\"]{border-right:1px solid %1;} "
+            "%3 QToolButton[roundTL=\"true\"]{border-top-left-radius:6px;} "
+            "%3 QToolButton[roundTR=\"true\"]{border-top-right-radius:6px;} "
+            "%3 QToolButton[roundBL=\"true\"]{border-bottom-left-radius:6px;} "
+            "%3 QToolButton[roundBR=\"true\"]{border-bottom-right-radius:6px;} ")
+            .arg(border, hover, "QWidget#" + group->objectName()));
+}
+void placeInActionGroup(QToolButton *b, int row, int column, int rows, int columns) {
+    b->setProperty("lastRow", row == rows - 1);
+    b->setProperty("lastColumn", column == columns - 1);
+    b->setProperty("roundTL", row == 0 && column == 0);
+    b->setProperty("roundTR", row == 0 && column == columns - 1);
+    b->setProperty("roundBL", row == rows - 1 && column == 0);
+    b->setProperty("roundBR", row == rows - 1 && column == columns - 1);
+    b->style()->unpolish(b);
+    b->style()->polish(b);
+}
 
 QString relativeTime(const QDateTime &when, const QDateTime &now) {
     const auto secs = when.secsTo(now);
@@ -379,21 +407,7 @@ QWidget *FeedView::makeCard(const QVariantMap &letter) {
 
     auto actionsWidget = new QWidget;
     actionsWidget->setObjectName("feedActions");
-    QString borderColor = dark_ ? "#4d4d4d" : "#e5e5e5";
-    QString hoverColor = dark_ ? "#555555" : "#dddddd";
-    // Dividers and rounded corners follow each button's place in the grid (see
-    // arrange below), so the buttons read as one control in any shape.
-    actionsWidget->setStyleSheet(
-        QString("QWidget#feedActions{border:1px solid %1;border-radius:7px;background:transparent;} "
-                "QWidget#feedActions QToolButton{border:0;border-radius:0;background:transparent;padding:4px;margin:0;} "
-                "QWidget#feedActions QToolButton:hover{background:%2;} "
-                "QWidget#feedActions QToolButton[lastRow=\"false\"]{border-bottom:1px solid %1;} "
-                "QWidget#feedActions QToolButton[lastColumn=\"false\"]{border-right:1px solid %1;} "
-                "QWidget#feedActions QToolButton[roundTL=\"true\"]{border-top-left-radius:6px;} "
-                "QWidget#feedActions QToolButton[roundTR=\"true\"]{border-top-right-radius:6px;} "
-                "QWidget#feedActions QToolButton[roundBL=\"true\"]{border-bottom-left-radius:6px;} "
-                "QWidget#feedActions QToolButton[roundBR=\"true\"]{border-bottom-right-radius:6px;} ")
-            .arg(borderColor, hoverColor));
+    styleActionGroup(actionsWidget, dark_);
     auto actions = new QGridLayout(actionsWidget);
     actions->setContentsMargins(0, 0, 0, 0);
     actions->setSpacing(0);
@@ -430,14 +444,7 @@ QWidget *FeedView::makeCard(const QVariantMap &letter) {
             const int row = i % rows, column = i / rows;
             actions->removeWidget(b);
             actions->addWidget(b, row, column);
-            b->setProperty("lastRow", row == rows - 1);
-            b->setProperty("lastColumn", column == columns - 1);
-            b->setProperty("roundTL", row == 0 && column == 0);
-            b->setProperty("roundTR", row == 0 && column == columns - 1);
-            b->setProperty("roundBL", row == rows - 1 && column == 0);
-            b->setProperty("roundBR", row == rows - 1 && column == columns - 1);
-            b->style()->unpolish(b);
-            b->style()->polish(b);
+            placeInActionGroup(b, row, column, rows, columns);
         }
     };
     arrange(1);

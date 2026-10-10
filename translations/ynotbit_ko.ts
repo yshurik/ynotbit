@@ -574,14 +574,6 @@
         <translation>닫기</translation>
     </message>
     <message>
-        <source>Rename</source>
-        <translation>이름 바꾸기</translation>
-    </message>
-    <message>
-        <source>Delete</source>
-        <translation>삭제</translation>
-    </message>
-    <message>
         <source>Write</source>
         <translation>쓰기</translation>
     </message>
@@ -871,6 +863,14 @@ Date: %1
     <message>
         <source>Settings</source>
         <translation>설정</translation>
+    </message>
+    <message>
+        <source>Rename identity</source>
+        <translation>신원 이름 바꾸기</translation>
+    </message>
+    <message>
+        <source>Delete identity</source>
+        <translation>신원 삭제</translation>
     </message>
 </context>
 <context>

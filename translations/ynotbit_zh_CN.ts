@@ -574,14 +574,6 @@
         <translation>关闭</translation>
     </message>
     <message>
-        <source>Rename</source>
-        <translation>重命名</translation>
-    </message>
-    <message>
-        <source>Delete</source>
-        <translation>删除</translation>
-    </message>
-    <message>
         <source>Write</source>
         <translation>写信</translation>
     </message>
@@ -871,6 +863,14 @@ Date: %1
     <message>
         <source>Settings</source>
         <translation>设置</translation>
+    </message>
+    <message>
+        <source>Rename identity</source>
+        <translation>重命名身份</translation>
+    </message>
+    <message>
+        <source>Delete identity</source>
+        <translation>删除身份</translation>
     </message>
 </context>
 <context>

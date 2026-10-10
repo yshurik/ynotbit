@@ -15,6 +15,14 @@ class Session;
 // "just now", "5 min", "3 h", "Yesterday", then a date: how long ago a post
 // arrived, as a feed shows it.
 QString relativeTime(const QDateTime &when, const QDateTime &now);
+// A button for a group of actions, as on a feed card: an 18 px icon.
+QToolButton *actionButton(const QString &name, const QString &icon, const QString &tip, bool dark);
+// Draws a group's buttons as one control, as on a feed card: one border round
+// them all, a divider between neighbours, the group's corners rounded. The
+// group is styled by its object name.
+void styleActionGroup(QWidget *group, bool dark);
+// A button's place in its group's grid, which its dividers and corners follow.
+void placeInActionGroup(QToolButton *button, int row, int column, int rows, int columns);
 class FeedView : public QWidget {
     Q_OBJECT
   public:

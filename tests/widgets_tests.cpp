@@ -195,6 +195,36 @@ int main(int argc, char **argv) {
             return b && b->size() == QSize(22, 22) && b->iconSize() == QSize(14, 14) &&
                    (near(copyEdge(b), QColor("#dbe3e8")) || near(copyEdge(b), QColor("#354553")));
         };
+        // A card's icon buttons sit side by side in one bordered group (drawn as
+        // a feed card's actions: compared with one below).
+        const auto inOnePill = [&](const QList<QToolButton *> &buttons) {
+            auto pill = buttons.first() ? buttons.first()->parentWidget() : nullptr;
+            if (!pill)
+                return false;
+            for (int i = 0; i < buttons.size(); ++i)
+                if (!buttons[i] || buttons[i]->parentWidget() != pill ||
+                    buttons[i]->y() != buttons.first()->y() ||
+                    (i > 0 && buttons[i]->x() <= buttons[i - 1]->x()))
+                    return false;
+            return pill->grab().toImage().pixelColor(0, pill->height() / 2).alpha() == 255;
+        };
+        // Ink in an 80 px icon: opaque pixels in all, and the widest opaque run
+        // of any row in its bottom fifth (a line under the drawing).
+        const auto ink = [](const QIcon &icon) {
+            const auto img =
+                icon.pixmap(QSize(80, 80)).toImage().convertToFormat(QImage::Format_ARGB32);
+            int all = 0, underline = 0;
+            for (int y = 0; y < img.height(); ++y) {
+                int row = 0;
+                for (int x = 0; x < img.width(); ++x)
+                    if (qAlpha(img.pixel(x, y)) >= 200)
+                        ++row;
+                all += row;
+                if (y >= img.height() * 4 / 5)
+                    underline = qMax(underline, row);
+            }
+            return std::pair{all, underline};
+        };
         auto list = window.findChild<QListView *>("letters");
         require(list, "list exists");
         require(window.findChild<QPushButton *>("writeButton")->icon().pixmap(24, 24).toImage() !=
@@ -1133,6 +1163,17 @@ int main(int argc, char **argv) {
                     "the contact is listed with its name and address");
             require(copyStyled(cards()[0]->findChild<QToolButton *>("copyContactAddressButton")),
                     "a contact card's copy-address button is drawn like the other tool buttons");
+            {
+                auto rename = cards()[0]->findChild<QToolButton *>("renameContactButton");
+                auto remove = cards()[0]->findChild<QToolButton *>("deleteContactButton");
+                require(inOnePill({rename, remove}),
+                        "a contact card's Rename and Delete sit in one pill");
+                require(rename->toolTip() == "Rename contact" &&
+                            remove->toolTip() == "Delete contact",
+                        "a contact card's buttons say what they act on");
+                require(ink(rename->icon()).second >= 32,
+                        "a contact's Rename shows a pencil over a line of text");
+            }
             auto filter = window.findChild<QLineEdit *>("contactsFilter");
             filter->setText("nobody-matches");
             require(cards().isEmpty() && window.findChild<QLabel *>("contactsEmpty"),
@@ -1903,6 +1944,22 @@ int main(int argc, char **argv) {
 
             require(copyStyled(window.findChild<QToolButton *>("copyAddressButton")),
                     "an identity card's copy-address button is drawn like the other tool buttons");
+            {
+                auto qr = window.findChild<QToolButton *>("showQrButton");
+                auto rename = window.findChild<QToolButton *>("renameIdentityButton");
+                auto remove = window.findChild<QToolButton *>("deleteIdentityButton");
+                require(inOnePill({qr, rename, remove}),
+                        "an identity card's QR, Rename and Delete sit in one pill");
+                require(rename->toolTip() == "Rename identity" &&
+                            remove->toolTip() == "Delete identity",
+                        "an identity card's buttons say what they act on");
+                const auto [renameInk, renameLine] = ink(rename->icon());
+                const auto [editInk, editLine] =
+                    ink(window.findChild<QAction *>("editAction")->icon());
+                require(renameLine >= 32 && editLine == 0,
+                        "Rename shows a pencil over a line of text; Edit / Send, the pencil alone");
+                require(editInk >= 450, "Edit / Send's pencil is drawn whole, not a bare stroke");
+            }
             window.findChild<QToolButton *>("copyAddressButton")->click();
             auto copied = QApplication::clipboard()->text();
             require(copied == address || copied == emptyChannel,
@@ -2175,6 +2232,44 @@ int main(int argc, char **argv) {
                 body->setPlainText(QString("A long post.\n").repeated(20));
                 QTest::qWait(30);
                 require(columns() == 1, "beside a long post the buttons stay in one column");
+            }
+            {
+                // A card's pill is the feed's action group: buttons of the same
+                // size, the same border round them and dividers between them.
+                auto feedButton = feedCard("bc-1")->findChild<QToolButton *>("feedReply");
+                auto feedLast = feedCard("bc-1")->findChild<QToolButton *>("feedTrash");
+                auto feedGroup = feedButton->parentWidget();
+                const auto pixel = [](QWidget *w, int x, int y) {
+                    return w->grab().toImage().pixelColor(x, y);
+                };
+                // One column beside the long post: the divider is below.
+                const auto divider =
+                    pixel(feedButton, feedButton->width() / 2, feedButton->height() - 1);
+                const auto border = pixel(feedGroup, 0, feedGroup->height() / 2);
+                // A divider adds its pixel to a button, below it in the feed's
+                // column, right of it in a card's row; the last button has none.
+                const auto likeFeed = [&](QToolButton *b, QToolButton *last) {
+                    return b && last && b->size() == feedButton->size().transposed() &&
+                           last->size() == feedLast->size() &&
+                           b->iconSize() == feedButton->iconSize() &&
+                           pixel(b, b->width() - 1, b->height() / 2) == divider &&
+                           pixel(b->parentWidget(), 0, b->parentWidget()->height() / 2) == border;
+                };
+                require(divider.alpha() == 255 && border.alpha() == 255,
+                        "test sanity: the feed's group has a border and dividers");
+                require(likeFeed(window.findChild<QToolButton *>("renameIdentityButton"),
+                                 window.findChild<QToolButton *>("deleteIdentityButton")),
+                        "an identity card's pill is drawn as the feed's action group");
+                const auto bob = bm::Protocol::identity("Bob for the card pill").address;
+                require(session.addContact(bob, "Bob"), "add a contact for its card");
+                folders->setCurrentRow(9);
+                QCoreApplication::processEvents();
+                require(likeFeed(window.findChild<QToolButton *>("renameContactButton"),
+                                 window.findChild<QToolButton *>("deleteContactButton")),
+                        "a contact card's pill is drawn as the feed's action group");
+                session.removeContact(bob);
+                folders->setCurrentRow(5);
+                QTest::qWait(30);
             }
             chipNamed("ynotbit updates")->click();
             QTest::qWait(30);

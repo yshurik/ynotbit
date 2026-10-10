@@ -574,14 +574,6 @@
         <translation>Закрыть</translation>
     </message>
     <message>
-        <source>Rename</source>
-        <translation>Переименовать</translation>
-    </message>
-    <message>
-        <source>Delete</source>
-        <translation>Удалить</translation>
-    </message>
-    <message>
         <source>Write</source>
         <translation>Написать</translation>
     </message>
@@ -871,6 +863,14 @@ Date: %1
     <message>
         <source>Settings</source>
         <translation>Настройки</translation>
+    </message>
+    <message>
+        <source>Rename identity</source>
+        <translation>Переименовать идентичность</translation>
+    </message>
+    <message>
+        <source>Delete identity</source>
+        <translation>Удалить идентичность</translation>
     </message>
 </context>
 <context>

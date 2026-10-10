@@ -428,6 +428,22 @@ QIcon materialIcon(const QString &name, QColor color) {
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(QPen(color, 2.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     p.setBrush(Qt::NoBrush);
+    // A pencil outlined from its tip to its end, with the band at the end.
+    const auto pencil = [&p](QPointF tip, QPointF end, double halfWidth) {
+        const QPointF along = (end - tip) / QLineF(tip, end).length();
+        const QPointF across(-along.y() * halfWidth, along.x() * halfWidth);
+        const QPointF body = tip + along * (halfWidth * 1.8);
+        QPainterPath outline;
+        outline.moveTo(tip);
+        outline.lineTo(body + across);
+        outline.lineTo(end + across);
+        outline.lineTo(end - across);
+        outline.lineTo(body - across);
+        outline.closeSubpath();
+        p.drawPath(outline);
+        const QPointF band = end - along * (halfWidth * 1.5);
+        p.drawLine(band + across, band - across);
+    };
     if (name == "reply") {
         QPainterPath path;
         path.moveTo(28, 13);
@@ -459,9 +475,11 @@ QIcon materialIcon(const QString &name, QColor color) {
         p.drawLine(18, 16, 18, 28);
         p.drawLine(22, 16, 22, 28);
     } else if (name == "edit") {
-        p.drawLine(11, 29, 25, 15);
-        p.setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        p.drawLine(25, 15, 29, 11);
+        pencil(QPointF(9, 30), QPointF(30, 9), 3.6);
+    } else if (name == "rename") {
+        // The pencil writing on a line of text.
+        pencil(QPointF(10, 29), QPointF(28, 11), 3.2);
+        p.drawLine(QPointF(14, 33.5), QPointF(32, 33.5));
     } else if (name == "compose") {
         // Envelope with a "+" badge on its bottom-right corner; the corner is
         // cleared first so the badge doesn't collide with the envelope outline.

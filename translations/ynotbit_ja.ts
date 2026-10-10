@@ -574,14 +574,6 @@
         <translation>閉じる</translation>
     </message>
     <message>
-        <source>Rename</source>
-        <translation>名前を変更</translation>
-    </message>
-    <message>
-        <source>Delete</source>
-        <translation>削除</translation>
-    </message>
-    <message>
         <source>Write</source>
         <translation>書く</translation>
     </message>
@@ -871,6 +863,14 @@ Date: %1
     <message>
         <source>Settings</source>
         <translation>設定</translation>
+    </message>
+    <message>
+        <source>Rename identity</source>
+        <translation>ID の名前を変更</translation>
+    </message>
+    <message>
+        <source>Delete identity</source>
+        <translation>ID を削除</translation>
     </message>
 </context>
 <context>
