@@ -868,6 +868,10 @@ Date: %1
         <source>Settings…</source>
         <translation>Налаштування…</translation>
     </message>
+    <message>
+        <source>Settings</source>
+        <translation>Налаштування</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1473,7 +1477,7 @@ Date: %1
     </message>
 </context>
 <context>
-    <name>bm::SettingsWindow</name>
+    <name>bm::SettingsPane</name>
     <message>
         <source>Settings</source>
         <translation>Налаштування</translation>
@@ -1669,6 +1673,10 @@ Date: %1
     <message>
         <source>The router&apos;s internet address %1 is shared by the provider (carrier-grade NAT): incoming connections cannot reach it</source>
         <translation>Інтернет-адресу роутера %1 провайдер ділить між абонентами (CGNAT): вхідні з&apos;єднання до нього не дійдуть</translation>
+    </message>
+    <message>
+        <source>Changes apply at once</source>
+        <translation>Зміни застосовуються одразу</translation>
     </message>
 </context>
 </TS>

@@ -6,7 +6,6 @@
 #include "protocol.h"
 #include "letter_document.h"
 #include "pow.h"
-#include "settings_window.h"
 #include "i18n.h"
 #include <QElapsedTimer>
 #include <QFileDialog>
@@ -334,9 +333,13 @@ int main(int argc, char **argv) {
             auto iconOf = [&](const char *id) {
                 return window.findChild<QToolButton *>(id)->icon().pixmap(12, 12).toImage();
             };
+            const int folderBefore = folders->currentRow();
             auto openSettings = [&] {
                 window.findChild<QAction *>("settingsAction")->trigger();
-                return window.findChild<bm::SettingsWindow *>();
+                auto settings = window.findChild<QWidget *>("settingsPane");
+                require(settings && settings->isVisible(),
+                        "Settings opens as a page of the window");
+                return settings;
             };
             auto themeTo = [&](const char *mode) {
                 auto combo = openSettings()->findChild<QComboBox *>("themeCombo");
@@ -375,8 +378,7 @@ int main(int argc, char **argv) {
             require(iconOf("filter_unread") != lightFilter,
                     "filter icons recolour on a theme switch");
             themeTo("system");
-            openSettings()->close();
-            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            folders->setCurrentRow(folderBefore);
         }
         {
             window.selectMessage("0"); // marks a non-anonymous recipient-channel message read
@@ -622,9 +624,11 @@ int main(int argc, char **argv) {
             vault.lock();
             session.clearError();
             auto banner = window.findChild<QWidget *>("updateBanner");
+            const int folderBefore = folders->currentRow();
             window.findChild<QAction *>("settingsAction")->trigger();
-            auto settingsWindow = window.findChild<bm::SettingsWindow *>();
-            auto toggle = settingsWindow->findChild<QCheckBox *>("updateNoticesCheck");
+            auto settingsPane = window.findChild<QWidget *>("settingsPane");
+            require(settingsPane, "Settings opens as a page of the window");
+            auto toggle = settingsPane->findChild<QCheckBox *>("updateNoticesCheck");
             require(banner && !banner->isHidden() &&
                         window.findChild<QLabel *>("updateLabel")->text().contains("0.6.0"),
                     "a newer announced version shows the update banner");
@@ -643,8 +647,7 @@ int main(int argc, char **argv) {
             bm::updates::setPublisherAddressForTesting({});
             session.clearError();
             require(!toggle->isEnabled(), "a build without a publisher has nothing to toggle");
-            settingsWindow->close();
-            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            folders->setCurrentRow(folderBefore);
         }
         footprint("After scrolling and selections");
         if (app.arguments().contains("--soak")) {
@@ -2239,6 +2242,32 @@ int main(int argc, char **argv) {
         require(window.findChild<QTextBrowser *>("readerBody")->toPlainText().isEmpty(),
                 "lock clears plaintext");
         {
+            // Locked, the rail stays for Settings: the folders need a mailbox,
+            // Settings does not.
+            auto gear = window.findChild<QToolButton *>("folderIcon_Settings");
+            auto welcome = window.findChild<QWidget *>("welcomeStack");
+            require(gear && gear->isVisible() && gear->isEnabled(),
+                    "the lock screen keeps the rail, with Settings in it");
+            require(!window.findChild<QToolButton *>("folderIcon_Inbox")->isEnabled() &&
+                        !window.findChild<QToolButton *>("folderIcon_Contacts")->isEnabled() &&
+                        !window.findChild<QPushButton *>("writeButton")->isEnabled(),
+                    "locked, the rail's folders and Write are off");
+            const int folderBefore = folders->currentRow();
+            gear->click();
+            auto settings = window.findChild<QWidget *>("settingsPane");
+            require(settings && settings->isVisible() && !welcome->isVisible(),
+                    "the gear opens Settings in place of the lock screen");
+            gear->click();
+            require(!settings->isVisible() && welcome->isVisible() &&
+                        folders->currentRow() == folderBefore,
+                    "the gear again goes back to the lock screen");
+            gear->click();
+            session.beginVaultUnlock();
+            QCoreApplication::processEvents();
+            require(!settings->isVisible() && welcome->isVisible(),
+                    "a vault asking for its password leaves Settings for the lock screen");
+        }
+        {
             // A short window must not squeeze the chosen vault's box: its name and
             // path stay whole (macOS windows open shorter than this test's).
             // Windows lets a window get shorter than the lock page needs; here
@@ -2387,6 +2416,10 @@ int main(int argc, char **argv) {
             QCoreApplication::processEvents();
             require(!subjectLabel->isVisible(),
                     "no-mailbox state hides the reader's subject label");
+            require(window.findChild<QToolButton *>("folderIcon_Settings")->isVisible() &&
+                        window.findChild<QToolButton *>("folderIcon_Settings")->isEnabled() &&
+                        !window.findChild<QToolButton *>("folderIcon_Inbox")->isEnabled(),
+                    "with no mailbox open the rail keeps only Settings working");
             if (capturingStates)
                 window.grab().save(dir + "/state2-nomailbox.png");
             // Every opening shows Subscriptions with the digest selected.
@@ -2532,12 +2565,46 @@ int main(int argc, char **argv) {
         {
             auto open = window.findChild<QAction *>("settingsAction");
             require(open, "File has a Settings action");
+            const int folderBefore = folders->currentRow();
             open->trigger();
-            auto settings = window.findChild<bm::SettingsWindow *>();
-            require(settings && settings->isVisible(), "Settings opens a window");
+            auto settings = window.findChild<QWidget *>("settingsPane");
+            require(settings && settings->isVisible() && !settings->isWindow(),
+                    "Settings opens as a page of the window, not a window of its own");
+            require(!window.findChild<QWidget *>("listColumn")->isVisible() &&
+                        !window.findChild<QWidget *>("contactsPane")->isVisible(),
+                    "Settings takes the whole pane, like Contacts");
+            auto gear = window.findChild<QToolButton *>("folderIcon_Settings");
+            auto contactsIcon = window.findChild<QToolButton *>("folderIcon_Contacts");
+            auto rail = gear ? gear->parentWidget()->layout() : nullptr;
+            require(gear && gear->isChecked() &&
+                        rail->indexOf(gear) == rail->indexOf(contactsIcon) + 1,
+                    "the rail's gear, right after Contacts, shows Settings is open");
+            {
+                const auto img = gear->icon()
+                                     .pixmap(gear->iconSize())
+                                     .toImage()
+                                     .convertToFormat(QImage::Format_ARGB32);
+                int solid = 0;
+                for (int y = 0; y < img.height(); ++y)
+                    for (int x = 0; x < img.width(); ++x)
+                        if (qAlpha(img.pixel(x, y)) >= 200)
+                            ++solid;
+                require(solid > 0 && img != contactsIcon->icon()
+                                                .pixmap(gear->iconSize())
+                                                .toImage()
+                                                .convertToFormat(QImage::Format_ARGB32),
+                        "the gear has an icon of its own");
+            }
             open->trigger();
-            require(window.findChildren<bm::SettingsWindow *>().size() == 1,
-                    "opening Settings again raises the same window");
+            require(window.findChildren<QWidget *>("settingsPane").size() == 1 &&
+                        settings->isVisible(),
+                    "opening Settings again keeps the one page");
+            window.findChild<QToolButton *>("folderIcon_Inbox")->click();
+            require(!settings->isVisible() && folders->currentRow() == 0 && !gear->isChecked(),
+                    "another folder leaves Settings");
+            gear->click();
+            gear->click();
+            require(settings->isVisible(), "with a mailbox open the gear keeps Settings open");
             auto proxy = settings->findChild<QLineEdit *>("proxyEdit");
             auto proxyError = settings->findChild<QLabel *>("proxyError");
             proxy->clear();
@@ -2558,13 +2625,12 @@ int main(int argc, char **argv) {
             session.setRetention(2048, 90);
             require(settings->findChild<QLabel *>("storageUsage")->text().contains("objects"),
                     "the Storage page shows the current usage");
-            settings->close();
-            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-            require(!window.findChild<bm::SettingsWindow *>(), "closing Settings deletes it");
+            folders->setCurrentRow(folderBefore);
         }
         {
+            const int folderBefore = folders->currentRow();
             window.findChild<QAction *>("settingsAction")->trigger();
-            auto settings = window.findChild<bm::SettingsWindow *>();
+            auto settings = window.findChild<QWidget *>("settingsPane");
             auto density = settings->findChild<QComboBox *>("densityCombo");
             density->setCurrentIndex(density->findData(QString("compact")));
             require(window.findChild<QToolButton *>("density_compact")->isChecked(),
@@ -2579,8 +2645,7 @@ int main(int argc, char **argv) {
             require(settings->findChild<QPushButton *>("changePasswordButton")->isEnabled() ==
                         session.unlocked(),
                     "changing the vault password needs an unlocked vault");
-            settings->close();
-            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            folders->setCurrentRow(folderBefore);
         }
         {
             bm::Session n(temp.filePath("listen-node"), true);
@@ -2596,8 +2661,9 @@ int main(int argc, char **argv) {
             require(!noListen(), "without the proxy it listens again");
         }
         {
+            const int folderBefore = folders->currentRow();
             window.findChild<QAction *>("settingsAction")->trigger();
-            auto settings = window.findChild<bm::SettingsWindow *>();
+            auto settings = window.findChild<QWidget *>("settingsPane");
             session.setProxy("127.0.0.1:9050");
             require(!settings->findChild<QCheckBox *>("listenCheck")->isEnabled() &&
                         !settings->findChild<QCheckBox *>("upnpCheck")->isEnabled() &&
@@ -2607,8 +2673,7 @@ int main(int argc, char **argv) {
             require(settings->findChild<QCheckBox *>("listenCheck")->isEnabled() &&
                         settings->findChild<QLabel *>("proxyNote")->isHidden(),
                     "without a proxy listening can be switched again");
-            settings->close();
-            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            folders->setCurrentRow(folderBefore);
         }
         require(bm::Session::wantsPortMapping(true, true, true, {}) &&
                     !bm::Session::wantsPortMapping(false, true, true, {}) &&

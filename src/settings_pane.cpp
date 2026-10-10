@@ -1,4 +1,4 @@
-#include "settings_window.h"
+#include "settings_pane.h"
 #include "appearance.h"
 #include "gpu_pow.h"
 #include "i18n.h"
@@ -16,6 +16,7 @@
 #include <QListWidget>
 #include <QPointer>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStackedWidget>
@@ -38,14 +39,25 @@ QLabel *note(const QString &text, const QString &name = {}) {
     return label;
 }
 } // namespace
-SettingsWindow::SettingsWindow(Session &session, Appearance &appearance, QString density,
-                               QWidget *parent)
-    : QWidget(parent, Qt::Window), session_(session), appearance_(appearance) {
-    setObjectName("settingsWindow");
-    setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle(tr("Settings"));
-    resize(680, 460);
-    auto layout = new QHBoxLayout(this);
+SettingsPane::SettingsPane(Session &session, Appearance &appearance, QString density,
+                           QWidget *parent)
+    : QWidget(parent), session_(session), appearance_(appearance) {
+    setObjectName("settingsPane");
+    // Headed like the other whole-pane pages, Identities and Contacts.
+    auto outer = new QVBoxLayout(this);
+    outer->setContentsMargins(4, 4, 4, 0);
+    outer->setSpacing(8);
+    auto titleCol = new QVBoxLayout;
+    auto heading = new QLabel(tr("Settings"));
+    heading->setObjectName("settingsHeading");
+    heading->setStyleSheet("font-size:20px;font-weight:600;");
+    titleCol->addWidget(heading);
+    auto sub = new QLabel(tr("Changes apply at once"));
+    sub->setStyleSheet("color:palette(mid);font-size:12px;");
+    titleCol->addWidget(sub);
+    outer->addLayout(titleCol);
+    auto layout = new QHBoxLayout;
+    outer->addLayout(layout, 1);
     sections_ = new QListWidget;
     sections_->setObjectName("settingsSections");
     sections_->setFixedWidth(170);
@@ -60,24 +72,31 @@ SettingsWindow::SettingsWindow(Session &session, Appearance &appearance, QString
     addPage("notifications", tr("Notifications"), notificationsPage());
     addPage("security", tr("Security"), securityPage());
     sections_->setCurrentRow(0);
-    connect(&session_, &Session::changed, this, &SettingsWindow::refresh);
+    connect(&session_, &Session::changed, this, &SettingsPane::refresh);
     refresh();
 }
-void SettingsWindow::addPage(const QString &id, const QString &title, QWidget *page) {
+void SettingsPane::addPage(const QString &id, const QString &title, QWidget *page) {
     auto item = new QListWidgetItem(title, sections_);
     item->setData(Qt::UserRole, id);
     auto top = new QWidget; // pages keep their controls at the top
     auto column = new QVBoxLayout(top);
     column->addWidget(page);
     column->addStretch(1);
-    pages_->addWidget(top);
+    // A page taller than the window scrolls rather than squeezes its rows, or
+    // holds the window taller.
+    auto scroll = new QScrollArea;
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setWidget(top);
+    pages_->addWidget(scroll);
 }
-void SettingsWindow::showPage(const QString &id) {
+void SettingsPane::showPage(const QString &id) {
     for (int row = 0; row < sections_->count(); ++row)
         if (sections_->item(row)->data(Qt::UserRole).toString() == id)
             sections_->setCurrentRow(row);
 }
-QWidget *SettingsWindow::networkPage() {
+QWidget *SettingsPane::networkPage() {
     auto page = new QWidget;
     auto column = new QVBoxLayout(page);
     networkEnabled_ = new QCheckBox(tr("Network enabled"));
@@ -136,7 +155,7 @@ QWidget *SettingsWindow::networkPage() {
     column->addWidget(restart, 0, Qt::AlignLeft);
     return page;
 }
-QWidget *SettingsWindow::storagePage() {
+QWidget *SettingsPane::storagePage() {
     auto page = new QWidget;
     auto form = new QFormLayout(page);
     auto mb = new QSpinBox;
@@ -164,7 +183,7 @@ QWidget *SettingsWindow::storagePage() {
     form->addRow(rescan);
     return page;
 }
-QWidget *SettingsWindow::sendingPage() {
+QWidget *SettingsPane::sendingPage() {
     auto page = new QWidget;
     auto column = new QVBoxLayout(page);
     auto gpu = new QCheckBox(tr("Proof of work on the GPU"));
@@ -188,7 +207,7 @@ QWidget *SettingsWindow::sendingPage() {
     column->addWidget(note(tr("CPU workers: %1").arg(ProofOfWork::workerCount()), "cpuWorkers"));
     return page;
 }
-QWidget *SettingsWindow::appearancePage(const QString &density) {
+QWidget *SettingsPane::appearancePage(const QString &density) {
     auto page = new QWidget;
     auto form = new QFormLayout(page);
     auto theme = new QComboBox;
@@ -225,11 +244,11 @@ QWidget *SettingsWindow::appearancePage(const QString &density) {
     form->addRow(tr("Letter list"), density_);
     return page;
 }
-void SettingsWindow::showDensity(const QString &density) {
+void SettingsPane::showDensity(const QString &density) {
     QSignalBlocker block(density_);
     density_->setCurrentIndex(std::max(0, density_->findData(density)));
 }
-QWidget *SettingsWindow::notificationsPage() {
+QWidget *SettingsPane::notificationsPage() {
     auto page = new QWidget;
     auto column = new QVBoxLayout(page);
     updateNotices_ = new QCheckBox(tr("Notify about new ynotbit versions"));
@@ -239,7 +258,7 @@ QWidget *SettingsWindow::notificationsPage() {
     column->addWidget(note(tr("Kept in the open mailbox.")));
     return page;
 }
-QWidget *SettingsWindow::securityPage() {
+QWidget *SettingsPane::securityPage() {
     auto page = new QWidget;
     auto column = new QVBoxLayout(page);
     changePassword_ = new QPushButton(tr("Change vault password…"));
@@ -248,7 +267,7 @@ QWidget *SettingsWindow::securityPage() {
     column->addWidget(changePassword_, 0, Qt::AlignLeft);
     return page;
 }
-void SettingsWindow::refresh() {
+void SettingsPane::refresh() {
     {
         QSignalBlocker block(networkEnabled_);
         networkEnabled_->setChecked(session_.networkEnabled());

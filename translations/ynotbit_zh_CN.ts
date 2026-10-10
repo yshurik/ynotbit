@@ -868,6 +868,10 @@ Date: %1
         <source>Settings…</source>
         <translation>设置…</translation>
     </message>
+    <message>
+        <source>Settings</source>
+        <translation>设置</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1473,7 +1477,7 @@ Date: %1
     </message>
 </context>
 <context>
-    <name>bm::SettingsWindow</name>
+    <name>bm::SettingsPane</name>
     <message>
         <source>Settings</source>
         <translation>设置</translation>
@@ -1669,6 +1673,10 @@ Date: %1
     <message>
         <source>The router&apos;s internet address %1 is shared by the provider (carrier-grade NAT): incoming connections cannot reach it</source>
         <translation>路由器的互联网地址 %1 由运营商共享（运营商级 NAT）：外部的传入连接无法到达</translation>
+    </message>
+    <message>
+        <source>Changes apply at once</source>
+        <translation>更改立即生效</translation>
     </message>
 </context>
 </TS>

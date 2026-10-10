@@ -1,5 +1,5 @@
 #include "desktop_window.h"
-#include "settings_window.h"
+#include "settings_pane.h"
 #include "session.h"
 #include "i18n.h"
 #include "quoting.h"
@@ -269,6 +269,7 @@ const QVector<QPair<QString, QString>> kFolderIcons = {
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Trash"), "delete"},
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Identities"), "identities"},
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Contacts"), "contacts"},
+    {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Settings"), "settings"},
 };
 // A folder's displayed name. Received broadcasts are kept under "Broadcasts",
 // but the page is the senders you follow: "Subscriptions", as in PyBitmessage.
@@ -2022,7 +2023,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     split->setContentsMargins(0, 0, 0, 0);
     split->setSpacing(0);
     outer->addWidget(splitWidget, 1);
-    auto side = sidebarWidget_ = new QWidget;
+    auto side = new QWidget;
     side->setObjectName("sidebar");
     side->setFixedWidth(66);
     auto nav = new QVBoxLayout(side);
@@ -2056,7 +2057,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     folders_ = new QListWidget(side);
     folders_->setObjectName("folders");
     folders_->addItems({"Inbox", "Drafts", "Outbox", "Sent", "Channels", "Broadcasts", "Archive",
-                        "Trash", "Identities", "Contacts"});
+                        "Trash", "Identities", "Contacts", "Settings"});
     folders_->hide();
     auto folderGroup = new QButtonGroup(this);
     folderGroup->setExclusive(true);
@@ -2072,7 +2073,14 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         icon->setToolTip(folderTitle(label));
         icon->setCursor(Qt::PointingHandCursor);
         folderGroup->addButton(icon);
-        connect(icon, &QToolButton::clicked, this, [this, i] { folders_->setCurrentRow(i); });
+        connect(icon, &QToolButton::clicked, this, [this, i] {
+            // Without a mailbox the gear is the rail's one working button: a
+            // second click closes Settings again.
+            if (i == 10 && folders_->currentRow() == 10 && !session_.mailboxOpen())
+                folders_->setCurrentRow(lastFolder_);
+            else
+                folders_->setCurrentRow(i);
+        });
         nav->addWidget(icon);
     }
     nav->addStretch();
@@ -2580,6 +2588,15 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             refreshIdentities();
         if (folder == "Contacts")
             refreshContacts();
+        if (folder == "Settings" && !settings_) {
+            // Made when first opened: its Sending page looks for a GPU, which
+            // takes a second.
+            settings_ = new SettingsPane(session_, appearance_, listDensity_);
+            connect(settings_, &SettingsPane::densityChosen, this, &DesktopWindow::setListDensity);
+            static_cast<QVBoxLayout *>(reader_->layout())->addWidget(settings_, 1);
+        }
+        if (folder != "Settings")
+            lastFolder_ = folders_->currentRow();
         updateState();
     });
     folders_->setCurrentRow(0);
@@ -2762,15 +2779,20 @@ void DesktopWindow::updateState() {
         if (folders_->currentRow() == 9)
             refreshContacts();
     }
-    // Identities and Contacts are whole-pane pages: no letter list, no reader.
+    // Identities, Contacts and Settings are whole-pane pages: no letter list, no
+    // reader. Settings needs no mailbox.
+    const bool settingsPage = folders_->currentRow() == 10;
     const bool contactsPage = folders_->currentRow() == 9 && mailboxState;
     const bool identityPage = (folders_->currentRow() == 8 && mailboxState) || contactsPage;
-    sidebarWidget_->setVisible(mailboxState);
+    // The rail stays without a mailbox, for Settings; the folders need one.
+    for (const auto &[label, iconName] : kFolderIcons)
+        if (label != "Settings")
+            findChild<QToolButton *>("folderIcon_" + label)->setEnabled(mailboxState);
     // Subscriptions is a feed: no letter list, no reader.
     const bool feedPage = folders_->currentRow() == 5 && mailboxState;
-    listColumn_->setVisible(mailboxState && !identityPage && !feedPage);
+    listColumn_->setVisible(mailboxState && !identityPage && !feedPage && !settingsPage);
     feed_->setVisible(feedPage);
-    welcomeStack_->setVisible(!mailboxState);
+    welcomeStack_->setVisible(!mailboxState && !settingsPage);
     if (!mailboxState) {
         if (session_.unlocked()) {
             welcomeStack_->setCurrentWidget(noMailboxPage_);
@@ -2789,9 +2811,11 @@ void DesktopWindow::updateState() {
                 vaultPasswordField_->setFocus();
         }
     }
-    pane_->setVisible(mailboxState && !identityPage && !feedPage);
+    pane_->setVisible(mailboxState && !identityPage && !feedPage && !settingsPage);
     identities_->setVisible(identityPage && !contactsPage);
     contacts_->setVisible(contactsPage);
+    if (settings_)
+        settings_->setVisible(settingsPage);
     status_->setText(
         !session_.unlocked()
             ? tr("Vault locked") +
@@ -3026,6 +3050,9 @@ void DesktopWindow::compose(QVariantMap letter, bool reply, bool forward) {
 void DesktopWindow::showVaultPasswordFor(QString path, bool create) {
     targetVaultPath_ = path;
     vaultCreateMode_ = create;
+    // The password goes in on the lock screen, which Settings may be covering.
+    if (folders_->currentRow() == 10)
+        folders_->setCurrentRow(lastFolder_);
     updateLockedScreen();
     vaultPasswordField_->setFocus();
 }
@@ -3315,12 +3342,6 @@ void DesktopWindow::refreshContacts() {
     contactLayout_->addStretch();
 }
 void DesktopWindow::openSettings() {
-    if (!settings_) {
-        settings_ = new SettingsWindow(session_, appearance_, listDensity_, this);
-        connect(settings_, &SettingsWindow::densityChosen, this, &DesktopWindow::setListDensity);
-    }
-    settings_->show();
-    settings_->raise();
-    settings_->activateWindow();
+    folders_->setCurrentRow(10); // Settings, the rail's last page
 }
 } // namespace bm

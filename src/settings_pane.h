@@ -9,13 +9,14 @@ class QStackedWidget;
 namespace bm {
 class Appearance;
 class Session;
-// One window for every setting: sections on the left, the chosen section's
-// page on the right. Changes apply at once; there is no OK button.
-class SettingsWindow : public QWidget {
+// Every setting, as a page of the main window: sections on the left, the
+// chosen section's page on the right. Changes apply at once; there is no OK
+// button.
+class SettingsPane : public QWidget {
     Q_OBJECT
   public:
-    SettingsWindow(Session &session, Appearance &appearance, QString density,
-                   QWidget *parent = nullptr);
+    SettingsPane(Session &session, Appearance &appearance, QString density,
+                 QWidget *parent = nullptr);
     void showPage(const QString &id);
     // The letter list's density changed elsewhere (its own switch).
     void showDensity(const QString &density);

@@ -728,6 +728,24 @@ QIcon materialIcon(const QString &name, QColor color) {
         p.drawLine(QPointF(30, 11), QPointF(33, 11));
         p.drawLine(QPointF(30, 18), QPointF(33, 18));
         p.drawLine(QPointF(30, 25), QPointF(33, 25));
+    } else if (name == "settings") {
+        // A gear: six teeth round a hole.
+        const auto at = [](double degrees, double radius) {
+            const double a = qDegreesToRadians(degrees);
+            return QPointF(20 + radius * qCos(a), 20 + radius * qSin(a));
+        };
+        QPainterPath gear;
+        gear.moveTo(at(-18, 10));
+        for (int tooth = 0; tooth < 6; ++tooth) {
+            const double middle = tooth * 60;
+            gear.lineTo(at(middle - 18, 10));
+            gear.lineTo(at(middle - 10, 14.5));
+            gear.lineTo(at(middle + 10, 14.5));
+            gear.lineTo(at(middle + 18, 10));
+        }
+        gear.closeSubpath();
+        p.drawPath(gear);
+        p.drawEllipse(QPointF(20, 20), 4.5, 4.5);
     }
     return QIcon(pixmap);
 }

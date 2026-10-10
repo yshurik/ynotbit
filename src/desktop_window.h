@@ -1,5 +1,4 @@
 #pragma once
-#include <QPointer>
 #include "appearance.h"
 #include "letter_render.h"
 #include <QMainWindow>
@@ -20,7 +19,7 @@ class QAbstractItemDelegate;
 namespace bm {
 class Session;
 class FeedView;
-class SettingsWindow;
+class SettingsPane;
 class LetterPane;
 class DesktopWindow : public QMainWindow {
     Q_OBJECT
@@ -34,6 +33,7 @@ class DesktopWindow : public QMainWindow {
     Appearance appearance_;
     QListView *letters_;
     QListWidget *folders_;
+    int lastFolder_ = 0; // the folder Settings goes back to without a mailbox
     QWidget *channelRail_;
     QVBoxLayout *channelChipLayout_;
     QString railShown_; // which chans the rail's chips were made for, and how
@@ -51,13 +51,13 @@ class DesktopWindow : public QMainWindow {
     QLabel *heading_, *status_, *error_, *updateLabel_;
     QWidget *updateBanner_;
     QAction *networkEnabledAction_;
-    QPointer<SettingsWindow> settings_;
+    SettingsPane *settings_ = nullptr; // made when Settings is first opened
     LetterPane *pane_; // the selected letter
     QWidget *reader_, *identities_, *contacts_;
     FeedView *feed_ = nullptr; // the Subscriptions page: one sender's posts as a feed
     QVBoxLayout *contactLayout_;
     QLineEdit *contactsFilter_;
-    QWidget *sidebarWidget_, *listColumn_;
+    QWidget *listColumn_;
     QStackedWidget *welcomeStack_;
     QWidget *lockedPage_, *noMailboxPage_;
     QLabel *lockedVaultName_, *lockedVaultPath_;

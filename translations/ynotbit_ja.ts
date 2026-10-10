@@ -868,6 +868,10 @@ Date: %1
         <source>Settings…</source>
         <translation>設定…</translation>
     </message>
+    <message>
+        <source>Settings</source>
+        <translation>設定</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1473,7 +1477,7 @@ Date: %1
     </message>
 </context>
 <context>
-    <name>bm::SettingsWindow</name>
+    <name>bm::SettingsPane</name>
     <message>
         <source>Settings</source>
         <translation>設定</translation>
@@ -1669,6 +1673,10 @@ Date: %1
     <message>
         <source>The router&apos;s internet address %1 is shared by the provider (carrier-grade NAT): incoming connections cannot reach it</source>
         <translation>ルーターのインターネットアドレス %1 はプロバイダーが共有しています（キャリアグレード NAT）。外部からの接続は届きません</translation>
+    </message>
+    <message>
+        <source>Changes apply at once</source>
+        <translation>変更はすぐに反映されます</translation>
     </message>
 </context>
 </TS>
