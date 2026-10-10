@@ -193,7 +193,12 @@ void Session::attempt(const std::function<void()> &f) {
 }
 void Session::acquireVault(const QString &p) {
     vaultLock_ = std::make_unique<QLockFile>(p + ".lock");
-    check(vaultLock_->tryLock(), tr("Vault is in use by another instance"));
+    if (vaultLock_->tryLock())
+        return;
+    // Only a lock held elsewhere is another instance; else the place is the problem.
+    check(vaultLock_->error() != QLockFile::LockFailedError,
+          tr("Vault is in use by another instance"));
+    check(false, tr("Cannot write %1").arg(QDir::toNativeSeparators(p)));
 }
 void Session::rememberVault(const QString &path) {
     recentVaultPaths_.removeAll(path);
@@ -221,26 +226,39 @@ QVariantList Session::recentMailboxes() const {
             result << QVariantMap{{"name", QFileInfo(p).fileName()}, {"path", p}};
     return result;
 }
-void Session::createVault() {
+bool Session::createVault(const QString &path, QString password, QString repeated,
+                          const Identity &identity) {
     attempt([&] {
         check(!unlocked(), tr("Lock the current vault first"));
-        auto p = chooseSave(tr("Create vault"), tr("Bitmessage vault (*.bmvault)"), ".bmvault");
-        if (p.isEmpty())
-            return;
-        auto pass = password(tr("Create vault"), true);
-        acquireVault(p);
+        check(!password.isEmpty(), tr("Password cannot be empty"));
+        check(password == repeated, tr("Passwords do not match"));
+        check(!QFile::exists(path),
+              tr("Choose a new filename; existing vaults are never overwritten"));
+        Password secret{password.toUtf8()};
+        password.fill(QChar(0));
+        repeated.fill(QChar(0));
+        acquireVault(path);
         try {
-            vault_.create(p, pass.bytes);
-            vaultPath_ = p;
-            mailPath_.clear();
-            mailKey_.clear();
-            rememberVault(p);
-            activity_ = tr("Vault created. Add an identity and create a mailbox.");
+            vault_.create(path, secret.bytes); // leaves whatever was at path alone
         } catch (...) {
             vaultLock_.reset();
             throw;
         }
+        try {
+            vault_.addIdentity(identity);
+        } catch (...) {
+            vault_.lock();
+            QFile::remove(path); // made just above, without its identity
+            vaultLock_.reset();
+            throw;
+        }
+        vaultPath_ = path;
+        mailPath_.clear();
+        mailKey_.clear();
+        rememberVault(path);
+        activity_ = tr("Vault created with %1. Create a mailbox to start.").arg(identity.label);
     });
+    return error_.isEmpty();
 }
 void Session::openVault() {
     attempt([&] {
@@ -285,16 +303,6 @@ void Session::unlockVault() {
             openMailboxPath(mailPath_);
     });
 }
-void Session::beginVaultCreate() {
-    attempt([&] {
-        check(!unlocked(), tr("Lock the current vault first"));
-        auto p = chooseSave(tr("Create vault"), tr("Bitmessage vault (*.bmvault)"), ".bmvault");
-        if (p.isEmpty())
-            return;
-        pendingVaultPath_ = p;
-        emit vaultPasswordRequired(p, true);
-    });
-}
 void Session::beginVaultOpen() {
     attempt([&] {
         check(!unlocked(), tr("Lock the current vault first"));
@@ -303,7 +311,7 @@ void Session::beginVaultOpen() {
         if (p.isEmpty())
             return;
         pendingVaultPath_ = p;
-        emit vaultPasswordRequired(p, false);
+        emit vaultPasswordRequired(p);
     });
 }
 void Session::beginVaultUnlock() {
@@ -314,57 +322,36 @@ void Session::beginVaultUnlock() {
     attempt([&] {
         check(!unlocked(), tr("Vault is already unlocked"));
         pendingVaultPath_ = vaultPath_;
-        emit vaultPasswordRequired(vaultPath_, false);
+        emit vaultPasswordRequired(vaultPath_);
     });
 }
-void Session::submitVaultPassword(QString passphrase, QString repeated, bool create) {
+void Session::submitVaultPassword(QString passphrase) {
     attempt([&] {
         check(!pendingVaultPath_.isEmpty(), tr("Choose a vault first"));
         check(!passphrase.isEmpty(), tr("Password cannot be empty"));
-        if (create)
-            check(passphrase == repeated, tr("Passwords do not match"));
         const auto path = pendingVaultPath_;
         Password secret{passphrase.toUtf8()};
         auto &bytes = secret.bytes;
         passphrase.fill(QChar(0));
-        repeated.fill(QChar(0));
-        if (create) {
-            check(!QFile::exists(path),
-                  tr("Choose a new filename; existing vaults are never overwritten"));
-            acquireVault(path);
-            try {
-                vault_.create(path, bytes);
-                vaultPath_ = path;
+        acquireVault(path);
+        try {
+            vault_.unlock(path, bytes);
+            if (vaultPath_ != path) {
                 mailPath_.clear();
                 mailKey_.clear();
-                rememberVault(path);
-                activity_ = tr("Vault created. Add an identity and create a mailbox.");
-            } catch (...) {
-                vaultLock_.reset();
-                sodium_memzero(bytes.data(), bytes.size());
-                throw;
             }
-        } else {
-            acquireVault(path);
-            try {
-                vault_.unlock(path, bytes);
-                if (vaultPath_ != path) {
-                    mailPath_.clear();
-                    mailKey_.clear();
-                }
-                vaultPath_ = path;
-                rememberVault(path);
-                activity_ = tr("Vault unlocked. Open a mailbox to inspect cached objects.");
-            } catch (...) {
-                vaultLock_.reset();
-                sodium_memzero(bytes.data(), bytes.size());
-                throw;
-            }
+            vaultPath_ = path;
+            rememberVault(path);
+            activity_ = tr("Vault unlocked. Open a mailbox to inspect cached objects.");
+        } catch (...) {
+            vaultLock_.reset();
+            sodium_memzero(bytes.data(), bytes.size());
+            throw;
         }
         sodium_memzero(bytes.data(), bytes.size());
         pendingVaultPath_.clear();
         emit vaultPasswordAccepted();
-        if (!create && !mailPath_.isEmpty())
+        if (!mailPath_.isEmpty())
             openMailboxPath(mailPath_);
         emit changed();
     });

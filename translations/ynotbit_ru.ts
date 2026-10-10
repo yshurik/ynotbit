@@ -330,10 +330,6 @@
         <translation>Пароль</translation>
     </message>
     <message>
-        <source>Repeat passphrase</source>
-        <translation>Повторите пароль</translation>
-    </message>
-    <message>
         <source>Unlock vault</source>
         <translation>Разблокировать хранилище</translation>
     </message>
@@ -544,10 +540,6 @@
     <message>
         <source>%1 of %2 total</source>
         <translation>%1 из %2</translation>
-    </message>
-    <message>
-        <source>Create vault</source>
-        <translation>Создать хранилище</translation>
     </message>
     <message>
         <source>Default</source>
@@ -872,6 +864,14 @@ Date: %1
         <source>Delete identity</source>
         <translation>Удалить идентичность</translation>
     </message>
+    <message>
+        <source>Create vault</source>
+        <translation>Создать хранилище</translation>
+    </message>
+    <message>
+        <source>Lock the open vault to create a new one?</source>
+        <translation>Заблокировать открытое хранилище, чтобы создать новое?</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1150,6 +1150,149 @@ Date: %1
     </message>
 </context>
 <context>
+    <name>bm::NewVaultDialog</name>
+    <message>
+        <source>%1 s</source>
+        <translation>%1 с</translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation>%1 мин</translation>
+    </message>
+    <message>
+        <source>%1 h</source>
+        <translation>%1 ч</translation>
+    </message>
+    <message>
+        <source>%1 days</source>
+        <translation>%1 дн.</translation>
+    </message>
+    <message>
+        <source>New vault</source>
+        <translation>Новое хранилище</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>Псевдоним</translation>
+    </message>
+    <message>
+        <source>Copy address</source>
+        <translation>Копировать адрес</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>Адрес</translation>
+    </message>
+    <message>
+        <source>Random, from the system&apos;s entropy</source>
+        <translation>Случайные, из энтропии системы</translation>
+    </message>
+    <message>
+        <source>From a secret phrase</source>
+        <translation>Из секретной фразы</translation>
+    </message>
+    <message>
+        <source>Secret phrase</source>
+        <translation>Секретная фраза</translation>
+    </message>
+    <message>
+        <source>Keys</source>
+        <translation>Ключи</translation>
+    </message>
+    <message>
+        <source>Choose where to save the vault</source>
+        <translation>Выбрать, где сохранить хранилище</translation>
+    </message>
+    <message>
+        <source>This file exists; existing vaults are never overwritten.</source>
+        <translation>Такой файл уже есть; существующие хранилища никогда не перезаписываются.</translation>
+    </message>
+    <message>
+        <source>Vault file</source>
+        <translation>Файл хранилища</translation>
+    </message>
+    <message>
+        <source>The passwords do not match.</source>
+        <translation>Пароли не совпадают.</translation>
+    </message>
+    <message>
+        <source>Repeat password</source>
+        <translation>Повторите пароль</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Отмена</translation>
+    </message>
+    <message>
+        <source>Create vault</source>
+        <translation>Создать хранилище</translation>
+    </message>
+    <message>
+        <source>Save the vault as</source>
+        <translation>Сохранить хранилище как</translation>
+    </message>
+    <message>
+        <source>Bitmessage vault (*.bmvault)</source>
+        <translation>Хранилище Bitmessage (*.bmvault)</translation>
+    </message>
+    <message>
+        <source>Identity</source>
+        <translation>Идентичность</translation>
+    </message>
+    <message>
+        <source>Another random address</source>
+        <translation>Другой случайный адрес</translation>
+    </message>
+    <message>
+        <source>Find a shorter address</source>
+        <translation>Найти адрес короче</translation>
+    </message>
+    <message>
+        <source>Stop search</source>
+        <translation>Остановить поиск</translation>
+    </message>
+    <message>
+        <source>Optional. Shorter addresses are easier to read and type.</source>
+        <translation>Необязательно. Короткий адрес проще читать и вводить.</translation>
+    </message>
+    <message>
+        <source>Show phrase</source>
+        <translation>Показать фразу</translation>
+    </message>
+    <message>
+        <source>Hide phrase</source>
+        <translation>Скрыть фразу</translation>
+    </message>
+    <message>
+        <source>The same phrase always gives the same address. Anyone who knows or guesses it has your keys: use a long random phrase.</source>
+        <translation>Одна и та же фраза всегда даёт один и тот же адрес. Любой, кто знает или угадает её, получит ваши ключи: используйте длинную случайную фразу.</translation>
+    </message>
+    <message>
+        <source>Vault</source>
+        <translation>Хранилище</translation>
+    </message>
+    <message>
+        <source>Vault password</source>
+        <translation>Пароль хранилища</translation>
+    </message>
+    <message>
+        <source>You need it to open the vault. A forgotten password cannot be recovered.</source>
+        <translation>Он нужен, чтобы открыть хранилище. Забытый пароль восстановить нельзя.</translation>
+    </message>
+    <message>
+        <source>Trying %1 key pairs a second; next shorter address in about %2.</source>
+        <translation>Перебор %1 пар ключей в секунду; следующий, более короткий адрес — примерно через %2.</translation>
+    </message>
+    <message>
+        <source>Key pair %1 of this phrase: note the number with the phrase to rebuild this address.</source>
+        <translation>Пара ключей %1 этой фразы: сохраните номер вместе с фразой, чтобы восстановить этот адрес.</translation>
+    </message>
+    <message>
+        <source>Searching…</source>
+        <translation>Поиск…</translation>
+    </message>
+</context>
+<context>
     <name>bm::Session</name>
     <message>
         <source>Vault password</source>
@@ -1220,16 +1363,8 @@ Date: %1
         <translation>Сначала заблокируйте текущее хранилище</translation>
     </message>
     <message>
-        <source>Create vault</source>
-        <translation>Создать хранилище</translation>
-    </message>
-    <message>
         <source>Bitmessage vault (*.bmvault)</source>
         <translation>Хранилище Bitmessage (*.bmvault)</translation>
-    </message>
-    <message>
-        <source>Vault created. Add an identity and create a mailbox.</source>
-        <translation>Хранилище создано. Добавьте идентичность и создайте почтовый ящик.</translation>
     </message>
     <message>
         <source>Open vault</source>
@@ -1474,6 +1609,14 @@ Date: %1
     <message>
         <source>Bitmessage digest</source>
         <translation>Дайджест Bitmessage</translation>
+    </message>
+    <message>
+        <source>Vault created with %1. Create a mailbox to start.</source>
+        <translation>Хранилище создано с %1. Создайте почтовый ящик, чтобы начать.</translation>
+    </message>
+    <message>
+        <source>Cannot write %1</source>
+        <translation>Не удаётся записать %1</translation>
     </message>
 </context>
 <context>

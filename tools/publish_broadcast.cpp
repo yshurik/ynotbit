@@ -91,7 +91,7 @@ int publish(const Broadcast &b) {
     // A dry run stays offline: no node starts, nothing leaves this machine.
     bm::Session session(root, !b.send);
     session.choosePendingVault(vaultPath);
-    session.submitVaultPassword(QString::fromLatin1(password), {}, false);
+    session.submitVaultPassword(QString::fromLatin1(password));
     if (!session.mailboxOpen())
         return failed("cannot open the sender's mailbox: " + session.error());
     // One broadcast, or one letter per chan.

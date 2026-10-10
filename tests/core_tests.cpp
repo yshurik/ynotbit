@@ -1,5 +1,6 @@
 #include "gpu_backend.h"
 #include "gpu_pow.h"
+#include "key_search.h"
 #include "message_search.h"
 #include "port_mapper.h"
 #include "pow.h"
@@ -16,6 +17,7 @@
 #include <QtEndian>
 #include <algorithm>
 #include <atomic>
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -520,6 +522,99 @@ int main(int argc, char **argv) {
                 require(bm::PortMapper::reachableAddress(ip),
                         (std::string(ip) + " is a public address").c_str());
             require(log.unmaps == 5, "destroying the mapper removes the mapping it held");
+        }
+        {
+            // Keys from a phrase, as PyBitmessage and scripts/keys-from-phrase.py
+            // (big1) derive them.
+            const QString phrase = "ynotbit test phrase";
+            require(firstPair(phrase, 1) == 60u && phraseIdentity(phrase, "x", 60).address ==
+                                                       "BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN",
+                    "a phrase's standard address is its first key pair with a zero byte");
+            require(firstPair(phrase, 2) == 27122u && phraseIdentity(phrase, "x", 27122).address ==
+                                                          "BM-NC3eQa6kLxUsWNGFCqAbAJd733dhXkH6",
+                    "its shorter address is its first key pair with two");
+            require(firstPair("пароль ünïcode фраза", 1) == 252u &&
+                        phraseIdentity("пароль ünïcode фраза", "x", 252).address ==
+                            "BM-2cUqyPSNiBCvTg51hztE4uWrxET3386Ezo",
+                    "a phrase is its UTF-8 bytes, nothing normalised");
+            const auto general = firstPair("general", 1);
+            require(general.has_value(), "the phrase 'general' has a standard address");
+            const auto identity = phraseIdentity("general", "Mine", *general);
+            require(identity.address == "BM-2cW67GEKkHGonXKZLCzouLLxnLym3azS8r" && !identity.chan &&
+                        identity.label == "Mine" &&
+                        identity.address == Protocol::channel("general", "[chan] general").address,
+                    "'general' gives [chan] general's address, as an identity of its own");
+            require(zeroBytes("BM-NC3eQa6kLxUsWNGFCqAbAJd733dhXkH6") == 2 &&
+                        zeroBytes("BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN") == 1 &&
+                        zeroBytes("nonsense") == 0,
+                    "an address tells how many zero bytes its hash starts with");
+        }
+        {
+            // The search for shorter addresses: the same first find on any number
+            // of threads; random keys that rebuild their address; a prompt stop.
+            const QString phrase = "ynotbit test phrase";
+            const auto first = [](KeySearch &search) {
+                int announced = 0;
+                QObject::connect(&search, &KeySearch::found, [&] { ++announced; });
+                QElapsedTimer waited;
+                waited.start();
+                while (announced == 0 && waited.elapsed() < 60000)
+                    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                search.stop();
+                return search.take();
+            };
+            for (int threads : {1, 4}) {
+                KeySearch search(threads);
+                search.start(phrase, 2);
+                require(search.running(), "a search runs once started");
+                const auto find = first(search);
+                require(find.pair == 27122 && find.zeroBytes == 2 &&
+                            find.identity.address == "BM-NC3eQa6kLxUsWNGFCqAbAJd733dhXkH6" &&
+                            !search.running(),
+                        "a phrase's search finds its first pair with two zero bytes, on any "
+                        "number of threads");
+                require(search.take().identity.address.isEmpty(), "a find is taken once");
+            }
+            {
+                KeySearch search;
+                search.start(2);
+                const auto find = first(search);
+                const auto keys = reinterpret_cast<const char *>(find.identity.keys.data());
+                require(find.pair == -1 && find.zeroBytes >= 2 &&
+                            zeroBytes(find.identity.address) == find.zeroBytes &&
+                            Protocol::fromPrivate("x", QByteArray(keys, 32),
+                                                  QByteArray(keys + 32, 32), 4, 1, false)
+                                    .address == find.identity.address,
+                        "random keys with two zero bytes rebuild their address");
+            }
+            {
+                KeySearch search;
+                search.start(phrase, 6); // about 2.8e14 pairs: never, here
+                QThread::msleep(100);
+                QElapsedTimer stopping;
+                stopping.start();
+                search.stop();
+                require(!search.running() && stopping.elapsed() < 1000 &&
+                            search.take().identity.address.isEmpty(),
+                        "a search stops at once, with nothing found");
+            }
+        }
+        {
+            // A vault keeps an identity made before it, as made.
+            Vault fresh;
+            fresh.create(d.filePath("given.bmvault"), "long test password");
+            const auto made = phraseIdentity("ynotbit test phrase", "Shown first", 60);
+            require(fresh.addIdentity(made) == made.address && fresh.identities().size() == 1 &&
+                        fresh.identities()[0].label == "Shown first" &&
+                        fresh.identities()[0].isDefault &&
+                        std::memcmp(fresh.identities()[0].keys.data(), made.keys.data(), 64) == 0,
+                    "a vault adds an identity made beforehand, keys and label as they were");
+            rejects([&] { fresh.addIdentity(made); });
+            auto forged = phraseIdentity("ynotbit test phrase", "x", 61);
+            forged.address = phraseIdentity("ynotbit test phrase", "x", 252).address;
+            rejects([&] { fresh.addIdentity(forged); });
+            require(fresh.identities().size() == 1,
+                    "an identity already there, or keys under another address, are refused");
         }
         std::cout << "PASS: vault, password rotation, SQLCipher, deduplication, backup, chan "
                      "fixture, authenticated message codec\n";

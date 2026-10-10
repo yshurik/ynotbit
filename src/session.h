@@ -129,13 +129,15 @@ class Session : public QObject {
     static bool wantsPortMapping(bool online, bool listen, bool upnp, const QString &proxy) {
         return online && listen && upnp && proxy.isEmpty();
     }
-    Q_INVOKABLE void createVault();
+    // A new vault at path holding identity, its first and default; true when
+    // made, else error() says why.
+    bool createVault(const QString &path, QString password, QString repeated,
+                     const Identity &identity);
     Q_INVOKABLE void openVault();
     Q_INVOKABLE void unlockVault();
-    Q_INVOKABLE void beginVaultCreate();
     Q_INVOKABLE void beginVaultOpen();
     Q_INVOKABLE void beginVaultUnlock();
-    Q_INVOKABLE void submitVaultPassword(QString password, QString repeat, bool create);
+    Q_INVOKABLE void submitVaultPassword(QString password);
     Q_INVOKABLE void choosePendingVault(QString path) {
         pendingVaultPath_ = path;
     }
@@ -233,7 +235,7 @@ class Session : public QObject {
     void messageRead(QString id);
     void locked();
     void aboutToCloseMailbox();
-    void vaultPasswordRequired(QString path, bool create);
+    void vaultPasswordRequired(QString path);
     void vaultPasswordAccepted();
 };
 } // namespace bm

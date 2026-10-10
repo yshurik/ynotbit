@@ -764,6 +764,16 @@ QIcon materialIcon(const QString &name, QColor color) {
         gear.closeSubpath();
         p.drawPath(gear);
         p.drawEllipse(QPointF(20, 20), 4.5, 4.5);
+    } else if (name == "eye" || name == "eyeOff") {
+        // An eye round its pupil; struck through for the one that hides.
+        QPainterPath eye;
+        eye.moveTo(7, 20);
+        eye.quadTo(20, 6, 33, 20);
+        eye.quadTo(20, 34, 7, 20);
+        p.drawPath(eye);
+        p.drawEllipse(QPointF(20, 20), 4.5, 4.5);
+        if (name == "eyeOff")
+            p.drawLine(QPointF(10, 30), QPointF(30, 10));
     }
     return QIcon(pixmap);
 }

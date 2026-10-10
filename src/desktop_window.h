@@ -61,12 +61,11 @@ class DesktopWindow : public QMainWindow {
     QStackedWidget *welcomeStack_;
     QWidget *lockedPage_, *noMailboxPage_;
     QLabel *lockedVaultName_, *lockedVaultPath_;
-    QLineEdit *vaultPasswordField_, *vaultRepeatField_;
+    QLineEdit *vaultPasswordField_;
     QPushButton *vaultUnlockButton_;
     QVBoxLayout *lockedRecentsLayout_, *noMailboxRecentsLayout_;
     QVBoxLayout *identityLayout_;
     QString targetVaultPath_;
-    bool vaultCreateMode_ = false;
     void updateState();
     void updateTheme();
     // Add (or, with a label, rename) an address-book entry; true when saved.
@@ -79,7 +78,8 @@ class DesktopWindow : public QMainWindow {
     void openSettings();
     void setChannelRailCollapsed(bool collapsed);
     void updateListCount();
-    void showVaultPasswordFor(QString path, bool create);
+    void showVaultPasswordFor(QString path);
+    void newVault(); // the new vault dialog
     void updateLockedScreen();
     void refreshRecentVaults();
     void refreshRecentMailboxes();

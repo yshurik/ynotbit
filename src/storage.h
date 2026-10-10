@@ -85,6 +85,9 @@ class Vault {
         return identities_;
     }
     QString addIdentity(const QString &label);
+    // An identity made beforehand (the new vault dialog's): its keys are checked
+    // against its address and kept as they are.
+    QString addIdentity(const Identity &identity);
     // label empty: "[chan] <phrase>", as PyBitmessage names a joined chan.
     QString addChannel(const QString &phrase, const QString &label,
                        const QString &expectedAddress = {});

@@ -1,5 +1,6 @@
 #include "desktop_window.h"
 #include "settings_pane.h"
+#include "new_vault_dialog.h"
 #include "session.h"
 #include "i18n.h"
 #include "quoting.h"
@@ -12,6 +13,7 @@
 #include <QDesktopServices>
 #include <QFileInfo>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QTextList>
 #include <QtWidgets>
 
@@ -2329,11 +2331,6 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     vaultPasswordField_->setEchoMode(QLineEdit::Password);
     vaultPasswordField_->setPlaceholderText(tr("Passphrase"));
     authLayout->addWidget(vaultPasswordField_);
-    vaultRepeatField_ = new QLineEdit;
-    vaultRepeatField_->setObjectName("vaultRepeatField");
-    vaultRepeatField_->setEchoMode(QLineEdit::Password);
-    vaultRepeatField_->setPlaceholderText(tr("Repeat passphrase"));
-    authLayout->addWidget(vaultRepeatField_);
     vaultUnlockButton_ = new QPushButton(tr("Unlock vault"));
     vaultUnlockButton_->setObjectName("vaultUnlockButton");
     authLayout->addWidget(vaultUnlockButton_);
@@ -2348,8 +2345,9 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     button(tr("Open vault file from disk…"), lockedCardLayout,
            [this] { session_.beginVaultOpen(); })
         ->setObjectName("openVaultButton");
-    button(tr("Create a new vault…"), lockedCardLayout, [this] { session_.beginVaultCreate(); })
-        ->setObjectName("createVaultButton");
+    button(tr("Create a new vault…"), lockedCardLayout, [this] {
+        newVault();
+    })->setObjectName("createVaultButton");
     lockedOuter->addWidget(lockedCard, 0, Qt::AlignHCenter);
     lockedOuter->addStretch();
     welcomeStack_->addWidget(lockedPage_);
@@ -2357,10 +2355,8 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             &QPushButton::click);
     connect(vaultUnlockButton_, &QPushButton::clicked, this, [this] {
         session_.choosePendingVault(targetVaultPath_);
-        session_.submitVaultPassword(vaultPasswordField_->text(), vaultRepeatField_->text(),
-                                     vaultCreateMode_);
+        session_.submitVaultPassword(vaultPasswordField_->text());
         vaultPasswordField_->clear();
-        vaultRepeatField_->clear();
     });
     // State 2: vault unlocked, no mailbox open yet.
     noMailboxPage_ = new QWidget;
@@ -2497,7 +2493,8 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     status_->setContentsMargins(24, 12, 24, 12);
     outer->addWidget(status_);
     auto file = menuBar()->addMenu(tr("File"));
-    file->addAction(tr("Create vault…"), &session_, &Session::beginVaultCreate);
+    file->addAction(tr("Create vault…"), this, &DesktopWindow::newVault)
+        ->setObjectName("createVaultAction");
     file->addAction(tr("Open vault…"), &session_, &Session::beginVaultOpen);
     file->addAction(tr("Create mailbox…"), &session_, &Session::createMailbox);
     file->addAction(tr("Open mailbox…"), &session_, &Session::openMailbox);
@@ -2551,10 +2548,8 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     // field submits a password through that same controller.
     connect(&session_, &Session::vaultPasswordRequired, this, &DesktopWindow::showVaultPasswordFor,
             Qt::QueuedConnection);
-    connect(&session_, &Session::vaultPasswordAccepted, this, [this] {
-        vaultPasswordField_->clear();
-        vaultRepeatField_->clear();
-    });
+    connect(&session_, &Session::vaultPasswordAccepted, this,
+            [this] { vaultPasswordField_->clear(); });
     connect(&session_, &Session::aboutToCloseMailbox, this, [this] {
         pane_->clear(tr("No letter selected"));
     });
@@ -3074,9 +3069,8 @@ void DesktopWindow::compose(QVariantMap letter, bool reply, bool forward) {
     Composer dialog(session_, letter, reply, forward, appearance_.dark(), this);
     dialog.exec();
 }
-void DesktopWindow::showVaultPasswordFor(QString path, bool create) {
+void DesktopWindow::showVaultPasswordFor(QString path) {
     targetVaultPath_ = path;
-    vaultCreateMode_ = create;
     // The password goes in on the lock screen, which Settings may be covering.
     if (folders_->currentRow() == 10)
         folders_->setCurrentRow(lastFolder_);
@@ -3088,8 +3082,7 @@ void DesktopWindow::updateLockedScreen() {
     lockedVaultName_->setText(QFileInfo(targetVaultPath_).fileName());
     static_cast<ElidedLabel *>(lockedVaultPath_)->setFullText(targetVaultPath_);
     findChild<QWidget *>("vaultAuthGroup")->setVisible(hasTarget);
-    vaultRepeatField_->setVisible(vaultCreateMode_);
-    vaultUnlockButton_->setText(vaultCreateMode_ ? tr("Create vault") : tr("Unlock vault"));
+    vaultUnlockButton_->setText(tr("Unlock vault"));
     refreshRecentVaults();
 }
 void DesktopWindow::refreshRecentVaults() {
@@ -3101,7 +3094,7 @@ void DesktopWindow::refreshRecentVaults() {
         auto m = v.toMap();
         auto path = m["path"].toString();
         auto row = button(m["name"].toString(), lockedRecentsLayout_,
-                          [this, path] { showVaultPasswordFor(path, false); });
+                          [this, path] { showVaultPasswordFor(path); });
         row->setObjectName("recentVaultRow");
         row->setToolTip(path);
     }
@@ -3348,6 +3341,21 @@ void DesktopWindow::refreshContacts() {
         contactLayout_->addWidget(empty);
     }
     contactLayout_->addStretch();
+}
+void DesktopWindow::newVault() {
+    // A vault is made with none open: offer to lock the open one first.
+    if (session_.unlocked()) {
+        if (QMessageBox::question(this, tr("Create vault"),
+                                  tr("Lock the open vault to create a new one?")) !=
+            QMessageBox::Yes)
+            return;
+        session_.lock();
+    }
+    const auto documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    NewVaultDialog dialog(session_, documents.isEmpty() ? QDir::homePath() : documents,
+                          appearance_.dark(), this);
+    if (dialog.exec() == QDialog::Accepted)
+        targetVaultPath_ = session_.vaultPath(); // locked again, the lock screen offers it
 }
 void DesktopWindow::openSettings() {
     folders_->setCurrentRow(10); // Settings, the rail's last page

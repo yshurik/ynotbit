@@ -7,6 +7,8 @@
 #include "letter_document.h"
 #include "pow.h"
 #include "i18n.h"
+#include "key_search.h"
+#include "new_vault_dialog.h"
 #include <QElapsedTimer>
 #include <QFileDialog>
 #include <QTest>
@@ -2394,6 +2396,24 @@ int main(int argc, char **argv) {
                         !window.findChild<QToolButton *>("folderIcon_Contacts")->isEnabled() &&
                         !window.findChild<QPushButton *>("writeButton")->isEnabled(),
                     "locked, the rail's folders and Write are off");
+            require(!window.findChild<QLineEdit *>("vaultRepeatField"),
+                    "the lock screen only unlocks: vaults are made in their own dialog");
+            for (const auto &open :
+                 {std::function<void()>(
+                      [&] { window.findChild<QPushButton *>("createVaultButton")->click(); }),
+                  std::function<void()>(
+                      [&] { window.findChild<QAction *>("createVaultAction")->trigger(); })}) {
+                bool opened = false;
+                QTimer::singleShot(30, &window, [&] {
+                    if (auto d = window.findChild<QDialog *>("newVaultDialog")) {
+                        opened = d->isVisible();
+                        d->reject();
+                    }
+                });
+                open();
+                require(opened, "Create a new vault… and File > Create vault… open the new vault "
+                                "dialog");
+            }
             const int shown = folders->currentRow();
             folders->setCurrentRow(2);
             require(!outboxIcon->isVisible(),
@@ -2828,6 +2848,422 @@ int main(int argc, char **argv) {
                     !bm::Session::wantsPortMapping(true, true, false, {}) &&
                     !bm::Session::wantsPortMapping(true, true, true, "127.0.0.1:9050"),
                 "UPnP runs only online, listening, switched on and without a proxy");
+        {
+            // A vault made with the identity it starts with.
+            bm::Session fresh(temp.filePath("made-vault-node"), true);
+            const auto made =
+                bm::phraseIdentity("ynotbit test phrase", "Mysterious Poised Shellfish", 60);
+            const auto path = temp.filePath("made.bmvault");
+            require(!fresh.createVault(path, "one password", "another one", made) &&
+                        fresh.error().contains("match") && !QFile::exists(path),
+                    "mismatched passwords make no vault");
+            require(!fresh.createVault(path, "", "", made) && !QFile::exists(path),
+                    "an empty password makes no vault");
+            require(fresh.createVault(path, "long test password", "long test password", made) &&
+                        fresh.unlocked() && QFile::exists(path),
+                    "a vault is made, and open");
+            const auto identities = fresh.identities();
+            require(identities.size() == 1 &&
+                        identities[0].toMap()["address"].toString() == made.address &&
+                        identities[0].toMap()["label"].toString() ==
+                            "Mysterious Poised Shellfish" &&
+                        identities[0].toMap()["default"].toBool(),
+                    "its one identity is the one shown, with its nickname, as default");
+            require(!fresh.createVault(temp.filePath("second.bmvault"), "pw", "pw", made) &&
+                        fresh.error().contains("Lock"),
+                    "an open vault is locked before another is made");
+            fresh.lock();
+            require(!fresh.createVault(path, "pw", "pw", made) &&
+                        fresh.error().contains("existing vaults"),
+                    "an existing vault file is never overwritten");
+            const auto link = temp.filePath("dangling.bmvault");
+            require(QFile::link(temp.filePath("nowhere/vault.bmvault"), link),
+                    "make a link to nowhere");
+            require(!fresh.createVault(link, "pw", "pw", made) && QFileInfo(link).isSymLink(),
+                    "a failed create leaves what was at the path");
+            auto forged = bm::phraseIdentity("ynotbit test phrase", "x", 61);
+            forged.address = made.address;
+            const auto half = temp.filePath("half.bmvault");
+            require(!fresh.createVault(half, "pw", "pw", forged) && !QFile::exists(half) &&
+                        !QFile::exists(half + ".lock"),
+                    "a vault left half made is removed, its lock too");
+        }
+        {
+            // The new vault dialog's look, under the window's style sheet: every
+            // field reaches the right edge, also where forms keep fields at their
+            // size hint (macOS); nothing is squeezed or cut as rows appear, in
+            // English or Russian; rows stay put while the phrase is typed.
+            struct FieldsAtHint : QProxyStyle {
+                int styleHint(StyleHint hint, const QStyleOption *option, const QWidget *widget,
+                              QStyleHintReturn *data) const override {
+                    if (hint == SH_FormLayoutFieldGrowthPolicy)
+                        return QFormLayout::FieldsStayAtSizeHint;
+                    return QProxyStyle::styleHint(hint, option, widget, data);
+                }
+            } fieldsAtHint;
+            bm::Session looks(temp.filePath("looks-node"), true);
+            bm::DesktopWindow lookWindow(looks);
+            lookWindow.show();
+            QStringList faults;
+            const auto inspect = [&](QDialog *d, const QString &when) {
+                QCoreApplication::processEvents();
+                for (auto w : d->findChildren<QWidget *>()) {
+                    // A field's own buttons are placed by the field, not the dialog.
+                    if (!w->isVisible() || qobject_cast<QLineEdit *>(w->parentWidget()))
+                        continue;
+                    const auto name = when + ": " +
+                                      (w->objectName().isEmpty() ? w->metaObject()->className()
+                                                                 : w->objectName());
+                    auto label = qobject_cast<QLabel *>(w);
+                    if (label && label->wordWrap() &&
+                        label->height() < label->heightForWidth(label->width()))
+                        faults << name + " cut";
+                    if ((qobject_cast<QAbstractButton *>(w) &&
+                         (w->width() < w->sizeHint().width() ||
+                          w->height() < w->sizeHint().height())) ||
+                        (qobject_cast<QLineEdit *>(w) && w->height() < w->sizeHint().height()))
+                        faults << name + " squeezed";
+                }
+                const int edge = d->width() - d->layout()->contentsMargins().right();
+                for (auto name : {"nicknameField", "phraseField", "vaultFileButton",
+                                  "newVaultPasswordField", "newVaultRepeatField"})
+                    if (auto w = d->findChild<QWidget *>(name);
+                        w->isVisible() && w->mapTo(d, QPoint(w->width(), 0)).x() < edge - 1)
+                        faults << when + ": " + name + " short of the right edge";
+                auto create = d->findChild<QPushButton *>("newVaultCreateButton");
+                auto bold = create->font();
+                bold.setWeight(QFont::DemiBold);
+                // The style sheet pads buttons 9 px a side and draws the default one bold.
+                if (QFontMetrics(bold).horizontalAdvance(create->text()) + 18 > create->width())
+                    faults << when + ": Create's text cut";
+            };
+            const auto look = [&](const QString &language) {
+                QTranslator translator;
+                if (language != "en")
+                    require(translator.load(":/i18n/ynotbit_" + language) &&
+                                QCoreApplication::installTranslator(&translator),
+                            "load a translation");
+                QTimer::singleShot(30, &lookWindow, [&] {
+                    auto d = lookWindow.findChild<QDialog *>("newVaultDialog");
+                    if (!d)
+                        return;
+                    d->setStyle(&fieldsAtHint);
+                    inspect(d, language + " random");
+                    auto file = d->findChild<QLineEdit *>("vaultFileField");
+                    auto nickname = d->findChild<QLineEdit *>("nicknameField");
+                    nickname->clear();
+                    QTest::keyClicks(nickname, "Wonderful Unpredictable Wombat");
+                    // The style sheet's padding and frame, and the field's margins: 24 px.
+                    if (QFontMetrics(file->font()).horizontalAdvance(file->text()) + 24 >
+                        file->width())
+                        faults << language + ": a long nickname's whole path does not show";
+                    auto form = qobject_cast<QFormLayout *>(d->layout());
+                    auto passwordLabel = qobject_cast<QLabel *>(
+                        form->labelForField(d->findChild<QLineEdit *>("newVaultPasswordField")));
+                    if (language == "en" &&
+                        (!passwordLabel || passwordLabel->text() != "Vault password"))
+                        faults << "the password is not called the vault password";
+                    d->findChild<QRadioButton *>("phraseKeysButton")->click();
+                    if (d->findChild<QAbstractButton *>("anotherKeysButton")->isVisible())
+                        faults << language + ": another random address is offered for a phrase";
+                    auto phrase = d->findChild<QLineEdit *>("phraseField");
+                    if (auto eye = d->findChild<QAction *>("showPhraseAction")) {
+                        eye->trigger();
+                        if (phrase->echoMode() != QLineEdit::Normal)
+                            faults << language + ": the eye does not show the phrase";
+                        eye->trigger();
+                    } else {
+                        faults << language + ": no eye in the phrase field";
+                    }
+                    QTest::keyClicks(phrase, "ynotbit test phrase");
+                    QTest::qWait(400);
+                    if (d->findChild<QLabel *>("rebuildNote")->isVisible())
+                        faults << language + ": a key pair is noted for the phrase's first address";
+                    inspect(d, language + " phrase");
+                    const auto row = file->mapTo(d, QPoint());
+                    const auto size = d->size();
+                    QTest::keyClicks(phrase, "!");
+                    QCoreApplication::processEvents();
+                    if (file->mapTo(d, QPoint()) != row || d->size() != size)
+                        faults << language + ": rows move while the phrase is typed";
+                    QTest::keyClick(phrase, Qt::Key_Backspace);
+                    QTest::qWait(400);
+                    auto shorter = d->findChild<QPushButton *>("shorterButton");
+                    const int width = shorter->width();
+                    shorter->click();
+                    QTest::qWait(1300);
+                    if (shorter->width() != width)
+                        faults << language + ": the search button changes width";
+                    inspect(d, language + " search");
+                    shorter->click();
+                    QTest::keyClicks(d->findChild<QLineEdit *>("newVaultPasswordField"),
+                                     "long test password");
+                    auto repeat = d->findChild<QLineEdit *>("newVaultRepeatField");
+                    auto problem = d->findChild<QLabel *>("passwordProblem");
+                    QTest::keyClicks(repeat, "long test passwor");
+                    if (problem->isVisible())
+                        faults << language + ": a mismatch is said before the repeat is typed out";
+                    QTest::keyClicks(repeat, "x");
+                    if (!problem->isVisible())
+                        faults << language + ": a typed-out mismatch is not said";
+                    inspect(d, language + " mismatch");
+                    d->reject();
+                });
+                lookWindow.findChild<QPushButton *>("createVaultButton")->click();
+                QCoreApplication::removeTranslator(&translator);
+            };
+            look("en");
+            look("ru");
+            for (const auto &fault : faults)
+                std::cerr << qPrintable(fault) << '\n';
+            require(faults.isEmpty(),
+                    "the new vault dialog fills its width and squeezes nothing, in English and "
+                    "Russian");
+        }
+        {
+            // The new vault dialog: an address first, then a nickname and a file
+            // named after it; the vault around that address.
+            const QString documents = temp.filePath("documents");
+            QDir().mkpath(documents);
+            bm::Session fresh(temp.filePath("dialog-node"), true);
+            auto dialog = std::make_unique<bm::NewVaultDialog>(fresh, documents, false);
+            dialog->show();
+            auto nickname = dialog->findChild<QLineEdit *>("nicknameField");
+            auto address = dialog->findChild<QLabel *>("addressLabel");
+            auto file = dialog->findChild<QLineEdit *>("vaultFileField");
+            auto password = dialog->findChild<QLineEdit *>("newVaultPasswordField");
+            auto repeat = dialog->findChild<QLineEdit *>("newVaultRepeatField");
+            auto phrase = dialog->findChild<QLineEdit *>("phraseField");
+            auto shorter = dialog->findChild<QPushButton *>("shorterButton");
+            auto create = dialog->findChild<QPushButton *>("newVaultCreateButton");
+            const auto in = [&](const QString &name) { return QDir(documents).filePath(name); };
+            const auto first = address->text();
+            require(first.startsWith("BM-") &&
+                        nickname->text() == bm::NewVaultDialog::nicknameFor(first) &&
+                        file->text() ==
+                            in(bm::NewVaultDialog::slugFor(nickname->text()) + ".bmvault"),
+                    "the dialog opens with random keys, their nickname, and a file named after it");
+            require(
+                bm::NewVaultDialog::nicknameFor("BM-5oSrHVwbsQYPKmePHfqQJZr6eibiqj9") ==
+                        "Imperial Conscious Grebe" &&
+                    bm::NewVaultDialog::nicknameFor("BM-%1%2") == "Noble Llama of Discourse" &&
+                    bm::NewVaultDialog::slugFor("Noble Llama of Discourse") ==
+                        "noble-llama-of-discourse" &&
+                    bm::NewVaultDialog::slugFor("  Alice's  Work!") == "alice-s-work" &&
+                    bm::NewVaultDialog::slugFor("Ёжик в тумане") == "ёжик-в-тумане" &&
+                    bm::NewVaultDialog::slugFor("!!!") == "vault",
+                "nicknames are title case; file names are their slug, letters of any script kept");
+            dialog->findChild<QAbstractButton *>("anotherKeysButton")->click();
+            require(address->text() != first &&
+                        nickname->text() == bm::NewVaultDialog::nicknameFor(address->text()),
+                    "Another makes new keys, and renames");
+            QFile taken(in("taken.bmvault"));
+            require(taken.open(QIODevice::WriteOnly), "make a file to step around");
+            taken.close();
+            nickname->clear();
+            QTest::keyClicks(nickname, "Taken");
+            require(file->text() == in("taken-2.bmvault"),
+                    "the nickname names the file, numbered past one that exists");
+            file->clear();
+            QTest::keyClicks(file, in("mine.bmvault"));
+            QTest::keyClicks(nickname, " More");
+            require(file->text() == in("mine.bmvault"), "a file the user chose stays put");
+            QTimer::singleShot(50, dialog.get(), [&] {
+                for (auto w : QApplication::topLevelWidgets())
+                    if (auto d = qobject_cast<QFileDialog *>(w))
+                        chooseFile(d, in("picked"));
+            });
+            dialog->findChild<QAbstractButton *>("vaultFileButton")->click();
+            require(file->text() == in("picked.bmvault"), "… picks the file, with its suffix");
+            require(!create->isEnabled(), "no password, no vault");
+            QTest::keyClicks(password, "long test password");
+            QTest::keyClicks(repeat, "long test passwor");
+            require(!create->isEnabled() &&
+                        !dialog->findChild<QLabel *>("passwordProblem")->isVisibleTo(dialog.get()),
+                    "a repeat not yet typed out blocks Create, unremarked");
+            QTest::keyClicks(repeat, "x");
+            require(!create->isEnabled() &&
+                        dialog->findChild<QLabel *>("passwordProblem")->isVisibleTo(dialog.get()),
+                    "a typed-out mismatch is said, and blocks Create");
+            QTest::keyClick(repeat, Qt::Key_Backspace);
+            QTest::keyClicks(repeat, "d");
+            require(create->isEnabled(), "matching passwords and a new file allow Create");
+            file->clear();
+            QTest::keyClicks(file, taken.fileName());
+            require(!create->isEnabled() &&
+                        dialog->findChild<QLabel *>("vaultFileProblem")->isVisibleTo(dialog.get()),
+                    "an existing file is refused");
+            dialog->findChild<QRadioButton *>("phraseKeysButton")->click();
+            QTest::keyClicks(phrase, "ynotbit test phrase");
+            QTest::qWait(400);
+            require(address->text() == "BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN" &&
+                        !dialog->findChild<QLabel *>("rebuildNote")->isVisibleTo(dialog.get()),
+                    "a phrase gives its first address, which the phrase alone rebuilds");
+            shorter->click();
+            require(shorter->text() == "Stop search", "the search runs");
+            QTest::keyClicks(phrase, "!");
+            QTest::qWait(400);
+            require(shorter->text() == "Find a shorter address" &&
+                        address->text() ==
+                            bm::phraseIdentity("ynotbit test phrase!", {},
+                                               *bm::firstPair("ynotbit test phrase!", 1))
+                                .address,
+                    "editing the phrase stops the search; the address is the new phrase's");
+            QTest::keyClick(phrase, Qt::Key_Backspace);
+            QTest::qWait(400);
+            shorter->click();
+            require(QTest::qWaitFor(
+                        [&] { return address->text() == "BM-NC3eQa6kLxUsWNGFCqAbAJd733dhXkH6"; },
+                        60000),
+                    "the search finds the phrase's shorter address");
+            shorter->click();
+            require(address->text() == "BM-NC3eQa6kLxUsWNGFCqAbAJd733dhXkH6" &&
+                        dialog->findChild<QLabel *>("rebuildNote")->isVisibleTo(dialog.get()) &&
+                        dialog->findChild<QLabel *>("rebuildNote")->text().contains("27122") &&
+                        shorter->text() == "Find a shorter address",
+                    "the search finds the shorter address, noting its key pair; Stop search "
+                    "keeps it");
+            nickname->clear();
+            QTest::keyClicks(nickname, QString(300, 'n'));
+            file->clear();
+            QTest::keyClicks(file, in(QString(300, 'n') + ".bmvault"));
+            create->click();
+            require(dialog->isVisible() &&
+                        dialog->findChild<QLabel *>("newVaultError")->isVisibleTo(dialog.get()) &&
+                        !fresh.unlocked() &&
+                        address->text() == "BM-NC3eQa6kLxUsWNGFCqAbAJd733dhXkH6",
+                    "a vault that cannot be written leaves the dialog open, keys kept, saying why");
+            require(dialog->findChild<QLabel *>("newVaultError")->text().startsWith("Cannot write"),
+                    "...and says it cannot write there, not that the vault is in use");
+            nickname->clear();
+            QTest::keyClicks(nickname, "Shorter Me");
+            file->clear();
+            QTest::keyClicks(file, in("created.bmvault"));
+            create->click();
+            require(dialog->result() == QDialog::Accepted && fresh.unlocked() &&
+                        QFile::exists(in("created.bmvault")),
+                    "Create makes the vault, and closes");
+            const auto identities = fresh.identities();
+            require(identities.size() == 1 &&
+                        identities[0].toMap()["address"].toString() ==
+                            "BM-NC3eQa6kLxUsWNGFCqAbAJd733dhXkH6" &&
+                        identities[0].toMap()["label"].toString() == "Shorter Me",
+                    "the vault's identity is the address shown, with its nickname");
+            require(phrase->text().isEmpty() && password->text().isEmpty() &&
+                        repeat->text().isEmpty(),
+                    "closing clears the phrase and the passwords");
+            // Cancelled mid-search: the threads stop at once.
+            fresh.lock();
+            dialog = std::make_unique<bm::NewVaultDialog>(fresh, documents, false);
+            dialog->show();
+            dialog->findChild<QPushButton *>("shorterButton")->click();
+            QTest::qWait(100);
+            QElapsedTimer closing;
+            closing.start();
+            dialog->reject();
+            dialog.reset();
+            require(closing.elapsed() < 2000, "cancelling while the search runs stops it at once");
+        }
+        {
+            // Enter right after editing the phrase never saves the old phrase's keys.
+            bm::Session typed(temp.filePath("typed-node"), true);
+            bm::NewVaultDialog dialog(typed, temp.path(), false);
+            dialog.show();
+            dialog.findChild<QRadioButton *>("phraseKeysButton")->click();
+            auto phrase = dialog.findChild<QLineEdit *>("phraseField");
+            auto file = dialog.findChild<QLineEdit *>("vaultFileField");
+            file->clear();
+            QTest::keyClicks(file, temp.filePath("typed.bmvault"));
+            QTest::keyClicks(phrase, "ynotbit test phrase");
+            QTest::qWait(400);
+            QTest::keyClicks(dialog.findChild<QLineEdit *>("newVaultPasswordField"),
+                             "long test password");
+            QTest::keyClicks(dialog.findChild<QLineEdit *>("newVaultRepeatField"),
+                             "long test password");
+            QTest::keyClicks(phrase, "!");
+            QTest::keyClick(phrase, Qt::Key_Return);
+            require(!typed.unlocked(), "Enter right after editing the phrase saves nothing");
+            QTest::qWait(400);
+            require(dialog.findChild<QLabel *>("addressLabel")->text() ==
+                        bm::phraseIdentity("ynotbit test phrase!", {},
+                                           *bm::firstPair("ynotbit test phrase!", 1))
+                            .address,
+                    "the address is the edited phrase's");
+        }
+        {
+            // Create vault… with a vault open asks to lock it first; No keeps it.
+            bool asked = false, opened = false;
+            QTimer::singleShot(30, &window, [&] {
+                if (auto box = window.findChild<QMessageBox *>(); box && box->isVisible()) {
+                    asked = true;
+                    box->button(QMessageBox::No)->click();
+                }
+                if (auto d = window.findChild<QDialog *>("newVaultDialog"); d && d->isVisible()) {
+                    opened = true;
+                    d->reject();
+                }
+            });
+            window.findChild<QAction *>("createVaultAction")->trigger();
+            require(
+                asked && !opened && session.unlocked(),
+                "Create vault… with a vault open asks first; No makes nothing and keeps it open");
+        }
+        {
+            // A vault made from a window's lock screen is the one it offers next,
+            // even when the lock screen offered another before.
+            bm::Session own(temp.filePath("window-vault-node"), true);
+            bm::DesktopWindow second(own);
+            second.show();
+            const auto makeVault = [&](const QString &path) {
+                QTimer::singleShot(30, &second, [&, path] {
+                    auto d = second.findChild<QDialog *>("newVaultDialog");
+                    if (!d)
+                        return;
+                    auto file = d->findChild<QLineEdit *>("vaultFileField");
+                    file->clear();
+                    QTest::keyClicks(file, path);
+                    QTest::keyClicks(d->findChild<QLineEdit *>("newVaultPasswordField"),
+                                     "long test password");
+                    QTest::keyClicks(d->findChild<QLineEdit *>("newVaultRepeatField"),
+                                     "long test password");
+                    d->findChild<QPushButton *>("newVaultCreateButton")->click();
+                });
+                second.findChild<QPushButton *>("createVaultButton")->click();
+                const bool madeIt = own.unlocked() && QFile::exists(path);
+                own.lock();
+                QCoreApplication::processEvents();
+                return madeIt;
+            };
+            const auto lockedName = [&] {
+                return second.findChild<QLabel *>("lockedVaultName")->text();
+            };
+            const auto made = temp.filePath("made-in-window.bmvault");
+            require(makeVault(made) && lockedName() == "made-in-window.bmvault",
+                    "the lock screen's Create a new vault… makes the vault, offered when locked");
+            const auto another = temp.filePath("another-in-window.bmvault");
+            require(makeVault(another) && lockedName() == "another-in-window.bmvault",
+                    "a second vault made there is the one offered next, not the first");
+            own.choosePendingVault(another);
+            own.submitVaultPassword("long test password");
+            require(own.unlocked(), "test sanity: the vault opens again");
+            bool asked = false, opened = false;
+            QTimer::singleShot(30, &second, [&] {
+                if (auto box = second.findChild<QMessageBox *>(); box && box->isVisible()) {
+                    asked = true;
+                    QTimer::singleShot(30, &second, [&] {
+                        if (auto d = second.findChild<QDialog *>("newVaultDialog");
+                            d && d->isVisible()) {
+                            opened = true;
+                            d->reject();
+                        }
+                    });
+                    box->button(QMessageBox::Yes)->click();
+                }
+            });
+            second.findChild<QAction *>("createVaultAction")->trigger();
+            require(asked && opened && !own.unlocked(),
+                    "Yes locks the open vault and opens the dialog");
+        }
         require(session.portMapper().state() == bm::PortMapper::State::Off,
                 "an offline session never talks to the router");
         {

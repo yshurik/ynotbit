@@ -330,10 +330,6 @@
         <translation>암호</translation>
     </message>
     <message>
-        <source>Repeat passphrase</source>
-        <translation>암호 다시 입력</translation>
-    </message>
-    <message>
         <source>Unlock vault</source>
         <translation>보관함 잠금 해제</translation>
     </message>
@@ -544,10 +540,6 @@
     <message>
         <source>%1 of %2 total</source>
         <translation>총 %2개 중 %1개</translation>
-    </message>
-    <message>
-        <source>Create vault</source>
-        <translation>보관함 만들기</translation>
     </message>
     <message>
         <source>Default</source>
@@ -872,6 +864,14 @@ Date: %1
         <source>Delete identity</source>
         <translation>신원 삭제</translation>
     </message>
+    <message>
+        <source>Create vault</source>
+        <translation>보관함 만들기</translation>
+    </message>
+    <message>
+        <source>Lock the open vault to create a new one?</source>
+        <translation>새 보관함을 만들기 위해 열려 있는 보관함을 잠글까요?</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1150,6 +1150,149 @@ Date: %1
     </message>
 </context>
 <context>
+    <name>bm::NewVaultDialog</name>
+    <message>
+        <source>%1 s</source>
+        <translation>%1초</translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation>%1분</translation>
+    </message>
+    <message>
+        <source>%1 h</source>
+        <translation>%1시간</translation>
+    </message>
+    <message>
+        <source>%1 days</source>
+        <translation>%1일</translation>
+    </message>
+    <message>
+        <source>New vault</source>
+        <translation>새 보관함</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>별명</translation>
+    </message>
+    <message>
+        <source>Copy address</source>
+        <translation>주소 복사</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>주소</translation>
+    </message>
+    <message>
+        <source>Random, from the system&apos;s entropy</source>
+        <translation>무작위, 시스템 엔트로피에서</translation>
+    </message>
+    <message>
+        <source>From a secret phrase</source>
+        <translation>비밀 문구에서</translation>
+    </message>
+    <message>
+        <source>Secret phrase</source>
+        <translation>비밀 문구</translation>
+    </message>
+    <message>
+        <source>Keys</source>
+        <translation>키</translation>
+    </message>
+    <message>
+        <source>Choose where to save the vault</source>
+        <translation>보관함을 저장할 위치 선택</translation>
+    </message>
+    <message>
+        <source>This file exists; existing vaults are never overwritten.</source>
+        <translation>이 파일이 이미 있습니다. 기존 보관함은 절대 덮어쓰지 않습니다.</translation>
+    </message>
+    <message>
+        <source>Vault file</source>
+        <translation>보관함 파일</translation>
+    </message>
+    <message>
+        <source>The passwords do not match.</source>
+        <translation>암호가 일치하지 않습니다.</translation>
+    </message>
+    <message>
+        <source>Repeat password</source>
+        <translation>암호 다시 입력</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>취소</translation>
+    </message>
+    <message>
+        <source>Create vault</source>
+        <translation>보관함 만들기</translation>
+    </message>
+    <message>
+        <source>Save the vault as</source>
+        <translation>보관함을 다른 이름으로 저장</translation>
+    </message>
+    <message>
+        <source>Bitmessage vault (*.bmvault)</source>
+        <translation>Bitmessage 보관함 (*.bmvault)</translation>
+    </message>
+    <message>
+        <source>Identity</source>
+        <translation>신원</translation>
+    </message>
+    <message>
+        <source>Another random address</source>
+        <translation>다른 무작위 주소</translation>
+    </message>
+    <message>
+        <source>Find a shorter address</source>
+        <translation>더 짧은 주소 찾기</translation>
+    </message>
+    <message>
+        <source>Stop search</source>
+        <translation>검색 중지</translation>
+    </message>
+    <message>
+        <source>Optional. Shorter addresses are easier to read and type.</source>
+        <translation>선택 사항입니다. 짧은 주소는 읽고 입력하기 쉽습니다.</translation>
+    </message>
+    <message>
+        <source>Show phrase</source>
+        <translation>문구 표시</translation>
+    </message>
+    <message>
+        <source>Hide phrase</source>
+        <translation>문구 숨기기</translation>
+    </message>
+    <message>
+        <source>The same phrase always gives the same address. Anyone who knows or guesses it has your keys: use a long random phrase.</source>
+        <translation>같은 문구는 항상 같은 주소를 만듭니다. 이 문구를 알거나 추측한 사람은 누구나 키를 얻게 됩니다. 길고 무작위한 문구를 사용하세요.</translation>
+    </message>
+    <message>
+        <source>Vault</source>
+        <translation>보관함</translation>
+    </message>
+    <message>
+        <source>Vault password</source>
+        <translation>보관함 암호</translation>
+    </message>
+    <message>
+        <source>You need it to open the vault. A forgotten password cannot be recovered.</source>
+        <translation>보관함을 열 때 필요합니다. 잊어버린 암호는 복구할 수 없습니다.</translation>
+    </message>
+    <message>
+        <source>Trying %1 key pairs a second; next shorter address in about %2.</source>
+        <translation>초당 키 쌍 %1개 시도 중. 다음으로 짧은 주소까지 약 %2.</translation>
+    </message>
+    <message>
+        <source>Key pair %1 of this phrase: note the number with the phrase to rebuild this address.</source>
+        <translation>이 문구의 키 쌍 %1: 이 주소를 다시 만들려면 번호를 문구와 함께 적어 두세요.</translation>
+    </message>
+    <message>
+        <source>Searching…</source>
+        <translation>검색 중…</translation>
+    </message>
+</context>
+<context>
     <name>bm::Session</name>
     <message>
         <source>Vault password</source>
@@ -1220,16 +1363,8 @@ Date: %1
         <translation>먼저 현재 보관함을 잠그세요</translation>
     </message>
     <message>
-        <source>Create vault</source>
-        <translation>보관함 만들기</translation>
-    </message>
-    <message>
         <source>Bitmessage vault (*.bmvault)</source>
         <translation>Bitmessage 보관함 (*.bmvault)</translation>
-    </message>
-    <message>
-        <source>Vault created. Add an identity and create a mailbox.</source>
-        <translation>보관함을 만들었습니다. 신원을 추가하고 메일함을 만드세요.</translation>
     </message>
     <message>
         <source>Open vault</source>
@@ -1474,6 +1609,14 @@ Date: %1
     <message>
         <source>Bitmessage digest</source>
         <translation>Bitmessage 다이제스트</translation>
+    </message>
+    <message>
+        <source>Vault created with %1. Create a mailbox to start.</source>
+        <translation>%1(으)로 보관함을 만들었습니다. 메일함을 만들어 시작하세요.</translation>
+    </message>
+    <message>
+        <source>Cannot write %1</source>
+        <translation>%1에 쓸 수 없습니다</translation>
     </message>
 </context>
 <context>

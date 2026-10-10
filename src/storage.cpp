@@ -219,6 +219,25 @@ QString Vault::addIdentity(const QString &label) {
     }
     return identities_.back().address;
 }
+QString Vault::addIdentity(const Identity &identity) {
+    check(unlocked_, "Vault is locked");
+    const auto keys = reinterpret_cast<const char *>(identity.keys.data());
+    auto copy = Protocol::fromPrivate(identity.label, QByteArray(keys, 32),
+                                      QByteArray(keys + 32, 32), 4, 1, false);
+    check(copy.address == identity.address, "Identity keys do not match its address");
+    for (const auto &i : identities_)
+        check(i.address != copy.address, "Identity already in the vault");
+    identities_.push_back(std::move(copy));
+    if (identities_.size() == 1)
+        identities_.back().isDefault = true;
+    try {
+        save();
+    } catch (...) {
+        identities_.pop_back();
+        throw;
+    }
+    return identities_.back().address;
+}
 
 QString Vault::addMailboxKey() {
     check(unlocked_, "Vault is locked");

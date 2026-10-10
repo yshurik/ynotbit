@@ -330,10 +330,6 @@
         <translation>パスワード</translation>
     </message>
     <message>
-        <source>Repeat passphrase</source>
-        <translation>パスワードを再入力</translation>
-    </message>
-    <message>
         <source>Unlock vault</source>
         <translation>保管庫のロックを解除</translation>
     </message>
@@ -544,10 +540,6 @@
     <message>
         <source>%1 of %2 total</source>
         <translation>%2 件中 %1 件</translation>
-    </message>
-    <message>
-        <source>Create vault</source>
-        <translation>保管庫を作成</translation>
     </message>
     <message>
         <source>Default</source>
@@ -872,6 +864,14 @@ Date: %1
         <source>Delete identity</source>
         <translation>ID を削除</translation>
     </message>
+    <message>
+        <source>Create vault</source>
+        <translation>保管庫を作成</translation>
+    </message>
+    <message>
+        <source>Lock the open vault to create a new one?</source>
+        <translation>新しい保管庫を作成するために、開いている保管庫をロックしますか？</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1150,6 +1150,149 @@ Date: %1
     </message>
 </context>
 <context>
+    <name>bm::NewVaultDialog</name>
+    <message>
+        <source>%1 s</source>
+        <translation>%1 秒</translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation>%1 分</translation>
+    </message>
+    <message>
+        <source>%1 h</source>
+        <translation>%1 時間</translation>
+    </message>
+    <message>
+        <source>%1 days</source>
+        <translation>%1 日</translation>
+    </message>
+    <message>
+        <source>New vault</source>
+        <translation>新しい保管庫</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>ニックネーム</translation>
+    </message>
+    <message>
+        <source>Copy address</source>
+        <translation>アドレスをコピー</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>アドレス</translation>
+    </message>
+    <message>
+        <source>Random, from the system&apos;s entropy</source>
+        <translation>ランダム（システムのエントロピーから）</translation>
+    </message>
+    <message>
+        <source>From a secret phrase</source>
+        <translation>秘密のフレーズから</translation>
+    </message>
+    <message>
+        <source>Secret phrase</source>
+        <translation>秘密のフレーズ</translation>
+    </message>
+    <message>
+        <source>Keys</source>
+        <translation>鍵</translation>
+    </message>
+    <message>
+        <source>Choose where to save the vault</source>
+        <translation>保管庫の保存先を選択</translation>
+    </message>
+    <message>
+        <source>This file exists; existing vaults are never overwritten.</source>
+        <translation>このファイルは存在します。既存の保管庫が上書きされることはありません。</translation>
+    </message>
+    <message>
+        <source>Vault file</source>
+        <translation>保管庫ファイル</translation>
+    </message>
+    <message>
+        <source>The passwords do not match.</source>
+        <translation>パスワードが一致しません。</translation>
+    </message>
+    <message>
+        <source>Repeat password</source>
+        <translation>パスワードを再入力</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>キャンセル</translation>
+    </message>
+    <message>
+        <source>Create vault</source>
+        <translation>保管庫を作成</translation>
+    </message>
+    <message>
+        <source>Save the vault as</source>
+        <translation>保管庫を保存</translation>
+    </message>
+    <message>
+        <source>Bitmessage vault (*.bmvault)</source>
+        <translation>Bitmessage 保管庫 (*.bmvault)</translation>
+    </message>
+    <message>
+        <source>Identity</source>
+        <translation>ID</translation>
+    </message>
+    <message>
+        <source>Another random address</source>
+        <translation>別のランダムなアドレス</translation>
+    </message>
+    <message>
+        <source>Find a shorter address</source>
+        <translation>もっと短いアドレスを探す</translation>
+    </message>
+    <message>
+        <source>Stop search</source>
+        <translation>検索を停止</translation>
+    </message>
+    <message>
+        <source>Optional. Shorter addresses are easier to read and type.</source>
+        <translation>任意です。短いアドレスは読みやすく、入力しやすくなります。</translation>
+    </message>
+    <message>
+        <source>Show phrase</source>
+        <translation>フレーズを表示</translation>
+    </message>
+    <message>
+        <source>Hide phrase</source>
+        <translation>フレーズを隠す</translation>
+    </message>
+    <message>
+        <source>The same phrase always gives the same address. Anyone who knows or guesses it has your keys: use a long random phrase.</source>
+        <translation>同じフレーズからは常に同じアドレスが作られます。このフレーズを知っている人や推測できた人は誰でもあなたの鍵を手に入れます。長くランダムなフレーズを使ってください。</translation>
+    </message>
+    <message>
+        <source>Vault</source>
+        <translation>保管庫</translation>
+    </message>
+    <message>
+        <source>Vault password</source>
+        <translation>保管庫のパスワード</translation>
+    </message>
+    <message>
+        <source>You need it to open the vault. A forgotten password cannot be recovered.</source>
+        <translation>保管庫を開くときに必要です。忘れたパスワードは復元できません。</translation>
+    </message>
+    <message>
+        <source>Trying %1 key pairs a second; next shorter address in about %2.</source>
+        <translation>毎秒 %1 組の鍵ペアを試行中。次に短いアドレスまで約 %2。</translation>
+    </message>
+    <message>
+        <source>Key pair %1 of this phrase: note the number with the phrase to rebuild this address.</source>
+        <translation>このフレーズの鍵ペア %1：このアドレスを復元するには、番号をフレーズと一緒に控えてください。</translation>
+    </message>
+    <message>
+        <source>Searching…</source>
+        <translation>検索中…</translation>
+    </message>
+</context>
+<context>
     <name>bm::Session</name>
     <message>
         <source>Vault password</source>
@@ -1220,16 +1363,8 @@ Date: %1
         <translation>先に現在の保管庫をロックしてください</translation>
     </message>
     <message>
-        <source>Create vault</source>
-        <translation>保管庫を作成</translation>
-    </message>
-    <message>
         <source>Bitmessage vault (*.bmvault)</source>
         <translation>Bitmessage 保管庫 (*.bmvault)</translation>
-    </message>
-    <message>
-        <source>Vault created. Add an identity and create a mailbox.</source>
-        <translation>保管庫を作成しました。ID を追加し、メールボックスを作成してください。</translation>
     </message>
     <message>
         <source>Open vault</source>
@@ -1474,6 +1609,14 @@ Date: %1
     <message>
         <source>Bitmessage digest</source>
         <translation>Bitmessage ダイジェスト</translation>
+    </message>
+    <message>
+        <source>Vault created with %1. Create a mailbox to start.</source>
+        <translation>%1 で保管庫を作成しました。メールボックスを作成して始めましょう。</translation>
+    </message>
+    <message>
+        <source>Cannot write %1</source>
+        <translation>%1 に書き込めません</translation>
     </message>
 </context>
 <context>

@@ -330,10 +330,6 @@
         <translation>密码</translation>
     </message>
     <message>
-        <source>Repeat passphrase</source>
-        <translation>再次输入密码</translation>
-    </message>
-    <message>
         <source>Unlock vault</source>
         <translation>解锁保险库</translation>
     </message>
@@ -544,10 +540,6 @@
     <message>
         <source>%1 of %2 total</source>
         <translation>%1 / 共 %2 封</translation>
-    </message>
-    <message>
-        <source>Create vault</source>
-        <translation>新建保险库</translation>
     </message>
     <message>
         <source>Default</source>
@@ -872,6 +864,14 @@ Date: %1
         <source>Delete identity</source>
         <translation>删除身份</translation>
     </message>
+    <message>
+        <source>Create vault</source>
+        <translation>新建保险库</translation>
+    </message>
+    <message>
+        <source>Lock the open vault to create a new one?</source>
+        <translation>锁定当前打开的保险库以新建一个吗？</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1150,6 +1150,149 @@ Date: %1
     </message>
 </context>
 <context>
+    <name>bm::NewVaultDialog</name>
+    <message>
+        <source>%1 s</source>
+        <translation>%1 秒</translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation>%1 分钟</translation>
+    </message>
+    <message>
+        <source>%1 h</source>
+        <translation>%1 小时</translation>
+    </message>
+    <message>
+        <source>%1 days</source>
+        <translation>%1 天</translation>
+    </message>
+    <message>
+        <source>New vault</source>
+        <translation>新建保险库</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>昵称</translation>
+    </message>
+    <message>
+        <source>Copy address</source>
+        <translation>复制地址</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>地址</translation>
+    </message>
+    <message>
+        <source>Random, from the system&apos;s entropy</source>
+        <translation>随机，来自系统熵</translation>
+    </message>
+    <message>
+        <source>From a secret phrase</source>
+        <translation>来自秘密短语</translation>
+    </message>
+    <message>
+        <source>Secret phrase</source>
+        <translation>秘密短语</translation>
+    </message>
+    <message>
+        <source>Keys</source>
+        <translation>密钥</translation>
+    </message>
+    <message>
+        <source>Choose where to save the vault</source>
+        <translation>选择保险库的保存位置</translation>
+    </message>
+    <message>
+        <source>This file exists; existing vaults are never overwritten.</source>
+        <translation>该文件已存在；现有的保险库绝不会被覆盖。</translation>
+    </message>
+    <message>
+        <source>Vault file</source>
+        <translation>保险库文件</translation>
+    </message>
+    <message>
+        <source>The passwords do not match.</source>
+        <translation>两次输入的密码不一致。</translation>
+    </message>
+    <message>
+        <source>Repeat password</source>
+        <translation>再次输入密码</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Create vault</source>
+        <translation>新建保险库</translation>
+    </message>
+    <message>
+        <source>Save the vault as</source>
+        <translation>将保险库另存为</translation>
+    </message>
+    <message>
+        <source>Bitmessage vault (*.bmvault)</source>
+        <translation>Bitmessage 保险库 (*.bmvault)</translation>
+    </message>
+    <message>
+        <source>Identity</source>
+        <translation>身份</translation>
+    </message>
+    <message>
+        <source>Another random address</source>
+        <translation>换一个随机地址</translation>
+    </message>
+    <message>
+        <source>Find a shorter address</source>
+        <translation>查找更短的地址</translation>
+    </message>
+    <message>
+        <source>Stop search</source>
+        <translation>停止搜索</translation>
+    </message>
+    <message>
+        <source>Optional. Shorter addresses are easier to read and type.</source>
+        <translation>可选。较短的地址更易于阅读和输入。</translation>
+    </message>
+    <message>
+        <source>Show phrase</source>
+        <translation>显示短语</translation>
+    </message>
+    <message>
+        <source>Hide phrase</source>
+        <translation>隐藏短语</translation>
+    </message>
+    <message>
+        <source>The same phrase always gives the same address. Anyone who knows or guesses it has your keys: use a long random phrase.</source>
+        <translation>同一短语总是生成同一地址。任何知道或猜到它的人都能获得你的密钥：请使用较长的随机短语。</translation>
+    </message>
+    <message>
+        <source>Vault</source>
+        <translation>保险库</translation>
+    </message>
+    <message>
+        <source>Vault password</source>
+        <translation>保险库密码</translation>
+    </message>
+    <message>
+        <source>You need it to open the vault. A forgotten password cannot be recovered.</source>
+        <translation>打开保险库时需要它。忘记的密码无法找回。</translation>
+    </message>
+    <message>
+        <source>Trying %1 key pairs a second; next shorter address in about %2.</source>
+        <translation>每秒尝试 %1 对密钥；下一个更短的地址大约还需 %2。</translation>
+    </message>
+    <message>
+        <source>Key pair %1 of this phrase: note the number with the phrase to rebuild this address.</source>
+        <translation>该短语的第 %1 对密钥：请将该编号与短语一同记下，以便重建此地址。</translation>
+    </message>
+    <message>
+        <source>Searching…</source>
+        <translation>正在搜索…</translation>
+    </message>
+</context>
+<context>
     <name>bm::Session</name>
     <message>
         <source>Vault password</source>
@@ -1220,16 +1363,8 @@ Date: %1
         <translation>请先锁定当前保险库</translation>
     </message>
     <message>
-        <source>Create vault</source>
-        <translation>新建保险库</translation>
-    </message>
-    <message>
         <source>Bitmessage vault (*.bmvault)</source>
         <translation>Bitmessage 保险库 (*.bmvault)</translation>
-    </message>
-    <message>
-        <source>Vault created. Add an identity and create a mailbox.</source>
-        <translation>保险库已创建。请添加身份并新建邮箱。</translation>
     </message>
     <message>
         <source>Open vault</source>
@@ -1474,6 +1609,14 @@ Date: %1
     <message>
         <source>Bitmessage digest</source>
         <translation>Bitmessage 摘要</translation>
+    </message>
+    <message>
+        <source>Vault created with %1. Create a mailbox to start.</source>
+        <translation>已用 %1 新建保险库。新建一个邮箱即可开始。</translation>
+    </message>
+    <message>
+        <source>Cannot write %1</source>
+        <translation>无法写入 %1</translation>
     </message>
 </context>
 <context>
