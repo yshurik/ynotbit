@@ -180,6 +180,21 @@ int main(int argc, char **argv) {
         auto outboxIcon = window.findChild<QToolButton *>("folderIcon_Outbox");
         require(session.messageCount("Outbox", "") == 0 && outboxIcon && !outboxIcon->isVisible(),
                 "with nothing queued the Outbox stays out of the rail");
+        // The buttons beside an address (copy it, add it to contacts) are drawn
+        // like the app's other tool buttons, in every place: a 22 px box with a
+        // 14 px icon, bordered in the theme's border colour, light or dark.
+        const auto near = [](QColor a, QColor b) {
+            return qAbs(a.red() - b.red()) + qAbs(a.green() - b.green()) +
+                       qAbs(a.blue() - b.blue()) <=
+                   24;
+        };
+        const auto copyEdge = [](QToolButton *b) {
+            return b->grab().toImage().pixelColor(0, b->height() / 2);
+        };
+        const auto copyStyled = [&](QToolButton *b) {
+            return b && b->size() == QSize(22, 22) && b->iconSize() == QSize(14, 14) &&
+                   (near(copyEdge(b), QColor("#dbe3e8")) || near(copyEdge(b), QColor("#354553")));
+        };
         auto list = window.findChild<QListView *>("letters");
         require(list, "list exists");
         require(window.findChild<QPushButton *>("writeButton")->icon().pixmap(24, 24).toImage() !=
@@ -375,11 +390,19 @@ int main(int argc, char **argv) {
             }
             const auto lightDensity = iconOf("density_compact");
             const auto lightFilter = iconOf("filter_unread");
+            auto headerCopy = window.findChild<QToolButton *>("feedHeaderCopy");
+            require(copyStyled(headerCopy) && near(copyEdge(headerCopy), QColor("#dbe3e8")),
+                    "the feed's copy-address button is drawn like the other tool buttons");
+            require(copyStyled(window.findChild<QToolButton *>("addSenderContact")) &&
+                        copyStyled(window.findChild<QToolButton *>("addRecipientContact")),
+                    "the reader's add-to-contacts buttons are drawn like the other tool buttons");
             themeTo("dark");
             require(iconOf("density_compact") != lightDensity,
                     "density icons recolour on a theme switch");
             require(iconOf("filter_unread") != lightFilter,
                     "filter icons recolour on a theme switch");
+            require(near(copyEdge(headerCopy), QColor("#354553")),
+                    "a copy-address button's border follows the theme");
             themeTo("system");
             folders->setCurrentRow(folderBefore);
         }
@@ -1108,6 +1131,8 @@ int main(int argc, char **argv) {
                         cards()[0]->findChild<QLabel *>("contactName")->text() == "Alice" &&
                         cards()[0]->findChild<QLabel *>("contactAddress")->text() == alice,
                     "the contact is listed with its name and address");
+            require(copyStyled(cards()[0]->findChild<QToolButton *>("copyContactAddressButton")),
+                    "a contact card's copy-address button is drawn like the other tool buttons");
             auto filter = window.findChild<QLineEdit *>("contactsFilter");
             filter->setText("nobody-matches");
             require(cards().isEmpty() && window.findChild<QLabel *>("contactsEmpty"),
@@ -1876,6 +1901,8 @@ int main(int argc, char **argv) {
                 window.grab().save(dir + "/identities.png");
             }
 
+            require(copyStyled(window.findChild<QToolButton *>("copyAddressButton")),
+                    "an identity card's copy-address button is drawn like the other tool buttons");
             window.findChild<QToolButton *>("copyAddressButton")->click();
             auto copied = QApplication::clipboard()->text();
             require(copied == address || copied == emptyChannel,

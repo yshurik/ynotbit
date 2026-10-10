@@ -103,6 +103,9 @@ FeedView::FeedView(Session &session, QWidget *parent) : QWidget(parent), session
     names->addWidget(headerAddress_);
     header->addLayout(names);
     headerCopy_ = actionButton("feedHeaderCopy", "copy", tr("Copy address"), dark_);
+    headerCopy_->setProperty("addressAction", true); // drawn as the window's address buttons
+    headerCopy_->setFixedSize(22, 22);
+    headerCopy_->setIconSize(QSize(14, 14));
     connect(headerCopy_, &QToolButton::clicked, this, [this] { session_.copyAddress(address_); });
     header->addWidget(headerCopy_, 0, Qt::AlignTop);
     header->addStretch();

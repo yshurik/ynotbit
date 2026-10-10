@@ -1684,8 +1684,10 @@ class LetterPane : public KindFrame {
             name->hide();
             auto add = new QToolButton;
             add->setObjectName(addressRow == 0 ? "addSenderContact" : "addRecipientContact");
+            add->setProperty("addressAction", true);
+            add->setFixedSize(22, 22);
             add->setIcon(materialIcon("personAdd", iconColor(dark_)));
-            add->setIconSize(QSize(16, 16));
+            add->setIconSize(QSize(14, 14));
             add->setAutoRaise(true);
             add->setCursor(Qt::PointingHandCursor);
             add->setToolTip(DesktopWindow::tr("Add to contacts"));
@@ -2664,6 +2666,10 @@ void DesktopWindow::updateTheme() {
             "QToolBar#actionsToolbar QToolButton{"
             "border:0;border-radius:0;background:transparent;padding:2px;} "
             "QToolBar#actionsToolbar QToolButton:hover{background:%3;} "
+            // The buttons beside an address, wherever they are: a pill of one.
+            "QToolButton[addressAction=\"true\"]{border:1px solid %4;border-radius:6px;"
+            "background:transparent;padding:0;} "
+            "QToolButton[addressAction=\"true\"]:hover{background:%3;} "
             "QWidget[viewSwitch=\"true\"]{border:1px solid %4;border-radius:7px;background:transparent;} "
             "QWidget[viewSwitch=\"true\"] QToolButton{border:0;border-radius:0;"
             "background:transparent;padding:0;} "
@@ -3162,6 +3168,8 @@ void DesktopWindow::refreshIdentities() {
         addressRow->addWidget(addressLabel);
         auto copyButton = new QToolButton;
         copyButton->setObjectName("copyAddressButton");
+        copyButton->setProperty("addressAction", true);
+        copyButton->setFixedSize(22, 22);
         copyButton->setIcon(materialIcon("copy", color));
         copyButton->setIconSize(QSize(14, 14));
         copyButton->setAutoRaise(true);
@@ -3287,6 +3295,9 @@ void DesktopWindow::refreshContacts() {
         addressLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
         addressRow->addWidget(addressLabel);
         auto copyButton = new QToolButton;
+        copyButton->setObjectName("copyContactAddressButton");
+        copyButton->setProperty("addressAction", true);
+        copyButton->setFixedSize(22, 22);
         copyButton->setIcon(materialIcon("copy", color));
         copyButton->setIconSize(QSize(14, 14));
         copyButton->setAutoRaise(true);
