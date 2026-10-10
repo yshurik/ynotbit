@@ -29,6 +29,11 @@
 - OpenSSL 3.6.1: https://www.openssl.org, Apache License 2.0.
 
 - zlib 1.3.2: https://zlib.net, zlib license (bundled transitive dependency).
+- coolname: https://github.com/alexanderlukanin13/coolname, BSD-2-Clause
+  (`licenses/coolname.txt`), commit `7f895eed330e39830d7042ee03395a332495480c`.
+  Its word lists and patterns are kept unchanged in `third_party/coolname/data/`
+  and give each address a name; `src/coolname.cpp` ports its default generator's
+  indexing, and ynotbit leaves out the words in `third_party/coolname/excluded.txt`.
 
 Dependency license texts are included under `licenses/`.
 

@@ -1,0 +1,21 @@
+# Words ynotbit leaves out of names: they read badly attached to a person.
+# A phrase containing one of them ("feral cat") goes with it. Changing this
+# list renames addresses: see README.md.
+# looks and body
+bald bulky chubby curvy fat hairy lumpy meaty skinny thick shapeless girlish macho sexy hot juicy married desirable pleasurable
+# identity, belief, origin
+aboriginal native gay straight vegan devout orthodox heretic liberal illegal pygmy atheism feminism piety holiness conversion
+# insults and bad character
+annoying arrogant belligerent berserk cocky crazy daft daffy devious evasive fanatic greedy grumpy hysterical loutish manipulative naughty notorious outrageous pompous sarcastic sloppy sly snobbish uppish uptight vengeful demonic primitive ludicrous stereotyped tacky imperious aggressive dangerous unnatural kickass messy weird
+# animals used as insults
+pig hog swine warthog cow donkey mule rat weasel skunk snake viper leech worm earthworm slug vulture hyena jackal mongrel
+# primates, long used as racist slurs
+ape baboon bonobo capuchin chimpanzee galago gibbon gorilla lemur loris macaque mandrill marmoset monkey orangutan tamarin tarsier uakari
+# fool slang
+booby boobook turkey dodo loon coot cuckoo
+# words that drop a whole phrase
+feral naked killer blob foreign
+# of-nouns: sexual, hostile
+penetration domination ecstasy fertility anger fury attack criticism opposition superiority
+# from-places
+hell uranus
