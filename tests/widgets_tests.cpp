@@ -177,6 +177,9 @@ int main(int argc, char **argv) {
         folders->setCurrentRow(4);
         QTest::qWait(50);
         footprint("Mailbox open");
+        auto outboxIcon = window.findChild<QToolButton *>("folderIcon_Outbox");
+        require(session.messageCount("Outbox", "") == 0 && outboxIcon && !outboxIcon->isVisible(),
+                "with nothing queued the Outbox stays out of the rail");
         auto list = window.findChild<QListView *>("letters");
         require(list, "list exists");
         require(window.findChild<QPushButton *>("writeButton")->icon().pixmap(24, 24).toImage() !=
@@ -1777,6 +1780,23 @@ int main(int argc, char **argv) {
         window.compose();
         require(session.messageCount("Outbox", "") == 1,
                 "composer sends through persistent outbox");
+        {
+            // The Outbox is in the rail while a letter waits in it; emptied while
+            // open, it stays until the reader leaves.
+            require(outboxIcon->isVisible(), "a queued letter brings the Outbox into the rail");
+            const auto queued = session.messageHashes("Outbox").value(0);
+            const int folderBefore = folders->currentRow();
+            outboxIcon->click();
+            session.moveLetter(queued, "Archive");
+            require(session.messageCount("Outbox", "") == 0 && outboxIcon->isVisible(),
+                    "the open Outbox stays in the rail when it empties");
+            window.findChild<QToolButton *>("folderIcon_Inbox")->click();
+            require(!outboxIcon->isVisible(), "leaving the empty Outbox takes it out of the rail");
+            session.restoreLetter(queued);
+            require(session.messageCount("Outbox", "") == 1 && outboxIcon->isVisible(),
+                    "a letter back in the Outbox brings it back");
+            folders->setCurrentRow(folderBefore);
+        }
         const auto draftsBeforeNeverSaved = session.messageCount("Drafts", "");
         QTimer::singleShot(30, &window, [&] {
             window.findChild<QDialog *>("composer")
@@ -2252,6 +2272,11 @@ int main(int argc, char **argv) {
                         !window.findChild<QToolButton *>("folderIcon_Contacts")->isEnabled() &&
                         !window.findChild<QPushButton *>("writeButton")->isEnabled(),
                     "locked, the rail's folders and Write are off");
+            const int shown = folders->currentRow();
+            folders->setCurrentRow(2);
+            require(!outboxIcon->isVisible(),
+                    "locked, the Outbox is out of the rail, even as the folder last shown");
+            folders->setCurrentRow(shown);
             const int folderBefore = folders->currentRow();
             gear->click();
             auto settings = window.findChild<QWidget *>("settingsPane");

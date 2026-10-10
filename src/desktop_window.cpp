@@ -2788,6 +2788,11 @@ void DesktopWindow::updateState() {
     for (const auto &[label, iconName] : kFolderIcons)
         if (label != "Settings")
             findChild<QToolButton *>("folderIcon_" + label)->setEnabled(mailboxState);
+    // Outbox only while letters wait in it, or while it is the page shown:
+    // emptied under the reader, it goes once they leave.
+    findChild<QToolButton *>("folderIcon_Outbox")
+        ->setVisible(mailboxState &&
+                     (folders_->currentRow() == 2 || session_.messageCount("Outbox", {}) > 0));
     // Subscriptions is a feed: no letter list, no reader.
     const bool feedPage = folders_->currentRow() == 5 && mailboxState;
     listColumn_->setVisible(mailboxState && !identityPage && !feedPage && !settingsPage);
