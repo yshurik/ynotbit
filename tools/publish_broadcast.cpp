@@ -86,6 +86,10 @@ int publish(const Broadcast &b) {
         QSettings config(root + "/desktop.ini", QSettings::IniFormat);
         config.setValue("vault", vaultPath);
         config.setValue("mailbox", mailPath);
+        // The node only calls out: it neither listens, which would clash with the app's
+        // own port, nor asks the router to open one.
+        config.setValue("listen", false);
+        config.setValue("upnp", false);
     }
 
     // A dry run stays offline: no node starts, nothing leaves this machine.
