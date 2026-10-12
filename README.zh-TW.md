@@ -3,7 +3,7 @@
 [English](README.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [简体中文](README.zh-CN.md) | **繁體中文** | [Русский](README.ru.md) | [Українська](README.uk.md)
 
 一個以 [notbit](https://github.com/bpeel/notbit) 為基礎的輕巧桌面 Bitmessage 用戶端，
-作者 [yshurik](https://github.com/yshurik)。**目前版本：0.6.0**
+作者 [yshurik](https://github.com/yshurik)。**目前版本：0.7.0**
 
 ynotbit 把身分金鑰存放在受密碼保護的保險庫中，把往來信件存放在另一個加密的信箱文件中。
 不持有金鑰的中繼在保險庫鎖定時也會繼續收集網路物件。解鎖後，它會檢查保留下來的物件，
@@ -21,7 +21,7 @@ ynotbit 把身分金鑰存放在受密碼保護的保險庫中，把往來信件
 
 ## 下載
 
-[**v0.6.0 版本**](https://github.com/yshurik/ynotbit/releases/tag/v0.6.0)：適用於 Linux（x86_64）、
+[**v0.7.0 版本**](https://github.com/yshurik/ynotbit/releases/tag/v0.7.0)：適用於 Linux（x86_64）、
 macOS（Apple Silicon）和 Windows（x86_64）的預先建置套件，皆經過 CI 測試。
 各個版本能保證什麼、不能保證什麼，請參閱下方的[目前的限制](#目前的限制)。
 
