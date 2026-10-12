@@ -268,25 +268,29 @@ int main(int argc, char **argv) {
             for (int n = 1; n <= 40; ++n)
                 thread << chat(n);
             pane.setMessages(thread);
-            QTest::qWait(30);
             auto bar = pane.findChild<QScrollArea *>("chatMessagesScroll")->verticalScrollBar();
-            expect(bar->maximum() > 0 && bar->value() == bar->maximum(),
-                   "a conversation opens at its newest message");
+            // Messages are laid out after setMessages() returns, later on a busy machine: wait
+            // for the bar to come to rest at the end, not for a fixed time.
+            const auto atEnd = [&] { return bar->maximum() > 0 && bar->value() == bar->maximum(); };
+            expect(QTest::qWaitFor(atEnd, 5000), "a conversation opens at its newest message");
             QPointer<QWidget> first = pane.findChildren<QWidget *>("incomingChatBubble").value(0);
             pane.setMessages(thread);
             expect(!first.isNull(), "a conversation that did not change is not redrawn");
             bar->setValue(bar->maximum() / 2);
-            const int reading = bar->value();
+            const int reading = bar->value(), shortRange = bar->maximum();
             thread << chat(41);
             pane.setMessages(thread);
-            QTest::qWait(30);
-            expect(count("incomingChatBubble") == 21 && bar->value() == reading,
+            // Once the new message has lengthened the bar, the reader is still where they were.
+            const bool longer = QTest::qWaitFor([&] { return bar->maximum() > shortRange; }, 5000);
+            expect(longer && count("incomingChatBubble") == 21 && bar->value() == reading,
                    "a new message does not move a reader who scrolled up");
             bar->setValue(bar->maximum());
+            const int longRange = bar->maximum();
             thread << chat(42);
             pane.setMessages(thread);
-            QTest::qWait(30);
-            expect(count("outgoingChatBubble") == 21 && bar->value() == bar->maximum(),
+            const bool followed =
+                QTest::qWaitFor([&] { return bar->maximum() > longRange && atEnd(); }, 5000);
+            expect(followed && count("outgoingChatBubble") == 21,
                    "a reader at the newest message follows the new ones");
             thread[41] = chat(42, "acknowledged");
             pane.setMessages(thread);
@@ -298,9 +302,7 @@ int main(int argc, char **argv) {
                                  bm::Protocol::identity("chat pane other").address, "Other contact",
                                  false);
             pane.setMessages(thread);
-            QTest::qWait(30);
-            expect(bar->value() == bar->maximum(),
-                   "another conversation opens at its newest message");
+            expect(QTest::qWaitFor(atEnd, 5000), "another conversation opens at its newest message");
             pane.setDark(true);
             const auto outgoing = pane.findChildren<QWidget *>("outgoingChatBubble");
             expect(!outgoing.isEmpty() && outgoing.first()->styleSheet().contains("#174944"),

@@ -568,6 +568,11 @@ void ChatsPane::setMessages(const QVariantList &messages) {
         rowLayout->addWidget(bubble);
         if (!outgoing) rowLayout->addStretch(1);
         messages_->insertWidget(messages_->count() - 1, row);
+        // A layout shows a new widget only later, and a hidden one takes no room. A layout
+        // pass in between, one that was already waiting, would see an empty conversation and
+        // shorten the bar to nothing; the bar then reads "at the end", and a reader who had
+        // scrolled up would be taken to the newest message.
+        row->show();
     }
     auto bar = scroll_->verticalScrollBar();
     if (atEnd_)
