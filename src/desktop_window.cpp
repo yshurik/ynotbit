@@ -1251,7 +1251,7 @@ class Composer : public QDialog {
             }
         });
         send->setObjectName("sendButton");
-        send->setDefault(true);
+        makeDefault(send);
         id_ = (reply || forward) ? QString() : letter["hash"].toString();
         dirty_ = (reply || forward);
         auto changed = [this] {
@@ -1464,7 +1464,7 @@ class ContactDialog : public QDialog {
         buttons->addWidget(cancel);
         save_ = new QPushButton(DesktopWindow::tr("Save"));
         save_->setObjectName("contactSaveButton");
-        save_->setDefault(true);
+        makeDefault(save_);
         connect(save_, &QPushButton::clicked, this, [this] {
             if (session_.addContact(address_->text(), name_->text()))
                 accept();
@@ -2410,8 +2410,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         refreshIdentities();
     })->setObjectName("joinChannelButton");
     button(tr("New identity"), identitiesHeadRow, [this] {
-        session_.addIdentity();
-        refreshIdentities();
+        newIdentity();
     })->setObjectName("newIdentityButton");
     identitiesOuter->addLayout(identitiesHeadRow);
     auto identitiesScroll = new QScrollArea;
@@ -2512,7 +2511,9 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     connect(networkEnabledAction_, &QAction::toggled, &session_, &Session::setNetworkEnabled);
     network->addAction(tr("Restart node"), &session_, &Session::restartNode);
     auto identity = menuBar()->addMenu(tr("Identity"));
-    identity->addAction(tr("Create identity…"), &session_, &Session::addIdentity);
+    createIdentityAction_ =
+        identity->addAction(tr("Create identity…"), this, &DesktopWindow::newIdentity);
+    createIdentityAction_->setObjectName("createIdentityAction");
     identity->addAction(tr("Join or create chan…"), &session_, &Session::joinChannel);
     identity->addAction(tr("Import keys.dat…"), &session_, &Session::importIdentities);
     identity->addAction(tr("Subscribe to broadcasts…"), &session_, &Session::subscribe);
@@ -2627,7 +2628,9 @@ void DesktopWindow::updateTheme() {
             "QPushButton:hover{background:%2;} QListView,QTextEdit{border:0;} "
             "QListWidget::item{padding:10px;} QListWidget::item:selected{background:%5;color:%6;} "
             "QToolBar{border:0;spacing:3px;} "
-            "QPushButton:default{background:%6;color:%1;border-color:%6;font-weight:600;} "
+            // No bold on :default either: default buttons are bold by their own
+            // font (makeDefault), and any dialog button is :default while focused.
+            "QPushButton:default{background:%6;color:%1;border-color:%6;} "
             "QPushButton:default:hover{background:%6;border-color:%4;} "
             "QPushButton#contactsPickerButton::menu-indicator{image:none;width:0;} "
             "QWidget#updateBanner{background:%5;} QLabel#updateLabel{color:%6;font-weight:600;} "
@@ -2749,6 +2752,7 @@ void DesktopWindow::updateState() {
     channelRail_->setVisible(mailboxState && (channelPage || broadcastPage));
     heading_->setVisible(!channelPage && !broadcastPage);
     channelRail_->setEnabled(session_.unlocked());
+    createIdentityAction_->setEnabled(session_.unlocked());
     updateListCount();
     const auto identities = session_.unlocked() ? session_.identities() : QVariantList();
     if (identities != channelIdentities_) {
@@ -3343,19 +3347,18 @@ void DesktopWindow::refreshContacts() {
     contactLayout_->addStretch();
 }
 void DesktopWindow::newVault() {
-    // A vault is made with none open: offer to lock the open one first.
-    if (session_.unlocked()) {
-        if (QMessageBox::question(this, tr("Create vault"),
-                                  tr("Lock the open vault to create a new one?")) !=
-            QMessageBox::Yes)
-            return;
-        session_.lock();
-    }
+    // Nothing to ask: an open vault holds nothing unsaved, and stays open
+    // until the new one takes its place.
     const auto documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
     NewVaultDialog dialog(session_, documents.isEmpty() ? QDir::homePath() : documents,
                           appearance_.dark(), this);
     if (dialog.exec() == QDialog::Accepted)
         targetVaultPath_ = session_.vaultPath(); // locked again, the lock screen offers it
+}
+void DesktopWindow::newIdentity() {
+    NewVaultDialog dialog(session_, {}, appearance_.dark(), this, NewVaultDialog::IdentityOnly);
+    if (dialog.exec() == QDialog::Accepted)
+        refreshIdentities();
 }
 void DesktopWindow::openSettings() {
     folders_->setCurrentRow(10); // Settings, the rail's last page

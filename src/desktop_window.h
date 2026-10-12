@@ -50,7 +50,7 @@ class DesktopWindow : public QMainWindow {
     QVariantList shownBroadcastSources_; // the Broadcasts rail's senders, last drawn
     QLabel *heading_, *status_, *error_, *updateLabel_;
     QWidget *updateBanner_;
-    QAction *networkEnabledAction_;
+    QAction *networkEnabledAction_, *createIdentityAction_;
     SettingsPane *settings_ = nullptr; // made when Settings is first opened
     LetterPane *pane_; // the selected letter
     QWidget *reader_, *identities_, *contacts_;
@@ -79,7 +79,8 @@ class DesktopWindow : public QMainWindow {
     void setChannelRailCollapsed(bool collapsed);
     void updateListCount();
     void showVaultPasswordFor(QString path);
-    void newVault(); // the new vault dialog
+    void newVault();    // the new vault dialog
+    void newIdentity(); // the same dialog, for an identity alone
     void updateLockedScreen();
     void refreshRecentVaults();
     void refreshRecentMailboxes();

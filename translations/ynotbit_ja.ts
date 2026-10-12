@@ -864,14 +864,6 @@ Date: %1
         <source>Delete identity</source>
         <translation>ID を削除</translation>
     </message>
-    <message>
-        <source>Create vault</source>
-        <translation>保管庫を作成</translation>
-    </message>
-    <message>
-        <source>Lock the open vault to create a new one?</source>
-        <translation>新しい保管庫を作成するために、開いている保管庫をロックしますか？</translation>
-    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1291,6 +1283,18 @@ Date: %1
         <source>Searching…</source>
         <translation>検索中…</translation>
     </message>
+    <message>
+        <source>New identity</source>
+        <translation>新しい ID</translation>
+    </message>
+    <message>
+        <source>This address is already in the vault.</source>
+        <translation>このアドレスはすでに保管庫にあります。</translation>
+    </message>
+    <message>
+        <source>Create identity</source>
+        <translation>ID を作成</translation>
+    </message>
 </context>
 <context>
     <name>bm::Session</name>
@@ -1429,10 +1433,6 @@ Date: %1
     <message>
         <source>Vault locked. Objects remain cached for later inspection.</source>
         <translation>保管庫をロックしました。オブジェクトは後で検査できるようキャッシュに残ります。</translation>
-    </message>
-    <message>
-        <source>New identity</source>
-        <translation>新しい ID</translation>
     </message>
     <message>
         <source>Label</source>

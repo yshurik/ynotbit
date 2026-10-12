@@ -192,13 +192,17 @@ void Session::attempt(const std::function<void()> &f) {
     emit changed();
 }
 void Session::acquireVault(const QString &p) {
-    vaultLock_ = std::make_unique<QLockFile>(p + ".lock");
-    if (vaultLock_->tryLock())
-        return;
-    // Only a lock held elsewhere is another instance; else the place is the problem.
-    check(vaultLock_->error() != QLockFile::LockFailedError,
-          tr("Vault is in use by another instance"));
-    check(false, tr("Cannot write %1").arg(QDir::toNativeSeparators(p)));
+    vaultLock_ = lockVaultFile(p);
+}
+std::unique_ptr<QLockFile> Session::lockVaultFile(const QString &p) {
+    auto lock = std::make_unique<QLockFile>(p + ".lock");
+    if (!lock->tryLock()) {
+        // Only a lock held elsewhere is another instance; else the place is the problem.
+        check(lock->error() != QLockFile::LockFailedError,
+              tr("Vault is in use by another instance"));
+        check(false, tr("Cannot write %1").arg(QDir::toNativeSeparators(p)));
+    }
+    return lock;
 }
 void Session::rememberVault(const QString &path) {
     recentVaultPaths_.removeAll(path);
@@ -229,7 +233,6 @@ QVariantList Session::recentMailboxes() const {
 bool Session::createVault(const QString &path, QString password, QString repeated,
                           const Identity &identity) {
     attempt([&] {
-        check(!unlocked(), tr("Lock the current vault first"));
         check(!password.isEmpty(), tr("Password cannot be empty"));
         check(password == repeated, tr("Passwords do not match"));
         check(!QFile::exists(path),
@@ -237,7 +240,11 @@ bool Session::createVault(const QString &path, QString password, QString repeate
         Password secret{password.toUtf8()};
         password.fill(QChar(0));
         repeated.fill(QChar(0));
-        acquireVault(path);
+        // The new file reserved first: until then the open vault stays open.
+        auto reserved = lockVaultFile(path);
+        if (unlocked())
+            lock();
+        vaultLock_ = std::move(reserved);
         try {
             vault_.create(path, secret.bytes); // leaves whatever was at path alone
         } catch (...) {
@@ -456,19 +463,15 @@ void Session::lock() {
     emit locked();
     emit changed();
 }
-void Session::addIdentity() {
+bool Session::addIdentity(const Identity &identity) {
     attempt([&] {
         check(unlocked(), tr("Unlock a vault first"));
-        bool ok;
-        auto label =
-            QInputDialog::getText(nullptr, tr("New identity"), tr("Label"), QLineEdit::Normal, {}, &ok);
-        if (!ok)
-            return;
-        vault_.addIdentity(label);
+        vault_.addIdentity(identity);
         if (mailboxOpen())
             mailbox_.advance(0);
         activity_ = tr("Identity created. Retained objects will be inspected again.");
     });
+    return error_.isEmpty();
 }
 void Session::joinChannel() {
     attempt([&] {

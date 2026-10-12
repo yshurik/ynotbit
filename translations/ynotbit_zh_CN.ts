@@ -864,14 +864,6 @@ Date: %1
         <source>Delete identity</source>
         <translation>删除身份</translation>
     </message>
-    <message>
-        <source>Create vault</source>
-        <translation>新建保险库</translation>
-    </message>
-    <message>
-        <source>Lock the open vault to create a new one?</source>
-        <translation>锁定当前打开的保险库以新建一个吗？</translation>
-    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1291,6 +1283,18 @@ Date: %1
         <source>Searching…</source>
         <translation>正在搜索…</translation>
     </message>
+    <message>
+        <source>New identity</source>
+        <translation>新建身份</translation>
+    </message>
+    <message>
+        <source>This address is already in the vault.</source>
+        <translation>此地址已在保险库中。</translation>
+    </message>
+    <message>
+        <source>Create identity</source>
+        <translation>新建身份</translation>
+    </message>
 </context>
 <context>
     <name>bm::Session</name>
@@ -1429,10 +1433,6 @@ Date: %1
     <message>
         <source>Vault locked. Objects remain cached for later inspection.</source>
         <translation>保险库已锁定。对象会保留在缓存中以便稍后检查。</translation>
-    </message>
-    <message>
-        <source>New identity</source>
-        <translation>新建身份</translation>
     </message>
     <message>
         <source>Label</source>

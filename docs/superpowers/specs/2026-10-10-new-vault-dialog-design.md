@@ -19,9 +19,9 @@ having an address, and none of them says what the address will be.
    secret phrase, the way PyBitmessage derives a deterministic address (the same
    phrase gives the same address there, and to `scripts/keys-from-phrase.py`).
 4. **Shorter addresses, as `tools/bm-shortaddr` (big1) finds them.** "Make it
-   shorter" searches in the background, on every core but one, for keys whose
-   RIPE hash starts with more zero bytes; each shorter address found replaces
-   the one shown, and Stop keeps the best.
+   shorter" ("Find a shorter address") searches in the background, on every
+   core but one, for keys whose RIPE hash starts with more zero bytes; each
+   shorter address found replaces the one shown, and Stop keeps the best.
 5. **The nickname is the address's name** (`bm::addressName`, in title case:
    "Mysterious Poised Shellfish"), and the vault file is named after the
    nickname in `~/Documents` ("mysterious-poised-shellfish.bmvault").
@@ -29,6 +29,14 @@ having an address, and none of them says what the address will be.
    screen.
 7. **No mailbox is created.** After Create the window shows "No mailbox open",
    as today.
+8. **Nothing is asked about an open vault.** It holds nothing unsaved, so it
+   stays open while the dialog is, Cancel keeps it, and Create locks it once
+   the new vault's file is reserved, the new vault taking its place.
+9. **The same dialog makes an identity alone.** The Identities page's New
+   identity and Identity → Create identity… open it without its sections, file
+   and password rows; Create identity adds the address shown, with its
+   nickname, to the open vault, and an address already in it is said and not
+   made again. Create identity… waits for an open vault.
 
 ## The dialog
 

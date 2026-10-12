@@ -864,14 +864,6 @@ Date: %1
         <source>Delete identity</source>
         <translation>Видалити ідентичність</translation>
     </message>
-    <message>
-        <source>Create vault</source>
-        <translation>Створити сховище</translation>
-    </message>
-    <message>
-        <source>Lock the open vault to create a new one?</source>
-        <translation>Заблокувати відкрите сховище, щоб створити нове?</translation>
-    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1291,6 +1283,18 @@ Date: %1
         <source>Searching…</source>
         <translation>Пошук…</translation>
     </message>
+    <message>
+        <source>New identity</source>
+        <translation>Нова ідентичність</translation>
+    </message>
+    <message>
+        <source>This address is already in the vault.</source>
+        <translation>Ця адреса вже є у сховищі.</translation>
+    </message>
+    <message>
+        <source>Create identity</source>
+        <translation>Створити ідентичність</translation>
+    </message>
 </context>
 <context>
     <name>bm::Session</name>
@@ -1429,10 +1433,6 @@ Date: %1
     <message>
         <source>Vault locked. Objects remain cached for later inspection.</source>
         <translation>Сховище заблоковано. Об&apos;єкти залишаються в кеші для подальшої перевірки.</translation>
-    </message>
-    <message>
-        <source>New identity</source>
-        <translation>Нова ідентичність</translation>
     </message>
     <message>
         <source>Label</source>

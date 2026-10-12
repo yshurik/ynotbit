@@ -57,6 +57,7 @@ class Session : public QObject {
     void clearMessages();
     void tick();
     void acquireVault(const QString &);
+    std::unique_ptr<QLockFile> lockVaultFile(const QString &); // or throws why there is none
     void openMailboxPath(const QString &);
     void rememberVault(const QString &path);
     void rememberMailbox(const QString &path);
@@ -129,8 +130,9 @@ class Session : public QObject {
     static bool wantsPortMapping(bool online, bool listen, bool upnp, const QString &proxy) {
         return online && listen && upnp && proxy.isEmpty();
     }
-    // A new vault at path holding identity, its first and default; true when
-    // made, else error() says why.
+    // A new vault at path holding identity, its first and default, in place of
+    // the open vault, which stays open when the new file cannot be reserved;
+    // true when made, else error() says why.
     bool createVault(const QString &path, QString password, QString repeated,
                      const Identity &identity);
     Q_INVOKABLE void openVault();
@@ -153,7 +155,8 @@ class Session : public QObject {
     QVariantList recentVaults() const;
     QVariantList recentMailboxes() const;
     Q_INVOKABLE void lock();
-    Q_INVOKABLE void addIdentity();
+    // Adds identity to the open vault; true when added, else error() says why.
+    bool addIdentity(const Identity &identity);
     Q_INVOKABLE void joinChannel();
     Q_INVOKABLE void importIdentities();
     Q_INVOKABLE void changePassword();

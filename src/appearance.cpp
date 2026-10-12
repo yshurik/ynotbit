@@ -2,6 +2,7 @@
 #include <QApplication>
 #include <QFontDatabase>
 #include <QFontMetricsF>
+#include <QPushButton>
 #include <QSettings>
 #include <QStyleHints>
 
@@ -46,6 +47,12 @@ QFont addressFont() {
         return font;
     }();
     return chosen;
+}
+void makeDefault(QPushButton *button) {
+    button->setDefault(true);
+    auto font = button->font();
+    font.setWeight(QFont::DemiBold);
+    button->setFont(font);
 }
 Appearance::Appearance(QObject *parent) : QObject(parent) {
     mode_ = QSettings().value("appearance/theme", "system").toString();

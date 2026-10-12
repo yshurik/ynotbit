@@ -864,14 +864,6 @@ Date: %1
         <source>Delete identity</source>
         <translation>신원 삭제</translation>
     </message>
-    <message>
-        <source>Create vault</source>
-        <translation>보관함 만들기</translation>
-    </message>
-    <message>
-        <source>Lock the open vault to create a new one?</source>
-        <translation>새 보관함을 만들기 위해 열려 있는 보관함을 잠글까요?</translation>
-    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1291,6 +1283,18 @@ Date: %1
         <source>Searching…</source>
         <translation>검색 중…</translation>
     </message>
+    <message>
+        <source>New identity</source>
+        <translation>새 신원</translation>
+    </message>
+    <message>
+        <source>This address is already in the vault.</source>
+        <translation>이 주소는 이미 보관함에 있습니다.</translation>
+    </message>
+    <message>
+        <source>Create identity</source>
+        <translation>신원 만들기</translation>
+    </message>
 </context>
 <context>
     <name>bm::Session</name>
@@ -1429,10 +1433,6 @@ Date: %1
     <message>
         <source>Vault locked. Objects remain cached for later inspection.</source>
         <translation>보관함을 잠갔습니다. 객체는 나중에 검사할 수 있도록 캐시에 남습니다.</translation>
-    </message>
-    <message>
-        <source>New identity</source>
-        <translation>새 신원</translation>
     </message>
     <message>
         <source>Label</source>

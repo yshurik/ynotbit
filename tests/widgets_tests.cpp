@@ -47,6 +47,12 @@ static void chooseFile(QFileDialog *d, const QString &path) {
     d->selectFile(path);
     static_cast<QDialog *>(d)->accept(); // QFileDialog's own accept() is protected
 }
+// Whether a default button shows all of its text: bold by its own font, and as
+// wide as that text with the window's style sheet's 9 px padding a side.
+static bool boldAndWhole(QPushButton *button) {
+    return button->font().weight() >= QFont::DemiBold &&
+           QFontMetrics(button->font()).horizontalAdvance(button->text()) + 18 <= button->width();
+}
 int main(int argc, char **argv) {
     // Unbuffered: a run that hangs and is killed by ctest still shows how far it got.
     std::cout << std::unitbuf;
@@ -1095,6 +1101,13 @@ int main(int argc, char **argv) {
             window.selectMessage(binned);
             require(!restore->isVisible(), "Restore takes the letter back out of the Trash");
         }
+        // Qt measures a button in the font of its plain state: a bold :default
+        // style would cut the text of every default button, and of any dialog
+        // button while it has the focus. Default buttons are bold by their own font.
+        QStringList cutDefaults;
+        static const QRegularExpression stateFont(R"(QPushButton[^{}]*:[a-z-]+[^{}]*\{[^}]*font)");
+        if (stateFont.match(window.styleSheet()).hasMatch())
+            cutDefaults << "the style sheet changes a button's font with its state";
         {
             // --- Address book ---
             const auto alice = bm::Protocol::identity("Alice for the address book").address;
@@ -1122,6 +1135,8 @@ int main(int argc, char **argv) {
                         "the add dialog arrives with the address filled in");
                 auto save = dialog->findChild<QPushButton *>("contactSaveButton");
                 require(save->isEnabled(), "a valid new address can be saved straight away");
+                if (!boldAndWhole(save))
+                    cutDefaults << "the contact dialog's Save";
                 dialog->findChild<QLineEdit *>("contactNameField")->setText("Alice");
                 save->click();
             });
@@ -1819,6 +1834,13 @@ int main(int argc, char **argv) {
             require(!dialog->findChild<QToolBar *>(), "no static formatting toolbar");
             require(dialog->findChild<QPushButton *>("sendButton")->isDefault(),
                     "Send is the default button");
+            if (!boldAndWhole(dialog->findChild<QPushButton *>("sendButton")))
+                cutDefaults << "the composer's Send";
+            for (const auto &cut : cutDefaults)
+                std::cerr << qPrintable(cut) << '\n';
+            require(cutDefaults.isEmpty(),
+                    "default buttons show all of their bold text; no button's font changes with "
+                    "its state");
             auto stripe = dialog->findChild<QWidget *>("composerKindStripe");
             require(stripe && stripe->property("letterKind").toInt() == 0,
                     "private mail gets the personal letter border");
@@ -1998,11 +2020,24 @@ int main(int argc, char **argv) {
             window.findChild<QToolButton *>("showQrButton")->click();
             require(qrFound, "the QR button opens a visible QR dialog");
 
+            // New identity opens the new vault dialog, for an identity alone.
+            bool identityDialog = false;
+            const auto createIdentity = [&] {
+                identityDialog = false;
+                QTimer::singleShot(30, &window, [&] {
+                    if (auto d = window.findChild<QDialog *>("newIdentityDialog");
+                        d && d->isVisible()) {
+                        identityDialog = true;
+                        d->findChild<QPushButton *>("newVaultCreateButton")->click();
+                    }
+                });
+            };
             auto beforeAdd = session.identities().size();
+            createIdentity();
             window.findChild<QPushButton *>("newIdentityButton")->click();
             QTest::qWait(50);
-            require(session.identities().size() == beforeAdd + 1,
-                    "New identity adds an identity via the label prompt");
+            require(identityDialog && session.identities().size() == beforeAdd + 1,
+                    "New identity adds the identity its dialog shows");
 
             window.findChild<QToolButton *>("renameIdentityButton")->click();
             QTest::qWait(50);
@@ -2041,9 +2076,10 @@ int main(int argc, char **argv) {
                 return false;
             };
             auto shownCards = cards();
-            menuItem("Create identity…")->trigger(); // the responder answers the label prompt
+            createIdentity();
+            menuItem("Create identity…")->trigger();
             QTest::qWait(50);
-            require(cards() == shownCards + 1,
+            require(identityDialog && cards() == shownCards + 1,
                     "Identity > Create identity… shows the new card on the open Identities page");
             const QString imported = "BM-2cSsZnHbLbJr5A2RCrCMQo7vwGBi7CKNfz";
             {
@@ -2414,6 +2450,8 @@ int main(int argc, char **argv) {
                 require(opened, "Create a new vault… and File > Create vault… open the new vault "
                                 "dialog");
             }
+            require(!window.findChild<QAction *>("createIdentityAction")->isEnabled(),
+                    "Identity > Create identity… waits for an open vault");
             const int shown = folders->currentRow();
             folders->setCurrentRow(2);
             require(!outboxIcon->isVisible(),
@@ -2869,9 +2907,20 @@ int main(int argc, char **argv) {
                             "Mysterious Poised Shellfish" &&
                         identities[0].toMap()["default"].toBool(),
                     "its one identity is the one shown, with its nickname, as default");
-            require(!fresh.createVault(temp.filePath("second.bmvault"), "pw", "pw", made) &&
-                        fresh.error().contains("Lock"),
-                    "an open vault is locked before another is made");
+            require(!fresh.addIdentity(made) && fresh.error().contains("already"),
+                    "an identity is in a vault once");
+            require(fresh.addIdentity(bm::Protocol::identity("Second Me")) &&
+                        fresh.identities().size() == 2,
+                    "another identity joins the open vault");
+            require(!bm::Session(temp.filePath("no-vault-node"), true).addIdentity(made),
+                    "without an open vault no identity is added");
+            require(!fresh.createVault(temp.filePath("nowhere/second.bmvault"), "pw", "pw", made) &&
+                        fresh.unlocked() && fresh.vaultPath() == path,
+                    "a vault that cannot be made leaves the open one open");
+            const auto second = temp.filePath("second.bmvault");
+            require(fresh.createVault(second, "pw", "pw", made) && fresh.unlocked() &&
+                        fresh.vaultPath() == second,
+                    "a vault made while another is open takes its place");
             fresh.lock();
             require(!fresh.createVault(path, "pw", "pw", made) &&
                         fresh.error().contains("existing vaults"),
@@ -2930,11 +2979,7 @@ int main(int argc, char **argv) {
                     if (auto w = d->findChild<QWidget *>(name);
                         w->isVisible() && w->mapTo(d, QPoint(w->width(), 0)).x() < edge - 1)
                         faults << when + ": " + name + " short of the right edge";
-                auto create = d->findChild<QPushButton *>("newVaultCreateButton");
-                auto bold = create->font();
-                bold.setWeight(QFont::DemiBold);
-                // The style sheet pads buttons 9 px a side and draws the default one bold.
-                if (QFontMetrics(bold).horizontalAdvance(create->text()) + 18 > create->width())
+                if (!boldAndWhole(d->findChild<QPushButton *>("newVaultCreateButton")))
                     faults << when + ": Create's text cut";
             };
             const auto look = [&](const QString &language) {
@@ -3165,6 +3210,48 @@ int main(int argc, char **argv) {
             require(closing.elapsed() < 2000, "cancelling while the search runs stops it at once");
         }
         {
+            // The same dialog makes an identity alone, in the open vault: no file,
+            // no password.
+            bm::Session holder(temp.filePath("identity-dialog-node"), true);
+            require(holder.createVault(temp.filePath("identities.bmvault"), "pw", "pw",
+                                       bm::phraseIdentity("ynotbit test phrase", "First", 60)),
+                    "make a vault to add to");
+            bm::NewVaultDialog dialog(holder, {}, false, nullptr, bm::NewVaultDialog::IdentityOnly);
+            dialog.show();
+            auto create = dialog.findChild<QPushButton *>("newVaultCreateButton");
+            require(
+                dialog.objectName() == "newIdentityDialog" &&
+                    dialog.windowTitle() == "New identity" &&
+                    !dialog.findChild<QLineEdit *>("vaultFileField")->isVisibleTo(&dialog) &&
+                    !dialog.findChild<QLineEdit *>("newVaultPasswordField")->isVisibleTo(&dialog) &&
+                    !dialog.findChild<QLineEdit *>("newVaultRepeatField")->isVisibleTo(&dialog) &&
+                    create->isEnabled() && create->text() == "Create identity",
+                "for an identity alone the dialog asks no file and no password");
+            const int width = dialog.width();
+            dialog.findChild<QRadioButton *>("phraseKeysButton")->click();
+            QCoreApplication::processEvents();
+            require(dialog.width() == width,
+                    "the dialog keeps its width as the keys' source changes");
+            QTest::keyClicks(dialog.findChild<QLineEdit *>("phraseField"), "ynotbit test phrase");
+            QTest::qWait(400);
+            require(!create->isEnabled() &&
+                        dialog.findChild<QLabel *>("addressTaken")->isVisibleTo(&dialog),
+                    "an address already in the vault is said, and not made again");
+            dialog.findChild<QRadioButton *>("randomKeysButton")->click();
+            auto nickname = dialog.findChild<QLineEdit *>("nicknameField");
+            nickname->clear();
+            QTest::keyClicks(nickname, "Work");
+            const auto address = dialog.findChild<QLabel *>("addressLabel")->text();
+            create->click();
+            bool added = false;
+            for (const auto &identity : holder.identities())
+                added = added || (identity.toMap()["address"].toString() == address &&
+                                  identity.toMap()["label"].toString() == "Work");
+            require(dialog.result() == QDialog::Accepted && holder.identities().size() == 2 &&
+                        added,
+                    "Create identity adds the address shown, with its nickname, to the open vault");
+        }
+        {
             // Enter right after editing the phrase never saves the old phrase's keys.
             bm::Session typed(temp.filePath("typed-node"), true);
             bm::NewVaultDialog dialog(typed, temp.path(), false);
@@ -3191,7 +3278,7 @@ int main(int argc, char **argv) {
                     "the address is the edited phrase's");
         }
         {
-            // Create vault… with a vault open asks to lock it first; No keeps it.
+            // Create vault… with a vault open asks nothing; Cancel keeps it open.
             bool asked = false, opened = false;
             QTimer::singleShot(30, &window, [&] {
                 if (auto box = window.findChild<QMessageBox *>(); box && box->isVisible()) {
@@ -3204,9 +3291,8 @@ int main(int argc, char **argv) {
                 }
             });
             window.findChild<QAction *>("createVaultAction")->trigger();
-            require(
-                asked && !opened && session.unlocked(),
-                "Create vault… with a vault open asks first; No makes nothing and keeps it open");
+            require(!asked && opened && session.unlocked(),
+                    "Create vault… with a vault open asks nothing; Cancel keeps the vault open");
         }
         {
             // A vault made from a window's lock screen is the one it offers next,
@@ -3214,11 +3300,20 @@ int main(int argc, char **argv) {
             bm::Session own(temp.filePath("window-vault-node"), true);
             bm::DesktopWindow second(own);
             second.show();
-            const auto makeVault = [&](const QString &path) {
-                QTimer::singleShot(30, &second, [&, path] {
+            bool asked = false;
+            // Makes a vault in the dialog the named button or action opens,
+            // answering Yes to any question asked before it.
+            const auto makeVault = [&](const QString &path, const QString &opener) {
+                std::function<void()> fill = [&, path] {
+                    if (auto box = second.findChild<QMessageBox *>(); box && box->isVisible()) {
+                        asked = true;
+                        box->button(QMessageBox::Yes)->click();
+                    }
                     auto d = second.findChild<QDialog *>("newVaultDialog");
-                    if (!d)
+                    if (!d || !d->isVisible()) {
+                        QTimer::singleShot(30, &second, fill);
                         return;
+                    }
                     auto file = d->findChild<QLineEdit *>("vaultFileField");
                     file->clear();
                     QTest::keyClicks(file, path);
@@ -3227,9 +3322,14 @@ int main(int argc, char **argv) {
                     QTest::keyClicks(d->findChild<QLineEdit *>("newVaultRepeatField"),
                                      "long test password");
                     d->findChild<QPushButton *>("newVaultCreateButton")->click();
-                });
-                second.findChild<QPushButton *>("createVaultButton")->click();
-                const bool madeIt = own.unlocked() && QFile::exists(path);
+                };
+                QTimer::singleShot(30, &second, fill);
+                if (auto action = second.findChild<QAction *>(opener))
+                    action->trigger();
+                else
+                    second.findChild<QPushButton *>(opener)->click();
+                const bool madeIt =
+                    own.unlocked() && own.vaultPath() == path && QFile::exists(path);
                 own.lock();
                 QCoreApplication::processEvents();
                 return madeIt;
@@ -3238,31 +3338,20 @@ int main(int argc, char **argv) {
                 return second.findChild<QLabel *>("lockedVaultName")->text();
             };
             const auto made = temp.filePath("made-in-window.bmvault");
-            require(makeVault(made) && lockedName() == "made-in-window.bmvault",
+            require(makeVault(made, "createVaultButton") &&
+                        lockedName() == "made-in-window.bmvault",
                     "the lock screen's Create a new vault… makes the vault, offered when locked");
             const auto another = temp.filePath("another-in-window.bmvault");
-            require(makeVault(another) && lockedName() == "another-in-window.bmvault",
+            require(makeVault(another, "createVaultButton") &&
+                        lockedName() == "another-in-window.bmvault",
                     "a second vault made there is the one offered next, not the first");
             own.choosePendingVault(another);
             own.submitVaultPassword("long test password");
             require(own.unlocked(), "test sanity: the vault opens again");
-            bool asked = false, opened = false;
-            QTimer::singleShot(30, &second, [&] {
-                if (auto box = second.findChild<QMessageBox *>(); box && box->isVisible()) {
-                    asked = true;
-                    QTimer::singleShot(30, &second, [&] {
-                        if (auto d = second.findChild<QDialog *>("newVaultDialog");
-                            d && d->isVisible()) {
-                            opened = true;
-                            d->reject();
-                        }
-                    });
-                    box->button(QMessageBox::Yes)->click();
-                }
-            });
-            second.findChild<QAction *>("createVaultAction")->trigger();
-            require(asked && opened && !own.unlocked(),
-                    "Yes locks the open vault and opens the dialog");
+            const auto third = temp.filePath("third-in-window.bmvault");
+            require(makeVault(third, "createVaultAction") && !asked &&
+                        lockedName() == "third-in-window.bmvault",
+                    "Create vault… with a vault open asks nothing; the new vault takes its place");
         }
         require(session.portMapper().state() == bm::PortMapper::State::Off,
                 "an offline session never talks to the router");

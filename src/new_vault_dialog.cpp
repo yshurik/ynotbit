@@ -101,16 +101,20 @@ QString NewVaultDialog::slugFor(const QString &nickname) {
         slug.chop(1);
     return slug.isEmpty() ? QString("vault") : slug;
 }
-NewVaultDialog::NewVaultDialog(Session &session, const QString &folder, bool dark, QWidget *parent)
-    : QDialog(parent), session_(session), folder_(folder), phraseTimer_(new QTimer(this)) {
-    setObjectName("newVaultDialog");
-    setWindowTitle(tr("New vault"));
+NewVaultDialog::NewVaultDialog(Session &session, const QString &folder, bool dark, QWidget *parent,
+                               Makes makes)
+    : QDialog(parent), session_(session), makes_(makes), folder_(folder),
+      phraseTimer_(new QTimer(this)) {
+    const bool alone = makes_ == IdentityOnly;
+    setObjectName(alone ? "newIdentityDialog" : "newVaultDialog");
+    setWindowTitle(alone ? tr("New identity") : tr("New vault"));
     auto form = new QFormLayout(this);
     // As big as its rows, so none is squeezed as notes come and go; the fields
     // reach the right edge, also where forms keep them at their size hint.
     form->setSizeConstraint(QLayout::SetFixedSize);
     form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    form->addRow(section(tr("Identity"), 0));
+    auto identityHeading = section(tr("Identity"), 0);
+    form->addRow(identityHeading);
     nickname_ = new QLineEdit;
     nickname_->setObjectName("nicknameField");
     form->addRow(tr("Nickname"), nickname_);
@@ -139,6 +143,10 @@ NewVaultDialog::NewVaultDialog(Session &session, const QString &folder, bool dar
     connect(copy_, &QToolButton::clicked, this,
             [this] { QApplication::clipboard()->setText(identity_.address); });
     another_ = addressButton("anotherKeysButton", "retry", tr("Another random address"));
+    // Its room is kept for a phrase: the dialog keeps its width.
+    auto room = another_->sizePolicy();
+    room.setRetainSizeWhenHidden(true);
+    another_->setSizePolicy(room);
     auto addressRow = new QHBoxLayout;
     addressRow->addWidget(identicon_);
     addressRow->addWidget(address_);
@@ -152,9 +160,12 @@ NewVaultDialog::NewVaultDialog(Session &session, const QString &folder, bool dar
     auto shorterRow = new QHBoxLayout;
     shorterRow->addWidget(shorter_);
     shorterRow->addWidget(searchStatus_, 1);
+    taken_ = note(tr("This address is already in the vault."), "addressTaken", true);
+    taken_->hide();
     auto addressColumn = new QVBoxLayout;
     addressColumn->addLayout(addressRow);
     addressColumn->addLayout(shorterRow);
+    addressColumn->addWidget(taken_);
     form->addRow(tr("Address"), addressColumn);
     // Where the keys come from.
     random_ = new QRadioButton(tr("Random, from the system's entropy"));
@@ -193,7 +204,8 @@ NewVaultDialog::NewVaultDialog(Session &session, const QString &folder, bool dar
     keys->addWidget(phraseRow_);
     form->addRow(tr("Keys"), keys);
     // The vault file.
-    form->addRow(section(tr("Vault"), 10));
+    auto vaultHeading = section(tr("Vault"), 10);
+    form->addRow(vaultHeading);
     file_ = new QLineEdit;
     file_->setObjectName("vaultFileField");
     auto choose = new QPushButton("…");
@@ -237,18 +249,24 @@ NewVaultDialog::NewVaultDialog(Session &session, const QString &folder, bool dar
     form->addRow(error_);
     auto cancel = new QPushButton(tr("Cancel"));
     cancel->setObjectName("newVaultCancelButton");
-    create_ = new QPushButton(tr("Create vault"));
+    create_ = new QPushButton(alone ? tr("Create identity") : tr("Create vault"));
     create_->setObjectName("newVaultCreateButton");
-    create_->setDefault(true);
-    // Measured in the bold the window's style sheet draws a default button in.
-    auto bold = create_->font();
-    bold.setWeight(QFont::DemiBold);
-    create_->setFont(bold);
+    makeDefault(create_);
     auto buttons = new QHBoxLayout;
     buttons->addStretch();
     buttons->addWidget(cancel);
     buttons->addWidget(create_);
     form->addRow(buttons);
+    if (alone) {
+        // An identity alone: one section, so no headings; no file, no password.
+        form->setRowVisible(identityHeading, false);
+        form->setRowVisible(vaultHeading, false);
+        form->setRowVisible(fileColumn, false);
+        form->setRowVisible(password_, false);
+        form->setRowVisible(repeatColumn, false);
+        for (const auto &identity : session_.identities())
+            vaultAddresses_ << identity.toMap()["address"].toString();
+    }
 
     connect(nickname_, &QLineEdit::textEdited, this, [this] {
         nicknameEdited_ = true;
@@ -367,7 +385,7 @@ void NewVaultDialog::stopSearch(bool keepFind) {
         setIdentity(std::move(find.identity), find.pair);
 }
 void NewVaultDialog::updateFile() {
-    if (!fileEdited_) {
+    if (!fileEdited_ && makes_ == VaultAndIdentity) {
         const auto slug = slugFor(nickname_->text());
         auto path = QDir(folder_).filePath(slug + ".bmvault");
         for (int n = 2; QFileInfo::exists(path); ++n)
@@ -377,6 +395,13 @@ void NewVaultDialog::updateFile() {
     validate();
 }
 void NewVaultDialog::validate() {
+    const auto &address = identity_.address;
+    const bool taken = !address.isEmpty() && vaultAddresses_.contains(address);
+    taken_->setVisible(taken);
+    if (makes_ == IdentityOnly) {
+        create_->setEnabled(!address.isEmpty() && !taken);
+        return;
+    }
     const auto path = file_->text().trimmed();
     const bool exists = !path.isEmpty() && QFileInfo::exists(path);
     fileProblem_->setVisible(exists);
@@ -391,8 +416,9 @@ void NewVaultDialog::create() {
     stopSearch();
     const auto nickname = nickname_->text().trimmed();
     identity_.label = nickname.isEmpty() ? identity_.address : nickname;
-    if (session_.createVault(file_->text().trimmed(), password_->text(), repeat_->text(),
-                             identity_)) {
+    if (makes_ == IdentityOnly ? session_.addIdentity(identity_)
+                               : session_.createVault(file_->text().trimmed(), password_->text(),
+                                                      repeat_->text(), identity_)) {
         accept();
         return;
     }

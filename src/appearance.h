@@ -3,9 +3,13 @@
 #include <QPalette>
 #include <QFont>
 #include <QIcon>
+class QPushButton;
 
 namespace bm {
 QFont addressFont();
+// Makes a dialog's default button, bold by its own font: Qt measures a button
+// in the font of its plain state, so a bold :default style would cut its text.
+void makeDefault(QPushButton *button);
 QIcon appLogo();
 QIcon windowLogo();
 class Appearance : public QObject {
