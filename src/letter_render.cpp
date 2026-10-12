@@ -699,6 +699,22 @@ QIcon materialIcon(const QString &name, QColor color) {
         plane.closeSubpath();
         p.drawPath(plane);
         p.drawLine(33, 7, 12, 22);
+    } else if (name == "chats") {
+        QPainterPath bubble;
+        bubble.moveTo(12, 8);
+        bubble.lineTo(28, 8);
+        bubble.quadTo(33, 8, 33, 13);
+        bubble.lineTo(33, 24);
+        bubble.quadTo(33, 29, 28, 29);
+        bubble.lineTo(17, 29);
+        bubble.lineTo(9, 35);
+        bubble.lineTo(10, 28);
+        bubble.quadTo(7, 27, 7, 24);
+        bubble.lineTo(7, 13);
+        bubble.quadTo(7, 8, 12, 8);
+        p.drawPath(bubble);
+        p.drawLine(14, 16, 26, 16);
+        p.drawLine(14, 22, 23, 22);
     } else if (name == "channels") {
         p.drawLine(8, 15, 32, 15);
         p.drawLine(8, 25, 32, 25);

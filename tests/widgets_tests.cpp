@@ -1,4 +1,5 @@
 #include "desktop_window.h"
+#include "chats_pane.h"
 #include "session.h"
 #include "ntb-object-db.h"
 #include "updates.h"
@@ -8,9 +9,11 @@
 #include "pow.h"
 #include "i18n.h"
 #include "key_search.h"
+#include "new_chat_dialog.h"
 #include "new_vault_dialog.h"
 #include <QElapsedTimer>
 #include <QFileDialog>
+#include <QSignalSpy>
 #include <QTest>
 #include <QtWidgets>
 #include <functional>
@@ -47,6 +50,16 @@ static void chooseFile(QFileDialog *d, const QString &path) {
     d->selectFile(path);
     static_cast<QDialog *>(d)->accept(); // QFileDialog's own accept() is protected
 }
+// Stands in for the system when a link is opened: keeps the URL, launches nothing.
+class UrlRecorder : public QObject {
+    Q_OBJECT
+  public:
+    QStringList opened;
+  public slots:
+    void record(const QUrl &url) {
+        opened << url.toString();
+    }
+};
 // Whether a default button shows all of its text: bold by its own font, and as
 // wide as that text with the window's style sheet's 9 px padding a side.
 static bool boldAndWhole(QPushButton *button) {
@@ -182,6 +195,574 @@ int main(int argc, char **argv) {
         window.show();
         auto folders = window.findChild<QListWidget *>("folders");
         require(folders, "folders exist");
+        // Chats owns its panel and must not leave mail controls visible behind it.
+        auto chatsIcon = window.findChild<QToolButton *>("folderIcon_Chats");
+        require(chatsIcon, "Chats navigation exists");
+        chatsIcon->click();
+        QTest::qWait(30);
+        auto chatsPane = window.findChild<QWidget *>("chatsPane");
+        require(chatsPane && chatsPane->isVisible(), "Chats opens its own panel");
+        require(chatsIcon->y() < window.findChild<QToolButton *>("folderIcon_Inbox")->y(),
+                "Chats precedes Inbox in the rail");
+        auto sharedRail = window.findChild<QWidget *>("channelRail");
+        require(!window.findChild<QWidget *>("listColumn")->isVisible() && sharedRail->isVisible(),
+                "Chats reuses the visible channel rail and hides the mail list");
+        require(!window.findChild<QLabel *>("chatPreviewBadge"), "Chats has no preview badge");
+        auto toggleRail = window.findChild<QPushButton *>("channelRailToggle");
+        const int originalRailWidth = sharedRail->width();
+        toggleRail->click();
+        require(sharedRail->width() == (originalRailWidth == 50 ? 190 : 50),
+                "Chats uses the existing collapse control");
+        toggleRail->click();
+        const auto chatAddress = bm::Protocol::identity("chat rail test").address;
+        require(session.addContact(chatAddress, "Chat rail contact"), "Add contact for chat rail");
+        QCoreApplication::processEvents();
+        require(sharedRail->findChildren<QPushButton *>("channelChip").isEmpty(),
+                "a contact is not a chat: the Chats rail lists chats only");
+        window.startChat(personal, chatAddress);
+        QCoreApplication::processEvents();
+        QPushButton *chatChip = nullptr;
+        for (auto chip : sharedRail->findChildren<QPushButton *>("channelChip"))
+            if (chip->property("address").toString() == chatAddress)
+                chatChip = chip;
+        require(chatChip && qobject_cast<bm::ChatRow *>(chatChip),
+                "A chat is a row of the shared rail, as a chan is a chip");
+        require(window.findChild<QLabel *>("chatTitle")->text() == "Chat rail contact",
+                "Starting a chat opens it");
+        folders->setCurrentRow(4);
+        require(sharedRail->isVisible() && sharedRail->width() == originalRailWidth,
+                "Channels keeps the same rail and collapse state");
+        chatsIcon->click();
+        require(window.findChild<QLabel *>("chatTitle")->text() == "Chat rail contact",
+                "Returning to Chats restores its selected conversation");
+        // A conversation is redrawn only when it changed, and never moves a reader
+        // who scrolled up into it; a theme change recolours it. Faults are collected,
+        // so one run shows them all.
+        QStringList chatFaults;
+        const auto expect = [&](bool ok, const char *fault) {
+            if (!ok)
+                chatFaults << fault;
+        };
+        {
+            bm::ChatsPane pane;
+            pane.resize(640, 420);
+            pane.show();
+            pane.setConversation(personal, "Personal", chatAddress, "Pane contact", false);
+            const auto chat = [](int n, const QString &state = "received") {
+                return QVariantMap{{"id", "pane-" + QString::number(n)},
+                                   {"body", "Message number " + QString::number(n)},
+                                   {"outgoing", n % 2 == 0},
+                                   {"seqno", n},
+                                   {"received", 1700000000 + n},
+                                   {"expires", 1700086400 + n},
+                                   {"state", state}};
+            };
+            const auto count = [&](const char *name) {
+                return pane.findChildren<QWidget *>(name).size();
+            };
+            QVariantList thread;
+            for (int n = 1; n <= 40; ++n)
+                thread << chat(n);
+            pane.setMessages(thread);
+            QTest::qWait(30);
+            auto bar = pane.findChild<QScrollArea *>("chatMessagesScroll")->verticalScrollBar();
+            expect(bar->maximum() > 0 && bar->value() == bar->maximum(),
+                   "a conversation opens at its newest message");
+            QPointer<QWidget> first = pane.findChildren<QWidget *>("incomingChatBubble").value(0);
+            pane.setMessages(thread);
+            expect(!first.isNull(), "a conversation that did not change is not redrawn");
+            bar->setValue(bar->maximum() / 2);
+            const int reading = bar->value();
+            thread << chat(41);
+            pane.setMessages(thread);
+            QTest::qWait(30);
+            expect(count("incomingChatBubble") == 21 && bar->value() == reading,
+                   "a new message does not move a reader who scrolled up");
+            bar->setValue(bar->maximum());
+            thread << chat(42);
+            pane.setMessages(thread);
+            QTest::qWait(30);
+            expect(count("outgoingChatBubble") == 21 && bar->value() == bar->maximum(),
+                   "a reader at the newest message follows the new ones");
+            thread[41] = chat(42, "acknowledged");
+            pane.setMessages(thread);
+            const auto ticks = pane.findChildren<QLabel *>("chatTick");
+            expect(!ticks.isEmpty() && ticks.last()->property("tick").toString() == "delivered",
+                   "a sent chat's new state shows");
+            bar->setValue(0);
+            pane.setConversation(personal, "Personal",
+                                 bm::Protocol::identity("chat pane other").address, "Other contact",
+                                 false);
+            pane.setMessages(thread);
+            QTest::qWait(30);
+            expect(bar->value() == bar->maximum(),
+                   "another conversation opens at its newest message");
+            pane.setDark(true);
+            const auto outgoing = pane.findChildren<QWidget *>("outgoingChatBubble");
+            expect(!outgoing.isEmpty() && outgoing.first()->styleSheet().contains("#174944"),
+                   "a theme change recolours the conversation shown");
+        }
+        // Enter sends, and Shift+Enter starts a new line; an empty composer ignores Enter.
+        {
+            bm::ChatsPane pane;
+            pane.show();
+            pane.setConversation(personal, "Personal", chatAddress, "Enter contact", false);
+            auto composer = pane.findChild<QPlainTextEdit *>("chatComposer");
+            QSignalSpy sent(&pane, &bm::ChatsPane::sendRequested);
+            QTest::keyClick(composer, Qt::Key_Return);
+            expect(sent.isEmpty() && composer->toPlainText().isEmpty(),
+                   "Enter on an empty composer does nothing");
+            QTest::keyClicks(composer, "first line");
+            QTest::keyClick(composer, Qt::Key_Return, Qt::ShiftModifier);
+            QTest::keyClicks(composer, "second line");
+            expect(sent.isEmpty() && composer->toPlainText() == "first line\nsecond line",
+                   "Shift+Enter starts a new line");
+            QTest::keyClick(composer, Qt::Key_Enter);
+            expect(sent.size() == 1 && sent.first().at(1).toString() == "first line\nsecond line" &&
+                       composer->toPlainText() == "first line\nsecond line",
+                   "Enter sends the message and adds no line break");
+            expect(!composer->toolTip().isEmpty(), "the composer says what Enter does");
+        }
+        // A conversation is between one of my identities and a peer, and keeps that
+        // identity: another one is another conversation. So the identity is only shown,
+        // in the header and only when there are several, never chosen in the composer.
+        // The composer is one card: a field that grows with its text up to six lines,
+        // and a round send button. With no conversation there is none.
+        {
+            bm::ChatsPane pane;
+            pane.resize(720, 520);
+            pane.show();
+            auto identity = pane.findChild<QFrame *>("chatIdentity");
+            auto card = pane.findChild<QFrame *>("chatCard");
+            auto composer = pane.findChild<QPlainTextEdit *>("chatComposer");
+            auto send = pane.findChild<QPushButton *>("chatSendButton");
+            expect(identity && card && composer && send,
+                   "the header has an identity chip, the composer a card, a field, a send button");
+            expect(pane.findChildren<QComboBox *>().isEmpty() &&
+                       pane.findChildren<QMenu *>().isEmpty(),
+                   "no dropdown or menu to change the identity of a conversation");
+            if (identity && card && composer && send) {
+                expect(!card->isVisible(), "with no conversation there is no composer");
+                pane.setConversation(personal, "Personal", chatAddress, "Card contact", false);
+                expect(card->isVisible() && pane.identity() == personal &&
+                           pane.contact() == chatAddress,
+                       "a conversation has a composer, and knows its identity and peer");
+                expect(!identity->isVisible(), "with one identity it is not shown");
+                pane.setConversation(personal, "Personal", chatAddress, "Card contact", true);
+                auto name = identity->findChild<QLabel *>("chatIdentityName");
+                expect(identity->isVisible() && name && name->text() == "Personal" &&
+                           !identity->toolTip().isEmpty() &&
+                           identity->findChildren<QAbstractButton *>().isEmpty(),
+                       "with several the header names it, as text and not as a control");
+                expect(send->text().isEmpty() && !send->icon().isNull() &&
+                           !send->toolTip().isEmpty() && send->width() == send->height(),
+                       "the send button is a round icon button with a tooltip");
+                QTest::keyClicks(composer, "one line");
+                QTest::qWait(30);
+                const int oneLine = composer->height(), cardOne = card->height();
+                expect(!composer->verticalScrollBar()->isVisible(),
+                       "no scrollbar beside a line of text");
+                for (int i = 0; i < 3; ++i) {
+                    QTest::keyClick(composer, Qt::Key_Return, Qt::ShiftModifier);
+                    QTest::keyClicks(composer, "and another");
+                }
+                QTest::qWait(30);
+                expect(composer->height() > oneLine && card->height() > cardOne,
+                       "the field grows with its text");
+                expect(!composer->verticalScrollBar()->isVisible(),
+                       "and has no scrollbar while the text fits");
+                for (int i = 0; i < 12; ++i) {
+                    QTest::keyClick(composer, Qt::Key_Return, Qt::ShiftModifier);
+                    QTest::keyClicks(composer, "and more");
+                }
+                QTest::qWait(30);
+                expect(composer->height() <= 6 * composer->fontMetrics().lineSpacing() + 8 &&
+                           composer->verticalScrollBar()->maximum() > 0,
+                       "up to six lines, then it scrolls");
+                pane.clearComposer();
+                QTest::qWait(30);
+                expect(composer->height() == oneLine, "and shrinks back once the text is sent");
+                QFocusEvent in(QEvent::FocusIn, Qt::OtherFocusReason);
+                QApplication::sendEvent(composer, &in);
+                expect(card->property("focused").toBool(), "the card shows where the focus is");
+                QFocusEvent away(QEvent::FocusOut, Qt::OtherFocusReason);
+                QApplication::sendEvent(composer, &away);
+                expect(!card->property("focused").toBool(), "and stops showing it");
+                const qint64 now = QDateTime::currentSecsSinceEpoch();
+                const auto line = [&](int n, bool outgoing) {
+                    return QVariantMap{{"id", "card-" + QString::number(n)},
+                                       {"body", outgoing ? "Mine" : "Theirs"},
+                                       {"outgoing", outgoing},
+                                       {"seqno", n},
+                                       {"received", now},
+                                       {"expires", now + 86400},
+                                       {"state", outgoing ? "acknowledged" : "received"}};
+                };
+                pane.setMessages(QVariantList{line(1, false), line(2, true)});
+                QTest::qWait(30);
+                auto theirs = pane.findChild<QWidget *>("incomingChatBubble");
+                auto mine = pane.findChild<QWidget *>("outgoingChatBubble");
+                auto avatar = pane.findChild<QLabel *>("chatAvatar");
+                const auto left = [&](QWidget *w) { return w->mapTo(&pane, QPoint(0, 0)).x(); };
+                const auto right = [&](QWidget *w) {
+                    return w->mapTo(&pane, QPoint(w->width(), 0)).x();
+                };
+                expect(theirs && mine && avatar && left(avatar) == left(theirs) &&
+                           left(theirs) == left(card) && right(mine) == right(card) &&
+                           right(identity) == right(card),
+                       "the header, the bubbles and the composer line up on both sides");
+                pane.setConversation({}, {}, {}, {}, false);
+                expect(!card->isVisible() && pane.contact().isEmpty(),
+                       "no conversation, no composer again");
+            }
+        }
+        // A sent chat shows how far it has got as a tick beside its time, a message
+        // of today by its time alone and an older one by its date as well.
+        {
+            bm::ChatsPane pane;
+            pane.resize(640, 420);
+            pane.show();
+            pane.setConversation(personal, "Personal", chatAddress, "Tick contact", false);
+            const qint64 now = QDateTime::currentSecsSinceEpoch();
+            const auto message = [&](int n, bool outgoing, const QString &state, qint64 when = 0) {
+                return QVariantMap{{"id", "tick-" + QString::number(n)},
+                                   {"body", n == 7 ? QString("Hi! Are we still on for Thursday?")
+                                                   : "Tick " + QString::number(n)},
+                                   {"outgoing", outgoing},
+                                   {"seqno", n},
+                                   {"received", when ? when : now},
+                                   {"expires", now + 86400},
+                                   {"state", state}};
+            };
+            pane.setMessages(
+                QVariantList{message(1, true, "queued"), message(2, true, "calculating_message"),
+                             message(3, true, "awaiting_ack"), message(4, true, "acknowledged"),
+                             message(5, true, "failed"), message(6, true, "expired"),
+                             message(7, false, "received")});
+            QStringList kinds;
+            QSet<QString> tips;
+            for (auto tick : pane.findChildren<QLabel *>("chatTick")) {
+                kinds << tick->property("tick").toString();
+                tips << tick->toolTip();
+            }
+            expect(kinds ==
+                       QStringList{"pending", "pending", "sent", "delivered", "failed", "failed"},
+                   "a sent chat shows how far it has got, a received one no tick");
+            expect(tips.size() == 4 && !tips.contains(QString()), "each tick says what it means");
+            // A short message is as wide as its text, not wrapped into a narrow box.
+            QTest::qWait(50);
+            bool wrapped = false;
+            for (auto body : pane.findChildren<QLabel *>("chatBody"))
+                wrapped =
+                    wrapped || body->heightForWidth(body->width()) != body->heightForWidth(100000);
+            expect(!wrapped, "a short message is not wrapped inside its bubble");
+            auto times = pane.findChildren<QLabel *>("chatDetails");
+            expect(times.size() == 7 &&
+                       times.last()->text() ==
+                           QLocale().toString(QDateTime::fromSecsSinceEpoch(now).time(),
+                                              QLocale::ShortFormat),
+                   "a message of today shows its time alone");
+            const auto old = now - 3 * 86400;
+            pane.setMessages(QVariantList{message(8, false, "received", old)});
+            times = pane.findChildren<QLabel *>("chatDetails");
+            expect(times.size() == 1 && times.last()->text() ==
+                                            QLocale().toString(QDateTime::fromSecsSinceEpoch(old),
+                                                               QLocale::ShortFormat),
+                   "an older message shows its date as well");
+        }
+        // Chats are live: a chat that arrives shows in the open conversation, and a
+        // stranger who wrote joins the rail, without a click. Links in a chat come
+        // from a stranger: https only, after asking, as in a letter.
+        {
+            const auto stranger = bm::Protocol::identity("chat stranger").address;
+            const auto expiry = QDateTime::currentSecsSinceEpoch() + 3600;
+            const auto arrive = [&](const std::function<void(bm::Mailbox &)> &write) {
+                vault.unlock(vaultFile, "test password");
+                bm::Mailbox injected;
+                injected.open(temp.filePath("mailbox"), vault.mailboxKey(key));
+                write(injected);
+                injected.close();
+                vault.lock();
+                emit session.changed(); // what the next tick does, without waiting for it
+            };
+            const auto bubbles = [&](const char *name) {
+                return window.findChildren<QWidget *>(name);
+            };
+            const auto chipOf = [&](const QString &address) {
+                QPushButton *found = nullptr;
+                for (auto chip : sharedRail->findChildren<QPushButton *>("channelChip"))
+                    if (chip->property("address").toString() == address)
+                        found = chip;
+                return found;
+            };
+            const auto row = [&](const QString &address) {
+                return qobject_cast<bm::ChatRow *>(chipOf(address));
+            };
+            // The windows above took the activation; what is read is read in the active one.
+            window.activateWindow();
+            QTest::qWait(30);
+            expect(window.isActiveWindow(), "the window is the active one");
+            arrive([&](bm::Mailbox &m) {
+                m.storeChat("live-1", chatAddress, personal, 1, "Hello **live**", expiry, false);
+            });
+            expect(bubbles("incomingChatBubble").size() == 1,
+                   "a chat that arrives shows in the open conversation");
+            expect(row(chatAddress) && row(chatAddress)->preview() == "Hello live" &&
+                       row(chatAddress)->unread() == 0 && row(chatAddress)->received() > 0,
+                   "the rail row of the open conversation shows its newest message, read");
+            QPointer<QWidget> arrived = bubbles("incomingChatBubble").value(0);
+            emit session.changed();
+            expect(!arrived.isNull(), "the open conversation is not redrawn while nothing changes");
+            arrive([&](bm::Mailbox &m) {
+                m.storeChat("live-2", stranger, personal, 1,
+                            "[a file](file:///Applications/Calculator.app) "
+                            "[a site](https://example.org/chat)",
+                            expiry, false);
+            });
+            expect(chipOf(stranger), "a stranger who wrote joins the rail");
+            expect(row(stranger) && row(stranger)->unread() == 1 &&
+                       row(stranger)->preview() == "a file a site",
+                   "a conversation not open shows its newest message and what is unread");
+            QTest::qWait(30); // the layout moves the rows
+            expect(row(stranger) && row(chatAddress) && row(stranger)->y() < row(chatAddress)->y(),
+                   "the conversation with the newest message comes first");
+            expect(chatsIcon->property("unread").toInt() == 1,
+                   "the Chats button counts what is unread, wherever the reader is");
+            // Reopened, so the links are tested whether or not the page is live.
+            window.findChild<QToolButton *>("folderIcon_Inbox")->click();
+            chatsIcon->click();
+            if (auto chip = chipOf(stranger))
+                chip->click();
+            QTest::qWait(30);
+            expect(row(stranger) && row(stranger)->unread() == 0 &&
+                       chatsIcon->property("unread").toInt() == 0 && session.chatUnread() == 0,
+                   "opening a conversation reads it");
+            toggleRail->click();
+            expect(row(stranger) && row(stranger)->collapsed() && row(stranger)->unread() == 0,
+                   "a collapsed rail still shows each conversation");
+            toggleRail->click();
+            expect(row(stranger) && !row(stranger)->collapsed(), "an expanded rail shows its rows");
+            UrlRecorder recorder;
+            auto &opened = recorder.opened;
+            for (const char *scheme : {"https", "file"})
+                QDesktopServices::setUrlHandler(scheme, &recorder, "record");
+            QMessageBox::StandardButton answer = QMessageBox::No;
+            bool asked = false;
+            QTimer answering;
+            QObject::connect(&answering, &QTimer::timeout, [&] {
+                for (auto w : QApplication::topLevelWidgets())
+                    if (auto box = qobject_cast<QMessageBox *>(w); box && box->isVisible()) {
+                        asked = true;
+                        box->button(answer)->click();
+                    }
+            });
+            answering.start(10);
+            QLabel *linked = nullptr;
+            for (auto label : window.findChildren<QLabel *>("chatBody"))
+                if (label->text().contains("Calculator"))
+                    linked = label;
+            expect(linked && !linked->openExternalLinks(), "a chat's links do not open themselves");
+            if (linked) {
+                emit linked->linkActivated("file:///Applications/Calculator.app");
+                expect(opened.isEmpty() && !asked, "a chat's file link is ignored, unasked");
+                emit linked->linkActivated("https://example.org/chat");
+                expect(asked && opened.isEmpty(), "a chat's https link asks, and No opens nothing");
+                asked = false;
+                answer = QMessageBox::Yes;
+                emit linked->linkActivated("https://example.org/chat");
+                expect(asked && opened == QStringList{"https://example.org/chat"},
+                       "a chat's https link opens after Yes");
+            }
+            if (auto reader = window.findChild<QTextBrowser *>("readerBody")) {
+                answer = QMessageBox::Yes;
+                opened.clear();
+                asked = false;
+                emit reader->anchorClicked(QUrl("https://example.org/letter"));
+                expect(asked && opened == QStringList{"https://example.org/letter"},
+                       "a letter's https link asks first and opens after Yes");
+                opened.clear();
+                asked = false;
+                emit reader->anchorClicked(QUrl("file:///Applications/Calculator.app"));
+                expect(opened.isEmpty() && !asked, "a letter's file link is ignored, unasked");
+            }
+            // A chat is read when it is looked at: with the window active.
+            {
+                QWidget elsewhere;
+                elsewhere.show();
+                elsewhere.activateWindow();
+                QTest::qWait(50);
+                if (!window.isActiveWindow()) { // a platform that cannot tell skips this
+                    arrive([&](bm::Mailbox &m) {
+                        m.storeChat("live-3", stranger, personal, 2, "while away", expiry, false);
+                    });
+                    expect(row(stranger) && row(stranger)->unread() == 1,
+                           "a chat is not read while the window is not the active one");
+                    window.activateWindow();
+                    QTest::qWait(50);
+                    emit session.changed();
+                    expect(row(stranger) && row(stranger)->unread() == 0,
+                           "it is read when the window is active again");
+                }
+            }
+            // New chat: who to, and which identity, chosen once, when the chat starts.
+            {
+                bm::NewChatDialog dialog(session, false);
+                dialog.show();
+                auto field = dialog.findChild<QLineEdit *>("chatPeerField");
+                auto box = dialog.findChild<QComboBox *>("chatIdentityBox");
+                auto start = dialog.findChild<QPushButton *>("startChatButton");
+                auto problem = dialog.findChild<QLabel *>("chatProblem");
+                auto picker = dialog.findChild<QPushButton *>("chatContactsButton");
+                const bool found = field && box && start && problem && picker;
+                expect(found, "the new chat dialog has an address, an identity, a problem line, "
+                              "a contacts button and a start button");
+                if (found) {
+                    expect(!start->isEnabled(), "an empty address starts nothing");
+                    QTest::keyClicks(field, "nope");
+                    expect(!start->isEnabled() && problem->isVisibleTo(&dialog) &&
+                               !problem->text().isEmpty(),
+                           "an invalid address is said, and not started");
+                    field->setText(personal);
+                    expect(!start->isEnabled() && problem->isVisibleTo(&dialog),
+                           "one of your own identities is not someone to chat with");
+                    const auto fresh = bm::Protocol::identity("new chat peer").address;
+                    field->setText(fresh);
+                    expect(start->isEnabled() && !problem->isVisibleTo(&dialog) &&
+                               dialog.peer() == fresh && dialog.identity() == personal,
+                           "a valid address starts a chat, from the one identity");
+                    expect(!box->isVisibleTo(&dialog), "with one identity there is nothing to ask");
+                    QAction *named = nullptr;
+                    if (picker->menu())
+                        for (auto action : picker->menu()->actions())
+                            if (action->text() == "Chat rail contact")
+                                named = action;
+                    expect(named, "the contacts button lists the address book");
+                    if (named)
+                        named->trigger();
+                    expect(dialog.peer() == chatAddress, "choosing a contact fills in its address");
+                }
+            }
+            // A chat is started from the rail's button: open at once, listed first while it
+            // is empty, kept when the page is left, and the same row once messages come.
+            {
+                const auto fresh = bm::Protocol::identity("started chat peer").address;
+                QTimer driver;
+                QObject::connect(&driver, &QTimer::timeout, [&] {
+                    for (auto dialog : window.findChildren<bm::NewChatDialog *>())
+                        if (dialog->isVisible()) {
+                            dialog->findChild<QLineEdit *>("chatPeerField")->setText(fresh);
+                            dialog->findChild<QPushButton *>("startChatButton")->click();
+                        }
+                });
+                driver.start(10);
+                window.findChild<QPushButton *>("joinOrCreateChannelButton")->click();
+                driver.stop();
+                QTest::qWait(30);
+                auto pane = window.findChild<bm::ChatsPane *>("chatsPane");
+                expect(pane && pane->contact() == fresh && pane->identity() == personal,
+                       "New chat in the rail asks, then opens the chat");
+                expect(row(fresh) && row(fresh)->preview().isEmpty() && row(stranger) &&
+                           row(fresh)->y() < row(stranger)->y(),
+                       "an empty chat is listed, first");
+                window.findChild<QToolButton *>("folderIcon_Inbox")->click();
+                chatsIcon->click();
+                QTest::qWait(30);
+                expect(row(fresh), "it stays when the page is left and opened again");
+                arrive([&](bm::Mailbox &m) {
+                    m.storeChat("started-1", fresh, personal, 7, "first words", expiry, false);
+                });
+                QTest::qWait(30);
+                int rowsFor = 0;
+                for (auto chip : sharedRail->findChildren<QPushButton *>("channelChip"))
+                    if (chip->property("address").toString() == fresh)
+                        ++rowsFor;
+                expect(rowsFor == 1 && row(fresh) && row(fresh)->preview() == "first words",
+                       "a started chat that gets a message is the same row, not another");
+            }
+            // Two identities, two chats: one peer under each identity is a chat of its own,
+            // with its own row and thread, and a row says which identity it is under.
+            {
+                auto work = bm::Protocol::identity("chat second identity");
+                work.label = "Work";
+                const auto identitiesBefore = session.identities().size();
+                expect(session.addIdentity(work), "a second identity joins the vault");
+                arrive([&](bm::Mailbox &m) {
+                    m.storeChat("two-1", chatAddress, personal, 101, "to Personal", expiry, false);
+                    m.storeChat("two-2", chatAddress, work.address, 102, "to Work", expiry, false);
+                });
+                QTest::qWait(30);
+                bm::ChatRow *underPersonal = nullptr, *underWork = nullptr;
+                int sharing = 0;
+                for (auto chip : sharedRail->findChildren<QPushButton *>("channelChip"))
+                    if (auto r = qobject_cast<bm::ChatRow *>(chip);
+                        r && r->property("address").toString() == chatAddress) {
+                        ++sharing;
+                        if (r->via() == personal)
+                            underPersonal = r;
+                        if (r->via() == work.address)
+                            underWork = r;
+                    }
+                expect(sharing == 2 && underPersonal && underWork &&
+                           underPersonal->preview() == "to Personal" &&
+                           underWork->preview() == "to Work",
+                       "one peer under two identities is two chats, each row saying which");
+                auto pane = window.findChild<bm::ChatsPane *>("chatsPane");
+                auto chip = window.findChild<QFrame *>("chatIdentity");
+                const auto bodiesShown = [&] {
+                    QStringList texts;
+                    for (auto label : window.findChildren<QLabel *>("chatBody"))
+                        texts << label->text();
+                    return texts.join(" ");
+                };
+                if (underWork)
+                    underWork->click();
+                QTest::qWait(30);
+                auto name = chip ? chip->findChild<QLabel *>("chatIdentityName") : nullptr;
+                expect(pane && name && pane->identity() == work.address &&
+                           pane->contact() == chatAddress && chip->isVisible() &&
+                           name->text() == "Work" && bodiesShown().contains("to Work") &&
+                           !bodiesShown().contains("to Personal"),
+                       "a chat shows its own thread, under its own identity");
+                if (underPersonal)
+                    underPersonal->click();
+                QTest::qWait(30);
+                expect(pane && pane->identity() == personal &&
+                           bodiesShown().contains("to Personal") &&
+                           !bodiesShown().contains("to Work"),
+                       "and the other chat its own");
+                {
+                    bm::NewChatDialog dialog(session, false);
+                    dialog.show();
+                    auto box = dialog.findChild<QComboBox *>("chatIdentityBox");
+                    expect(box && box->isVisibleTo(&dialog) && box->count() == 2,
+                           "with several identities a new chat asks which, once");
+                    if (box)
+                        box->setCurrentIndex(box->findData(work.address));
+                    if (auto field = dialog.findChild<QLineEdit *>("chatPeerField"))
+                        field->setText(bm::Protocol::identity("new chat under work").address);
+                    expect(dialog.identity() == work.address, "and the chat starts under it");
+                }
+                arrive([&](bm::Mailbox &m) { m.pruneChats(expiry + 86400); });
+                answer = QMessageBox::Yes;
+                session.deleteIdentity(work.address);
+                QTest::qWait(30);
+                expect(session.identities().size() == identitiesBefore,
+                       "the extra identity is deleted again");
+            }
+            answering.stop();
+            QDesktopServices::unsetUrlHandler("https");
+            QDesktopServices::unsetUrlHandler("file");
+            arrive([&](bm::Mailbox &m) { m.pruneChats(expiry + 86400); });
+        }
+        const auto chatFaultText = chatFaults.join("; ").toStdString();
+        require(chatFaults.isEmpty(), chatFaultText.c_str());
+        session.removeContact(chatAddress);
+        QCoreApplication::processEvents();
+        require(window.findChild<QLabel *>("chatTitle")->text() == chatAddress,
+                "A contact removed leaves the chat, now named by its address");
+        window.findChild<QToolButton *>("folderIcon_Inbox")->click();
+        require(!chatsPane->isVisible() && window.findChild<QWidget *>("listColumn")->isVisible(),
+                "Returning to Inbox restores the mail list");
         folders->setCurrentRow(4);
         QTest::qWait(50);
         footprint("Mailbox open");
@@ -2572,6 +3153,8 @@ int main(int argc, char **argv) {
         });
         window.compose({{"hash", formatted}});
         require(!session.mailboxOpen(), "locking closes composer and mailbox");
+        require(!chatsIcon->isEnabled() && !chatsPane->isVisible(),
+                "Locking hides Chats and disables its navigation");
         session.unlockVault();
         require(session.message(formatted)["body"].toString().contains("Saved immediately on lock"),
                 "lock flushes editor before closing database");
@@ -3394,3 +3977,4 @@ int main(int argc, char **argv) {
         return 1;
     }
 }
+#include "widgets_tests.moc"

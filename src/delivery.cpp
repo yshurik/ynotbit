@@ -80,12 +80,13 @@ void Delivery::plan(Mailbox &m, const Vault &v, qint64 time) {
             continue;
         if (item.expires <= time) {
             // Finite retries, then an explicit user-action state; never silently discard a letter.
-            if (item.attempts < 3) {
+            if (!item.chat && item.attempts < 3) {
                 retry(m, item.id);
                 continue;
             }
             m.setDelivery(item.id, "expired",
-                          "No delivery receipt before expiry. Retry is available.");
+                          item.chat ? "Chat expired after 24 hours."
+                                    : "No delivery receipt before expiry. Retry is available.");
             continue;
         }
         if (item.state == "publishing" || item.state == "awaiting_ack" || item.state == "ready")
@@ -174,6 +175,7 @@ void Delivery::processJobs(Mailbox &m, bool online) {
     for (auto j : m.jobs()) {
         if (j.expires <= now()) {
             QFile::remove(root_ + "/publish/" + j.id + ".object");
+            QFile::remove(root_ + "/receipts/" + j.id + ".json");
             m.removeJob(j.id);
             if (j.id == mining_)
                 stop();
@@ -265,6 +267,7 @@ void Delivery::tick(Mailbox &m, const Vault &v, bool online) {
     }
     plan(m, v, now());
     processJobs(m, online);
+    m.pruneChats(now());
 }
 namespace {
 QString fingerprint(QStringList entries) {
@@ -470,8 +473,10 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int limit, int budg
                 addJob(m, {}, "incoming-ack", Protocol::inventoryHash(d.acknowledgment),
                        d.acknowledgment, 1000, 1000, "ready");
             noteRelease(m, d, publisher);
-            m.store(id, d.message.from, d.message.to, d.message.subject, d.message.body, o.sequence,
-                    chanBroadcast ? "Channels" : (d.broadcast ? "Broadcasts" : d.message.folder));
+            m.storeRouted(id, d.message.from, d.message.to, d.message.subject, d.message.body,
+                          o.sequence, chanBroadcast ? "Channels"
+                                                   : (d.broadcast ? "Broadcasts" : d.message.folder),
+                          h->expires);
             ++count;
             passed = 0; // store() moved the checkpoint past this object
         } else

@@ -1,5 +1,6 @@
 #include "sqlite_helpers.h"
 #include "storage.h"
+#include "chat_format.h"
 #include <QDateTime>
 #include <QSet>
 #include <QUuid>
@@ -61,6 +62,22 @@ void Mailbox::migrate() {
         "CREATE TABLE IF NOT EXISTS settings(name TEXT PRIMARY KEY,value TEXT NOT NULL);"
         "CREATE INDEX IF NOT EXISTS delivery_events_id ON delivery_events(id,seq); PRAGMA "
         "user_version=2;");
+    sql("CREATE TABLE IF NOT EXISTS chat_messages(id TEXT PRIMARY KEY,local_address TEXT NOT NULL,"
+        "peer_address TEXT NOT NULL,direction TEXT NOT NULL CHECK(direction IN ('in','out')),"
+        "seqno INTEGER NOT NULL,body TEXT NOT NULL,received INTEGER NOT NULL,expires INTEGER NOT NULL,"
+        "state TEXT NOT NULL,unread INTEGER NOT NULL DEFAULT 0,"
+        "UNIQUE(local_address,peer_address,direction,seqno));"
+        "CREATE INDEX IF NOT EXISTS chat_conversation ON chat_messages(local_address,peer_address,received);"
+        "CREATE INDEX IF NOT EXISTS chat_expiry ON chat_messages(expires);"
+        "CREATE TABLE IF NOT EXISTS chat_sequences(local_address TEXT NOT NULL,peer_address TEXT NOT NULL,"
+        "last_seq INTEGER NOT NULL,PRIMARY KEY(local_address,peer_address));"
+        "CREATE TABLE IF NOT EXISTS chat_outbox(id TEXT PRIMARY KEY REFERENCES chat_messages(id) ON DELETE CASCADE,"
+        "state TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',object_hash TEXT NOT NULL DEFAULT '',"
+        "ack_token BLOB NOT NULL DEFAULT X'',ack_object BLOB NOT NULL DEFAULT X'',"
+        "expires INTEGER NOT NULL,next_attempt INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 1);");
+    // Chats made before unread counts: all of them read.
+    if (!column(db_, "chat_messages", "unread"))
+        sql("ALTER TABLE chat_messages ADD COLUMN unread INTEGER NOT NULL DEFAULT 0");
     t.commit();
 }
 QString Mailbox::saveDraft(const QString &id, const QString &from, const QString &to,
@@ -119,39 +136,10 @@ void Mailbox::queueDraft(const QString &id, const QString &kind, qint64 expires)
     deliveryUpdate(id, "queued", "Queued for encrypted delivery", 0);
     t.commit();
 }
-QVector<OutboxItem> Mailbox::outbox() const {
-    Statement s(
-        db_,
-        "SELECT id,kind,state,error,object_hash,ack_token,ack_object,expires,next_attempt,attempts "
-        "FROM outbox ORDER BY rowid");
-    QVector<OutboxItem> result;
-    while (s.row()) {
-        OutboxItem o;
-        o.id = s.text(0);
-        o.kind = s.text(1);
-        o.state = s.text(2);
-        o.error = s.text(3);
-        o.objectHash = s.text(4);
-        o.ackToken = s.blob(5);
-        o.ackObject = s.blob(6);
-        o.expires = s.number(7);
-        o.nextAttempt = s.number(8);
-        o.attempts = int(s.number(9));
-        o.message = message(o.id);
-        result << o;
-    }
-    return result;
-}
-OutboxItem Mailbox::outgoing(const QString &id) const {
-    Statement s(
-        db_,
-        "SELECT id,kind,state,error,object_hash,ack_token,ack_object,expires,next_attempt,attempts "
-        "FROM outbox WHERE id=?");
-    s.text(1, id);
-    require(s.row(), "No delivery record for this letter");
+static OutboxItem readOutgoing(Statement &s, bool chat, const Mailbox &mailbox) {
     OutboxItem o;
     o.id = s.text(0);
-    o.kind = s.text(1);
+    o.kind = chat ? "direct" : s.text(1);
     o.state = s.text(2);
     o.error = s.text(3);
     o.objectHash = s.text(4);
@@ -160,8 +148,41 @@ OutboxItem Mailbox::outgoing(const QString &id) const {
     o.expires = s.number(7);
     o.nextAttempt = s.number(8);
     o.attempts = int(s.number(9));
-    o.message = message(o.id);
+    o.chat = chat;
+    if (chat) {
+        const auto local = s.text(10), peer = s.text(11);
+        o.message = {o.id, local, peer, {}, chatMessageBody(s.number(12), s.text(13)),
+                     "Chats", s.number(14)};
+    } else {
+        o.message = mailbox.message(o.id);
+    }
     return o;
+}
+QVector<OutboxItem> Mailbox::outbox() const {
+    QVector<OutboxItem> result;
+    Statement letters(db_, "SELECT id,kind,state,error,object_hash,ack_token,ack_object,expires,next_attempt,attempts "
+                           "FROM outbox ORDER BY rowid");
+    while (letters.row()) result << readOutgoing(letters, false, *this);
+    Statement chats(db_, "SELECT o.id,'direct',o.state,o.error,o.object_hash,o.ack_token,o.ack_object,"
+                         "o.expires,o.next_attempt,o.attempts,m.local_address,m.peer_address,m.seqno,"
+                         "m.body,m.received FROM chat_outbox o JOIN chat_messages m ON m.id=o.id ORDER BY m.rowid");
+    while (chats.row()) result << readOutgoing(chats, true, *this);
+    return result;
+}
+OutboxItem Mailbox::outgoing(const QString &id) const {
+    if (id.startsWith("chat-")) {
+        Statement s(db_, "SELECT o.id,'direct',o.state,o.error,o.object_hash,o.ack_token,o.ack_object,"
+                         "o.expires,o.next_attempt,o.attempts,m.local_address,m.peer_address,m.seqno,"
+                         "m.body,m.received FROM chat_outbox o JOIN chat_messages m ON m.id=o.id WHERE o.id=?");
+        s.text(1, id);
+        require(s.row(), "No delivery record for this chat");
+        return readOutgoing(s, true, *this);
+    }
+    Statement s(db_, "SELECT id,kind,state,error,object_hash,ack_token,ack_object,expires,next_attempt,attempts "
+                     "FROM outbox WHERE id=?");
+    s.text(1, id);
+    require(s.row(), "No delivery record for this letter");
+    return readOutgoing(s, false, *this);
 }
 void Mailbox::deliveryUpdate(const QString &id, const QString &state, const QString &detail,
                              qint64 next) {
@@ -170,13 +191,20 @@ void Mailbox::deliveryUpdate(const QString &id, const QString &state, const QStr
         "ready",        "publishing",      "awaiting_ack",    "published",
         "acknowledged", "cancelled",       "failed",          "expired"};
     require(states.contains(state), "Invalid delivery state");
-    Statement s(db_, "UPDATE outbox SET state=?,error=?,next_attempt=? WHERE id=?");
+    const bool chat = id.startsWith("chat-");
+    Statement s(db_, chat ? "UPDATE chat_outbox SET state=?,error=?,next_attempt=? WHERE id=?"
+                          : "UPDATE outbox SET state=?,error=?,next_attempt=? WHERE id=?");
     s.text(1, state);
     s.text(2, state == "failed" || state == "expired" ? detail : QString());
     s.number(3, next);
     s.text(4, id);
     s.row();
     require(sqlite3_changes(db_) == 1, "Delivery no longer exists");
+    if (chat) {
+        Statement status(db_, "UPDATE chat_messages SET state=? WHERE id=?");
+        status.text(1, state); status.text(2, id); status.row();
+        return;
+    }
     Statement e(db_, "INSERT INTO delivery_events(id,ts,state,detail) VALUES(?,?,?,?)");
     e.text(1, id);
     e.number(2, now());
@@ -197,14 +225,18 @@ void Mailbox::setDelivery(const QString &id, const QString &state, const QString
 }
 void Mailbox::setAck(const QString &id, const QByteArray &token, const QByteArray &object) {
     require(token.size() == 32, "Invalid acknowledgment token");
-    Statement s(db_, "UPDATE outbox SET ack_token=?,ack_object=? WHERE id=?");
+    Statement s(db_, id.startsWith("chat-")
+                         ? "UPDATE chat_outbox SET ack_token=?,ack_object=? WHERE id=?"
+                         : "UPDATE outbox SET ack_token=?,ack_object=? WHERE id=?");
     s.blob(1, token);
     s.blob(2, object);
     s.text(3, id);
     s.row();
 }
 void Mailbox::setObjectHash(const QString &id, const QString &hash) {
-    Statement s(db_, "UPDATE outbox SET object_hash=? WHERE id=?");
+    Statement s(db_, id.startsWith("chat-")
+                         ? "UPDATE chat_outbox SET object_hash=? WHERE id=?"
+                         : "UPDATE outbox SET object_hash=? WHERE id=?");
     s.text(1, hash);
     s.text(2, id);
     s.row();
@@ -219,6 +251,12 @@ bool Mailbox::acknowledge(const QByteArray &token) {
         s.blob(1, token);
         while (s.row())
             ids << s.text(0);
+    }
+    {
+        Statement s(db_, "SELECT id FROM chat_outbox WHERE ack_token=? AND state NOT IN "
+                         "('cancelled','acknowledged')");
+        s.blob(1, token);
+        while (s.row()) ids << s.text(0);
     }
     if (ids.isEmpty())
         return false;
@@ -235,6 +273,7 @@ bool Mailbox::acknowledge(const QByteArray &token) {
 }
 void Mailbox::retry(const QString &id, qint64 expires) {
     auto o = outgoing(id);
+    require(!o.chat, "Chats cannot be retried after their 24-hour expiry");
     require(o.state != "acknowledged", "This letter has already been acknowledged");
     Transaction t(db_);
     Statement clear(db_, "DELETE FROM network_jobs WHERE owner=?");
@@ -273,6 +312,7 @@ QVector<DeliveryEvent> Mailbox::events(const QString &id) const {
     return r;
 }
 void Mailbox::recordMilestone(const QString &id, const QString &state, const QString &detail) {
+    if (id.startsWith("chat-")) return;
     Statement s(db_, "INSERT INTO delivery_events(id,ts,state,detail) SELECT ?,?,?,? WHERE NOT "
                      "EXISTS (SELECT 1 FROM delivery_events WHERE id=? AND state=?)");
     s.text(1, id);

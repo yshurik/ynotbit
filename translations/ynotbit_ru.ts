@@ -2,6 +2,57 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="ru">
 <context>
+    <name>bm::ChatsPane</name>
+    <message>
+        <source>Chat message</source>
+        <translation>Сообщение чата</translation>
+    </message>
+    <message>
+        <source>Send message</source>
+        <translation>Отправить сообщение</translation>
+    </message>
+    <message>
+        <source>Your conversations</source>
+        <translation>Ваши беседы</translation>
+    </message>
+    <message>
+        <source>No chat messages yet</source>
+        <translation>Сообщений в чате пока нет</translation>
+    </message>
+    <message>
+        <source>Send as</source>
+        <translation>Отправить от имени</translation>
+    </message>
+    <message>
+        <source>Write a message…</source>
+        <translation>Напишите сообщение…</translation>
+    </message>
+    <message>
+        <source>Waiting to be sent</source>
+        <translation>Ждёт отправки</translation>
+    </message>
+    <message>
+        <source>Sent to the network</source>
+        <translation>Отправлено в сеть</translation>
+    </message>
+    <message>
+        <source>Delivered</source>
+        <translation>Доставлено</translation>
+    </message>
+    <message>
+        <source>Not delivered</source>
+        <translation>Не доставлено</translation>
+    </message>
+    <message>
+        <source>Enter sends, Shift+Enter starts a new line</source>
+        <translation>Enter отправляет, Shift+Enter — новая строка</translation>
+    </message>
+    <message>
+        <source>Select a chat, or start a new one</source>
+        <translation>Выберите чат или начните новый</translation>
+    </message>
+</context>
+<context>
     <name>bm::DesktopWindow</name>
     <message>
         <source>Queued</source>
@@ -864,6 +915,22 @@ Date: %1
         <source>Delete identity</source>
         <translation>Удалить идентичность</translation>
     </message>
+    <message>
+        <source>Chats</source>
+        <translation>Чаты</translation>
+    </message>
+    <message>
+        <source>New chat</source>
+        <translation>Новый чат</translation>
+    </message>
+    <message>
+        <source>Expand the chat list</source>
+        <translation>Развернуть список чатов</translation>
+    </message>
+    <message>
+        <source>Collapse the chat list</source>
+        <translation>Свернуть список чатов</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1075,6 +1142,18 @@ Date: %1
         <source>Cannot apply mailbox key</source>
         <translation>Не удаётся применить ключ почтового ящика</translation>
     </message>
+    <message>
+        <source>Invalid chat message or expiry</source>
+        <translation>Недопустимое сообщение чата или срок действия</translation>
+    </message>
+    <message>
+        <source>No delivery record for this chat</source>
+        <translation>Нет записи об отправке этого чата</translation>
+    </message>
+    <message>
+        <source>Chats cannot be retried after their 24-hour expiry</source>
+        <translation>После истечения 24 часов повторная отправка чата невозможна</translation>
+    </message>
 </context>
 <context>
     <name>bm::FeedView</name>
@@ -1139,6 +1218,17 @@ Date: %1
     <message>
         <source>Forward</source>
         <translation>Переслать</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NewChatDialog</name>
+    <message>
+        <source>Start chat</source>
+        <translation>Начать чат</translation>
+    </message>
+    <message>
+        <source>Create an identity before starting a chat</source>
+        <translation>Создайте идентичность, прежде чем начать чат</translation>
     </message>
 </context>
 <context>
@@ -1617,6 +1707,10 @@ Date: %1
     <message>
         <source>Cannot write %1</source>
         <translation>Не удаётся записать %1</translation>
+    </message>
+    <message>
+        <source>Chat message must be between 1 and 8192 bytes</source>
+        <translation>Сообщение чата должно содержать от 1 до 8192 байт</translation>
     </message>
 </context>
 <context>

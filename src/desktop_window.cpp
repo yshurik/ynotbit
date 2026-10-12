@@ -7,6 +7,8 @@
 #include "letter_document.h"
 #include "letter_render.h"
 #include "feed_view.h"
+#include "chats_pane.h"
+#include "new_chat_dialog.h"
 #include "updates.h"
 #include "qrcodegen.hpp"
 #include <QCryptographicHash>
@@ -286,6 +288,7 @@ const QVector<QPair<QString, QString>> kFolderIcons = {
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Identities"), "identities"},
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Contacts"), "contacts"},
     {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Settings"), "settings"},
+    {QT_TRANSLATE_NOOP("bm::DesktopWindow", "Chats"), "chats"},
 };
 // A folder's displayed name. Received broadcasts are kept under "Broadcasts",
 // but the page is the senders you follow: "Subscriptions", as in PyBitmessage.
@@ -1594,6 +1597,16 @@ class ReaderBody : public LetterView {
     QPoint dragAt_;
 };
 } // namespace
+// A link in a letter or a chat comes from a stranger: https only, and only once the
+// reader has said yes.
+static void openLinkAfterAsking(QWidget *parent, const QUrl &url) {
+    if (url.scheme() != "https")
+        return;
+    const auto question =
+        DesktopWindow::tr("Open this link in your browser?\n%1").arg(url.toDisplayString());
+    if (QMessageBox::question(parent, DesktopWindow::tr("Open link"), question) == QMessageBox::Yes)
+        QDesktopServices::openUrl(url);
+}
 // One letter as the reader pane and a message window both show it: its
 // actions and view switch, subject, From / To, delivery status and timeline,
 // and body, inside the envelope border of the letter's kind. The window that
@@ -1754,13 +1767,8 @@ class LetterPane : public KindFrame {
         column->addWidget(body_, 1);
         scroll_->setWidget(content);
         frame->addWidget(scroll_, 1);
-        connect(body_, &QTextBrowser::anchorClicked, this, [this](QUrl url) {
-            if (url.scheme() == "https" &&
-                QMessageBox::question(this, DesktopWindow::tr("Open link"),
-                                      DesktopWindow::tr("Open this link in your browser?\n%1")
-                                          .arg(url.toDisplayString())) == QMessageBox::Yes)
-                QDesktopServices::openUrl(url);
-        });
+        connect(body_, &QTextBrowser::anchorClicked, this,
+                [this](QUrl url) { openLinkAfterAsking(this, url); });
         clear(DesktopWindow::tr("No letter selected"));
     }
     const QVariantMap &letter() const {
@@ -2055,7 +2063,9 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     write->setIcon(materialIcon("compose", iconColor(appearance_.dark())));
     write->setCursor(Qt::PointingHandCursor);
     connect(write, &QPushButton::clicked, this, [this] {
-        if (folders_->currentRow() == 4 && !activeChannelAddress_.isEmpty())
+        if (folders_->currentRow() == 11)
+            newChat();
+        else if (folders_->currentRow() == 4 && !activeChannelAddress_.isEmpty())
             compose({{"to", activeChannelAddress_}, {"from", activeChannelAddress_}});
         else if (folders_->currentRow() == 5)
             compose({{"kind", "broadcast"}}); // the Broadcasts page writes one
@@ -2075,10 +2085,11 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     folders_ = new QListWidget(side);
     folders_->setObjectName("folders");
     folders_->addItems({"Inbox", "Drafts", "Outbox", "Sent", "Channels", "Broadcasts", "Archive",
-                        "Trash", "Identities", "Contacts", "Settings"});
+                        "Trash", "Identities", "Contacts", "Settings", "Chats"});
     folders_->hide();
     auto folderGroup = new QButtonGroup(this);
     folderGroup->setExclusive(true);
+    const int firstFolderPosition = nav->count();
     for (int i = 0; i < kFolderIcons.size(); ++i) {
         const auto &[label, iconName] = kFolderIcons[i];
         auto icon = new QToolButton;
@@ -2099,7 +2110,11 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             else
                 folders_->setCurrentRow(i);
         });
-        nav->addWidget(icon);
+        // Keep existing folder IDs stable; Chats is first only in the visible rail.
+        if (label == "Chats")
+            nav->insertWidget(firstFolderPosition, icon);
+        else
+            nav->addWidget(icon);
     }
     nav->addStretch();
     split->addWidget(side);
@@ -2125,7 +2140,9 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     railScroll->setWidget(railList);
     railOuter->addWidget(railScroll, 1);
     button(tr("+ Join or create…"), railOuter, [this] {
-        if (folders_->currentRow() == 5)
+        if (folders_->currentRow() == 11)
+            newChat();
+        else if (folders_->currentRow() == 5)
             session_.subscribe();
         else
             session_.joinChannel();
@@ -2265,6 +2282,17 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         (new MessageWindow(session_, letter, appearance_.dark(), this))->show();
     };
     read->addWidget(pane_, 1);
+    chats_ = new ChatsPane;
+    read->addWidget(chats_, 1);
+    connect(chats_, &ChatsPane::sendRequested, this,
+            [this](const QString &from, const QString &body) {
+                if (session_.sendChat(from, Session::chatPeer(activeChatKey_), body)) {
+                    chats_->clearComposer();
+                    refreshChannels();
+                }
+            });
+    connect(chats_, &ChatsPane::linkClicked, this,
+            [this](const QUrl &url) { openLinkAfterAsking(this, url); });
     welcomeStack_ = new QStackedWidget;
     welcomeStack_->setObjectName("welcomeStack");
     // State 1: vault locked (or none chosen yet). A vault target is shown with an
@@ -2590,7 +2618,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             icon->setChecked(true);
         // Folder names are keys; the heading shows the translated name.
         heading_->setText(folderTitle(folder).toUpper());
-        if (folder == "Channels" || folder == "Broadcasts")
+        if (folder == "Channels" || folder == "Broadcasts" || folder == "Chats")
             refreshChannels();
         session_.messageModel()->setFolder(folder);
         pane_->clear(folder == "Identities" ? tr("Identities & chans")
@@ -2617,6 +2645,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
 }
 void DesktopWindow::updateTheme() {
     bool dark = appearance_.dark();
+    chats_->setDark(dark);
     if (feed_)
         feed_->setDark(dark);
     setStyleSheet(
@@ -2711,6 +2740,7 @@ void DesktopWindow::updateTheme() {
         findChild<QToolButton *>(id)->setIcon(materialIcon(icon, color));
     for (const auto &[label, iconName] : kFolderIcons)
         findChild<QToolButton *>("folderIcon_" + label)->setIcon(materialIcon(iconName, color));
+    updateChatsIcon(true);
     if (contacts_->isVisible())
         refreshContacts();
     if (identities_->isVisible())
@@ -2744,12 +2774,22 @@ void DesktopWindow::updateState() {
     const bool channelPage = folders_->currentRow() == 4;
     const bool broadcastPage = folders_->currentRow() == 5;
     const bool mailboxState = session_.mailboxOpen();
+    const bool chatsPage = mailboxState && folders_->currentItem() &&
+                           folders_->currentRow() == 11;
+    if (!mailboxState) {
+        activeChatKey_.clear();
+        startedChats_.clear();
+        chats_->setConversation({}, {}, {}, {}, false);
+        chats_->setMessages({});
+    }
+    chats_->setVisible(chatsPage);
     auto write = findChild<QPushButton *>("writeButton");
-    write->setToolTip(channelPage     ? tr("Write to channel")
+    write->setToolTip(chatsPage       ? tr("New chat")
+                      : channelPage   ? tr("Write to channel")
                       : broadcastPage ? tr("Write a broadcast")
                                       : tr("Write a letter"));
     write->setEnabled(mailboxState && (!channelPage || !activeChannelAddress_.isEmpty()));
-    channelRail_->setVisible(mailboxState && (channelPage || broadcastPage));
+    channelRail_->setVisible(mailboxState && (channelPage || broadcastPage || chatsPage));
     heading_->setVisible(!channelPage && !broadcastPage);
     channelRail_->setEnabled(session_.unlocked());
     createIdentityAction_->setEnabled(session_.unlocked());
@@ -2799,7 +2839,22 @@ void DesktopWindow::updateState() {
         pane_->updateCorrespondents();
         if (folders_->currentRow() == 9)
             refreshContacts();
+        if (folders_->currentRow() == 11)
+            refreshChannels();
     }
+    // A chat arrived, or one sent moved on (queued, sent, delivered): the rail and
+    // the open conversation follow, with no click. What comes while a conversation is
+    // looked at (open, in the window in use) is read as it comes.
+    if (chatsPage) {
+        const auto local = Session::chatLocal(activeChatKey_);
+        const auto peer = Session::chatPeer(activeChatKey_);
+        if (isActiveWindow() && !peer.isEmpty())
+            session_.markChatRead(local, peer);
+        const auto thread = session_.chatMessages(local, peer);
+        if (QVariantList{session_.chatConversations(), thread} != shownChats_)
+            refreshChannels();
+    }
+    updateChatsIcon();
     // Identities, Contacts and Settings are whole-pane pages: no letter list, no
     // reader. Settings needs no mailbox.
     const bool settingsPage = folders_->currentRow() == 10;
@@ -2816,7 +2871,7 @@ void DesktopWindow::updateState() {
                      (folders_->currentRow() == 2 || session_.messageCount("Outbox", {}) > 0));
     // Subscriptions is a feed: no letter list, no reader.
     const bool feedPage = folders_->currentRow() == 5 && mailboxState;
-    listColumn_->setVisible(mailboxState && !identityPage && !feedPage && !settingsPage);
+    listColumn_->setVisible(mailboxState && !identityPage && !feedPage && !settingsPage && !chatsPage);
     feed_->setVisible(feedPage);
     welcomeStack_->setVisible(!mailboxState && !settingsPage);
     if (!mailboxState) {
@@ -2837,7 +2892,7 @@ void DesktopWindow::updateState() {
                 vaultPasswordField_->setFocus();
         }
     }
-    pane_->setVisible(mailboxState && !identityPage && !feedPage && !settingsPage);
+    pane_->setVisible(mailboxState && !identityPage && !feedPage && !settingsPage && !chatsPage);
     identities_->setVisible(identityPage && !contactsPage);
     contacts_->setVisible(contactsPage);
     if (settings_)
@@ -2858,22 +2913,83 @@ void DesktopWindow::updateState() {
                   "\n" + session_.activity());
 }
 void DesktopWindow::refreshChannels() {
-    // One rail, two pages: chans on Channels, subscriptions on Broadcasts.
+    // One shared rail for channels, subscriptions, and chats.
     const bool broadcasts = folders_->currentRow() == 5;
     updateRailTexts();
-    const auto entries = broadcasts ? session_.broadcastSources() : session_.channels();
-    auto &active = broadcasts ? activeBroadcastAddress_ : activeChannelAddress_;
+    const bool chats = folders_->currentRow() == 11;
+    // Chats: each chat of the vault's identities, the newest first, those started here
+    // and not yet written in before them. A chat is between one identity and a peer, so
+    // one peer can be in the list twice.
+    QVariantList conversations; // those of the mailbox
+    const auto chatEntries = [&] {
+        conversations = session_.chatConversations();
+        QSet<QString> listed, mine;
+        for (const auto &conversation : conversations)
+            listed.insert(conversation.toMap().value("key").toString());
+        for (const auto &identity : session_.identities())
+            if (!identity.toMap().value("chan").toBool())
+                mine.insert(identity.toMap().value("address").toString());
+        const auto labels = session_.names();
+        QVariantList result;
+        for (const auto &key : startedChats_) {
+            const auto local = Session::chatLocal(key), peer = Session::chatPeer(key);
+            if (listed.contains(key) || !mine.contains(local))
+                continue;
+            result << QVariantMap{{"key", key},
+                                  {"address", peer},
+                                  {"label", labels.value(peer, peer)},
+                                  {"local", local},
+                                  {"localLabel", labels.value(local, local)}};
+        }
+        return result + conversations;
+    };
+    // Which identity a chat is under is shown when there are several.
+    int ownIdentities = 0;
+    if (chats)
+        for (const auto &identity : session_.identities())
+            if (!identity.toMap().value("chan").toBool())
+                ++ownIdentities;
+    const bool severalIdentities = ownIdentities > 1;
+    const QString idKey = chats ? "key" : "address"; // what tells one entry from another
+    auto entries = chats        ? chatEntries()
+                   : broadcasts ? session_.broadcastSources()
+                                : session_.channels();
+    auto &active = chats        ? activeChatKey_
+                   : broadcasts ? activeBroadcastAddress_
+                                : activeChannelAddress_;
     bool stillJoined = false;
     for (auto v : entries)
-        stillJoined = stillJoined || v.toMap()["address"].toString() == active;
+        stillJoined = stillJoined || v.toMap()[idKey].toString() == active;
     if (!stillJoined)
-        active = entries.isEmpty() ? QString() : entries.first().toMap()["address"].toString();
+        active = entries.isEmpty() ? QString() : entries.first().toMap()[idKey].toString();
+    // What has come in the open chat is read when it is looked at: this window the one in
+    // use.
+    if (chats && isActiveWindow() && !active.isEmpty() &&
+        session_.markChatRead(Session::chatLocal(active), Session::chatPeer(active)) > 0)
+        entries = chatEntries();
+    QHash<QString, QVariantMap> chatInfo; // what each chat row shows
+    if (chats)
+        for (const auto &entry : entries)
+            chatInfo[entry.toMap()["key"].toString()] = entry.toMap();
     // What a chip shows of its chan's state: whether it is the selected one, and
-    // unread mail.
-    const auto dress = [&](QPushButton *chip, const QString &chipAddress) {
-        chip->setChecked(chipAddress == active);
-        const bool unread = broadcasts ? session_.broadcastUnread(chipAddress)
-                                       : session_.channelUnread(chipAddress);
+    // unread mail. A chat row shows its newest message instead.
+    const auto dress = [&](QPushButton *chip, const QString &chipKey) {
+        chip->setChecked(chipKey == active);
+        if (auto row = qobject_cast<ChatRow *>(chip)) {
+            const auto info = chatInfo.value(chipKey);
+            row->setCollapsed(channelRailCollapsed_);
+            row->setVia(severalIdentities ? info.value("local").toString() : QString(),
+                        info.value("localLabel").toString());
+            row->setSummary(info.value("body").toString(), info.value("received").toLongLong(),
+                            info.value("outgoing").toBool()
+                                ? chatTickFor(info.value("state").toString())
+                                : ChatTick::None,
+                            info.value("unread").toInt());
+            return;
+        }
+        const auto &chipAddress = chipKey; // not a chat: its key is its address
+        const bool unread = !chats && (broadcasts ? session_.broadcastUnread(chipAddress)
+                                                  : session_.channelUnread(chipAddress));
         if (channelRailCollapsed_) {
             // No name to embolden when collapsed: unread mail is a dot on the
             // identicon's corner instead.
@@ -2906,17 +3022,37 @@ void DesktopWindow::refreshChannels() {
     // The same chans as shown: only the selection and unread mail can have
     // changed, so the chips stay. Made anew, the rail painted empty for a
     // moment before they showed, a blink at every switch.
-    QString shown = QString("%1 %2").arg(broadcasts).arg(channelRailCollapsed_);
-    for (auto v : entries) {
+    QString shown = QString("%1 %2 %3").arg(broadcasts).arg(chats).arg(channelRailCollapsed_);
+    // A new message moves its conversation up the chat list: the rows are moved, not
+    // made again, so the list is not told by its order.
+    auto listed = entries;
+    if (chats)
+        std::sort(listed.begin(), listed.end(), [](const QVariant &a, const QVariant &b) {
+            return a.toMap()["key"].toString() < b.toMap()["key"].toString();
+        });
+    for (auto v : listed) {
         const auto item = v.toMap();
-        shown += '\n' + item["address"].toString() + '\t' + item["label"].toString() + '\t' +
+        shown += '\n' + item[idKey].toString() + '\t' + item["label"].toString() + '\t' +
                  QString::number(item["subscribed"].toBool()) +
                  QString::number(item["updates"].toBool());
     }
     if (shown == railShown_) {
         for (int i = 0; i < channelChipLayout_->count(); ++i)
             if (auto chip = qobject_cast<QPushButton *>(channelChipLayout_->itemAt(i)->widget()))
-                dress(chip, chip->property("address").toString());
+                dress(chip, chip->property("key").toString());
+        if (chats)
+            for (int place = 0; place < entries.size(); ++place)
+                for (int i = 0; i < channelChipLayout_->count(); ++i) {
+                    auto chip = channelChipLayout_->itemAt(i)->widget();
+                    if (chip && chip->property("key").toString() ==
+                                    entries[place].toMap()["key"].toString()) {
+                        if (i != place) {
+                            channelChipLayout_->removeWidget(chip);
+                            channelChipLayout_->insertWidget(place, chip);
+                        }
+                        break;
+                    }
+                }
     } else {
         railShown_ = shown;
         while (auto item = channelChipLayout_->takeAt(0)) {
@@ -2926,15 +3062,18 @@ void DesktopWindow::refreshChannels() {
         for (auto v : entries) {
             auto item = v.toMap();
             auto chipAddress = item["address"].toString();
+            auto chipKey = item[idKey].toString(); // a chat's is its identity and its peer
             auto label = item["label"].toString();
             // Collapsed, the rail is a column of identicons; the name moves to
             // the tooltip.
-            auto chip = new QPushButton(channelRailCollapsed_ ? QString() : label);
+            QPushButton *chip = chats ? new ChatRow(chipAddress, label)
+                                      : new QPushButton(channelRailCollapsed_ ? QString() : label);
             chip->setObjectName("channelChip");
             chip->setCheckable(true);
             // One selected at a time, and a click on it keeps it selected.
             chip->setAutoExclusive(true);
             chip->setProperty("address", chipAddress);
+            chip->setProperty("key", chipKey);
             chip->setStyleSheet(QString("QPushButton{text-align:%1;padding:%2;border:0;"
                                         "border-radius:6px;} QPushButton:checked{"
                                         "background:palette(highlight);"
@@ -2942,14 +3081,20 @@ void DesktopWindow::refreshChannels() {
                                     .arg(channelRailCollapsed_ ? "center" : "left",
                                          channelRailCollapsed_ ? "5px 4px" : "8px 10px"));
             chip->setCursor(Qt::PointingHandCursor);
-            chip->setToolTip(
-                (label != chipAddress ? "<b>" + label.toHtmlEscaped() + "</b>" : QString()) +
-                "<pre>" + chipAddress.toHtmlEscaped() + "</pre>");
-            connect(chip, &QPushButton::clicked, this, [this, chipAddress, broadcasts] {
-                (broadcasts ? activeBroadcastAddress_ : activeChannelAddress_) = chipAddress;
-                session_.messageModel()->setChannel(chipAddress);
+            if (!chats) // a chat row words its own, with the identity
+                chip->setToolTip(
+                    (label != chipAddress ? "<b>" + label.toHtmlEscaped() + "</b>" : QString()) +
+                    "<pre>" + chipAddress.toHtmlEscaped() + "</pre>");
+            connect(chip, &QPushButton::clicked, this, [this, chipKey, broadcasts, chats] {
+                (chats        ? activeChatKey_
+                 : broadcasts ? activeBroadcastAddress_
+                              : activeChannelAddress_) = chipKey;
+                if (!chats)
+                    session_.messageModel()->setChannel(chipKey);
                 updateState();
                 QTimer::singleShot(0, this, [this] { refreshChannels(); });
+                if (chats)
+                    chats_->focusComposer(); // a chat is for writing in
             });
             if (broadcasts) {
                 // Right-click: copy the address, or stop following this sender.
@@ -2979,12 +3124,26 @@ void DesktopWindow::refreshChannels() {
                             session_.unsubscribe(chipAddress);
                     });
             }
-            dress(chip, chipAddress);
+            dress(chip, chipKey);
             channelChipLayout_->addWidget(chip);
         }
         channelChipLayout_->addStretch();
     }
-    session_.messageModel()->setChannel(active);
+    if (chats) {
+        QString label, localLabel;
+        for (const auto &entry : entries)
+            if (entry.toMap()["key"].toString() == active) {
+                label = entry.toMap()["label"].toString();
+                localLabel = entry.toMap()["localLabel"].toString();
+            }
+        const auto local = Session::chatLocal(active), peer = Session::chatPeer(active);
+        chats_->setConversation(local, localLabel, peer, label, severalIdentities);
+        const auto thread = session_.chatMessages(local, peer);
+        chats_->setMessages(thread);
+        shownChats_ = QVariantList{conversations, thread};
+    } else {
+        session_.messageModel()->setChannel(active);
+    }
     if (broadcasts) {
         QString label;
         for (auto v : entries)
@@ -2998,16 +3157,45 @@ void DesktopWindow::refreshChannels() {
     if (folders_->currentRow() == 4)
         heading_->setText(tr("Channels"));
 }
+// The Chats button counts what is unread with a dot on its corner, wherever the reader
+// is: a chat that comes while another page is open would go unseen otherwise.
+void DesktopWindow::updateChatsIcon(bool force) {
+    auto button = findChild<QToolButton *>("folderIcon_Chats");
+    const int unread = session_.chatUnread();
+    if (!button || (!force && button->property("unread").toInt() == unread))
+        return;
+    button->setProperty("unread", unread);
+    const bool dark = appearance_.dark();
+    auto pixmap =
+        materialIcon("chats", iconColor(dark)).pixmap(button->iconSize(), devicePixelRatioF());
+    if (unread > 0) {
+        // The theme's accent on a ring of the rail's own colour (the palette's Link and
+        // Window), by the theme and not the palette: this runs while the theme changes.
+        QPainter p(&pixmap);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(QColor(dark ? "#141b23" : "#f5f7fa"), 1.5));
+        p.setBrush(QColor(dark ? "#73d8c7" : "#126d65"));
+        p.drawEllipse(QRectF(15.5, 0.5, 8, 8));
+    }
+    button->setIcon(QIcon(pixmap));
+}
 void DesktopWindow::updateRailTexts() {
     const bool broadcasts = folders_->currentRow() == 5;
+    const bool chats = folders_->currentRow() == 11;
     auto heading = channelRail_->findChild<QLabel *>("channelRailHeading");
-    heading->setText(channelRailCollapsed_ ? (broadcasts ? "@" : "#")
-                                           : (broadcasts ? tr("SUBSCRIPTIONS") : tr("CHANNELS")));
+    heading->setText(channelRailCollapsed_ ? (chats ? "⋯" : broadcasts ? "@" : "#")
+                     : chats ? tr("Chats").toUpper()
+                     : broadcasts ? tr("SUBSCRIPTIONS") : tr("CHANNELS"));
+    auto toggle = channelRail_->findChild<QPushButton *>("channelRailToggle");
+    toggle->setToolTip(chats ? (channelRailCollapsed_ ? tr("Expand the chat list") : tr("Collapse the chat list"))
+                            : (channelRailCollapsed_ ? tr("Expand the channel list") : tr("Collapse the channel list")));
     auto join = channelRail_->findChild<QPushButton *>("joinOrCreateChannelButton");
     join->setText(channelRailCollapsed_ ? "+"
+                  : chats               ? tr("New chat")
                   : broadcasts          ? tr("+ Subscribe…")
                                         : tr("+ Join or create…"));
     join->setToolTip(!channelRailCollapsed_ ? QString()
+                     : chats                ? tr("New chat")
                      : broadcasts           ? tr("Subscribe to broadcasts")
                                             : tr("Join or create a chan"));
 }
@@ -3359,6 +3547,23 @@ void DesktopWindow::newIdentity() {
     NewVaultDialog dialog(session_, {}, appearance_.dark(), this, NewVaultDialog::IdentityOnly);
     if (dialog.exec() == QDialog::Accepted)
         refreshIdentities();
+}
+// The identity is chosen here, once: a chat keeps it, and another identity is another chat.
+void DesktopWindow::newChat() {
+    NewChatDialog dialog(session_, appearance_.dark(), this);
+    if (dialog.exec() == QDialog::Accepted)
+        startChat(dialog.identity(), dialog.peer());
+}
+void DesktopWindow::startChat(const QString &local, const QString &peer) {
+    const auto key = Session::chatKey(local, peer);
+    startedChats_.removeAll(key);
+    startedChats_.prepend(key);
+    activeChatKey_ = key;
+    if (folders_->currentRow() == 11)
+        refreshChannels();
+    else
+        folders_->setCurrentRow(11); // the page's change shows the chat
+    chats_->focusComposer();
 }
 void DesktopWindow::openSettings() {
     folders_->setCurrentRow(10); // Settings, the rail's last page

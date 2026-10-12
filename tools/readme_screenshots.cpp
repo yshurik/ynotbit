@@ -168,6 +168,18 @@ int main(int argc, char **argv) {
     mailbox.saveContact(alice, text("Alice Liddell", "佐藤 花子"));
     mailbox.saveContact(bob, text("Bob", "鈴木 健太"));
     mailbox.saveContact(carol, text("Carol", "高橋 美咲"));
+    // Chats, the ones that came and the ones sent: what the Chats page lists.
+    {
+        const auto expiry = QDateTime::currentSecsSinceEpoch() + 80000;
+        mailbox.storeChat("demo-chat-1", alice, me, 1, "Hi! Are we still on for **Thursday**?",
+                          expiry);
+        const auto reply =
+            mailbox.queueChat(me, alice, "Yes. I will bring the release checklist.", expiry);
+        mailbox.setDelivery(reply, "acknowledged");
+        mailbox.storeChat("demo-chat-2", bob, me, 1, "Lunch tomorrow?", expiry);
+        const auto station = mailbox.queueChat(me, carol, "See you at the station at 10.", expiry);
+        mailbox.setDelivery(station, "awaiting_ack");
+    }
     const auto sent = mailbox.saveDraft({}, me, alice, "Re: " + notesSubject, answer);
     mailbox.queueDraft(sent, "direct", QDateTime::currentSecsSinceEpoch() + 86400);
     mailbox.setDelivery(sent, "acknowledged");
@@ -208,6 +220,17 @@ int main(int argc, char **argv) {
         window.grab().save(out + "/" + name);
         std::cout << (out + "/" + name).toStdString() << "\n";
     };
+
+    // Chats: the demo's chats, opened on Alice's.
+    window.findChild<QToolButton *>("folderIcon_Chats")->click();
+    settle();
+    for (auto chip : window.findChildren<QPushButton *>("channelChip"))
+        if (chip->property("address").toString() == alice)
+            chip->click();
+    shot("chats-contact.png");
+    window.findChild<QPushButton *>("channelRailToggle")->click();
+    shot("chats-collapsed.png");
+    window.findChild<QPushButton *>("channelRailToggle")->click();
 
     // Inbox, reading Alice's letter (markdown, a named contact).
     folders->setCurrentRow(0);
@@ -292,5 +315,24 @@ int main(int argc, char **argv) {
         }
     });
     window.compose(session.message(notes), true);
+    // Check the chat panel's custom surfaces in dark mode as well.
+    QSettings preferences;
+    const auto savedTheme = preferences.value("appearance/theme");
+    preferences.setValue("appearance/theme", "dark");
+    {
+        bm::DesktopWindow darkWindow(session);
+        darkWindow.show();
+        darkWindow.findChild<QToolButton *>("folderIcon_Chats")->click();
+        settle();
+        for (auto chip : darkWindow.findChildren<QPushButton *>("channelChip"))
+            if (chip->property("address").toString() == alice)
+                chip->click();
+        settle();
+        darkWindow.grab().save(out + "/chats-dark.png");
+    }
+    if (savedTheme.isValid())
+        preferences.setValue("appearance/theme", savedTheme);
+    else
+        preferences.remove("appearance/theme");
     return 0;
 }

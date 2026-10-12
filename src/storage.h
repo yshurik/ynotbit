@@ -61,6 +61,18 @@ struct Message {
     QString hash, from, to, subject, body, folder;
     qint64 received = 0;
 };
+struct ChatMessage {
+    QString id, localAddress, peerAddress, body, state;
+    qint64 seqno = 0, received = 0, expires = 0;
+    bool outgoing = false;
+};
+// A conversation as a list shows it: its newest message and what is unread.
+struct ChatSummary {
+    QString local, peer, body, state; // the newest message's text and delivery state
+    qint64 received = 0;              // when it came, or was queued
+    bool outgoing = false;            // it is ours
+    int unread = 0;                   // messages from the peer that nobody has looked at
+};
 class Vault {
     QString path_;
     Secret wrapping_;
@@ -142,6 +154,19 @@ class Mailbox {
     };
     void store(const QString &hash, const QString &from, const QString &to, const QString &subject,
                const QString &body, qint64 checkpoint, const QString &folder = "Inbox");
+    QString queueChat(const QString &local, const QString &peer, const QString &body, qint64 expires);
+    void storeRouted(const QString &id, const QString &sender, const QString &recipient,
+                     const QString &subject, const QString &body, qint64 checkpoint,
+                     const QString &folder, qint64 expires);
+    void storeChat(const QString &id, const QString &sender, const QString &recipient,
+                   qint64 seqno, const QString &body, qint64 expires, bool outgoing = false);
+    QVector<ChatMessage> chatMessages(const QString &local, const QString &peer) const;
+    // One per conversation of every identity, the one with the newest message first.
+    QVector<ChatSummary> chatSummaries() const;
+    int chatUnread() const;
+    // Marks the peer's messages to this identity as looked at; how many were not.
+    int markChatRead(const QString &local, const QString &peer);
+    void pruneChats(qint64 time);
     void advance(qint64 checkpoint);
     qint64 checkpoint() const;
     QVector<Message> messages() const;
@@ -215,6 +240,7 @@ struct OutboxItem {
     qint64 expires = 0, nextAttempt = 0;
     int attempts = 0;
     Message message;
+    bool chat = false;
 };
 struct NetworkJob {
     QString id, owner, kind, address, state, hash, error;

@@ -69,7 +69,7 @@ FetchContent_Declare(miniupnpc
  URL_HASH SHA256=8cf2c833b3e76fc4893ff29c2a376e3394962449e5970e373c0a91421724d222
  SOURCE_SUBDIR miniupnpc)
 FetchContent_MakeAvailable(miniupnpc)
-add_library(bmcore src/storage.cpp src/mailbox_ops.cpp src/protocol.cpp src/protocol_wire.cpp src/key_search.cpp src/pow.cpp src/gpu_pow.cpp src/gpu_opencl.cpp src/delivery.cpp src/cache.cpp src/scanner.cpp src/updates.cpp src/message_search.cpp src/port_mapper.cpp src/port_mapper_miniupnpc.cpp)
+add_library(bmcore src/chat_format.cpp src/chat_store.cpp src/storage.cpp src/mailbox_ops.cpp src/protocol.cpp src/protocol_wire.cpp src/key_search.cpp src/pow.cpp src/gpu_pow.cpp src/gpu_opencl.cpp src/delivery.cpp src/cache.cpp src/scanner.cpp src/updates.cpp src/message_search.cpp src/port_mapper.cpp src/port_mapper_miniupnpc.cpp)
 target_include_directories(bmcore PUBLIC src)
 target_link_libraries(bmcore PUBLIC Threads::Threads notbit_codec secp256k1 miniupnpc::miniupnpc Qt6::Core Qt6::Network PkgConfig::SODIUM PkgConfig::SQLCIPHER OpenSSL::Crypto ntb_object_db)
 if(APPLE)
@@ -79,6 +79,9 @@ if(APPLE)
  set_source_files_properties(src/gpu_metal.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
  target_link_libraries(bmcore PUBLIC "-framework Metal" "-framework Foundation" "-framework IOKit")
 endif()
+add_executable(chat_tests tests/chat_tests.cpp)
+target_link_libraries(chat_tests PRIVATE bmcore)
+add_test(NAME chat COMMAND chat_tests)
 add_executable(core_tests tests/core_tests.cpp)
 target_link_libraries(core_tests PRIVATE bmcore)
 enable_testing()
@@ -216,6 +219,9 @@ qt_add_executable(feed_scroll_bench EXCLUDE_FROM_ALL tools/feed_scroll_bench.cpp
 target_include_directories(feed_scroll_bench PRIVATE third_party/qrcodegen)
 add_coolname(feed_scroll_bench)
 target_link_libraries(feed_scroll_bench PRIVATE bmcore Qt6::Widgets Qt6::Network)
+foreach(desktop_target ynotbit desktop_tests readme_screenshots feed_scroll_bench)
+ target_sources(${desktop_target} PRIVATE src/chats_pane.cpp src/chats_pane.h src/new_chat_dialog.cpp src/new_chat_dialog.h)
+endforeach()
 # Proof-of-work speed on the CPU and on each GPU backend; built only on request:
 #   cmake --build build --target pow_bench && build/pow_bench
 add_executable(pow_bench EXCLUDE_FROM_ALL tools/pow_bench.cpp)
@@ -228,7 +234,11 @@ target_link_libraries(pow_bench PRIVATE bmcore)
 # request. Dry run unless --send:
 #   cmake --build build --target post_digest
 #   build/post_digest --keys digest_keys.dat --issue issue.md --send
-foreach(tool announce_release post_digest)
+# A chat peer to try the chats against: it answers every chat it gets; built only
+# on request:
+#   cmake --build build --target chat_responder
+#   build/chat_responder
+foreach(tool announce_release post_digest chat_responder)
  qt_add_executable(${tool} EXCLUDE_FROM_ALL tools/${tool}.cpp
   tools/publish_broadcast.cpp tools/publish_broadcast.h
   src/i18n.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h
@@ -265,7 +275,7 @@ foreach(lang IN LISTS YNOTBIT_LANGUAGES)
  list(APPEND YNOTBIT_TS_FILES ${CMAKE_CURRENT_SOURCE_DIR}/translations/ynotbit_${lang}.ts)
 endforeach()
 qt_add_lupdate(TS_FILES ${YNOTBIT_TS_FILES}
- SOURCES src/desktop_window.cpp src/settings_pane.cpp src/new_vault_dialog.cpp src/session.cpp src/feed_view.cpp src/updates.cpp src/i18n/error_catalog.cpp
+ SOURCES src/desktop_window.cpp src/chats_pane.cpp src/new_chat_dialog.cpp src/settings_pane.cpp src/new_vault_dialog.cpp src/session.cpp src/feed_view.cpp src/updates.cpp src/i18n/error_catalog.cpp
  LUPDATE_TARGET update_translations
  OPTIONS -no-obsolete -locations none)
 qt_add_lrelease(TS_FILES ${YNOTBIT_TS_FILES} QM_FILES_OUTPUT_VARIABLE YNOTBIT_QM_FILES

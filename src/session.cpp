@@ -1,4 +1,5 @@
 #include "session.h"
+#include "chat_format.h"
 #include "i18n.h"
 #include "appearance.h"
 #include "message_model.h"
@@ -22,6 +23,7 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QSettings>
+#include <QSet>
 #include <QStandardPaths>
 #include <QUrl>
 #include <QUuid>
@@ -687,6 +689,76 @@ void Session::tick() {
         error_ = errorText(e);
     }
     emit changed();
+}
+bool Session::sendChat(QString from, QString peer, QString body) {
+    bool queued = false;
+    attempt([&] {
+        check(mailboxOpen(), tr("Open a mailbox first"));
+        bool own = false;
+        for (const auto &identity : vault_.identities())
+            if (!identity.chan && identity.address == from)
+                own = true;
+        check(own, tr("Choose a sender from this vault"));
+        check(Wire::validAddress(peer) && peer != from,
+              tr("Enter a valid Bitmessage recipient address"));
+        check(!body.trimmed().isEmpty() && body.toUtf8().size() <= kMaxChatBodyBytes,
+              tr("Chat message must be between 1 and 8192 bytes"));
+        mailbox_.queueChat(from, peer, body, QDateTime::currentSecsSinceEpoch() + kChatTtlSeconds);
+        Delivery::rereadKept(mailbox_);
+        refresh();
+        queued = true;
+    });
+    return queued;
+}
+QVariantList Session::chatMessages(QString local, QString peer) const {
+    QVariantList result;
+    if (!mailboxOpen() || local.isEmpty() || peer.isEmpty())
+        return result;
+    for (const auto &message : mailbox_.chatMessages(local, peer))
+        result << QVariantMap{{"id", message.id}, {"body", message.body},
+                              {"outgoing", message.outgoing}, {"seqno", message.seqno},
+                              {"received", message.received}, {"expires", message.expires},
+                              {"state", message.state}};
+    return result;
+}
+// Not through attempt(): this runs from the window's refresh, and attempt() would
+// refresh it again.
+int Session::markChatRead(QString local, QString peer) {
+    if (!mailboxOpen() || local.isEmpty() || peer.isEmpty())
+        return 0;
+    try {
+        return mailbox_.markChatRead(local, peer);
+    } catch (const std::exception &) {
+        return 0;
+    }
+}
+// The chats of this vault's identities, the one with the newest message first. A chat is
+// between one identity and a peer: one peer under two identities is two chats. Each has
+// the peer's name, the identity's, its newest message and how many are unread.
+QVariantList Session::chatConversations() const {
+    QVariantList result;
+    if (!mailboxOpen())
+        return result;
+    QSet<QString> mine;
+    for (const auto &identity : vault_.identities())
+        if (!identity.chan)
+            mine.insert(identity.address);
+    const auto labels = names();
+    for (const auto &summary : mailbox_.chatSummaries()) {
+        if (!mine.contains(summary.local))
+            continue;
+        result << QVariantMap{{"key", chatKey(summary.local, summary.peer)},
+                              {"address", summary.peer},
+                              {"label", labels.value(summary.peer, summary.peer)},
+                              {"local", summary.local},
+                              {"localLabel", labels.value(summary.local, summary.local)},
+                              {"body", summary.body},
+                              {"received", summary.received},
+                              {"outgoing", summary.outgoing},
+                              {"state", summary.state},
+                              {"unread", summary.unread}};
+    }
+    return result;
 }
 QString Session::saveLetter(QString id, QString from, QString to, QString subject, QString body,
                             QString kind) {

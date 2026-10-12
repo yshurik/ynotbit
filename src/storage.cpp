@@ -293,6 +293,7 @@ void Mailbox::connect(const QString &path, const Secret &key, bool create) {
             db_,
             [](void *context, int, const char *, const char *table, sqlite3_int64) {
                 if (qstrcmp(table, "messages") == 0 || qstrcmp(table, "outbox") == 0 ||
+                    qstrcmp(table, "chat_messages") == 0 || qstrcmp(table, "chat_outbox") == 0 ||
                     qstrcmp(table, "settings") == 0 || qstrcmp(table, "delivery_events") == 0)
                     ++static_cast<Mailbox *>(context)->messageRevision_;
             },
@@ -520,11 +521,21 @@ void Mailbox::backup(const QString &path, const Secret &key) {
     }
     int r = sqlite3_backup_step(b, -1);
     int f = sqlite3_backup_finish(b);
-    dest.close();
     if (r != SQLITE_DONE || f != SQLITE_OK) {
+        dest.close();
         QFile::remove(path);
         fail("Mailbox backup failed");
     }
+    try {
+        // Backups can outlive the 24-hour chat window. Keep only durable mail.
+        dest.sql("DELETE FROM network_jobs WHERE owner LIKE 'chat-%';"
+                 "DELETE FROM chat_messages;DELETE FROM chat_sequences;VACUUM");
+    } catch (...) {
+        dest.close();
+        QFile::remove(path);
+        throw;
+    }
+    dest.close();
 }
 } // namespace bm
 

@@ -1,6 +1,7 @@
 #include "scanner.h"
 #include "ntb-object-db.h"
 #include "protocol.h"
+#include "protocol_wire.h"
 #include <QCryptographicHash>
 namespace bm {
 int scanMailbox(Cache &cache, Mailbox &mailbox, const Vault &vault, int limit) {
@@ -24,8 +25,12 @@ int scanMailbox(Cache &cache, Mailbox &mailbox, const Vault &vault, int limit) {
         for (const auto &i : vault.identities()) {
             auto decoded = Protocol::decodeMessage(data, i);
             if (decoded) {
-                mailbox.store(o.hash, decoded->from, decoded->to, decoded->subject, decoded->body,
-                              o.sequence, decoded->folder);
+                const auto header = Wire::header(data);
+                if (header)
+                    mailbox.storeRouted(o.hash, decoded->from, decoded->to, decoded->subject,
+                                        decoded->body, o.sequence, decoded->folder, header->expires);
+                else
+                    mailbox.advance(o.sequence);
                 found = true;
                 ++decodedCount;
                 break;

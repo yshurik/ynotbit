@@ -2,6 +2,57 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN">
 <context>
+    <name>bm::ChatsPane</name>
+    <message>
+        <source>Chat message</source>
+        <translation>聊天消息</translation>
+    </message>
+    <message>
+        <source>Send message</source>
+        <translation>发送消息</translation>
+    </message>
+    <message>
+        <source>Your conversations</source>
+        <translation>您的对话</translation>
+    </message>
+    <message>
+        <source>No chat messages yet</source>
+        <translation>暂无聊天消息</translation>
+    </message>
+    <message>
+        <source>Send as</source>
+        <translation>发送身份</translation>
+    </message>
+    <message>
+        <source>Write a message…</source>
+        <translation>输入消息…</translation>
+    </message>
+    <message>
+        <source>Waiting to be sent</source>
+        <translation>等待发送</translation>
+    </message>
+    <message>
+        <source>Sent to the network</source>
+        <translation>已发送到网络</translation>
+    </message>
+    <message>
+        <source>Delivered</source>
+        <translation>已送达</translation>
+    </message>
+    <message>
+        <source>Not delivered</source>
+        <translation>未送达</translation>
+    </message>
+    <message>
+        <source>Enter sends, Shift+Enter starts a new line</source>
+        <translation>按 Enter 发送，按 Shift+Enter 换行</translation>
+    </message>
+    <message>
+        <source>Select a chat, or start a new one</source>
+        <translation>选择一个聊天，或开始新的聊天</translation>
+    </message>
+</context>
+<context>
     <name>bm::DesktopWindow</name>
     <message>
         <source>Queued</source>
@@ -864,6 +915,22 @@ Date: %1
         <source>Delete identity</source>
         <translation>删除身份</translation>
     </message>
+    <message>
+        <source>Chats</source>
+        <translation>聊天</translation>
+    </message>
+    <message>
+        <source>New chat</source>
+        <translation>新建聊天</translation>
+    </message>
+    <message>
+        <source>Expand the chat list</source>
+        <translation>展开聊天列表</translation>
+    </message>
+    <message>
+        <source>Collapse the chat list</source>
+        <translation>收起聊天列表</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1075,6 +1142,18 @@ Date: %1
         <source>Cannot apply mailbox key</source>
         <translation>无法应用邮箱密钥</translation>
     </message>
+    <message>
+        <source>Invalid chat message or expiry</source>
+        <translation>聊天消息或过期时间无效</translation>
+    </message>
+    <message>
+        <source>No delivery record for this chat</source>
+        <translation>找不到此聊天的发送记录</translation>
+    </message>
+    <message>
+        <source>Chats cannot be retried after their 24-hour expiry</source>
+        <translation>聊天过期 24 小时后无法重试</translation>
+    </message>
 </context>
 <context>
     <name>bm::FeedView</name>
@@ -1139,6 +1218,17 @@ Date: %1
     <message>
         <source>Forward</source>
         <translation>转发</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NewChatDialog</name>
+    <message>
+        <source>Start chat</source>
+        <translation>开始聊天</translation>
+    </message>
+    <message>
+        <source>Create an identity before starting a chat</source>
+        <translation>开始聊天前，请先创建身份</translation>
     </message>
 </context>
 <context>
@@ -1617,6 +1707,10 @@ Date: %1
     <message>
         <source>Cannot write %1</source>
         <translation>无法写入 %1</translation>
+    </message>
+    <message>
+        <source>Chat message must be between 1 and 8192 bytes</source>
+        <translation>聊天消息须为 1 至 8192 字节</translation>
     </message>
 </context>
 <context>

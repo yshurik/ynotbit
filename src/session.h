@@ -175,6 +175,26 @@ class Session : public QObject {
     Q_INVOKABLE QVariantMap message(QString id) const;
     QHash<QString, QString> names() const;
     static QString errorText(const std::exception &e);
+    bool sendChat(QString from, QString peer, QString body);
+    QVariantList chatMessages(QString local, QString peer) const;
+    // The chats of this vault's identities, the one with the newest message first. A chat
+    // is between one identity and a peer: one peer under two identities is two chats.
+    QVariantList chatConversations() const;
+    // A chat's key in lists: its identity and its peer.
+    static QString chatKey(const QString &local, const QString &peer) {
+        return local + '|' + peer;
+    }
+    static QString chatLocal(const QString &key) {
+        return key.section('|', 0, 0);
+    }
+    static QString chatPeer(const QString &key) {
+        return key.section('|', 1);
+    }
+    int chatUnread() const {
+        return mailboxOpen() ? mailbox_.chatUnread() : 0;
+    }
+    // What has come in this conversation is looked at. How many messages were not.
+    int markChatRead(QString local, QString peer);
     QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const;
     int messageCount(const QString &folder, const QString &search, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messageCount(folder, search, recipient, unreadOnly, anonymousOnly) : 0; }
     QStringList messageHashes(const QString &folder, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messageHashes(folder, recipient, unreadOnly, anonymousOnly) : QStringList(); }

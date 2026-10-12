@@ -5,6 +5,7 @@
 #include <QtGlobal>
 static const char *const kErrorCatalog[] = {
     QT_TRANSLATE_NOOP("bm::Errors", "Network cache database error"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Invalid chat message or expiry"),
     QT_TRANSLATE_NOOP("bm::Errors", "Invalid outgoing object"),
     QT_TRANSLATE_NOOP("bm::Errors", "Cannot queue encrypted object for relay"),
     QT_TRANSLATE_NOOP("bm::Errors", "Letter is too large"),
@@ -15,10 +16,12 @@ static const char *const kErrorCatalog[] = {
     QT_TRANSLATE_NOOP("bm::Errors", "Only a draft can be sent"),
     QT_TRANSLATE_NOOP("bm::Errors", "Choose a sender and recipient"),
     QT_TRANSLATE_NOOP("bm::Errors", "Message expiry is in the past"),
+    QT_TRANSLATE_NOOP("bm::Errors", "No delivery record for this chat"),
     QT_TRANSLATE_NOOP("bm::Errors", "No delivery record for this letter"),
     QT_TRANSLATE_NOOP("bm::Errors", "Invalid delivery state"),
     QT_TRANSLATE_NOOP("bm::Errors", "Delivery no longer exists"),
     QT_TRANSLATE_NOOP("bm::Errors", "Invalid acknowledgment token"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Chats cannot be retried after their 24-hour expiry"),
     QT_TRANSLATE_NOOP("bm::Errors", "This letter has already been acknowledged"),
     QT_TRANSLATE_NOOP("bm::Errors", "Delivery is already complete"),
     QT_TRANSLATE_NOOP("bm::Errors", "Invalid network object size"),

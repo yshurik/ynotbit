@@ -2,6 +2,57 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="ko">
 <context>
+    <name>bm::ChatsPane</name>
+    <message>
+        <source>Chat message</source>
+        <translation>채팅 메시지</translation>
+    </message>
+    <message>
+        <source>Send message</source>
+        <translation>메시지 보내기</translation>
+    </message>
+    <message>
+        <source>Your conversations</source>
+        <translation>내 대화</translation>
+    </message>
+    <message>
+        <source>No chat messages yet</source>
+        <translation>아직 채팅 메시지가 없습니다</translation>
+    </message>
+    <message>
+        <source>Send as</source>
+        <translation>보내는 사람</translation>
+    </message>
+    <message>
+        <source>Write a message…</source>
+        <translation>메시지 입력…</translation>
+    </message>
+    <message>
+        <source>Waiting to be sent</source>
+        <translation>전송 대기 중</translation>
+    </message>
+    <message>
+        <source>Sent to the network</source>
+        <translation>네트워크로 전송됨</translation>
+    </message>
+    <message>
+        <source>Delivered</source>
+        <translation>전달됨</translation>
+    </message>
+    <message>
+        <source>Not delivered</source>
+        <translation>전달되지 않음</translation>
+    </message>
+    <message>
+        <source>Enter sends, Shift+Enter starts a new line</source>
+        <translation>Enter로 보내기, Shift+Enter로 줄 바꿈</translation>
+    </message>
+    <message>
+        <source>Select a chat, or start a new one</source>
+        <translation>채팅을 선택하거나 새로 시작하세요</translation>
+    </message>
+</context>
+<context>
     <name>bm::DesktopWindow</name>
     <message>
         <source>Queued</source>
@@ -864,6 +915,22 @@ Date: %1
         <source>Delete identity</source>
         <translation>신원 삭제</translation>
     </message>
+    <message>
+        <source>Chats</source>
+        <translation>채팅</translation>
+    </message>
+    <message>
+        <source>New chat</source>
+        <translation>새 채팅</translation>
+    </message>
+    <message>
+        <source>Expand the chat list</source>
+        <translation>채팅 목록 펼치기</translation>
+    </message>
+    <message>
+        <source>Collapse the chat list</source>
+        <translation>채팅 목록 접기</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1075,6 +1142,18 @@ Date: %1
         <source>Cannot apply mailbox key</source>
         <translation>메일함 키를 적용할 수 없습니다</translation>
     </message>
+    <message>
+        <source>Invalid chat message or expiry</source>
+        <translation>채팅 메시지 또는 만료 시간이 잘못되었습니다</translation>
+    </message>
+    <message>
+        <source>No delivery record for this chat</source>
+        <translation>이 채팅의 전송 기록이 없습니다</translation>
+    </message>
+    <message>
+        <source>Chats cannot be retried after their 24-hour expiry</source>
+        <translation>채팅은 24시간 후 만료되어 다시 시도할 수 없습니다</translation>
+    </message>
 </context>
 <context>
     <name>bm::FeedView</name>
@@ -1139,6 +1218,17 @@ Date: %1
     <message>
         <source>Forward</source>
         <translation>전달</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NewChatDialog</name>
+    <message>
+        <source>Start chat</source>
+        <translation>채팅 시작</translation>
+    </message>
+    <message>
+        <source>Create an identity before starting a chat</source>
+        <translation>채팅을 시작하기 전에 신원을 만드세요</translation>
     </message>
 </context>
 <context>
@@ -1617,6 +1707,10 @@ Date: %1
     <message>
         <source>Cannot write %1</source>
         <translation>%1에 쓸 수 없습니다</translation>
+    </message>
+    <message>
+        <source>Chat message must be between 1 and 8192 bytes</source>
+        <translation>채팅 메시지는 1~8192바이트여야 합니다</translation>
     </message>
 </context>
 <context>

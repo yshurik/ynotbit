@@ -2,6 +2,57 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="ja">
 <context>
+    <name>bm::ChatsPane</name>
+    <message>
+        <source>Chat message</source>
+        <translation>チャットメッセージ</translation>
+    </message>
+    <message>
+        <source>Send message</source>
+        <translation>メッセージを送信</translation>
+    </message>
+    <message>
+        <source>Your conversations</source>
+        <translation>あなたの会話</translation>
+    </message>
+    <message>
+        <source>No chat messages yet</source>
+        <translation>チャットメッセージはまだありません</translation>
+    </message>
+    <message>
+        <source>Send as</source>
+        <translation>送信元</translation>
+    </message>
+    <message>
+        <source>Write a message…</source>
+        <translation>メッセージを入力…</translation>
+    </message>
+    <message>
+        <source>Waiting to be sent</source>
+        <translation>送信待ち</translation>
+    </message>
+    <message>
+        <source>Sent to the network</source>
+        <translation>ネットワークに送信済み</translation>
+    </message>
+    <message>
+        <source>Delivered</source>
+        <translation>配信済み</translation>
+    </message>
+    <message>
+        <source>Not delivered</source>
+        <translation>未配信</translation>
+    </message>
+    <message>
+        <source>Enter sends, Shift+Enter starts a new line</source>
+        <translation>Enter で送信、Shift+Enter で改行</translation>
+    </message>
+    <message>
+        <source>Select a chat, or start a new one</source>
+        <translation>チャットを選択するか、新しく始めてください</translation>
+    </message>
+</context>
+<context>
     <name>bm::DesktopWindow</name>
     <message>
         <source>Queued</source>
@@ -864,6 +915,22 @@ Date: %1
         <source>Delete identity</source>
         <translation>ID を削除</translation>
     </message>
+    <message>
+        <source>Chats</source>
+        <translation>チャット</translation>
+    </message>
+    <message>
+        <source>New chat</source>
+        <translation>新しいチャット</translation>
+    </message>
+    <message>
+        <source>Expand the chat list</source>
+        <translation>チャット一覧を展開</translation>
+    </message>
+    <message>
+        <source>Collapse the chat list</source>
+        <translation>チャット一覧を折りたたむ</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1075,6 +1142,18 @@ Date: %1
         <source>Cannot apply mailbox key</source>
         <translation>メールボックスの鍵を適用できません</translation>
     </message>
+    <message>
+        <source>Invalid chat message or expiry</source>
+        <translation>チャットメッセージまたは有効期限が無効です</translation>
+    </message>
+    <message>
+        <source>No delivery record for this chat</source>
+        <translation>このチャットの配信記録がありません</translation>
+    </message>
+    <message>
+        <source>Chats cannot be retried after their 24-hour expiry</source>
+        <translation>チャットは24時間で期限切れとなり再試行できません</translation>
+    </message>
 </context>
 <context>
     <name>bm::FeedView</name>
@@ -1139,6 +1218,17 @@ Date: %1
     <message>
         <source>Forward</source>
         <translation>転送</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NewChatDialog</name>
+    <message>
+        <source>Start chat</source>
+        <translation>チャットを開始</translation>
+    </message>
+    <message>
+        <source>Create an identity before starting a chat</source>
+        <translation>チャットを始める前にIDを作成してください</translation>
     </message>
 </context>
 <context>
@@ -1617,6 +1707,10 @@ Date: %1
     <message>
         <source>Cannot write %1</source>
         <translation>%1 に書き込めません</translation>
+    </message>
+    <message>
+        <source>Chat message must be between 1 and 8192 bytes</source>
+        <translation>チャットメッセージは1～8192バイトにしてください</translation>
     </message>
 </context>
 <context>
