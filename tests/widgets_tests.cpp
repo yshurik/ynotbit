@@ -191,8 +191,12 @@ int main(int argc, char **argv) {
         session.unlockVault();
         require(session.mailboxOpen(), "mailbox unlock");
         std::cout << "Unlock plus mailbox open: " << clock.elapsed() << "ms\n";
+        QCoreApplication::setApplicationVersion("9.8.7");
         bm::DesktopWindow window(session);
         window.show();
+        auto brand = window.findChild<QLabel *>("brand");
+        require(brand && brand->text().contains("ynotbit-9.8.7"),
+                "the top bar names ynotbit with its version");
         auto folders = window.findChild<QListWidget *>("folders");
         require(folders, "folders exist");
         // Chats owns its panel and must not leave mail controls visible behind it.

@@ -1999,12 +1999,16 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     logo->setPixmap(appLogo().pixmap(64, 64));
     logo->setFixedSize(64, 64);
     top->addWidget(logo);
-    auto brand = new QLabel(
-        QString("<b style='font-size:20px'>ynotbit</b><br><span "
-                "style='font-size:10px'>%1</span><br><span "
-                "style='font-size:9px;color:palette(mid)'>%2</span>")
-            .arg(tr("PRIVATE CORRESPONDENCE").toHtmlEscaped(),
-                 tr("Your keys. Your mailbox.").toHtmlEscaped()));
+    // The name with the version, ynotbit-0.7.0, where the application knows it.
+    const auto version = QCoreApplication::applicationVersion();
+    const auto name = version.isEmpty() ? QString("ynotbit") : "ynotbit-" + version;
+    auto brand =
+        new QLabel(QString("<b style='font-size:20px'>%1</b><br><span "
+                           "style='font-size:10px'>%2</span><br><span "
+                           "style='font-size:9px;color:palette(mid)'>%3</span>")
+                       .arg(name.toHtmlEscaped(), tr("PRIVATE CORRESPONDENCE").toHtmlEscaped(),
+                            tr("Your keys. Your mailbox.").toHtmlEscaped()));
+    brand->setObjectName("brand");
     top->addWidget(brand);
     top->addStretch();
     auto adBanner = new QPushButton("🌙  NightTrader Exchange — your keys, your coins");
