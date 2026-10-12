@@ -168,17 +168,36 @@ int main(int argc, char **argv) {
     mailbox.saveContact(alice, text("Alice Liddell", "佐藤 花子"));
     mailbox.saveContact(bob, text("Bob", "鈴木 健太"));
     mailbox.saveContact(carol, text("Carol", "高橋 美咲"));
-    // Chats, the ones that came and the ones sent: what the Chats page lists.
+    // Chats, the ones that came and the ones sent: what the Chats page lists. The list shows
+    // the newest on top, so Alice's, the one the screenshot opens, is stored last; Bob's has
+    // an unread message, Carol's one still on its way.
     {
         const auto expiry = QDateTime::currentSecsSinceEpoch() + 80000;
-        mailbox.storeChat("demo-chat-1", alice, me, 1, "Hi! Are we still on for **Thursday**?",
-                          expiry);
-        const auto reply =
-            mailbox.queueChat(me, alice, "Yes. I will bring the release checklist.", expiry);
-        mailbox.setDelivery(reply, "acknowledged");
-        mailbox.storeChat("demo-chat-2", bob, me, 1, "Lunch tomorrow?", expiry);
-        const auto station = mailbox.queueChat(me, carol, "See you at the station at 10.", expiry);
+        const auto station = mailbox.queueChat(
+            me, carol, text("See you at the station at 10.", "10 時に駅で会いましょう。"), expiry);
         mailbox.setDelivery(station, "awaiting_ack");
+        mailbox.storeChat("demo-chat-2", bob, me, 1,
+                          text("Lunch tomorrow?", "明日のお昼はどうですか?"), expiry);
+        mailbox.storeChat("demo-chat-1", alice, me, 1,
+                          text("Hi! Are we still on for **Thursday**?",
+                               "こんにちは! 今度の**木曜日**は予定どおりですか?"),
+                          expiry);
+        const auto yes = mailbox.queueChat(me, alice, answer, expiry);
+        mailbox.setDelivery(yes, "acknowledged");
+        mailbox.storeChat("demo-chat-3", alice, me, 2,
+                          text("Perfect. Here is the agenda:\n\n"
+                               "1. Walk through the new address book\n"
+                               "2. Decide on the release date",
+                               "ありがとうございます。議題はこちらです:\n\n"
+                               "1. 新しいアドレス帳の確認\n"
+                               "2. リリース日の決定"),
+                          expiry);
+        const auto closing = mailbox.queueChat(
+            me, alice,
+            text("Looking forward to it -- see you at ten.",
+                 "楽しみにしています。10 時にお会いしましょう。"),
+            expiry);
+        mailbox.setDelivery(closing, "acknowledged");
     }
     const auto sent = mailbox.saveDraft({}, me, alice, "Re: " + notesSubject, answer);
     mailbox.queueDraft(sent, "direct", QDateTime::currentSecsSinceEpoch() + 86400);
@@ -227,10 +246,7 @@ int main(int argc, char **argv) {
     for (auto chip : window.findChildren<QPushButton *>("channelChip"))
         if (chip->property("address").toString() == alice)
             chip->click();
-    shot("chats-contact.png");
-    window.findChild<QPushButton *>("channelRailToggle")->click();
-    shot("chats-collapsed.png");
-    window.findChild<QPushButton *>("channelRailToggle")->click();
+    shot("chats.png");
 
     // Inbox, reading Alice's letter (markdown, a named contact).
     folders->setCurrentRow(0);
@@ -315,24 +331,5 @@ int main(int argc, char **argv) {
         }
     });
     window.compose(session.message(notes), true);
-    // Check the chat panel's custom surfaces in dark mode as well.
-    QSettings preferences;
-    const auto savedTheme = preferences.value("appearance/theme");
-    preferences.setValue("appearance/theme", "dark");
-    {
-        bm::DesktopWindow darkWindow(session);
-        darkWindow.show();
-        darkWindow.findChild<QToolButton *>("folderIcon_Chats")->click();
-        settle();
-        for (auto chip : darkWindow.findChildren<QPushButton *>("channelChip"))
-            if (chip->property("address").toString() == alice)
-                chip->click();
-        settle();
-        darkWindow.grab().save(out + "/chats-dark.png");
-    }
-    if (savedTheme.isValid())
-        preferences.setValue("appearance/theme", savedTheme);
-    else
-        preferences.remove("appearance/theme");
     return 0;
 }

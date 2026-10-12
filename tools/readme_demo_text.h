@@ -121,6 +121,20 @@ inline QHash<QString, QString> readmeDemoText(const QString &language) {
              "목요일"},
             {"Looking forward to it -- see you at ten.",
              "기대할게요. 10시에 봬요."},
+            {"Hi! Are we still on for **Thursday**?",
+             "안녕하세요! **목요일** 약속은 그대로죠?"},
+            {"Perfect. Here is the agenda:\n"
+             "\n"
+             "1. Walk through the new address book\n"
+             "2. Decide on the release date",
+             "완벽해요. 안건은 이래요:\n"
+             "\n"
+             "1. 새 주소록 살펴보기\n"
+             "2. 릴리스 날짜 정하기"},
+            {"Lunch tomorrow?",
+             "내일 점심 어때요?"},
+            {"See you at the station at 10.",
+             "10시에 역에서 봬요."},
         };
     } else if (language == "zh_CN") {
         return {
@@ -238,6 +252,20 @@ inline QHash<QString, QString> readmeDemoText(const QString &language) {
              "周四"},
             {"Looking forward to it -- see you at ten.",
              "很期待，十点见。"},
+            {"Hi! Are we still on for **Thursday**?",
+             "你好！**周四**的安排没变吧？"},
+            {"Perfect. Here is the agenda:\n"
+             "\n"
+             "1. Walk through the new address book\n"
+             "2. Decide on the release date",
+             "太好了。议程如下：\n"
+             "\n"
+             "1. 过一遍新的通讯录\n"
+             "2. 确定发布日期"},
+            {"Lunch tomorrow?",
+             "明天一起吃午饭吗？"},
+            {"See you at the station at 10.",
+             "十点在车站见。"},
         };
     } else if (language == "zh_TW") {
         return {
@@ -355,6 +383,20 @@ inline QHash<QString, QString> readmeDemoText(const QString &language) {
              "週四"},
             {"Looking forward to it -- see you at ten.",
              "很期待，十點見。"},
+            {"Hi! Are we still on for **Thursday**?",
+             "你好！**週四**的安排沒變吧？"},
+            {"Perfect. Here is the agenda:\n"
+             "\n"
+             "1. Walk through the new address book\n"
+             "2. Decide on the release date",
+             "太好了。議程如下：\n"
+             "\n"
+             "1. 看一遍新的通訊錄\n"
+             "2. 決定發布日期"},
+            {"Lunch tomorrow?",
+             "明天一起吃午餐嗎？"},
+            {"See you at the station at 10.",
+             "十點在車站見。"},
         };
     } else if (language.startsWith("ru")) {
         return {
@@ -472,6 +514,20 @@ inline QHash<QString, QString> readmeDemoText(const QString &language) {
              "Четверг"},
             {"Looking forward to it -- see you at ten.",
              "Жду с нетерпением — увидимся в десять."},
+            {"Hi! Are we still on for **Thursday**?",
+             "Привет! В **четверг** всё в силе?"},
+            {"Perfect. Here is the agenda:\n"
+             "\n"
+             "1. Walk through the new address book\n"
+             "2. Decide on the release date",
+             "Замечательно. Вот повестка:\n"
+             "\n"
+             "1. Пройтись по новой адресной книге\n"
+             "2. Решить с датой релиза"},
+            {"Lunch tomorrow?",
+             "Завтра обедаем вместе?"},
+            {"See you at the station at 10.",
+             "Увидимся на вокзале в 10."},
         };
     } else if (language.startsWith("uk")) {
         return {
@@ -589,6 +645,20 @@ inline QHash<QString, QString> readmeDemoText(const QString &language) {
              "Четвер"},
             {"Looking forward to it -- see you at ten.",
              "Чекаю з нетерпінням — побачимося о десятій."},
+            {"Hi! Are we still on for **Thursday**?",
+             "Привіт! У **четвер** усе в силі?"},
+            {"Perfect. Here is the agenda:\n"
+             "\n"
+             "1. Walk through the new address book\n"
+             "2. Decide on the release date",
+             "Прекрасно. Ось порядок денний:\n"
+             "\n"
+             "1. Переглянути нову адресну книгу\n"
+             "2. Вирішити з датою релізу"},
+            {"Lunch tomorrow?",
+             "Завтра обідаємо разом?"},
+            {"See you at the station at 10.",
+             "Побачимося на вокзалі о десятій."},
         };
     }
     return {};

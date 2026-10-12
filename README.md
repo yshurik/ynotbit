@@ -12,9 +12,9 @@ and saves matching letters to the mailbox.
 
 ![ynotbit reading a Markdown letter from a named contact](docs/images/desktop.png)
 
-| Subscriptions | Pictures in a letter | Replying |
-|---|---|---|
-| ![Followed senders and one sender's posts as a feed](docs/images/subscriptions.png) | ![A letter carrying a picture](docs/images/pictures.png) | ![A reply quoting the letter in the same editor](docs/images/reply.png) |
+| Chats | Subscriptions | Pictures in a letter | Replying |
+|---|---|---|---|
+| ![A chat: Markdown messages with delivery ticks, beside the list of chats](docs/images/chats.png) | ![Followed senders and one sender's posts as a feed](docs/images/subscriptions.png) | ![A letter carrying a picture](docs/images/pictures.png) | ![A reply quoting the letter in the same editor](docs/images/reply.png) |
 
 | Chans | Contacts | Writing to a contact |
 |---|---|---|
@@ -27,10 +27,20 @@ CI-tested downloads for Linux (x86_64), macOS (Apple Silicon), and Windows (x86_
 See [Current boundaries](#current-boundaries) below for what each build does and doesn't
 guarantee.
 
+**macOS:** the app is ad-hoc signed and not notarized, so macOS keeps the downloaded
+copy quarantined. After moving `ynotbit.app` to `/Applications`, clear that once:
+
+```sh
+sudo xattr -cr /Applications/ynotbit.app
+```
+
 ## Using the app
 
-1. Create or open a `.bmvault` file. Create an identity, import `keys.dat`, or join
-   a chan using its shared phrase and expected address.
+1. Create or open a `.bmvault` file. **File → Create vault…** (or **Create vault** on the
+   lock screen) opens one dialog that makes the vault and its first identity, from random
+   keys or a secret phrase, with an optional search for a shorter address.
+   **Identity → Create identity…** uses the same dialog; you can also import `keys.dat`
+   or join a chan using its shared phrase and expected address.
 2. Create or open a `.bmmail` document in Documents or another writable folder.
 3. Choose **Write a letter**, select the sender, and pick a recipient: type a
    contact's name or a BM-address, or use the contacts button beside **To**.
@@ -44,6 +54,14 @@ guarantee.
 To name someone, click the person-plus button beside their address in a letter,
 or use **Contacts → Add contact…**. Names then appear in the message list, the
 reader and the composer, always next to the full address.
+
+To chat, open **Chats** in the rail and choose **New chat**: type a contact's name or a
+BM-address, and pick the identity to chat as when you have several. Messages are
+Markdown; Enter sends and Shift+Enter starts a new line. A chat keeps its identity, so
+the same person under two identities is two chats. The tick under your message shows how
+far it has got: waiting, sent to the network, delivered (the recipient's acknowledgment,
+not a read receipt). A chat message is deleted after 24 hours; chats stay out of the
+Inbox and of backups.
 
 To follow a sender's broadcasts, open **Subscriptions** and choose **+ Subscribe…**
 (or **Identity → Subscribe to broadcasts…**); their posts appear as a feed. New
@@ -59,7 +77,9 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
 ## Features
 
 - Portable vault: Argon2id (64 MiB, 3 passes) and XChaCha20-Poly1305; guarded key
-  allocations; password changes; identity labels; deterministic v3/v4 chans.
+  allocations; password changes; identity labels; deterministic v3/v4 chans. One dialog
+  makes a vault with its first identity: random keys, or keys from a secret phrase derived
+  as PyBitmessage derives them, with an optional search for a shorter address.
 - SQLCipher mailbox: drafts, message bodies, addresses, public keys, delivery
   records, acknowledgment tokens, subscriptions, and checkpoints remain encrypted.
   Existing v1 mailbox documents migrate transactionally without losing drafts.
@@ -79,7 +99,8 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
   BM-addresses use a fixed-width font; each address has a GitHub-style identicon.
 - The reader frames each letter by kind (personal, chan personal, anonymous chan
   post, broadcast) and offers plain, text, Markdown and hex views, detecting
-  Markdown and unreadable binary automatically.
+  Markdown and unreadable binary automatically. The subject, details and body scroll
+  as one.
 - Message details align sender and recipient addresses, color successful
   acknowledgment, and show the recorded delivery timeline: prepared, key
   available, sent to peers, acknowledged, or received in the mailbox.
@@ -88,6 +109,14 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
   privately, Forward, Copy text, Open in window, Archive and Trash. New mailboxes
   follow the Bitmessage digest. Shared chans, folder search that runs in the
   background, read state, archive, trash/restore, and explicit permanent deletion.
+- **Chats**: one-to-one conversations on a page of the main window. The list shows each
+  peer's picture and name, the newest message and its time, a delivery tick for yours and
+  an unread count, with a dot on the Chats button; the conversation shows Markdown
+  messages in bubbles with their time and tick. A chat is between one of your identities
+  and one peer and keeps that identity. Enter sends, Shift+Enter starts a line; links ask
+  first and open only `https`. A chat message is an ordinary Bitmessage message with an
+  empty subject and a small JSON body, kept 24 hours; it uses a letter's proof of work,
+  publishing and acknowledgment, stays out of the Inbox and is left out of backups.
 - Update notices: signed broadcasts from ynotbit's release address
   (`BM-2666hf5eAbjCJMaPwC7eG3Um55QJGM`) show a banner when a newer version is out,
   without subscribing; **Settings → Notifications** turns them off.
@@ -114,9 +143,11 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
 - Interface in English, Simplified and Traditional Chinese, Japanese, Korean,
   Russian and Ukrainian. It follows the system language, or pick one under
   **Settings → Appearance** (applies after a restart). Dates follow the chosen language.
-- Peer count, offline mode, node restart, and one **File → Settings…** window for the
-  additional peer, SOCKS5 proxy, incoming connections, proof of work, theme and language;
-  configurable network-cache retention, recent document paths, and combined backup.
+- Peer count, offline mode, node restart, and a **Settings** page of the main window (the
+  gear in the rail, or **File → Settings…**) with Network (additional peer, SOCKS5 proxy,
+  incoming connections, router port), Storage, Sending, Appearance, Notifications and
+  Security sections; configurable network-cache retention, recent document paths, and
+  combined backup.
 
 Delivery distinguishes **queued → requesting key → preparing receipt → proof of
 work → waiting for peers → awaiting acknowledgment → acknowledged**. Broadcasts
@@ -186,7 +217,9 @@ uses Qt's application-data location. Its internal application identifier remains
 `NotbitDesktop/Notbit Desktop` for compatibility with the earlier alpha's cache.
 `--data-dir /absolute/path` overrides the node folder. `--portable` uses
 `./notbit-data/node` relative to the launch directory. `--offline` starts without
-network connections. The relay stops when the application exits.
+network connections. The relay stops when the application exits. The relay accepts
+incoming connections on port 8444 (never when a proxy is set) and asks the router to open
+that port with UPnP; **Settings → Network** turns either off.
 
 Default network retention is 2 GiB / 90 days, kept by the relay in `objects.sqlite`
 in the node folder; change it under **Settings → Storage**.
