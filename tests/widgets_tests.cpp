@@ -3587,10 +3587,12 @@ int main(int argc, char **argv) {
                     auto nickname = d->findChild<QLineEdit *>("nicknameField");
                     nickname->clear();
                     QTest::keyClicks(nickname, "Wonderful Unpredictable Wombat");
-                    // The style sheet's padding and frame, and the field's margins: 24 px.
+                    // The style sheet's padding and frame, and the field's margins: 24 px. The
+                    // dialog asks for 600 px of path at most: in a font large enough to need
+                    // more (the offscreen platform on Windows) the path does not show whole.
                     const int pathWidth =
                         QFontMetrics(file->font()).horizontalAdvance(file->text());
-                    if (pathWidth + 24 > file->width())
+                    if (std::min(pathWidth + 24, 600) > file->width())
                         faults << language +
                                       QString(": a long nickname's whole path does not show: %1 "
                                               "needs %2 px, the field is %3 (at least %4) in a "
