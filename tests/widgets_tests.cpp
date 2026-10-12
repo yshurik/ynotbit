@@ -3508,11 +3508,13 @@ int main(int argc, char **argv) {
             require(!fresh.createVault(path, "pw", "pw", made) &&
                         fresh.error().contains("existing vaults"),
                     "an existing vault file is never overwritten");
+#ifndef Q_OS_WIN // there QFile::link makes a shortcut beside the name, not a link to lead through
             const auto link = temp.filePath("dangling.bmvault");
             require(QFile::link(temp.filePath("nowhere/vault.bmvault"), link),
                     "make a link to nowhere");
             require(!fresh.createVault(link, "pw", "pw", made) && QFileInfo(link).isSymLink(),
                     "a failed create leaves what was at the path");
+#endif
             auto forged = bm::phraseIdentity("ynotbit test phrase", "x", 61);
             forged.address = made.address;
             const auto half = temp.filePath("half.bmvault");
