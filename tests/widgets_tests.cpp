@@ -3588,9 +3588,19 @@ int main(int argc, char **argv) {
                     nickname->clear();
                     QTest::keyClicks(nickname, "Wonderful Unpredictable Wombat");
                     // The style sheet's padding and frame, and the field's margins: 24 px.
-                    if (QFontMetrics(file->font()).horizontalAdvance(file->text()) + 24 >
-                        file->width())
-                        faults << language + ": a long nickname's whole path does not show";
+                    const int pathWidth =
+                        QFontMetrics(file->font()).horizontalAdvance(file->text());
+                    if (pathWidth + 24 > file->width())
+                        faults << language +
+                                      QString(": a long nickname's whole path does not show: %1 "
+                                              "needs %2 px, the field is %3 (at least %4) in a "
+                                              "dialog %5 wide on a screen %6 wide")
+                                          .arg(file->text())
+                                          .arg(pathWidth + 24)
+                                          .arg(file->width())
+                                          .arg(file->minimumWidth())
+                                          .arg(d->width())
+                                          .arg(d->screen()->availableGeometry().width());
                     auto form = qobject_cast<QFormLayout *>(d->layout());
                     auto passwordLabel = qobject_cast<QLabel *>(
                         form->labelForField(d->findChild<QLineEdit *>("newVaultPasswordField")));
