@@ -10,6 +10,24 @@ env:
   QT_VERSION: "6.8.3"
 
 jobs:
+  notes:
+    # docs/releases/<tag>.md is the body of the draft release; GitHub adds the
+    # Full Changelog link below it. The release action only warns about a
+    # missing file and makes a bare draft, so check it here, in seconds,
+    # instead of after the builds.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the release notes
+        run: |
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ ! -s "$notes" ]; then
+            echo "::error title=No release notes::$notes is missing or empty. Commit it, then delete the tag and push it again."
+            exit 1
+          fi
+
   build-linux:
     # The oldest supported Ubuntu LTS: an AppImage runs only on systems with
     # a glibc at least as new as the one it was built against (22.04: 2.35).
@@ -227,12 +245,14 @@ jobs:
           path: ynotbit-windows-x86_64.zip
 
   release:
-    needs: [build-linux, build-macos, build-windows]
+    needs: [notes, build-linux, build-macos, build-windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -241,5 +261,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          body_path: docs/releases/${{ github.ref_name }}.md
           draft: true
           generate_release_notes: true
