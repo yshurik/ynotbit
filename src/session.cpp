@@ -109,6 +109,7 @@ Session::Session(QString root, bool offline, QObject *parent)
     connect(&node_, &QProcess::readyReadStandardError, this, [this] {
         auto text = QString::fromUtf8(node_.readAllStandardError()).trimmed();
         if (!text.isEmpty()) {
+            nodeError_ = text.section('\n', -1).left(200);
             error_ = tr("Node: %1").arg(text.left(400));
             emit changed();
         }
@@ -118,7 +119,17 @@ Session::Session(QString root, bool offline, QObject *parent)
         emit changed();
     });
     connect(&node_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-            [this](int, QProcess::ExitStatus) { emit changed(); });
+            [this](int code, QProcess::ExitStatus exit) {
+                if (nodeError_.isEmpty() && (code || exit == QProcess::CrashExit))
+                    nodeError_ = exit == QProcess::CrashExit ? tr("crashed")
+                                                             : tr("exit code %1").arg(code);
+                // What stopped it (a busy port, a locked store) may clear by itself.
+                QTimer::singleShot(30000, this, [this] {
+                    if (!offline_ && node_.state() == QProcess::NotRunning)
+                        startNode();
+                });
+                emit changed();
+            });
     portMapper_ = std::make_unique<PortMapper>(miniupnpcBackend());
     connect(portMapper_.get(), &PortMapper::changed, this, &Session::changed);
     startNode();
@@ -141,7 +152,9 @@ QString Session::status() const {
     if (offline_)
         return tr("Offline · outgoing objects stay queued");
     if (node_.state() != QProcess::Running)
-        return tr("Node stopped · outgoing objects stay queued");
+        return nodeError_.isEmpty()
+                   ? tr("Node stopped · outgoing objects stay queued")
+                   : tr("Node stopped: %1 · outgoing objects stay queued").arg(nodeError_);
     QFile f(root_ + "/status.json");
     // Windows refuses the open for the instant the relay atomically replaces
     // the file; keep the last status read rather than flickering to "starting".
@@ -1099,6 +1112,10 @@ void Session::startNode() {
         return;
     QFile::remove(root_ + "/status.json");
     lastNodeStatus_ = {};
+    nodeError_.clear();
+    auto env = QProcessEnvironment::systemEnvironment();
+    env.insert("YNOTBIT_PARENT_PID", QString::number(QCoreApplication::applicationPid()));
+    node_.setProcessEnvironment(env);
     node_.setProgram(QCoreApplication::applicationFilePath());
     node_.setArguments(nodeArguments());
     node_.start();

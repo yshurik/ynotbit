@@ -1712,6 +1712,18 @@ Date: %1
         <source>Chat message must be between 1 and 8192 bytes</source>
         <translation>채팅 메시지는 1~8192바이트여야 합니다</translation>
     </message>
+    <message>
+        <source>crashed</source>
+        <translation>충돌</translation>
+    </message>
+    <message>
+        <source>exit code %1</source>
+        <translation>종료 코드 %1</translation>
+    </message>
+    <message>
+        <source>Node stopped: %1 · outgoing objects stay queued</source>
+        <translation>노드 중지됨: %1 · 발신 객체는 대기열에 남습니다</translation>
+    </message>
 </context>
 <context>
     <name>bm::SettingsPane</name>

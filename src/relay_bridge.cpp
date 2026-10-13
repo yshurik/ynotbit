@@ -10,10 +10,30 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <csignal>
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 static bool writeFile(const QString &path, const QByteArray &data) {
     QSaveFile file(path);
     return file.open(QIODevice::WriteOnly) && file.write(data) == data.size() && file.commit();
+}
+// The window passes its pid; a node whose window died (crash, kill) would
+// keep the port and the object store, and the next window's node could not start.
+static bool parentGone() {
+    static const qint64 parent = qEnvironmentVariable("YNOTBIT_PARENT_PID").toLongLong();
+    if (parent <= 0)
+        return false;
+#ifdef _WIN32
+    static HANDLE handle = OpenProcess(SYNCHRONIZE, FALSE, DWORD(parent));
+    return !handle || WaitForSingleObject(handle, 0) == WAIT_OBJECT_0;
+#else
+    return getppid() != pid_t(parent);
+#endif
 }
 extern "C" void ynotbit_relay_tick(struct ntb_network *nw, const char *directory) {
     static qint64 last = 0;
@@ -21,6 +41,10 @@ extern "C" void ynotbit_relay_tick(struct ntb_network *nw, const char *directory
     if (last == now || !directory)
         return;
     last = now;
+    if (parentGone()) {
+        std::raise(SIGTERM); // the main loop's own quit path: clean shutdown
+        return;
+    }
     try {
         const QString root = QFile::decodeName(directory);
         QDir().mkpath(root + "/publish");

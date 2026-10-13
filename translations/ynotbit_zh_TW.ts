@@ -1712,6 +1712,18 @@ Date: %1
         <source>Chat message must be between 1 and 8192 bytes</source>
         <translation>聊天訊息須為 1 至 8192 位元組</translation>
     </message>
+    <message>
+        <source>crashed</source>
+        <translation>當機</translation>
+    </message>
+    <message>
+        <source>exit code %1</source>
+        <translation>結束代碼 %1</translation>
+    </message>
+    <message>
+        <source>Node stopped: %1 · outgoing objects stay queued</source>
+        <translation>節點已停止：%1 · 外發物件保留在佇列中</translation>
+    </message>
 </context>
 <context>
     <name>bm::SettingsPane</name>

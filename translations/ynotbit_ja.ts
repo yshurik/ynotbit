@@ -1712,6 +1712,18 @@ Date: %1
         <source>Chat message must be between 1 and 8192 bytes</source>
         <translation>チャットメッセージは1～8192バイトにしてください</translation>
     </message>
+    <message>
+        <source>crashed</source>
+        <translation>クラッシュ</translation>
+    </message>
+    <message>
+        <source>exit code %1</source>
+        <translation>終了コード %1</translation>
+    </message>
+    <message>
+        <source>Node stopped: %1 · outgoing objects stay queued</source>
+        <translation>ノード停止中: %1 · 送信オブジェクトはキューに残ります</translation>
+    </message>
 </context>
 <context>
     <name>bm::SettingsPane</name>

@@ -1712,6 +1712,18 @@ Date: %1
         <source>Chat message must be between 1 and 8192 bytes</source>
         <translation>Повідомлення чату має містити від 1 до 8192 байтів</translation>
     </message>
+    <message>
+        <source>crashed</source>
+        <translation>збій</translation>
+    </message>
+    <message>
+        <source>exit code %1</source>
+        <translation>код виходу %1</translation>
+    </message>
+    <message>
+        <source>Node stopped: %1 · outgoing objects stay queued</source>
+        <translation>Вузол зупинено: %1 · вихідні об&apos;єкти залишаються в черзі</translation>
+    </message>
 </context>
 <context>
     <name>bm::SettingsPane</name>

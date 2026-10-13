@@ -40,6 +40,7 @@ class Session : public QObject {
     std::unique_ptr<QLockFile> nodeLock_, vaultLock_, mailLock_;
     bool busy_ = false;
     bool offline_ = false;
+    QString nodeError_; // why the node last stopped, shown in status()
     mutable QJsonObject lastNodeStatus_; // last status.json read, see status()
     int retentionMB_ = 2048, retentionDays_ = 90;
     QTimer restartSoon_;   // see scheduleRestart()
