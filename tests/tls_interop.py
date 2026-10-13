@@ -10,6 +10,7 @@ Checks, each with a fresh node on loopback:
   inbound   the peer connects to the node (node = TLS server)
   outbound  the node connects to the peer (node = TLS client)
   node      two nodes connect to each other
+and that an addr shorter than its count (MiNode's) keeps the connection.
 
 usage: tls_interop.py <ynotbit binary>
 """
@@ -147,6 +148,13 @@ def check_inbound(binary):
         tls.sendall(packet("getaddr"))
         expect_commands(tls, {"addr", "getaddr"})
         assert node.wait_log("TLS established"), node.tail()
+        # MiNode 0.3.3 sends addr whose count is one more than its entries.
+        # The node keeps the entries and the connection.
+        entry = struct.pack(">qIQ", int(time.time()), 1, NODE_NETWORK) + \
+            bytes(10) + b"\xff\xff" + socket.inet_aton("10.1.2.3") + struct.pack(">H", 8444)
+        tls.sendall(packet("addr", b"\x02" + entry) + packet("ping"))
+        expect_commands(tls, {"pong"})
+        print("inbound: a short addr keeps the connection")
         tls.close()
     finally:
         node.stop()

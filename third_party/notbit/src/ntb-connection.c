@@ -263,13 +263,13 @@ addr_command_handler(struct ntb_connection *conn,
                      uint32_t command_length)
 {
         struct ntb_connection_addr_event event;
-        uint64_t n_addresses;
+        uint64_t n_addresses, n_read = 0;
         ssize_t addr_length;
 
         if (!ntb_proto_get_var_int(&data, &command_length, &n_addresses))
                 goto error;
 
-        while (n_addresses--) {
+        for (; n_read < n_addresses; n_read++) {
                 addr_length =
                         ntb_proto_get_command(data,
                                               command_length,
@@ -288,8 +288,17 @@ addr_command_handler(struct ntb_connection *conn,
 
                                               NTB_PROTO_ARGUMENT_END);
 
-                if (addr_length == -1)
-                        goto error;
+                if (addr_length == -1) {
+                        /* MiNode 0.3.3 counts one entry more than it
+                         * sends. Keep the ones that arrived and the
+                         * peer, as for any addr cut short. */
+                        ntb_log("Short addr command from %s: "
+                                "%" PRIu64 " of %" PRIu64 " entries",
+                                conn->remote_address_string,
+                                n_read,
+                                n_addresses);
+                        break;
+                }
 
                 command_length -= addr_length;
                 data += addr_length;
