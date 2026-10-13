@@ -527,7 +527,7 @@ void Vault::renameIdentity(const QString &address, const QString &label) {
     for (auto &i : identities_)
         if (i.address == address) {
             auto old = i.label;
-            i.label = label;
+            i.label = i.chan ? channelName(label) : label;
             try {
                 save();
             } catch (...) {

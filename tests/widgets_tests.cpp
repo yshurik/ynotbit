@@ -10,6 +10,7 @@
 #include "i18n.h"
 #include "key_search.h"
 #include "new_chat_dialog.h"
+#include "join_channel_dialog.h"
 #include "new_vault_dialog.h"
 #include <QElapsedTimer>
 #include <QFileDialog>
@@ -2629,8 +2630,9 @@ int main(int argc, char **argv) {
             window.findChild<QToolButton *>("renameIdentityButton")->click();
             QTest::qWait(50);
             bool renamed = false;
+            // The first card may be a chan, whose name keeps a '#'.
             for (auto l : window.findChildren<QLabel *>("identityName"))
-                renamed = renamed || l->text() == "test password";
+                renamed = renamed || l->text() == "test password" || l->text() == "#test password";
             require(renamed, "Rename updates the identity's label via the same prompt");
 
             // Menu items change identities behind the open Identities page; the
@@ -2687,10 +2689,9 @@ int main(int argc, char **argv) {
             require(picked, "Import keys.dat… asks for the file");
             require(cardFor(imported),
                     "Identity > Import keys.dat… shows the imported key on the open Identities page");
-            // A chan takes two prompts (phrase, then the expected address), so the
-            // password responder steps aside.
+            // The chan dialog is not a password prompt, so the password responder steps aside.
             responder.stop();
-            // Answers the menu item's prompts in turn.
+            // Answers a menu item's text prompts in turn.
             std::function<void(QStringList)> answer = [&](QStringList replies) {
                 onDialog((QInputDialog *)nullptr, [&, replies](QInputDialog *d) mutable {
                     d->setTextValue(replies.takeFirst());
@@ -2699,13 +2700,33 @@ int main(int argc, char **argv) {
                     d->accept();
                 });
             };
-            answer({"widgets menu chan", ""});
+            onDialog((bm::JoinChannelDialog *)nullptr, [&](bm::JoinChannelDialog *d) {
+                auto join = d->findChild<QPushButton *>("joinChannelAcceptButton");
+                require(!join->isEnabled(), "Join waits for a name");
+                d->findChild<QLineEdit *>("publicChannelName")->setText("widgets menu chan");
+                require(d->name() == "#widgets menu chan" && d->phrase() == "widgets menu chan",
+                        "a public chan's phrase is its name, listed with a '#'");
+                d->findChild<QRadioButton *>("secretChannelButton")->setChecked(true);
+                auto phrase = d->findChild<QLineEdit *>("secretChannelPhrase");
+                require(phrase->echoMode() == QLineEdit::Password && !join->isEnabled(),
+                        "a secret chan's phrase is typed hidden, and a name is needed");
+                d->findChild<QLineEdit *>("secretChannelName")->setText("hideout");
+                phrase->setText("widgets secret chan phrase");
+                require(join->isEnabled() && d->name() == "#hideout" &&
+                            d->phrase() == "widgets secret chan phrase",
+                        "a secret chan: its own '#' name, and the hidden phrase");
+                join->click();
+            });
             shownCards = cards();
             menuItem("Join or create chan…")->trigger();
             QTest::qWait(50);
             responder.start(10);
             require(session.error().isEmpty() && cards() == shownCards + 1,
                     "Identity > Join or create chan… shows the chan on the open Identities page");
+            bool listed = false;
+            for (const auto &value : session.identities())
+                listed = listed || value.toMap()["label"].toString() == "#hideout";
+            require(listed, "the secret chan is listed under its name");
 
             // A subscription's label names its letters: subscribing or unsubscribing
             // from the menu redraws the open letter and the list.

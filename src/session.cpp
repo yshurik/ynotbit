@@ -491,28 +491,16 @@ bool Session::addIdentity(const Identity &identity) {
     });
     return error_.isEmpty();
 }
-void Session::joinChannel() {
+bool Session::joinChannel(QString phrase, const QString &name, const QString &expected) {
     attempt([&] {
         check(unlocked(), tr("Unlock a vault first"));
-        bool ok;
-        auto phrase =
-            QInputDialog::getText(nullptr, tr("Join or create chan"), tr("Shared phrase (exact spelling)"),
-                                  QLineEdit::Password, {}, &ok);
-        if (!ok)
-            return;
-        auto expected =
-            addressInput(tr("Verify chan address"),
-                         tr("Expected BM-address (leave empty to create a version 4 chan)"), &ok);
-        if (!ok) {
-            phrase.fill(QChar(0));
-            return;
-        }
-        vault_.addChannel(phrase, {}, expected.trimmed());
-        phrase.fill(QChar(0));
+        vault_.addChannel(phrase, name, expected);
         if (mailboxOpen())
             mailbox_.advance(0);
         activity_ = tr("Chan joined. The address appears in Identities.");
     });
+    phrase.fill(QChar(0));
+    return error_.isEmpty();
 }
 void Session::importIdentities() {
     attempt([&] {

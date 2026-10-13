@@ -4,11 +4,14 @@
 #include "scanner.h"
 #include "storage.h"
 #include <QCoreApplication>
+#include <QDataStream>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
+#include <functional>
 #include <iostream>
+#include <sodium.h>
 #include <sqlcipher/sqlite3.h>
 using namespace bm;
 static void require(bool b, const char *m) {
@@ -27,6 +30,56 @@ static void putObject(const QString &root, const QByteArray &object) {
     ntb_object_db_close(db);
     require(saved, "save an object");
 }
+// Gives every identity in a vault file the label set_label returns, as a vault saved
+// before chan names took a '#' would hold them. Same layout and crypto as Vault::save.
+static void relabelVaultFile(const QString &path, const QByteArray &password,
+                             const std::function<QString(const QString &)> &set_label) {
+    QFile f(path);
+    require(f.open(QIODevice::ReadOnly), "read the vault file");
+    const auto file = f.readAll();
+    f.close();
+    const auto header = file.left(48), salt = file.mid(8, 16), nonce = file.mid(24, 24);
+    unsigned char key[32];
+    require(crypto_pwhash(key, 32, password.constData(), password.size(),
+                          reinterpret_cast<const unsigned char *>(salt.constData()), 3,
+                          64 * 1024 * 1024, crypto_pwhash_ALG_ARGON2ID13) == 0,
+            "derive the vault key");
+    QByteArray plain(file.size() - 48 - 16, 0);
+    unsigned long long n = 0;
+    require(crypto_aead_xchacha20poly1305_ietf_decrypt(
+                reinterpret_cast<unsigned char *>(plain.data()), &n, nullptr,
+                reinterpret_cast<const unsigned char *>(file.constData() + 48), file.size() - 48,
+                reinterpret_cast<const unsigned char *>(header.constData()), 48,
+                reinterpret_cast<const unsigned char *>(nonce.constData()), key) == 0,
+            "decrypt the vault");
+    QDataStream in(plain);
+    in.setVersion(QDataStream::Qt_6_0);
+    QByteArray rewritten;
+    QDataStream out(&rewritten, QIODevice::WriteOnly);
+    out.setVersion(QDataStream::Qt_6_0);
+    quint32 count = 0;
+    in >> count;
+    out << count;
+    for (quint32 j = 0; j < count; ++j) {
+        QString label, address;
+        bool chan = false, isDefault = false;
+        in >> label >> address >> chan >> isDefault;
+        QByteArray keys(64, 0);
+        in.readRawData(keys.data(), 64);
+        out << set_label(label) << address << chan << isDefault;
+        out.writeRawData(keys.constData(), 64);
+    }
+    const auto rest = plain.mid(int(in.device()->pos()));
+    out.writeRawData(rest.constData(), rest.size());
+    QByteArray cipher(rewritten.size() + crypto_aead_xchacha20poly1305_ietf_ABYTES, 0);
+    crypto_aead_xchacha20poly1305_ietf_encrypt(
+        reinterpret_cast<unsigned char *>(cipher.data()), &n,
+        reinterpret_cast<const unsigned char *>(rewritten.constData()), rewritten.size(),
+        reinterpret_cast<const unsigned char *>(header.constData()), 48, nullptr,
+        reinterpret_cast<const unsigned char *>(nonce.constData()), key);
+    require(f.open(QIODevice::WriteOnly) && f.write(header + cipher) == 48 + cipher.size(),
+            "write the vault file");
+}
 static void pruneAll(const QString &root) {
     auto db = ntb_object_db_open(QFile::encodeName(root).constData());
     require(db, "open the node's object store");
@@ -42,8 +95,40 @@ int main(int argc, char **argv) {
         vault.create(vp, "testing password");
         vault.addChannel("general", "General");
         vault.addChannel("notbit", {});
-        require(vault.identities().back().label == "[chan] notbit",
-                "a chan joined without a label is named \"[chan] <phrase>\", as in PyBitmessage");
+        require(vault.identities().back().label == "#notbit",
+                "a chan joined without a label is named after its phrase, with a '#'");
+        require(vault.identities()[vault.identities().size() - 2].label == "#General",
+                "a chan's label takes a '#'");
+        {
+            // A vault from before: "[chan] <phrase>" and bare names.
+            Vault old;
+            const auto op = d.filePath("old.bmvault");
+            old.create(op, "testing password");
+            old.addIdentity("Personal");
+            old.addChannel("bitmessage", {});
+            old.addChannel("general", {});
+            old.addChannel("friends phrase", "#friends");
+            old.lock();
+            relabelVaultFile(op, "testing password", [](const QString &label) {
+                return label == "#bitmessage" ? "[chan] bitmessage"
+                       : label == "#general"  ? "general"
+                                              : label;
+            });
+            old.unlock(op, "testing password");
+            QStringList labels;
+            for (const auto &i : old.identities())
+                labels << i.label;
+            require(labels == QStringList{"Personal", "#bitmessage", "#general", "#friends"},
+                    "opening an older vault names its chans #<name>, and only its chans");
+            old.lock();
+            old.unlock(op, "testing password");
+            require(old.identities()[1].label == "#bitmessage", "and saves the new names");
+            old.renameIdentity(old.identities()[2].address, "chat");
+            require(old.identities()[2].label == "#chat", "a renamed chan keeps the '#'");
+            old.renameIdentity(old.identities()[0].address, "Me");
+            require(old.identities()[0].label == "Me", "an identity's name takes no '#'");
+            old.lock();
+        }
         auto key = vault.addMailboxKey();
         auto mp = d.filePath("mail.bmmail");
         Mailbox mailbox;

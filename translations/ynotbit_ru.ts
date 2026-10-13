@@ -1221,6 +1221,73 @@ Date: %1
     </message>
 </context>
 <context>
+    <name>bm::JoinChannelDialog</name>
+    <message>
+        <source>Join or create a channel</source>
+        <translation>Вступить в канал или создать его</translation>
+    </message>
+    <message>
+        <source>Public</source>
+        <translation>Публичный</translation>
+    </message>
+    <message>
+        <source>#general</source>
+        <translation>#general</translation>
+    </message>
+    <message>
+        <source>The name is the shared phrase: anyone who knows the name can read and post.</source>
+        <translation>Имя и есть общая фраза: все, кто знает имя, могут читать и писать.</translation>
+    </message>
+    <message>
+        <source>Secret</source>
+        <translation>Секретный</translation>
+    </message>
+    <message>
+        <source>#name</source>
+        <translation>#имя</translation>
+    </message>
+    <message>
+        <source>Shared secret phrase</source>
+        <translation>Общая секретная фраза</translation>
+    </message>
+    <message>
+        <source>Show phrase</source>
+        <translation>Показать фразу</translation>
+    </message>
+    <message>
+        <source>Hide phrase</source>
+        <translation>Скрыть фразу</translation>
+    </message>
+    <message>
+        <source>Only people with the exact phrase can read and post. The name is yours alone and never sent.</source>
+        <translation>Читать и писать могут только те, кто знает точную фразу. Имя видно только вам и никуда не отправляется.</translation>
+    </message>
+    <message>
+        <source>Channel</source>
+        <translation>Канал</translation>
+    </message>
+    <message>
+        <source>BM-address, optional</source>
+        <translation>BM-адрес, необязательно</translation>
+    </message>
+    <message>
+        <source>To join an existing chan, its address checks the phrase. Left empty, the phrase makes a version 4 chan.</source>
+        <translation>Чтобы вступить в существующий канал, его адрес проверяет фразу. Если оставить пустым, фраза создаст канал версии 4.</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>Адрес</translation>
+    </message>
+    <message>
+        <source>Join</source>
+        <translation>Вступить</translation>
+    </message>
+    <message>
+        <source>Listed as %1</source>
+        <translation>В списке: %1</translation>
+    </message>
+</context>
+<context>
     <name>bm::NewChatDialog</name>
     <message>
         <source>Start chat</source>
@@ -1531,22 +1598,6 @@ Date: %1
     <message>
         <source>Identity created. Retained objects will be inspected again.</source>
         <translation>Идентичность создана. Сохранённые объекты будут проверены заново.</translation>
-    </message>
-    <message>
-        <source>Join or create chan</source>
-        <translation>Войти в канал или создать его</translation>
-    </message>
-    <message>
-        <source>Shared phrase (exact spelling)</source>
-        <translation>Общая фраза (с точным написанием)</translation>
-    </message>
-    <message>
-        <source>Verify chan address</source>
-        <translation>Проверка адреса канала</translation>
-    </message>
-    <message>
-        <source>Expected BM-address (leave empty to create a version 4 chan)</source>
-        <translation>Ожидаемый BM-адрес (оставьте пустым, чтобы создать канал версии 4)</translation>
     </message>
     <message>
         <source>Chan joined. The address appears in Identities.</source>

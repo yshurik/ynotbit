@@ -93,8 +93,10 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
   mailbox and never sent. One-click add from any letter; names in the list,
   reader and composer (completion by name and a contacts picker); the full
   address always stays visible beside a name.
-- Channels have a named selector (joined chans are named `[chan] <phrase>`, as in
-  PyBitmessage), separate message lists and search, and a Write to channel
+- Channels are named `#<name>`. A public channel's name is its shared phrase
+  (`bitmessage` is `#bitmessage`); a secret one has a name of your own and a phrase
+  typed hidden. Older `[chan] <phrase>` names become `#<phrase>` when the vault opens.
+  Channels have a named selector, separate message lists and search, and a Write to channel
   action. The chan list collapses to a column of identicons with unread dots.
   BM-addresses use a fixed-width font; each address has a GitHub-style identicon.
 - The reader frames each letter by kind (personal, chan personal, anonymous chan

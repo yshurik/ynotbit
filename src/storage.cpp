@@ -57,6 +57,14 @@ Secret &Secret::operator=(Secret &&o) noexcept {
     }
     return *this;
 }
+QString channelName(const QString &label) {
+    auto name = label.trimmed();
+    if (name.startsWith("[chan] "))
+        name = name.mid(7).trimmed();
+    if (name.isEmpty() || name.startsWith('#'))
+        return name;
+    return '#' + name;
+}
 static Secret derive(const QByteArray &password, const QByteArray &salt) {
     check(!password.isEmpty(), "Enter a vault password");
     Secret key(32);
@@ -181,6 +189,21 @@ void Vault::unlock(const QString &path, const QByteArray &password) {
     identities_ = std::move(identities);
     mailboxKeys_ = std::move(keys);
     unlocked_ = true;
+    // Chans were named "[chan] <phrase>" or "<name>" before names took a '#'.
+    // Renaming keeps it, so this changes a vault once.
+    bool renamed = false;
+    for (auto &i : identities_)
+        if (i.chan && channelName(i.label) != i.label) {
+            i.label = channelName(i.label);
+            renamed = true;
+        }
+    if (renamed) {
+        try {
+            save();
+        } catch (...) {
+            // A read-only vault still opens; the names are fixed in memory.
+        }
+    }
 }
 void Vault::lock() {
     identities_.clear();

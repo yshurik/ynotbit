@@ -224,7 +224,8 @@ target_include_directories(feed_scroll_bench PRIVATE third_party/qrcodegen)
 add_coolname(feed_scroll_bench)
 target_link_libraries(feed_scroll_bench PRIVATE bmcore Qt6::Widgets Qt6::Network)
 foreach(desktop_target ynotbit desktop_tests readme_screenshots feed_scroll_bench)
- target_sources(${desktop_target} PRIVATE src/chats_pane.cpp src/chats_pane.h src/new_chat_dialog.cpp src/new_chat_dialog.h)
+ target_sources(${desktop_target} PRIVATE src/chats_pane.cpp src/chats_pane.h src/new_chat_dialog.cpp src/new_chat_dialog.h
+  src/join_channel_dialog.cpp src/join_channel_dialog.h)
 endforeach()
 # Proof-of-work speed on the CPU and on each GPU backend; built only on request:
 #   cmake --build build --target pow_bench && build/pow_bench
@@ -279,7 +280,7 @@ foreach(lang IN LISTS YNOTBIT_LANGUAGES)
  list(APPEND YNOTBIT_TS_FILES ${CMAKE_CURRENT_SOURCE_DIR}/translations/ynotbit_${lang}.ts)
 endforeach()
 qt_add_lupdate(TS_FILES ${YNOTBIT_TS_FILES}
- SOURCES src/desktop_window.cpp src/chats_pane.cpp src/new_chat_dialog.cpp src/settings_pane.cpp src/new_vault_dialog.cpp src/session.cpp src/feed_view.cpp src/updates.cpp src/i18n/error_catalog.cpp
+ SOURCES src/desktop_window.cpp src/chats_pane.cpp src/new_chat_dialog.cpp src/join_channel_dialog.cpp src/settings_pane.cpp src/new_vault_dialog.cpp src/session.cpp src/feed_view.cpp src/updates.cpp src/i18n/error_catalog.cpp
  LUPDATE_TARGET update_translations
  OPTIONS -no-obsolete -locations none)
 qt_add_lrelease(TS_FILES ${YNOTBIT_TS_FILES} QM_FILES_OUTPUT_VARIABLE YNOTBIT_QM_FILES

@@ -1221,6 +1221,73 @@ Date: %1
     </message>
 </context>
 <context>
+    <name>bm::JoinChannelDialog</name>
+    <message>
+        <source>Join or create a channel</source>
+        <translation>チャンネルに参加・作成</translation>
+    </message>
+    <message>
+        <source>Public</source>
+        <translation>公開</translation>
+    </message>
+    <message>
+        <source>#general</source>
+        <translation>#general</translation>
+    </message>
+    <message>
+        <source>The name is the shared phrase: anyone who knows the name can read and post.</source>
+        <translation>名前がそのまま共有フレーズです。名前を知っている人は誰でも読み書きできます。</translation>
+    </message>
+    <message>
+        <source>Secret</source>
+        <translation>秘密</translation>
+    </message>
+    <message>
+        <source>#name</source>
+        <translation>#名前</translation>
+    </message>
+    <message>
+        <source>Shared secret phrase</source>
+        <translation>共有の秘密フレーズ</translation>
+    </message>
+    <message>
+        <source>Show phrase</source>
+        <translation>フレーズを表示</translation>
+    </message>
+    <message>
+        <source>Hide phrase</source>
+        <translation>フレーズを隠す</translation>
+    </message>
+    <message>
+        <source>Only people with the exact phrase can read and post. The name is yours alone and never sent.</source>
+        <translation>正確なフレーズを知っている人だけが読み書きできます。名前はあなただけのもので、送信されません。</translation>
+    </message>
+    <message>
+        <source>Channel</source>
+        <translation>チャンネル</translation>
+    </message>
+    <message>
+        <source>BM-address, optional</source>
+        <translation>BM アドレス（任意）</translation>
+    </message>
+    <message>
+        <source>To join an existing chan, its address checks the phrase. Left empty, the phrase makes a version 4 chan.</source>
+        <translation>既存のチャンに参加する場合、そのアドレスでフレーズを確認します。空欄なら、フレーズからバージョン 4 のチャンを作ります。</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>アドレス</translation>
+    </message>
+    <message>
+        <source>Join</source>
+        <translation>参加</translation>
+    </message>
+    <message>
+        <source>Listed as %1</source>
+        <translation>一覧での表示: %1</translation>
+    </message>
+</context>
+<context>
     <name>bm::NewChatDialog</name>
     <message>
         <source>Start chat</source>
@@ -1531,22 +1598,6 @@ Date: %1
     <message>
         <source>Identity created. Retained objects will be inspected again.</source>
         <translation>ID を作成しました。保持中のオブジェクトを再検査します。</translation>
-    </message>
-    <message>
-        <source>Join or create chan</source>
-        <translation>チャンネルに参加または作成</translation>
-    </message>
-    <message>
-        <source>Shared phrase (exact spelling)</source>
-        <translation>共有フレーズ（正確な綴りで）</translation>
-    </message>
-    <message>
-        <source>Verify chan address</source>
-        <translation>チャンネルアドレスの確認</translation>
-    </message>
-    <message>
-        <source>Expected BM-address (leave empty to create a version 4 chan)</source>
-        <translation>予想される BM アドレス（空欄にするとバージョン 4 のチャンネルを作成）</translation>
     </message>
     <message>
         <source>Chan joined. The address appears in Identities.</source>

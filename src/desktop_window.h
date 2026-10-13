@@ -91,6 +91,7 @@ class DesktopWindow : public QMainWindow {
     void newVault();    // the new vault dialog
     void newIdentity(); // the same dialog, for an identity alone
     void newChat();     // who to, and from which identity, then startChat()
+    void joinChannel(); // public or secret, then Session::joinChannel
     void updateLockedScreen();
     void refreshRecentVaults();
     void refreshRecentMailboxes();

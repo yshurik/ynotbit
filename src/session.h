@@ -159,7 +159,9 @@ class Session : public QObject {
     Q_INVOKABLE void lock();
     // Adds identity to the open vault; true when added, else error() says why.
     bool addIdentity(const Identity &identity);
-    Q_INVOKABLE void joinChannel();
+    // A chan from its shared phrase, listed as name ("#<name>"); expected, when given,
+    // must be the address the phrase makes.
+    bool joinChannel(QString phrase, const QString &name, const QString &expected);
     Q_INVOKABLE void importIdentities();
     Q_INVOKABLE void changePassword();
     Q_INVOKABLE void backup();

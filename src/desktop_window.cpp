@@ -9,6 +9,7 @@
 #include "feed_view.h"
 #include "chats_pane.h"
 #include "new_chat_dialog.h"
+#include "join_channel_dialog.h"
 #include "updates.h"
 #include "qrcodegen.hpp"
 #include <QCryptographicHash>
@@ -2149,7 +2150,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         else if (folders_->currentRow() == 5)
             session_.subscribe();
         else
-            session_.joinChannel();
+            joinChannel();
         refreshChannels();
     })->setObjectName("joinOrCreateChannelButton");
     button({}, railOuter, [this] { setChannelRailCollapsed(!channelRailCollapsed_); })
@@ -2438,7 +2439,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     identitiesHeadRow->addLayout(identitiesTitleCol);
     identitiesHeadRow->addStretch();
     button(tr("Join a channel…"), identitiesHeadRow, [this] {
-        session_.joinChannel();
+        joinChannel();
         refreshIdentities();
     })->setObjectName("joinChannelButton");
     button(tr("New identity"), identitiesHeadRow, [this] {
@@ -2546,7 +2547,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     createIdentityAction_ =
         identity->addAction(tr("Create identity…"), this, &DesktopWindow::newIdentity);
     createIdentityAction_->setObjectName("createIdentityAction");
-    identity->addAction(tr("Join or create chan…"), &session_, &Session::joinChannel);
+    identity->addAction(tr("Join or create chan…"), this, &DesktopWindow::joinChannel);
     identity->addAction(tr("Import keys.dat…"), &session_, &Session::importIdentities);
     identity->addAction(tr("Subscribe to broadcasts…"), &session_, &Session::subscribe);
     identity->addAction(tr("Manage subscriptions…"), this, [this] {
@@ -3557,6 +3558,11 @@ void DesktopWindow::newChat() {
     NewChatDialog dialog(session_, appearance_.dark(), this);
     if (dialog.exec() == QDialog::Accepted)
         startChat(dialog.identity(), dialog.peer());
+}
+void DesktopWindow::joinChannel() {
+    JoinChannelDialog dialog(appearance_.dark(), this);
+    if (dialog.exec() == QDialog::Accepted)
+        session_.joinChannel(dialog.phrase(), dialog.name(), dialog.expectedAddress());
 }
 void DesktopWindow::startChat(const QString &local, const QString &peer) {
     const auto key = Session::chatKey(local, peer);

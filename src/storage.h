@@ -73,6 +73,9 @@ struct ChatSummary {
     bool outgoing = false;            // it is ours
     int unread = 0;                   // messages from the peer that nobody has looked at
 };
+// A chan's name as the app shows it: "#<name>". PyBitmessage's default
+// "[chan] <phrase>" and a bare "<name>" both become "#<name>".
+QString channelName(const QString &label);
 class Vault {
     QString path_;
     Secret wrapping_;
@@ -100,7 +103,7 @@ class Vault {
     // An identity made beforehand (the new vault dialog's): its keys are checked
     // against its address and kept as they are.
     QString addIdentity(const Identity &identity);
-    // label empty: "[chan] <phrase>", as PyBitmessage names a joined chan.
+    // label empty: "#<phrase>"; any other label is made a channelName().
     QString addChannel(const QString &phrase, const QString &label,
                        const QString &expectedAddress = {});
     void importKeys(const QString &path);

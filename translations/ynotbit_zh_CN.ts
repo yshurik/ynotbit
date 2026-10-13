@@ -1221,6 +1221,73 @@ Date: %1
     </message>
 </context>
 <context>
+    <name>bm::JoinChannelDialog</name>
+    <message>
+        <source>Join or create a channel</source>
+        <translation>加入或创建频道</translation>
+    </message>
+    <message>
+        <source>Public</source>
+        <translation>公开</translation>
+    </message>
+    <message>
+        <source>#general</source>
+        <translation>#general</translation>
+    </message>
+    <message>
+        <source>The name is the shared phrase: anyone who knows the name can read and post.</source>
+        <translation>名称就是共享口令：知道名称的人都能阅读和发帖。</translation>
+    </message>
+    <message>
+        <source>Secret</source>
+        <translation>秘密</translation>
+    </message>
+    <message>
+        <source>#name</source>
+        <translation>#名称</translation>
+    </message>
+    <message>
+        <source>Shared secret phrase</source>
+        <translation>共享秘密口令</translation>
+    </message>
+    <message>
+        <source>Show phrase</source>
+        <translation>显示口令</translation>
+    </message>
+    <message>
+        <source>Hide phrase</source>
+        <translation>隐藏口令</translation>
+    </message>
+    <message>
+        <source>Only people with the exact phrase can read and post. The name is yours alone and never sent.</source>
+        <translation>只有知道准确口令的人才能阅读和发帖。名称只有你自己看得到，不会发送出去。</translation>
+    </message>
+    <message>
+        <source>Channel</source>
+        <translation>频道</translation>
+    </message>
+    <message>
+        <source>BM-address, optional</source>
+        <translation>BM 地址，可选</translation>
+    </message>
+    <message>
+        <source>To join an existing chan, its address checks the phrase. Left empty, the phrase makes a version 4 chan.</source>
+        <translation>加入已有频道时，用它的地址核对口令。留空则用口令创建版本 4 的频道。</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>地址</translation>
+    </message>
+    <message>
+        <source>Join</source>
+        <translation>加入</translation>
+    </message>
+    <message>
+        <source>Listed as %1</source>
+        <translation>列表中显示为 %1</translation>
+    </message>
+</context>
+<context>
     <name>bm::NewChatDialog</name>
     <message>
         <source>Start chat</source>
@@ -1531,22 +1598,6 @@ Date: %1
     <message>
         <source>Identity created. Retained objects will be inspected again.</source>
         <translation>身份已创建。将重新检查保留的对象。</translation>
-    </message>
-    <message>
-        <source>Join or create chan</source>
-        <translation>加入或创建频道</translation>
-    </message>
-    <message>
-        <source>Shared phrase (exact spelling)</source>
-        <translation>共享口令（须完全一致）</translation>
-    </message>
-    <message>
-        <source>Verify chan address</source>
-        <translation>验证频道地址</translation>
-    </message>
-    <message>
-        <source>Expected BM-address (leave empty to create a version 4 chan)</source>
-        <translation>预期的 BM 地址（留空则创建版本 4 频道）</translation>
     </message>
     <message>
         <source>Chan joined. The address appears in Identities.</source>

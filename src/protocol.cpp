@@ -343,8 +343,11 @@ void Vault::importKeys(const QString &path) {
     flush();
     require(!imported.empty(), "No new private identities found in this file");
     auto count = identities_.size();
-    for (auto &i : imported)
+    for (auto &i : imported) {
+        if (i.chan)
+            i.label = channelName(i.label);
         identities_.push_back(std::move(i));
+    }
     try {
         save();
     } catch (...) {
@@ -365,9 +368,9 @@ QString Vault::addChannel(const QString &phrase, const QString &label,
                 "Invalid expected chan address");
         version = a.version;
     }
-    // An empty label gets PyBitmessage's default, "[chan] <phrase>".
+    // An empty label names the chan after its phrase.
     auto channel =
-        Protocol::channel(phrase, label.isEmpty() ? "[chan] " + phrase : label, version);
+        Protocol::channel(phrase, channelName(label.isEmpty() ? phrase : label), version);
     require(expectedAddress.isEmpty() || channel.address == expectedAddress,
             "The shared phrase does not match that chan address");
     for (const auto &i : identities_)
