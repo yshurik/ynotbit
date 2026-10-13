@@ -65,7 +65,8 @@ extern "C" void ynotbit_relay_tick(struct ntb_network *nw, const char *directory
                       {"eligible_addresses", int(stats.eligible_addresses)},
                       {"attempts", qint64(stats.attempts)},
                       {"setup_timeouts", qint64(stats.setup_timeouts)},
-                      {"rejections", qint64(stats.rejections)}})
+                      {"rejections", qint64(stats.rejections)},
+                      {"listen_port", ntb_network_listen_port(nw)}})
                       .toJson());
         int count = 0;
         for (const auto &entry :

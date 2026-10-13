@@ -172,6 +172,9 @@ QString Session::status() const {
                       : tr("No connected peers · waiting for network");
     if (pending > 0)
         base += " · " + tr("objects downloading: %1").arg(pending);
+    const int port = status.value("listen_port").toInt();
+    if (port > 0 && port != kNodePort)
+        base += " · " + tr("port %1 is taken, listening on %2").arg(kNodePort).arg(port);
     return base;
 }
 // Lower layers throw English (see src/i18n/error_catalog.cpp); messages this
@@ -675,6 +678,13 @@ void Session::tick() {
                 objectCount_ = node.value("objects").toInteger();
                 objectBytes_ = node.value("object_bytes").toInteger();
                 incoming_ = node.value("established_incoming").toInt();
+            }
+            // The node listens elsewhere while another program holds its port,
+            // and moves back when the port frees: the router mapping follows.
+            const int port = node.value("listen_port").toInt();
+            if (port > 0 && port != listenPort_) {
+                listenPort_ = quint16(port);
+                updatePortMapping();
             }
         }
         if (mailboxOpen()) {
@@ -1229,7 +1239,7 @@ void Session::setUpnpEnabled(bool on) {
 }
 void Session::updatePortMapping() {
     if (wantsPortMapping(!offline_, listenEnabled(), upnpEnabled(), proxy()))
-        portMapper_->start(kNodePort);
+        portMapper_->start(listenPort_);
     else
         portMapper_->stop();
 }

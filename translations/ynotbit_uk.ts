@@ -1724,6 +1724,10 @@ Date: %1
         <source>Node stopped: %1 · outgoing objects stay queued</source>
         <translation>Вузол зупинено: %1 · вихідні об&apos;єкти залишаються в черзі</translation>
     </message>
+    <message>
+        <source>port %1 is taken, listening on %2</source>
+        <translation>порт %1 зайнятий, слухаю на %2</translation>
+    </message>
 </context>
 <context>
     <name>bm::SettingsPane</name>

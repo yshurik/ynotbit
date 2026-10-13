@@ -188,6 +188,8 @@ add_test(NAME relay-download COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURC
 set_tests_properties(relay-download PROPERTIES TIMEOUT 60)
 add_test(NAME tls-interop COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/tls_interop.py $<TARGET_FILE:ynotbit>)
 set_tests_properties(tls-interop PROPERTIES TIMEOUT 120)
+add_test(NAME listen-fallback COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/listen_fallback_test.py $<TARGET_FILE:ynotbit>)
+set_tests_properties(listen-fallback PROPERTIES TIMEOUT 60)
 endif()
 add_test(NAME gui-smoke COMMAND ynotbit --offline --data-dir ${CMAKE_CURRENT_BINARY_DIR}/smoke-node --smoke-test)
 set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

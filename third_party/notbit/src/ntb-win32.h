@@ -38,6 +38,7 @@ int ntb_win32_connect(int sock, const struct sockaddr *address, int length);
 int ntb_win32_accept(int sock, struct sockaddr *address, int *length);
 int ntb_win32_bind(int sock, const struct sockaddr *address, int length);
 int ntb_win32_listen(int sock, int backlog);
+int ntb_win32_getsockname(int sock, struct sockaddr *address, int *length);
 int ntb_win32_getsockopt(int sock, int level, int name, void *value,
                          int *length);
 int ntb_win32_setsockopt(int sock, int level, int name, const void *value,

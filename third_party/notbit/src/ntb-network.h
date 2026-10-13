@@ -78,6 +78,24 @@ ntb_network_add_listen_address(struct ntb_network *nw,
                                const char *address,
                                struct ntb_error **error);
 
+/* Listens on the port on IPv6 and IPv4, or IPv4 alone where IPv6 is
+ * off. */
+bool
+ntb_network_add_listen_port(struct ntb_network *nw,
+                            const char *port,
+                            struct ntb_error **error);
+
+/* As ntb_network_add_listen_port, but when the port is taken it listens
+ * on a free port and tries the asked-for one again every 15 minutes. */
+bool
+ntb_network_listen_on_port(struct ntb_network *nw,
+                           const char *port,
+                           struct ntb_error **error);
+
+/* The port versions advertise, 0 when not listening. */
+int
+ntb_network_listen_port(struct ntb_network *nw);
+
 bool
 ntb_network_add_peer_address(struct ntb_network *nw,
                              const char *address,

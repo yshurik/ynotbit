@@ -45,6 +45,7 @@
 #define accept(s, a, l) ntb_win32_accept(s, a, l)
 #define bind(s, a, l) ntb_win32_bind(s, a, l)
 #define listen(s, b) ntb_win32_listen(s, b)
+#define getsockname(s, a, l) ntb_win32_getsockname(s, a, (int *) (l))
 #define getsockopt(s, lv, n, v, l) ntb_win32_getsockopt(s, lv, n, v, l)
 #define setsockopt(s, lv, n, v, l) ntb_win32_setsockopt(s, lv, n, v, l)
 #define read(s, b, n) ntb_win32_recv(s, b, n)
@@ -131,6 +132,11 @@ ntb_network_error;
  * to reduce the possibility of using the rejected inventories as a
  * DOS vector */
 #define NTB_NETWORK_MAX_REJECTED_INVENTORIES 16384
+
+/* Seconds between attempts to get the configured listen port back after
+ * it was taken at startup, see ntb_network_listen_on_port. Tests shorten
+ * it with YNOTBIT_LISTEN_RETRY_SECONDS. */
+#define NTB_NETWORK_LISTEN_RETRY_SECONDS (15 * 60)
 
 enum ntb_network_peer_state {
         /* If we initiated the connection then we will go through these
@@ -225,6 +231,13 @@ struct ntb_network {
         struct ntb_main_context_source *gc_source;
 
         struct ntb_list listen_sockets;
+        /* The port asked for while the node listens on another one
+         * because it was taken, or NULL */
+        char *preferred_listen_port;
+        uint64_t listen_retry_us, listen_retry_interval_us;
+        /* Why the node fell back, for the log, which opens only after
+         * the listen sockets: the first tick writes it */
+        char *listen_fallback_note;
 
         int n_outgoing_peers;
         int n_incoming_peers;
@@ -632,6 +645,9 @@ pump_requests(struct ntb_network *nw, struct ntb_network_peer *peer);
 static void
 release_stalled_requests(struct ntb_network *nw, struct ntb_network_peer *peer);
 
+static void
+retry_preferred_listen_port(struct ntb_network *nw);
+
 void
 ntb_network_tick(struct ntb_network *nw)
 {
@@ -646,6 +662,22 @@ ntb_network_tick(struct ntb_network *nw)
 
         if (pump)
                 nw->last_pump_us = now;
+
+        if (nw->listen_fallback_note) {
+                ntb_log("Cannot listen on port %s (%s); listening on port "
+                        "%d and trying again every %" PRIu64 " seconds",
+                        nw->preferred_listen_port,
+                        nw->listen_fallback_note,
+                        ntb_network_listen_port(nw),
+                        nw->listen_retry_interval_us / 1000000);
+                ntb_free(nw->listen_fallback_note);
+                nw->listen_fallback_note = NULL;
+        }
+
+        if (nw->preferred_listen_port && now >= nw->listen_retry_us) {
+                nw->listen_retry_us = now + nw->listen_retry_interval_us;
+                retry_preferred_listen_port(nw);
+        }
 
         if (nw->bootstrap_job && ntb_dns_bootstrap_poll(nw->bootstrap_job, dns_bootstrap_cb, nw)) {
                 ntb_dns_bootstrap_free(nw->bootstrap_job);
@@ -1918,6 +1950,17 @@ ntb_network_add_listen_address(struct ntb_network *nw,
                 goto error;
         }
 
+        /* The port the system picked when asked for port 0 */
+        if (getsockname(sock,
+                        &native_address.sockaddr,
+                        &native_address.length) == -1) {
+                ntb_file_error_set(error,
+                                   errno,
+                                   "Failed to get the socket address: %s",
+                                   strerror(errno));
+                goto error;
+        }
+
         listen_socket = ntb_alloc(sizeof *listen_socket);
         listen_socket->sock = sock;
         listen_socket->nw = nw;
@@ -1934,6 +1977,121 @@ ntb_network_add_listen_address(struct ntb_network *nw,
 error:
         ntb_close(sock);
         return false;
+}
+
+bool
+ntb_network_add_listen_port(struct ntb_network *nw,
+                            const char *port,
+                            struct ntb_error **error)
+{
+        struct ntb_error *local_error = NULL;
+        char *full_address;
+        bool res;
+
+        /* First try listening on an IPv6 address, which should accept
+         * IPv4 connections as well. Some servers have IPv6 disabled
+         * so if it doesn't work fall back to IPv4 */
+        full_address = ntb_strconcat("[::]:", port, NULL);
+        res = ntb_network_add_listen_address(nw, full_address, &local_error);
+        ntb_free(full_address);
+
+        if (res)
+                return true;
+
+        if (local_error->domain == &ntb_file_error &&
+            (local_error->code == NTB_FILE_ERROR_PFNOSUPPORT ||
+             local_error->code == NTB_FILE_ERROR_AFNOSUPPORT)) {
+                ntb_error_free(local_error);
+        } else {
+                ntb_error_propagate(error, local_error);
+                return false;
+        }
+
+        full_address = ntb_strconcat("0.0.0.0:", port, NULL);
+        res = ntb_network_add_listen_address(nw, full_address, error);
+        ntb_free(full_address);
+
+        return res;
+}
+
+static void
+retry_preferred_listen_port(struct ntb_network *nw)
+{
+        struct ntb_network_listen_socket *listen_socket, *tmp, *preferred;
+        struct ntb_error *error = NULL;
+
+        if (!ntb_network_add_listen_port(nw,
+                                         nw->preferred_listen_port,
+                                         &error)) {
+                ntb_log("Port %s is still unavailable: %s",
+                        nw->preferred_listen_port,
+                        error->message);
+                ntb_error_free(error);
+                return;
+        }
+
+        /* The new socket is first in the list, so versions sent from
+         * now on advertise it. Connections accepted on the old port
+         * stay open. */
+        preferred = ntb_container_of(nw->listen_sockets.next,
+                                     struct ntb_network_listen_socket,
+                                     link);
+        ntb_list_for_each_safe(listen_socket, tmp, &nw->listen_sockets, link) {
+                if (listen_socket != preferred)
+                        remove_listen_socket(listen_socket);
+        }
+
+        ntb_log("Listening on port %s again", nw->preferred_listen_port);
+
+        ntb_free(nw->preferred_listen_port);
+        nw->preferred_listen_port = NULL;
+}
+
+bool
+ntb_network_listen_on_port(struct ntb_network *nw,
+                           const char *port,
+                           struct ntb_error **error)
+{
+        struct ntb_error *local_error = NULL;
+        const char *retry_env = getenv("YNOTBIT_LISTEN_RETRY_SECONDS");
+        long retry_seconds = retry_env ? atol(retry_env) : 0;
+
+        if (retry_seconds <= 0)
+                retry_seconds = NTB_NETWORK_LISTEN_RETRY_SECONDS;
+
+        if (ntb_network_add_listen_port(nw, port, &local_error))
+                return true;
+
+        /* Another program has the port: listen anyway, on a port the
+         * system picks, rather than not run at all */
+        ntb_free(nw->listen_fallback_note);
+        nw->listen_fallback_note = ntb_strdup(local_error->message);
+        ntb_error_free(local_error);
+
+        if (!ntb_network_add_listen_port(nw, "0", error))
+                return false;
+
+        ntb_free(nw->preferred_listen_port);
+        nw->preferred_listen_port = ntb_strdup(port);
+        nw->listen_retry_interval_us = retry_seconds * UINT64_C(1000000);
+        nw->listen_retry_us = ntb_main_context_get_monotonic_clock(NULL) +
+                nw->listen_retry_interval_us;
+
+        return true;
+}
+
+int
+ntb_network_listen_port(struct ntb_network *nw)
+{
+        struct ntb_network_listen_socket *listen_socket;
+
+        if (ntb_list_empty(&nw->listen_sockets))
+                return 0;
+
+        listen_socket = ntb_container_of(nw->listen_sockets.next,
+                                         struct ntb_network_listen_socket,
+                                         link);
+        return listen_socket->address.port;
 }
 
 bool
@@ -2063,6 +2221,8 @@ ntb_network_free(struct ntb_network *nw)
                 save_addr_list_cb(NULL, nw);
 
         ntb_main_context_remove_source(nw->gc_source);
+        ntb_free(nw->preferred_listen_port);
+        ntb_free(nw->listen_fallback_note);
 
         free_peers(nw);
         free_addrs(nw);

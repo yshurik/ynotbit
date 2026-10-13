@@ -110,6 +110,13 @@ ntb_win32_bind(int sock, const struct sockaddr *address, int length)
 }
 
 int
+ntb_win32_getsockname(int sock, struct sockaddr *address, int *length)
+{
+        return getsockname((SOCKET) sock, address, length) == SOCKET_ERROR ?
+                fail() : 0;
+}
+
+int
 ntb_win32_listen(int sock, int backlog)
 {
         return listen((SOCKET) sock, backlog) == SOCKET_ERROR ? fail() : 0;

@@ -41,6 +41,7 @@ class Session : public QObject {
     bool busy_ = false;
     bool offline_ = false;
     QString nodeError_; // why the node last stopped, shown in status()
+    quint16 listenPort_ = 8444; // the node's actual listen port, from status.json
     mutable QJsonObject lastNodeStatus_; // last status.json read, see status()
     int retentionMB_ = 2048, retentionDays_ = 90;
     QTimer restartSoon_;   // see scheduleRestart()

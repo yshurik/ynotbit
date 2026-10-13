@@ -1724,6 +1724,10 @@ Date: %1
         <source>Node stopped: %1 · outgoing objects stay queued</source>
         <translation>节点已停止：%1 · 外发对象保留在队列中</translation>
     </message>
+    <message>
+        <source>port %1 is taken, listening on %2</source>
+        <translation>端口 %1 已被占用，正在监听 %2</translation>
+    </message>
 </context>
 <context>
     <name>bm::SettingsPane</name>

@@ -447,41 +447,12 @@ add_listen_address_to_network(struct ntb_network *nw,
                               struct address *address,
                               struct ntb_error **error)
 {
-        struct ntb_error *local_error = NULL;
-        char *full_address;
-        bool res;
-
         if (address->address)
                 return ntb_network_add_listen_address(nw,
                                                       address->address,
                                                       error);
 
-        /* If just the port is specified then we'll first try
-         * listening on an IPv6 address. Listening on IPv6 should
-         * accept IPv4 connections as well. However some servers have
-         * IPv6 disabled so if it doesn't work we'll fall back to
-         * IPv4 */
-        full_address = ntb_strconcat("[::]:", address->port, NULL);
-        res = ntb_network_add_listen_address(nw, full_address, &local_error);
-        ntb_free(full_address);
-
-        if (res)
-                return true;
-
-        if (local_error->domain == &ntb_file_error &&
-            (local_error->code == NTB_FILE_ERROR_PFNOSUPPORT ||
-             local_error->code == NTB_FILE_ERROR_AFNOSUPPORT)) {
-                ntb_error_free(local_error);
-        } else {
-                ntb_error_propagate(error, local_error);
-                return false;
-        }
-
-        full_address = ntb_strconcat("0.0.0.0:", address->port, NULL);
-        res = ntb_network_add_listen_address(nw, full_address, error);
-        ntb_free(full_address);
-
-        return res;
+        return ntb_network_listen_on_port(nw, address->port, error);
 }
 
 static bool

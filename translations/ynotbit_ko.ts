@@ -1724,6 +1724,10 @@ Date: %1
         <source>Node stopped: %1 · outgoing objects stay queued</source>
         <translation>노드 중지됨: %1 · 발신 객체는 대기열에 남습니다</translation>
     </message>
+    <message>
+        <source>port %1 is taken, listening on %2</source>
+        <translation>포트 %1 사용 중, %2에서 수신 대기</translation>
+    </message>
 </context>
 <context>
     <name>bm::SettingsPane</name>

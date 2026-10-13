@@ -1724,6 +1724,10 @@ Date: %1
         <source>Node stopped: %1 · outgoing objects stay queued</source>
         <translation>ノード停止中: %1 · 送信オブジェクトはキューに残ります</translation>
     </message>
+    <message>
+        <source>port %1 is taken, listening on %2</source>
+        <translation>ポート %1 は使用中、%2 で待ち受け中</translation>
+    </message>
 </context>
 <context>
     <name>bm::SettingsPane</name>
