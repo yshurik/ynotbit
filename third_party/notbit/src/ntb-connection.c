@@ -59,6 +59,7 @@
 #include "ntb-file-error.h"
 #include "ntb-socket.h"
 #include "ntb-proxy.h"
+#include "ntb-tls.h"
 
 #define NTB_CONNECTION_MAX_MESSAGE_SIZE (128 * 1024 * 1024)
 
@@ -91,6 +92,15 @@ struct ntb_connection {
 
         struct ntb_buffer in_buf;
         struct ntb_buffer out_buf;
+
+        /* Once TLS starts, in_buf and out_buf carry the plaintext
+         * commands and tls_in and tls_out the bytes on the wire. */
+        struct ntb_tls *tls;
+        struct ntb_buffer tls_in;
+        struct ntb_buffer tls_out;
+        /* Set by ntb_connection_start_tls while a command is being
+         * handled: the bytes after that command are already TLS */
+        bool tls_starting;
 
         struct ntb_signal event_signal;
 
@@ -214,8 +224,17 @@ get_hex_string(const uint8_t *data,
 static bool
 connection_is_ready_to_write(struct ntb_connection *conn)
 {
-        return (conn->out_buf.length > 0 ||
-                !ntb_list_empty(&conn->ready_objects));
+        bool has_commands = (conn->out_buf.length > 0 ||
+                             !ntb_list_empty(&conn->ready_objects));
+
+        /* Commands wait for the handshake; until then only the
+         * handshake itself goes out */
+        if (conn->tls)
+                return (conn->tls_out.length > 0 ||
+                        (has_commands &&
+                         ntb_tls_handshake_done(conn->tls)));
+
+        return has_commands;
 }
 
 static void
@@ -564,6 +583,11 @@ process_proxy(struct ntb_connection *conn)
         }
 }
 
+static bool
+tls_receive(struct ntb_connection *conn,
+            const uint8_t *data,
+            size_t length);
+
 static void
 process_commands(struct ntb_connection *conn)
 {
@@ -598,24 +622,104 @@ process_commands(struct ntb_connection *conn)
 
                 data += command_length + NTB_PROTO_HEADER_SIZE;
                 length -= command_length + NTB_PROTO_HEADER_SIZE;
+
+                if (conn->tls_starting) {
+                        /* The rest is the start of the TLS stream */
+                        conn->tls_starting = false;
+                        ntb_buffer_set_length(&conn->tls_in, 0);
+                        ntb_buffer_append(&conn->tls_in, data, length);
+                        conn->in_buf.length = 0;
+                        tls_receive(conn,
+                                    conn->tls_in.data,
+                                    conn->tls_in.length);
+                        return;
+                }
         }
 
         memmove(conn->in_buf.data, data, length);
         conn->in_buf.length = length;
 }
 
+/* Moves whatever the TLS session has to send into tls_out, encrypting
+ * the queued commands once the handshake is done */
+static bool
+tls_flush(struct ntb_connection *conn)
+{
+        if (!ntb_tls_send(conn->tls, &conn->out_buf, &conn->tls_out)) {
+                ntb_log("TLS failed for %s", conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        update_poll_flags(conn);
+        return true;
+}
+
+static bool
+tls_receive(struct ntb_connection *conn,
+            const uint8_t *data,
+            size_t length)
+{
+        bool was_done = ntb_tls_handshake_done(conn->tls);
+
+        if (!ntb_tls_receive(conn->tls, data, length, &conn->in_buf)) {
+                ntb_log("TLS handshake or record failed for %s",
+                        conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        if (!was_done && ntb_tls_handshake_done(conn->tls))
+                ntb_log("TLS established with %s (%s)",
+                        conn->remote_address_string,
+                        ntb_tls_description(conn->tls));
+
+        if (!tls_flush(conn))
+                return false;
+
+        process_commands(conn);
+        return true;
+}
+
+bool
+ntb_connection_start_tls(struct ntb_connection *conn,
+                         bool server)
+{
+        conn->tls = ntb_tls_new(server);
+        if (conn->tls == NULL) {
+                ntb_log("Could not start TLS for %s",
+                        conn->remote_address_string);
+                set_error_state(conn);
+                return false;
+        }
+
+        /* What is queued so far (our verack) still goes out in the
+         * clear, ahead of the handshake */
+        ntb_buffer_set_length(&conn->tls_out, 0);
+        ntb_buffer_append(&conn->tls_out,
+                          conn->out_buf.data,
+                          conn->out_buf.length);
+        conn->out_buf.length = 0;
+        conn->tls_starting = true;
+
+        return tls_flush(conn);
+}
+
 static void
 handle_read(struct ntb_connection *conn)
 {
+        struct ntb_buffer *buf = conn->tls ? &conn->tls_in : &conn->in_buf;
         int got;
 
-        ntb_buffer_ensure_size(&conn->in_buf,
-                               conn->in_buf.length + 1024);
+        if (conn->tls)
+                ntb_buffer_set_length(buf, 0);
+
+        ntb_buffer_ensure_size(buf, buf->length + 16384);
 
         do {
                 got = read(conn->sock,
-                           conn->in_buf.data + conn->in_buf.length,
-                           conn->in_buf.size - conn->in_buf.length);
+                           buf->data + buf->length,
+                           buf->size - buf->length);
         } while (got == -1 && errno == EINTR);
 
         if (got == 0) {
@@ -632,9 +736,11 @@ handle_read(struct ntb_connection *conn)
         } else {
                 conn->last_read_time =
                         ntb_main_context_get_monotonic_clock(NULL);
-                conn->in_buf.length += got;
+                buf->length += got;
 
-                if (process_proxy(conn)) {
+                if (conn->tls)
+                        tls_receive(conn, buf->data, buf->length);
+                else if (process_proxy(conn)) {
                         if (conn->proxy == NULL)
                                 process_commands(conn);
                 }
@@ -756,14 +862,23 @@ add_ready_objects(struct ntb_connection *conn)
 static void
 handle_write(struct ntb_connection *conn)
 {
+        struct ntb_buffer *buf = conn->tls ? &conn->tls_out : &conn->out_buf;
         int wrote;
 
-        add_ready_objects(conn);
+        if (conn->tls) {
+                /* Encrypt a little at a time, as the plain path does */
+                if (conn->tls_out.length < 16384) {
+                        if (ntb_tls_handshake_done(conn->tls))
+                                add_ready_objects(conn);
+                        if (!tls_flush(conn))
+                                return;
+                }
+        } else {
+                add_ready_objects(conn);
+        }
 
         do {
-                wrote = write(conn->sock,
-                              conn->out_buf.data,
-                              conn->out_buf.length);
+                wrote = write(conn->sock, buf->data, buf->length);
         } while (wrote == -1 && errno == EINTR);
 
         if (wrote == -1) {
@@ -774,10 +889,8 @@ handle_write(struct ntb_connection *conn)
                         set_error_state(conn);
                 }
         } else {
-                memmove(conn->out_buf.data,
-                        conn->out_buf.data + wrote,
-                        conn->out_buf.length - wrote);
-                conn->out_buf.length -= wrote;
+                memmove(buf->data, buf->data + wrote, buf->length - wrote);
+                buf->length -= wrote;
 
                 conn->last_write_time =
                         ntb_main_context_get_monotonic_clock(NULL);
@@ -858,6 +971,10 @@ ntb_connection_free(struct ntb_connection *conn)
         ntb_free(conn->remote_address_string);
         ntb_buffer_destroy(&conn->in_buf);
         ntb_buffer_destroy(&conn->out_buf);
+        ntb_buffer_destroy(&conn->tls_in);
+        ntb_buffer_destroy(&conn->tls_out);
+        if (conn->tls)
+                ntb_tls_free(conn->tls);
         ntb_close(conn->sock);
 
         if (conn->proxy)
@@ -896,6 +1013,10 @@ ntb_connection_new_for_socket(int sock,
 
         ntb_buffer_init(&conn->in_buf);
         ntb_buffer_init(&conn->out_buf);
+        ntb_buffer_init(&conn->tls_in);
+        ntb_buffer_init(&conn->tls_out);
+        conn->tls = NULL;
+        conn->tls_starting = false;
 
         ntb_list_init(&conn->objects_to_load);
         ntb_list_init(&conn->ready_objects);
@@ -1067,6 +1188,10 @@ ntb_connection_send_version(struct ntb_connection *conn,
                             uint16_t local_port)
 {
         struct ntb_netaddress local_address;
+        uint64_t services = NTB_PROTO_SERVICES;
+
+        if (ntb_tls_available())
+                services |= NTB_PROTO_NODE_SSL;
 
         /* The address part of the local address is ignored by the
          * peers because they can just use the public-facing remote
@@ -1083,18 +1208,18 @@ ntb_connection_send_version(struct ntb_connection *conn,
                               NTB_PROTO_VERSION,
 
                               NTB_PROTO_ARGUMENT_64,
-                              NTB_PROTO_SERVICES,
+                              services,
 
                               NTB_PROTO_ARGUMENT_64,
                               ntb_main_context_get_wall_clock(NULL),
 
                               NTB_PROTO_ARGUMENT_64,
-                              NTB_PROTO_SERVICES,
+                              services,
                               NTB_PROTO_ARGUMENT_NETADDRESS,
                               &conn->remote_address,
 
                               NTB_PROTO_ARGUMENT_64,
-                              NTB_PROTO_SERVICES,
+                              services,
                               NTB_PROTO_ARGUMENT_NETADDRESS,
                               &local_address,
 

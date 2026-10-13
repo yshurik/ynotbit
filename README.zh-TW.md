@@ -102,6 +102,8 @@ sudo xattr -cr /Applications/ynotbit.app
 - 獨立行程中的 notbit 中繼可在 Linux、macOS 和 Windows 上執行，不會拿到任何保險庫或信箱金鑰。
   它向對等節點自稱 `/ynotbit:<版本>/`。它以有上限的本機佇列接收網路物件，驗證工作量證明，並記錄
   接受、拒絕以及提供給已連線對等節點的情況。接收狀態在重新啟動後依然保留。
+  與支援的對等節點（PyBitmessage、MiNode）握手後，連線會像 PyBitmessage 一樣切換到 TLS：
+  匿名 ECDH 能對被動竊聽者隱藏流量，但不驗證對等節點的身分。
 - 網路物件存放在一個 SQLite 檔案 `objects.sqlite` 中：中繼負責寫入並依保留上限清理，應用程式負責
   讀取，因此新物件會在下一次重新整理時進入信箱。
 - 桌面介面使用 Qt Widgets 撰寫，不使用 QML 或 Qt Quick。自行繪製的清單最多保留三頁、每頁 100 則

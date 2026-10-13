@@ -122,6 +122,9 @@ struct ntb_proto_pubkey {
 
 #define NTB_PROTO_NETWORK_NODE UINT64_C(1)
 #define NTB_PROTO_SERVICES (NTB_PROTO_NETWORK_NODE)
+/* PyBitmessage's TLS after verack, see ntb-tls.h. Added to the
+ * advertised services only when TLS is available. */
+#define NTB_PROTO_NODE_SSL UINT64_C(2)
 
 /* The hashes in Bitmessage are an SHA512 digest but only the first 32
  * bytes are used */

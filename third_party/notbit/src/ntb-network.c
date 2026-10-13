@@ -64,6 +64,7 @@
 #include "ntb-socket.h"
 #include "ntb-dns-bootstrap.h"
 #include "ntb-peer-policy.h"
+#include "ntb-tls.h"
 
 struct ntb_error_domain
 ntb_network_error;
@@ -206,6 +207,7 @@ struct ntb_network_peer {
 
         enum ntb_network_peer_state state;
         bool received_version;
+        uint64_t services; /* from its version: NTB_PROTO_NODE_SSL */
         uint64_t setup_started_us;
         bool neutral_close;
         enum ntb_network_direction direction;
@@ -531,6 +533,7 @@ add_peer(struct ntb_network *nw,
 
         peer->state = NTB_NETWORK_PEER_STATE_AWAITING_VERACK_OUT;
         peer->received_version = false;
+        peer->services = 0;
         peer->setup_started_us = ntb_main_context_get_monotonic_clock(NULL);
         peer->neutral_close = false;
 
@@ -883,6 +886,12 @@ connection_established(struct ntb_network *nw,
                 return false;
         }
         peer->state = NTB_NETWORK_PEER_STATE_CONNECTED;
+        /* PyBitmessage's rule: TLS when the other side offers it. The
+         * side that accepted the connection is the TLS server. */
+        if ((peer->services & NTB_PROTO_NODE_SSL) && ntb_tls_available() &&
+            !ntb_connection_start_tls(peer->connection,
+                                      peer->direction == NTB_NETWORK_INCOMING))
+                return false;
         if (peer->addr && peer->direction == NTB_NETWORK_OUTGOING) {
                 peer->addr->last_success_wall = ntb_main_context_get_wall_clock(NULL);
                 peer->addr->consecutive_failures = 0;
@@ -968,6 +977,7 @@ handle_version(struct ntb_network *nw,
         }
 
         peer->received_version = true;
+        peer->services = event->services;
         peer->connected_us = ntb_main_context_get_monotonic_clock(NULL);
         ntb_connection_send_verack(peer->connection);
 

@@ -124,6 +124,9 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
   mailbox keys. It identifies itself to peers as `/ynotbit:<version>/`. Its bounded local
   queue accepts network objects, validates proof of work, and records acceptance,
   rejection, and offers to connected peers. Receipt state survives restarts.
+  With peers that offer it (PyBitmessage, MiNode), the link switches to TLS after the
+  handshake, as PyBitmessage does: anonymous ECDH, which hides the traffic from a passive
+  observer but does not authenticate the peer.
 - Network objects live in one SQLite file, `objects.sqlite`, which the relay writes
   and prunes to the retention limits and the app reads, so new objects reach the
   mailbox on the next refresh.

@@ -137,6 +137,14 @@ ntb_connection_send_verack(struct ntb_connection *conn);
 void
 ntb_connection_send_getaddr(struct ntb_connection *conn);
 
+/* Switches to TLS after the verack exchange: everything queued so far
+ * goes out in the clear, everything after through the TLS session. Call
+ * it from the handler of the command that completed the exchange. False
+ * when it failed; the connection has then reported an error and is gone. */
+bool
+ntb_connection_start_tls(struct ntb_connection *conn,
+                         bool server);
+
 void
 ntb_connection_send_version(struct ntb_connection *conn,
                             uint64_t nonce,
