@@ -749,7 +749,6 @@ int main(int argc, char **argv) {
                         field->setText(bm::Protocol::identity("new chat under work").address);
                     expect(dialog.identity() == work.address, "and the chat starts under it");
                 }
-                arrive([&](bm::Mailbox &m) { m.pruneChats(expiry + 86400); });
                 answer = QMessageBox::Yes;
                 session.deleteIdentity(work.address);
                 QTest::qWait(30);
@@ -759,7 +758,6 @@ int main(int argc, char **argv) {
             answering.stop();
             QDesktopServices::unsetUrlHandler("https");
             QDesktopServices::unsetUrlHandler("file");
-            arrive([&](bm::Mailbox &m) { m.pruneChats(expiry + 86400); });
         }
         const auto chatFaultText = chatFaults.join("; ").toStdString();
         require(chatFaults.isEmpty(), chatFaultText.c_str());

@@ -95,14 +95,56 @@ int main(int argc, char **argv) {
         mailbox.storeChat("hash-d", "BM-friend", "BM-local", 1, "from a friend", expiry, false);
         require(mailbox.chatSummaries().first().peer == "BM-friend" && mailbox.chatUnread() == 2,
                 "the conversation with the newest message comes first");
+        // A chat lives on the network until its expiry, and in its owner's mailbox until its
+        // owner deletes it: the expiry ends a chat's delivery, never the chat.
+        const auto brief = QDateTime::currentSecsSinceEpoch() + 2;
+        const auto briefId = mailbox.queueChat("BM-local", "BM-brief", "sent shortly", brief);
+        mailbox.storeChat("hash-e", "BM-brief", "BM-local", 1, "heard shortly", brief, false);
+        QThread::msleep(2200);
+        require(QDateTime::currentSecsSinceEpoch() >= brief, "the clock passed the chats' expiry");
+        require(mailbox.chatMessages("BM-local", "BM-brief").size() == 2,
+                "chats past their expiry stay in their thread");
+        require(thread("BM-brief").body == "heard shortly" && thread("BM-brief").unread == 1 &&
+                    mailbox.chatUnread() == 3,
+                "chats past their expiry stay in the list, and unread ones stay unread");
+        NetworkJob expiredJob, liveJob;
+        expiredJob.owner = briefId;
+        liveJob.owner = id;
+        for (auto *job : {&expiredJob, &liveJob}) {
+            job->kind = "message";
+            job->address = "BM-peer";
+            job->payload = "object";
+            job->expires = brief;
+            mailbox.addJob(*job);
+        }
+        mailbox.endChatDeliveries(QDateTime::currentSecsSinceEpoch());
+        require(mailbox.chatMessages("BM-local", "BM-brief").size() == 2 &&
+                    mailbox.chatMessages("BM-local", "BM-peer").size() == 5,
+                "ending the delivery of expired chats keeps every chat");
+        require(mailbox.jobs().size() == 1 && mailbox.jobs().first().owner == id,
+                "it ends the network work of the expired chats, and of no other");
+        // A finished delivery is not work to plan or to scan for: the outbox lists the
+        // deliveries still going, however long the chats go on.
+        const auto going = mailbox.outbox().size();
+        mailbox.setDelivery(briefId, "expired", "Chat expired after 24 hours.");
+        require(mailbox.outbox().size() == going - 1 &&
+                    mailbox.chatMessages("BM-local", "BM-brief").first().state == "expired",
+                "an expired delivery leaves the outbox, and its chat shows it");
+        mailbox.setDelivery(id, "acknowledged", "Recipient acknowledgment received");
+        require(mailbox.outbox().size() == going - 2 &&
+                    mailbox.chatMessages("BM-local", "BM-peer").first().state == "acknowledged",
+                "so does an acknowledged one");
+        // A backup is the mailbox, chats and the deliveries still going with it.
         const auto backup = temp.filePath("backup");
         mailbox.backup(backup, vault.mailboxKey(key));
         Mailbox restored;
         restored.open(backup, vault.mailboxKey(key));
-        require(restored.chatMessages("BM-local", "BM-peer").isEmpty() &&
-                    restored.outbox().isEmpty(), "chat history excluded from durable backup");
-        // The restored mailbox has lost its counters, and a peer still holds the
-        // numbers already used: what it sends next must not repeat one.
+        require(restored.chatMessages("BM-local", "BM-peer").size() == 5 &&
+                    restored.chatMessages("BM-local", "BM-brief").size() == 2 &&
+                    restored.chatSummaries().size() == 4 && restored.outbox().size() == going - 2,
+                "a backup holds the chats, the expired ones too, and their deliveries going");
+        // What a restored mailbox sends next must not repeat a sequence number a peer
+        // already holds.
         qint64 highest = 0;
         for (const auto &message : mailbox.chatMessages("BM-local", "BM-peer"))
             if (message.outgoing)
@@ -110,12 +152,9 @@ int main(int argc, char **argv) {
         QThread::msleep(5);
         restored.queueChat("BM-local", "BM-peer", "after the restore", expiry);
         const auto afterRestore = restored.chatMessages("BM-local", "BM-peer");
-        require(afterRestore.size() == 1 && afterRestore.first().seqno > highest,
+        require(afterRestore.size() == 6 && afterRestore.last().seqno > highest,
                 "a restored mailbox does not repeat the sequence numbers it sent before");
         restored.close();
-        mailbox.pruneChats(expiry);
-        require(mailbox.chatMessages("BM-local", "BM-peer").isEmpty() && mailbox.outbox().isEmpty(),
-                "expired chats and delivery records deleted");
         std::cout << "PASS chat format, storage and expiration\n";
         return 0;
     } catch (const std::exception &e) {

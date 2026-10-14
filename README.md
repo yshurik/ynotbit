@@ -60,8 +60,9 @@ BM-address, and pick the identity to chat as when you have several. Messages are
 Markdown; Enter sends and Shift+Enter starts a new line. A chat keeps its identity, so
 the same person under two identities is two chats. The tick under your message shows how
 far it has got: waiting, sent to the network, delivered (the recipient's acknowledgment,
-not a read receipt). A chat message is deleted after 24 hours; chats stay out of the
-Inbox and of backups.
+not a read receipt). A chat message lives on the network for 24 hours, and one not
+delivered by then shows as expired; chats stay in your mailbox and its backups, out of
+the Inbox.
 
 To follow a sender's broadcasts, open **Subscriptions** and choose **+ Subscribe…**
 (or **Identity → Subscribe to broadcasts…**); their posts appear as a feed. New
@@ -117,8 +118,9 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
   messages in bubbles with their time and tick. A chat is between one of your identities
   and one peer and keeps that identity. Enter sends, Shift+Enter starts a line; links ask
   first and open only `https`. A chat message is an ordinary Bitmessage message with an
-  empty subject and a small JSON body, kept 24 hours; it uses a letter's proof of work,
-  publishing and acknowledgment, stays out of the Inbox and is left out of backups.
+  empty subject and a small JSON body, which the network keeps 24 hours; it uses a
+  letter's proof of work, publishing and acknowledgment, stays out of the Inbox, and
+  stays in your mailbox and its backups after the network has dropped it.
 - Update notices: signed broadcasts from ynotbit's release address
   (`BM-2666hf5eAbjCJMaPwC7eG3Um55QJGM`) show a banner when a newer version is out,
   without subscribing; **Settings → Notifications** turns them off.

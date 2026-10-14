@@ -169,7 +169,9 @@ class Mailbox {
     int chatUnread() const;
     // Marks the peer's messages to this identity as looked at; how many were not.
     int markChatRead(const QString &local, const QString &peer);
-    void pruneChats(qint64 time);
+    // The network work of the chats past their expiry ends. The chats stay in the mailbox: an
+    // expiry belongs to the network object, and is no reason to delete what its owner keeps.
+    void endChatDeliveries(qint64 time);
     void advance(qint64 checkpoint);
     qint64 checkpoint() const;
     QVector<Message> messages() const;

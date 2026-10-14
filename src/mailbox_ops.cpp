@@ -163,9 +163,13 @@ QVector<OutboxItem> Mailbox::outbox() const {
     Statement letters(db_, "SELECT id,kind,state,error,object_hash,ack_token,ack_object,expires,next_attempt,attempts "
                            "FROM outbox ORDER BY rowid");
     while (letters.row()) result << readOutgoing(letters, false, *this);
+    // Chats stay in the mailbox for good, so those whose delivery is over (the terminal states
+    // of delivery.cpp) are left out: every tick and every scanned pubkey walks this list.
     Statement chats(db_, "SELECT o.id,'direct',o.state,o.error,o.object_hash,o.ack_token,o.ack_object,"
                          "o.expires,o.next_attempt,o.attempts,m.local_address,m.peer_address,m.seqno,"
-                         "m.body,m.received FROM chat_outbox o JOIN chat_messages m ON m.id=o.id ORDER BY m.rowid");
+                         "m.body,m.received FROM chat_outbox o JOIN chat_messages m ON m.id=o.id "
+                         "WHERE o.state NOT IN ('acknowledged','published','cancelled','failed','expired') "
+                         "ORDER BY m.rowid");
     while (chats.row()) result << readOutgoing(chats, true, *this);
     return result;
 }

@@ -71,9 +71,9 @@ void Mailbox::storeChat(const QString &id, const QString &sender, const QString 
 QVector<ChatMessage> Mailbox::chatMessages(const QString &local, const QString &peer) const {
     QVector<ChatMessage> result;
     Statement s(db_, "SELECT id,local_address,peer_address,direction,seqno,body,received,expires,state "
-                    "FROM chat_messages WHERE local_address=? AND peer_address=? AND expires>? "
+                    "FROM chat_messages WHERE local_address=? AND peer_address=? "
                     "ORDER BY received,rowid");
-    s.text(1, local); s.text(2, peer); s.number(3, QDateTime::currentSecsSinceEpoch());
+    s.text(1, local); s.text(2, peer);
     while (s.row()) result << ChatMessage{s.text(0),s.text(1),s.text(2),s.text(5),s.text(8),
                                            s.number(4),s.number(6),s.number(7),s.text(3)=="out"};
     return result;
@@ -82,23 +82,19 @@ QVector<ChatSummary> Mailbox::chatSummaries() const {
     QVector<ChatSummary> result;
     Statement s(db_, "SELECT m.local_address,m.peer_address,m.body,m.state,m.received,m.direction,"
                      "(SELECT COUNT(*) FROM chat_messages u WHERE u.local_address=m.local_address "
-                     "AND u.peer_address=m.peer_address AND u.direction='in' AND u.unread=1 "
-                     "AND u.expires>?1) "
-                     "FROM chat_messages m WHERE m.expires>?1 AND m.rowid=(SELECT l.rowid FROM "
+                     "AND u.peer_address=m.peer_address AND u.direction='in' AND u.unread=1) "
+                     "FROM chat_messages m WHERE m.rowid=(SELECT l.rowid FROM "
                      "chat_messages l WHERE l.local_address=m.local_address AND "
-                     "l.peer_address=m.peer_address AND l.expires>?1 "
+                     "l.peer_address=m.peer_address "
                      "ORDER BY l.received DESC,l.rowid DESC LIMIT 1) "
                      "ORDER BY m.received DESC,m.rowid DESC");
-    s.number(1, QDateTime::currentSecsSinceEpoch());
     while (s.row())
         result << ChatSummary{s.text(0),   s.text(1),          s.text(2),       s.text(3),
                               s.number(4), s.text(5) == "out", int(s.number(6))};
     return result;
 }
 int Mailbox::chatUnread() const {
-    Statement s(db_, "SELECT COUNT(*) FROM chat_messages WHERE direction='in' AND unread=1 "
-                     "AND expires>?");
-    s.number(1, QDateTime::currentSecsSinceEpoch());
+    Statement s(db_, "SELECT COUNT(*) FROM chat_messages WHERE direction='in' AND unread=1");
     return s.row() ? int(s.number(0)) : 0;
 }
 int Mailbox::markChatRead(const QString &local, const QString &peer) {
@@ -109,12 +105,8 @@ int Mailbox::markChatRead(const QString &local, const QString &peer) {
     s.row();
     return sqlite3_changes(db_);
 }
-void Mailbox::pruneChats(qint64 time) {
-    Transaction t(db_);
+void Mailbox::endChatDeliveries(qint64 time) {
     Statement jobs(db_, "DELETE FROM network_jobs WHERE owner IN (SELECT id FROM chat_messages WHERE expires<=?)");
     jobs.number(1,time); jobs.row();
-    Statement messages(db_, "DELETE FROM chat_messages WHERE expires<=?");
-    messages.number(1,time); messages.row();
-    t.commit();
 }
 }

@@ -267,7 +267,7 @@ void Delivery::tick(Mailbox &m, const Vault &v, bool online) {
     }
     plan(m, v, now());
     processJobs(m, online);
-    m.pruneChats(now());
+    m.endChatDeliveries(now());
 }
 namespace {
 QString fingerprint(QStringList entries) {

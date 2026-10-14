@@ -549,15 +549,6 @@ void Mailbox::backup(const QString &path, const Secret &key) {
         QFile::remove(path);
         fail("Mailbox backup failed");
     }
-    try {
-        // Backups can outlive the 24-hour chat window. Keep only durable mail.
-        dest.sql("DELETE FROM network_jobs WHERE owner LIKE 'chat-%';"
-                 "DELETE FROM chat_messages;DELETE FROM chat_sequences;VACUUM");
-    } catch (...) {
-        dest.close();
-        QFile::remove(path);
-        throw;
-    }
     dest.close();
 }
 } // namespace bm
