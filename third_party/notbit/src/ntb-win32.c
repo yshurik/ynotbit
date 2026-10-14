@@ -143,9 +143,11 @@ ntb_win32_setsockopt(int sock, int level, int name,
 {
         /* SO_REUSEADDR on Windows lets another process steal a bound port,
          * which is not what POSIX code means by it; Windows already allows
-         * an immediate rebind after close, so skip it. */
+         * an immediate rebind after close. What POSIX code means is "this
+         * port is mine": without SO_EXCLUSIVEADDRUSE, Windows may let the
+         * bind through while another program holds the port. */
         if (level == SOL_SOCKET && name == SO_REUSEADDR)
-                return 0;
+                name = SO_EXCLUSIVEADDRUSE;
 
         return setsockopt((SOCKET) sock, level, name,
                           (const char *) value, length) == SOCKET_ERROR ?

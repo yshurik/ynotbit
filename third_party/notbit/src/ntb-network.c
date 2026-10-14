@@ -1902,7 +1902,7 @@ ntb_network_add_listen_address(struct ntb_network *nw,
         struct ntb_network_listen_socket *listen_socket;
         struct ntb_netaddress netaddress;
         struct ntb_netaddress_native native_address;
-        const int true_value = true;
+        const int true_value = true, false_value = false;
         int sock;
 
         if (!ntb_netaddress_from_string(&netaddress,
@@ -1930,6 +1930,13 @@ ntb_network_add_listen_address(struct ntb_network *nw,
         setsockopt(sock,
                    SOL_SOCKET, SO_REUSEADDR,
                    &true_value, sizeof true_value);
+
+        /* "[::]" takes IPv4 connections too only where IPV6_V6ONLY is
+         * off, and Windows (and some systems' settings) turn it on */
+        if (native_address.sockaddr.sa_family == AF_INET6)
+                setsockopt(sock,
+                           IPPROTO_IPV6, IPV6_V6ONLY,
+                           &false_value, sizeof false_value);
 
         if (!ntb_socket_set_nonblock(sock, error))
                 goto error;
