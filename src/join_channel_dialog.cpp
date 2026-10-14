@@ -52,7 +52,6 @@ JoinChannelDialog::JoinChannelDialog(bool dark, QWidget *parent) : QDialog(paren
     publicName_ = new QLineEdit;
     publicName_->setObjectName("publicChannelName");
     publicName_->setPlaceholderText(tr("#general"));
-    publicName_->setMinimumWidth(QFontMetrics(addressFont()).horizontalAdvance(QString(38, '0')));
     publicColumn->addWidget(publicName_);
     publicColumn->addWidget(note(tr("The name is the shared phrase: anyone who knows the name "
                                     "can read and post."),
@@ -84,6 +83,11 @@ JoinChannelDialog::JoinChannelDialog(bool dark, QWidget *parent) : QDialog(paren
     secretColumn->addWidget(note(tr("Only people with the exact phrase can read and post. The "
                                     "name is yours alone and never sent."),
                                  "secretChannelNote"));
+    // The dialog is as wide as the fields showing, so each asks for the same: an address with
+    // room to spare, and the style sheet's 24 px. Public or secret, the dialog keeps its width.
+    const int fieldWidth = QFontMetrics(addressFont()).horizontalAdvance(QString(46, '0')) + 24;
+    for (auto field : {publicName_, secretName_, phrase_})
+        field->setMinimumWidth(fieldWidth);
 
     auto kind = new QVBoxLayout;
     kind->addWidget(public_);

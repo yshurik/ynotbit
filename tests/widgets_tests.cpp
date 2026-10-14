@@ -2918,10 +2918,30 @@ int main(int argc, char **argv) {
             onDialog((bm::JoinChannelDialog *)nullptr, [&](bm::JoinChannelDialog *d) {
                 auto join = d->findChild<QPushButton *>("joinChannelAcceptButton");
                 require(!join->isEnabled(), "Join waits for a name");
+                // The dialog is as wide as the fields showing, so each kind of chan has its
+                // fields as wide as an address (and the style sheet's 24 px) and the dialog
+                // keeps its width from one kind to the other.
+                const int addressWidth =
+                    QFontMetrics(bm::addressFont()).horizontalAdvance(imported) + 24;
+                const auto showAnAddress = [&](std::initializer_list<const char *> names) {
+                    for (auto name : names)
+                        if (d->findChild<QLineEdit *>(name)->width() < addressWidth)
+                            return false;
+                    return true;
+                };
+                const int publicWidth = d->width();
+                require(showAnAddress({"publicChannelName", "channelAddressField"}),
+                        "a public chan's fields are as wide as an address");
                 d->findChild<QLineEdit *>("publicChannelName")->setText("widgets menu chan");
                 require(d->name() == "#widgets menu chan" && d->phrase() == "widgets menu chan",
                         "a public chan's phrase is its name, listed with a '#'");
                 d->findChild<QRadioButton *>("secretChannelButton")->setChecked(true);
+                QCoreApplication::processEvents(); // the fixed-size layout resizes the dialog
+                require(d->width() >= publicWidth &&
+                            showAnAddress({"secretChannelName", "secretChannelPhrase",
+                                           "channelAddressField"}),
+                        "a secret chan's dialog is no narrower than a public one's, its fields "
+                        "as wide as an address");
                 auto phrase = d->findChild<QLineEdit *>("secretChannelPhrase");
                 require(phrase->echoMode() == QLineEdit::Password && !join->isEnabled(),
                         "a secret chan's phrase is typed hidden, and a name is needed");
