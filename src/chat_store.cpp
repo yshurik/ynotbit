@@ -68,14 +68,26 @@ void Mailbox::storeChat(const QString &id, const QString &sender, const QString 
     s.text(4, outgoing ? "out" : "in"); s.number(5, seqno); s.text(6, body);
     s.number(7, time); s.number(8, expires); s.number(9, outgoing ? 0 : 1); s.row();
 }
-QVector<ChatMessage> Mailbox::chatMessages(const QString &local, const QString &peer) const {
+QVector<ChatMessage> Mailbox::chatMessages(const QString &local, const QString &peer, int limit,
+                                           bool *more) const {
     QVector<ChatMessage> result;
-    Statement s(db_, "SELECT id,local_address,peer_address,direction,seqno,body,received,expires,state "
-                    "FROM chat_messages WHERE local_address=? AND peer_address=? "
-                    "ORDER BY received,rowid");
+    // A window is the newest messages, read newest first off the conversation's index, one
+    // more than asked for to know whether older ones are left, and turned around.
+    Statement s(db_, limit > 0 ? "SELECT id,local_address,peer_address,direction,seqno,body,received,expires,state "
+                                 "FROM chat_messages WHERE local_address=? AND peer_address=? "
+                                 "ORDER BY received DESC,rowid DESC LIMIT ?"
+                               : "SELECT id,local_address,peer_address,direction,seqno,body,received,expires,state "
+                                 "FROM chat_messages WHERE local_address=? AND peer_address=? "
+                                 "ORDER BY received,rowid");
     s.text(1, local); s.text(2, peer);
+    if (limit > 0) s.number(3, qint64(limit) + 1);
     while (s.row()) result << ChatMessage{s.text(0),s.text(1),s.text(2),s.text(5),s.text(8),
                                            s.number(4),s.number(6),s.number(7),s.text(3)=="out"};
+    if (more) *more = limit > 0 && result.size() > limit;
+    if (limit > 0) {
+        if (result.size() > limit) result.removeLast();
+        std::reverse(result.begin(), result.end());
+    }
     return result;
 }
 QVector<ChatSummary> Mailbox::chatSummaries() const {

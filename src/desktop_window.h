@@ -43,6 +43,8 @@ class DesktopWindow : public QMainWindow {
     QString railShown_; // which chans the rail's chips were made for, and how
     QString activeChannelAddress_, activeBroadcastAddress_;
     QString activeChatKey_;    // the open chat: its identity and its peer (Session::chatKey)
+    QString chatWindowKey_;    // the chat that chatWindow_ is the window of
+    int chatWindow_ = 0;       // how many of its newest messages the open chat shows
     QStringList startedChats_; // chats started here and not yet written in, newest first
     QString listDensity_;
     bool channelRailCollapsed_ = false;
@@ -81,6 +83,8 @@ class DesktopWindow : public QMainWindow {
     void refreshIdentities();
     void refreshContacts();
     void refreshChannels();
+    // The open chat's messages: a window of its newest ones; *older says more are kept.
+    QVariantList chatThread(bool *older);
     void updateRailTexts(); // the rail heading and add button for its page
     void updateChatsIcon(bool force = false); // the Chats button's dot for unread chats
     void setListDensity(QString density);

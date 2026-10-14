@@ -73,6 +73,20 @@ int main(int argc, char **argv) {
             growing = growing && burst[i].seqno > burst[i - 1].seqno;
         require(growing && burst.first().seqno >= burstFrom,
                 "sequence numbers sent in one millisecond still increase");
+        // A long thread is read a window at a time: its newest messages, oldest first, and
+        // whether older ones are left.
+        bool older = false;
+        const auto newest = mailbox.chatMessages("BM-local", "BM-burst", 10, &older);
+        require(newest.size() == 10 && older && newest.first().id == burst[30].id &&
+                    newest.last().id == burst[39].id,
+                "a window is the newest messages of a thread, oldest first, with older ones left");
+        const auto whole = mailbox.chatMessages("BM-local", "BM-burst", 40, &older);
+        require(whole.size() == 40 && !older && whole.first().id == burst.first().id,
+                "a window as long as the thread is all of it, with nothing older");
+        require(mailbox.chatMessages("BM-local", "BM-burst", 100, &older).size() == 40 && !older,
+                "a window longer than the thread is the thread");
+        require(mailbox.chatMessages("BM-local", "BM-nobody", 10, &older).isEmpty() && !older,
+                "a thread with no messages has a window of none, and nothing older");
         // What the peer sent and nobody has looked at is unread; our own never is.
         const auto thread = [&](const QString &peer) {
             for (const auto &summary : mailbox.chatSummaries())

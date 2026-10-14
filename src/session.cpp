@@ -721,11 +721,13 @@ bool Session::sendChat(QString from, QString peer, QString body) {
     });
     return queued;
 }
-QVariantList Session::chatMessages(QString local, QString peer) const {
+QVariantList Session::chatMessages(QString local, QString peer, int limit, bool *more) const {
     QVariantList result;
+    if (more)
+        *more = false;
     if (!mailboxOpen() || local.isEmpty() || peer.isEmpty())
         return result;
-    for (const auto &message : mailbox_.chatMessages(local, peer))
+    for (const auto &message : mailbox_.chatMessages(local, peer, limit, more))
         result << QVariantMap{{"id", message.id}, {"body", message.body},
                               {"outgoing", message.outgoing}, {"seqno", message.seqno},
                               {"received", message.received}, {"expires", message.expires},

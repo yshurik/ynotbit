@@ -180,7 +180,9 @@ class Session : public QObject {
     QHash<QString, QString> names() const;
     static QString errorText(const std::exception &e);
     bool sendChat(QString from, QString peer, QString body);
-    QVariantList chatMessages(QString local, QString peer) const;
+    // A conversation, oldest first; with a limit, only its newest messages (a window of it),
+    // and in *more whether older ones are kept.
+    QVariantList chatMessages(QString local, QString peer, int limit = 0, bool *more = nullptr) const;
     // The chats of this vault's identities, the one with the newest message first. A chat
     // is between one identity and a peer: one peer under two identities is two chats.
     QVariantList chatConversations() const;

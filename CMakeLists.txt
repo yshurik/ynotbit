@@ -223,6 +223,13 @@ qt_add_executable(feed_scroll_bench EXCLUDE_FROM_ALL tools/feed_scroll_bench.cpp
 target_include_directories(feed_scroll_bench PRIVATE third_party/qrcodegen)
 add_coolname(feed_scroll_bench)
 target_link_libraries(feed_scroll_bench PRIVATE bmcore Qt6::Widgets Qt6::Network)
+# How smoothly a long chat opens and scrolls (frame times); built only on request:
+#   cmake --build build --target chat_scroll_bench && build/chat_scroll_bench
+qt_add_executable(chat_scroll_bench EXCLUDE_FROM_ALL tools/chat_scroll_bench.cpp
+ src/chats_pane.cpp src/chats_pane.h src/letter_render.cpp src/letter_render.h
+ src/letter_document.cpp src/quoting.cpp src/appearance.cpp src/appearance.h assets/icons.qrc)
+target_include_directories(chat_scroll_bench PRIVATE src)
+target_link_libraries(chat_scroll_bench PRIVATE Qt6::Widgets)
 foreach(desktop_target ynotbit desktop_tests readme_screenshots feed_scroll_bench)
  target_sources(${desktop_target} PRIVATE src/chats_pane.cpp src/chats_pane.h src/new_chat_dialog.cpp src/new_chat_dialog.h
   src/join_channel_dialog.cpp src/join_channel_dialog.h)

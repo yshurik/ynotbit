@@ -2298,6 +2298,14 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             });
     connect(chats_, &ChatsPane::linkClicked, this,
             [this](const QUrl &url) { openLinkAfterAsking(this, url); });
+    // The reader has scrolled up to the top of what is shown: a page more of older messages.
+    connect(chats_, &ChatsPane::olderRequested, this, [this] {
+        chatWindow_ += kChatPage;
+        bool older = false;
+        const auto thread = chatThread(&older);
+        chats_->setMessages(thread, older);
+        shownChats_ = QVariantList{shownChats_.value(0), thread};
+    });
     welcomeStack_ = new QStackedWidget;
     welcomeStack_->setObjectName("welcomeStack");
     // State 1: vault locked (or none chosen yet). A vault target is shown with an
@@ -2855,7 +2863,7 @@ void DesktopWindow::updateState() {
         const auto peer = Session::chatPeer(activeChatKey_);
         if (isActiveWindow() && !peer.isEmpty())
             session_.markChatRead(local, peer);
-        const auto thread = session_.chatMessages(local, peer);
+        const auto thread = chatThread(nullptr);
         if (QVariantList{session_.chatConversations(), thread} != shownChats_)
             refreshChannels();
     }
@@ -2916,6 +2924,16 @@ void DesktopWindow::updateState() {
                       .arg(session_.objectCount())
                       .arg(session_.cacheBytes() / 1048576.0, 0, 'f', 1) +
                   "\n" + session_.activity());
+}
+// A chat shows a window of its newest messages: kChatWindow, and a page more for each time the
+// reader has scrolled up to the top of what is shown. Another chat starts afresh.
+QVariantList DesktopWindow::chatThread(bool *older) {
+    if (chatWindowKey_ != activeChatKey_) {
+        chatWindowKey_ = activeChatKey_;
+        chatWindow_ = kChatWindow;
+    }
+    return session_.chatMessages(Session::chatLocal(activeChatKey_),
+                                 Session::chatPeer(activeChatKey_), chatWindow_, older);
 }
 void DesktopWindow::refreshChannels() {
     // One shared rail for channels, subscriptions, and chats.
@@ -3143,8 +3161,9 @@ void DesktopWindow::refreshChannels() {
             }
         const auto local = Session::chatLocal(active), peer = Session::chatPeer(active);
         chats_->setConversation(local, localLabel, peer, label, severalIdentities);
-        const auto thread = session_.chatMessages(local, peer);
-        chats_->setMessages(thread);
+        bool older = false;
+        const auto thread = chatThread(&older);
+        chats_->setMessages(thread, older);
         shownChats_ = QVariantList{conversations, thread};
     } else {
         session_.messageModel()->setChannel(active);

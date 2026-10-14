@@ -163,7 +163,10 @@ class Mailbox {
                      const QString &folder, qint64 expires);
     void storeChat(const QString &id, const QString &sender, const QString &recipient,
                    qint64 seqno, const QString &body, qint64 expires, bool outgoing = false);
-    QVector<ChatMessage> chatMessages(const QString &local, const QString &peer) const;
+    // A thread, oldest first. With a limit, only its newest messages (a window of it), and
+    // in *more whether older ones are left.
+    QVector<ChatMessage> chatMessages(const QString &local, const QString &peer, int limit = 0,
+                                      bool *more = nullptr) const;
     // One per conversation of every identity, the one with the newest message first.
     QVector<ChatSummary> chatSummaries() const;
     int chatUnread() const;

@@ -96,10 +96,20 @@ QPixmap tickPixmap(ChatTick tick, const QColor &color, int size, qreal ratio) {
 QString messageTime(qint64 seconds, bool dateAlone = false) {
     const auto when = QDateTime::fromSecsSinceEpoch(seconds);
     const QLocale locale;
+    // The system locale makes a date formatter for every format it is asked for, and a
+    // conversation asks for hundreds: the formats are kept for the locale in use, briefly.
+    static QString kept, time, date, both;
+    static QElapsedTimer age;
+    if (!age.isValid() || age.hasExpired(10000) || kept != locale.name()) {
+        kept = locale.name();
+        time = locale.timeFormat(QLocale::ShortFormat);
+        date = locale.dateFormat(QLocale::ShortFormat);
+        both = locale.dateTimeFormat(QLocale::ShortFormat);
+        age.start();
+    }
     if (when.date() == QDate::currentDate())
-        return locale.toString(when.time(), QLocale::ShortFormat);
-    return dateAlone ? locale.toString(when.date(), QLocale::ShortFormat)
-                     : locale.toString(when, QLocale::ShortFormat);
+        return locale.toString(when.time(), time);
+    return dateAlone ? locale.toString(when.date(), date) : locale.toString(when, both);
 }
 // A message on one line, without its Markdown.
 QString plainLine(const QString &markdown) {
@@ -122,6 +132,64 @@ QPixmap addressPixmap(const QString &address, int size, qreal ratio) {
     pixmap.setDevicePixelRatio(ratio);
     return pixmap;
 }
+// A message's text. QLabel sizes rich text by laying it out again and again (for its hint, its
+// minimum, and its height at a width), several times what one layout takes, and a window of
+// bubbles is that many times over. This label answers its size from one layout of the same
+// text in a QTextDocument; QLabel itself lays the text out only when it is painted.
+class BodyLabel : public QLabel {
+  public:
+    BodyLabel(const QString &markdown, QWidget *parent) : QLabel(parent), markdown_(markdown) {
+        QTextDocument document;
+        document.setMarkdown(markdown_, QTextDocument::MarkdownNoHTML);
+        setText(document.toHtml());
+        setObjectName("chatBody");
+        setTextFormat(Qt::RichText);
+        setWordWrap(true);
+        // A wrapping label asks for a narrow, tall box. A message is as wide as its
+        // text, up to what the bubble allows (560 less its margins).
+        const double ideal = document.idealWidth();
+        ideal_ = qMin(qCeil(ideal) + 2, 536);
+        setMinimumWidth(ideal_);
+        // That layout was of the text on its lines as written: it is the answer at any width
+        // the text fits in (the document's margin, 4 on each side, is not the label's).
+        fits_ = qCeil(ideal) - 8 + 1;
+        flat_ = qCeil(document.size().height()) - 8;
+        setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);
+    }
+    bool hasHeightForWidth() const override {
+        return true;
+    }
+    int heightForWidth(int width) const override {
+        if (width >= fits_)
+            return flat_;
+        if (width != width_) {
+            // As the label's own document: no margin around the text, and the font the HTML
+            // above names (the application's), not the widget's.
+            QTextDocument document;
+            document.setDocumentMargin(0);
+            // And wrapped as QLabel wraps: at word boundaries only, a longer word is not broken.
+            QTextOption option = document.defaultTextOption();
+            option.setWrapMode(QTextOption::WordWrap);
+            document.setDefaultTextOption(option);
+            document.setMarkdown(markdown_, QTextDocument::MarkdownNoHTML);
+            document.setTextWidth(width);
+            width_ = width;
+            height_ = qCeil(document.size().height());
+        }
+        return height_;
+    }
+    QSize sizeHint() const override {
+        return {ideal_, heightForWidth(ideal_)};
+    }
+    QSize minimumSizeHint() const override {
+        return {ideal_, heightForWidth(536)};
+    }
+
+  private:
+    QString markdown_;
+    int ideal_ = 0, fits_ = 0, flat_ = 0;
+    mutable int width_ = -1, height_ = 0;
+};
 } // namespace
 ChatTick chatTickFor(const QString &state) {
     static const QSet<QString> pending = {"queued",          "awaiting_pubkey",
@@ -348,11 +416,14 @@ ChatsPane::ChatsPane(QWidget *parent) : QWidget(parent) {
     // The reader is at the end while the bar is. New messages are laid out later
     // than setMessages() returns, so the bar is followed as its range grows.
     auto bar = scroll_->verticalScrollBar();
-    connect(bar, &QScrollBar::valueChanged, this,
-            [this, bar](int value) { atEnd_ = value >= bar->maximum() - 4; });
+    connect(bar, &QScrollBar::valueChanged, this, [this, bar](int value) {
+        atEnd_ = value >= bar->maximum() - 4;
+        checkOlder();
+    });
     connect(bar, &QScrollBar::rangeChanged, this, [this, bar](int, int maximum) {
         if (atEnd_)
             bar->setValue(maximum);
+        checkOlder();
     });
     auto messageContainer = new QWidget;
     messages_ = new QVBoxLayout(messageContainer);
@@ -493,23 +564,88 @@ bool ChatsPane::eventFilter(QObject *watched, QEvent *event) {
     }
     return QWidget::eventFilter(watched, event);
 }
-void ChatsPane::setMessages(const QVariantList &messages) {
-    const bool sameThread = shownContact_ == contact_ && shownIdentity_ == identity_;
-    // Asked for what it shows, in the same colours: nothing to redraw. A redraw
-    // would drop a selection or the link under the pointer.
-    if (sameThread && shownDark_ == dark_ && messages == shown_)
+// A bubble's tick: how far a message of ours has got, a small picture with its meaning as
+// the tooltip; a message received has none.
+void ChatsPane::setTick(Row &row) {
+    const bool outgoing = row.data.value("outgoing").toBool();
+    const auto tick = outgoing ? chatTickFor(row.data.value("state").toString()) : ChatTick::None;
+    if (tick == ChatTick::None) {
+        delete row.tick;
+        row.tick = nullptr;
         return;
-    shown_ = messages;
-    shownContact_ = contact_;
-    shownIdentity_ = identity_;
-    shownDark_ = dark_;
-    if (!sameThread)
-        atEnd_ = true; // another conversation opens at its newest message
+    }
+    if (!row.tick) {
+        row.tick = new QLabel(row.bubble);
+        row.tick->setObjectName("chatTick");
+        row.footer->addWidget(row.tick);
+        row.tick->show();
+    }
+    row.tick->setProperty("tick", tickName(tick));
+    row.tick->setToolTip(tickText(tick));
+    row.tick->setPixmap(tickPixmap(tick, tickColor(tick, dark_), 14, devicePixelRatioF()));
+}
+ChatsPane::Row ChatsPane::makeRow(const QVariantMap &item) {
+    Row row;
+    row.id = item.value("id").toString();
+    row.data = item;
+    const bool outgoing = item.value("outgoing").toBool();
+    // Made under the thread it goes into: moved there afterwards, every widget of the bubble
+    // would be styled twice.
+    row.widget = new QWidget(scroll_->widget());
+    auto rowLayout = new QHBoxLayout(row.widget);
+    rowLayout->setContentsMargins(0, 0, 0, 0);
+    if (outgoing) rowLayout->addStretch(1);
+    // The bubble's colour and its time's are the pane's style sheet's (applyTheme): a style
+    // sheet of its own on every bubble would be styled again for each of its widgets.
+    auto bubble = new QWidget(row.widget);
+    row.bubble = bubble;
+    bubble->setObjectName(outgoing ? "outgoingChatBubble" : "incomingChatBubble");
+    bubble->setMaximumWidth(560);
+    auto bubbleLayout = new QVBoxLayout(bubble);
+    bubbleLayout->setContentsMargins(12, 8, 12, 8);
+    auto body = new BodyLabel(item.value("body").toString(), bubble);
+    // A stranger's link: the window asks before opening one, as for a letter.
+    connect(body, &QLabel::linkActivated, this,
+            [this](const QString &link) { emit linkClicked(QUrl(link)); });
+    bubbleLayout->addWidget(body);
+    // Under the text, at the right: its time, and for ours how far it has got.
+    row.footer = new QHBoxLayout;
+    row.footer->setContentsMargins(0, 0, 0, 0);
+    row.footer->setSpacing(4);
+    row.footer->addStretch(1);
+    auto details = new QLabel(messageTime(item.value("received").toLongLong()), bubble);
+    details->setObjectName("chatDetails");
+    row.footer->addWidget(details);
+    setTick(row);
+    bubbleLayout->addLayout(row.footer);
+    rowLayout->addWidget(bubble);
+    if (!outgoing) rowLayout->addStretch(1);
+    return row;
+}
+// Puts the messages' bubbles in at the given place, above or below the others. The layout
+// is held back until all are in, and lays them out once: laid out after each, the text of
+// every bubble would be laid out again and again.
+void ChatsPane::insertRows(int index, const QVariantList &items) {
+    messages_->setEnabled(false);
+    for (const auto &value : items) {
+        auto row = makeRow(value.toMap());
+        messages_->insertWidget(index, row.widget);
+        // A layout shows a new widget only later, and a hidden one takes no room: a layout
+        // pass in between would see a shorter conversation, and the bar with it.
+        row.widget->show();
+        rows_.insert(index++, row);
+    }
+    messages_->setEnabled(true);
+    messages_->activate();
+}
+// Every bubble made anew: another conversation, or the theme's colours.
+void ChatsPane::rebuild(const QVariantList &messages) {
     while (messages_->count() > 1) {
         auto item = messages_->takeAt(0);
         if (item->widget() != welcomeTitle_) delete item->widget();
         delete item;
     }
+    rows_.clear();
     if (welcomeTitle_->parentWidget() != scroll_->widget())
         welcomeTitle_->setParent(scroll_->widget());
     welcomeTitle_->setVisible(messages.isEmpty());
@@ -517,66 +653,107 @@ void ChatsPane::setMessages(const QVariantList &messages) {
         messages_->insertWidget(0, welcomeTitle_, 1);
         return;
     }
-    for (const auto &value : messages) {
-        const auto item = value.toMap();
-        const bool outgoing = item.value("outgoing").toBool();
-        auto row = new QWidget;
-        auto rowLayout = new QHBoxLayout(row);
-        rowLayout->setContentsMargins(0, 0, 0, 0);
-        if (outgoing) rowLayout->addStretch(1);
-        auto bubble = new QWidget;
-        bubble->setObjectName(outgoing ? "outgoingChatBubble" : "incomingChatBubble");
-        bubble->setMaximumWidth(560);
-        auto bubbleLayout = new QVBoxLayout(bubble);
-        bubbleLayout->setContentsMargins(12, 8, 12, 8);
-        QTextDocument document;
-        document.setMarkdown(item.value("body").toString(), QTextDocument::MarkdownNoHTML);
-        auto body = new QLabel(document.toHtml());
-        body->setObjectName("chatBody");
-        body->setTextFormat(Qt::RichText);
-        body->setWordWrap(true);
-        // A wrapping label asks for a narrow, tall box. A message is as wide as its
-        // text, up to what the bubble allows (560 less its margins).
-        body->setMinimumWidth(qMin(qCeil(document.idealWidth()) + 2, 536));
-        body->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::LinksAccessibleByMouse);
-        // A stranger's link: the window asks before opening one, as for a letter.
-        connect(body, &QLabel::linkActivated, this,
-                [this](const QString &link) { emit linkClicked(QUrl(link)); });
-        bubbleLayout->addWidget(body);
-        // Under the text, at the right: its time, and for ours how far it has got.
-        auto footer = new QHBoxLayout;
-        footer->setContentsMargins(0, 0, 0, 0);
-        footer->setSpacing(4);
-        footer->addStretch(1);
-        auto details = new QLabel(messageTime(item.value("received").toLongLong()));
-        details->setObjectName("chatDetails");
-        details->setStyleSheet("color:palette(placeholder-text);font-size:11px;");
-        footer->addWidget(details);
-        const auto tick = outgoing ? chatTickFor(item.value("state").toString()) : ChatTick::None;
-        if (tick != ChatTick::None) {
-            auto mark = new QLabel;
-            mark->setObjectName("chatTick");
-            mark->setProperty("tick", tickName(tick));
-            mark->setToolTip(tickText(tick));
-            mark->setPixmap(tickPixmap(tick, tickColor(tick, dark_), 14, devicePixelRatioF()));
-            footer->addWidget(mark);
-        }
-        bubbleLayout->addLayout(footer);
-        const auto shade = outgoing ? (dark_ ? "#174944" : "#def4ef")
-                                    : (dark_ ? "#30343c" : "#f2f3f5");
-        bubble->setStyleSheet(QString("border-radius:10px;background:%1;").arg(shade));
-        rowLayout->addWidget(bubble);
-        if (!outgoing) rowLayout->addStretch(1);
-        messages_->insertWidget(messages_->count() - 1, row);
-        // A layout shows a new widget only later, and a hidden one takes no room. A layout
-        // pass in between, one that was already waiting, would see an empty conversation and
-        // shorten the bar to nothing; the bar then reads "at the end", and a reader who had
-        // scrolled up would be taken to the newest message.
-        row->show();
-    }
+    insertRows(0, messages);
     auto bar = scroll_->verticalScrollBar();
     if (atEnd_)
         bar->setValue(bar->maximum());
+}
+void ChatsPane::setMessages(const QVariantList &messages, bool hasOlder) {
+    const bool sameThread = shownContact_ == contact_ && shownIdentity_ == identity_;
+    hasOlder_ = hasOlder;
+    // Asked for what it shows, in the same colours: nothing to redraw. A redraw
+    // would drop a selection or the link under the pointer.
+    if (sameThread && shownDark_ == dark_ && messages == shown_) {
+        checkOlder();
+        return;
+    }
+    // Where the bubbles shown sit among the messages: older ones may have come above them,
+    // newer ones below, and one of ours may have moved on. These are made or changed alone;
+    // what else differs, or no bubble at all, is a conversation to draw afresh.
+    int start = -1;
+    if (sameThread && shownDark_ == dark_ && !rows_.isEmpty()) {
+        for (int i = 0; i < messages.size() && start < 0; ++i)
+            if (messages[i].toMap().value("id").toString() == rows_.first().id)
+                start = i;
+        if (start >= 0 && start + rows_.size() > messages.size())
+            start = -1;
+        for (int i = 0; start >= 0 && i < rows_.size(); ++i) {
+            const auto item = messages[start + i].toMap();
+            const auto &was = rows_[i].data;
+            if (item.value("id") != was.value("id") || item.value("body") != was.value("body") ||
+                item.value("outgoing") != was.value("outgoing") ||
+                item.value("received") != was.value("received"))
+                start = -1;
+        }
+    }
+    if (start < 0) {
+        if (!sameThread)
+            atEnd_ = true; // another conversation opens at its newest message
+        rebuild(messages);
+    } else {
+        const int shownCount = rows_.size();
+        for (int i = 0; i < shownCount; ++i) {
+            const auto item = messages[start + i].toMap();
+            if (item != rows_[i].data) {
+                rows_[i].data = item;
+                setTick(rows_[i]);
+            }
+        }
+        if (start > 0) {
+            // Older bubbles come in above the reader: the first one in view stays where it is.
+            auto bar = scroll_->verticalScrollBar();
+            QWidget *anchor = nullptr;
+            int offset = 0;
+            if (!atEnd_)
+                for (const auto &row : rows_)
+                    if (row.widget->geometry().bottom() > bar->value()) {
+                        anchor = row.widget;
+                        offset = anchor->y() - bar->value();
+                        break;
+                    }
+            insertRows(0, messages.mid(0, start));
+            if (anchor) {
+                // Until the area has been told the new height, the bubbles are squeezed into the
+                // old one: let it know, then put the first one in view back where it was.
+                QCoreApplication::sendPostedEvents(scroll_->widget(), QEvent::LayoutRequest);
+                QCoreApplication::sendPostedEvents(scroll_->viewport(), QEvent::LayoutRequest);
+                QCoreApplication::sendPostedEvents(scroll_, QEvent::LayoutRequest);
+                bar->setValue(anchor->y() - offset);
+            }
+        }
+        if (start + shownCount < messages.size())
+            insertRows(rows_.size(), messages.mid(start + shownCount));
+    }
+    shown_ = messages;
+    shownContact_ = contact_;
+    shownIdentity_ = identity_;
+    shownDark_ = dark_;
+    askedOlder_ = false;
+    checkOlder();
+}
+// Within two screens of the oldest message shown, and older ones kept: ask for them, once.
+// Looked at a moment later, when the layout has come to rest and the bar says the truth.
+void ChatsPane::checkOlder() {
+    if (checkQueued_)
+        return;
+    checkQueued_ = true;
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            checkQueued_ = false;
+            auto bar = scroll_->verticalScrollBar();
+            // A page not shown yet, or a layout not done, has a bar that says nothing: the
+            // range changing once it is done asks again.
+            auto content = scroll_->widget();
+            if (!isVisible() || content->height() < messages_->totalHeightForWidth(content->width()))
+                return;
+            if (hasOlder_ && !askedOlder_ && !rows_.isEmpty() &&
+                bar->value() - bar->minimum() < 2 * bar->pageStep()) {
+                askedOlder_ = true;
+                emit olderRequested();
+            }
+        },
+        Qt::QueuedConnection);
 }
 // The card, the chip and the send button, in the window's own colours: a white field with
 // a hairline, rounded, the accent on focus; the send button the accent, the window's
@@ -593,8 +770,12 @@ void ChatsPane::applyTheme() {
                 "QPushButton#chatSendButton:hover{background:%4;} "
                 "QPushButton#chatSendButton:disabled{background:%2;} "
                 "QFrame#chatIdentity{background:transparent;border:1px solid %2;"
-                "border-radius:13px;}")
-            .arg(t.surface, t.border, t.accent, t.accentHover);
+                "border-radius:13px;} "
+                "QWidget#outgoingChatBubble{background:%5;border-radius:10px;} "
+                "QWidget#incomingChatBubble{background:%6;border-radius:10px;} "
+                "QLabel#chatDetails{color:palette(placeholder-text);font-size:11px;}")
+            .arg(t.surface, t.border, t.accent, t.accentHover, dark_ ? "#174944" : "#def4ef",
+                 dark_ ? "#30343c" : "#f2f3f5");
     if (styleSheet() != sheet)
         setStyleSheet(sheet);
     const qreal ratio = devicePixelRatioF();

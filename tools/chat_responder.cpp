@@ -104,7 +104,9 @@ class Bot {
             if (conversation["local"].toString() != me_)
                 continue;
             const auto peer = conversation["address"].toString();
-            for (const auto &value : session_.chatMessages(me_, peer)) {
+            // Its newest messages are all it needs, and a chat is kept for good: not the whole
+            // of it at every poll.
+            for (const auto &value : session_.chatMessages(me_, peer, 100)) {
                 const auto message = value.toMap();
                 const auto id = message["id"].toString();
                 if (message["outgoing"].toBool()) {

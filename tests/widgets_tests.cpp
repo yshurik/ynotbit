@@ -305,9 +305,160 @@ int main(int argc, char **argv) {
             pane.setMessages(thread);
             expect(QTest::qWaitFor(atEnd, 5000), "another conversation opens at its newest message");
             pane.setDark(true);
+            QTest::qWait(30);
             const auto outgoing = pane.findChildren<QWidget *>("outgoingChatBubble");
-            expect(!outgoing.isEmpty() && outgoing.first()->styleSheet().contains("#174944"),
+            const auto incoming = pane.findChildren<QWidget *>("incomingChatBubble");
+            // What is drawn at a bubble's left edge, clear of its text and its rounded corners.
+            const auto shade = [](QWidget *bubble) {
+                return bubble->grab().toImage().pixelColor(4, bubble->height() / 2);
+            };
+            expect(!outgoing.isEmpty() && !incoming.isEmpty() &&
+                       shade(outgoing.first()) == QColor("#174944") &&
+                       shade(incoming.first()) == QColor("#30343c"),
                    "a theme change recolours the conversation shown");
+        }
+        // A long conversation is shown a window at a time: its newest messages first, older
+        // ones as the reader scrolls up to them, and nothing moves under their eyes.
+        {
+            bm::ChatsPane pane;
+            pane.resize(640, 420);
+            pane.show();
+            pane.setConversation(personal, "Personal", chatAddress, "Window contact", false);
+            const auto line = [](int n, const QString &state = {}) {
+                const bool mine = n % 3 == 0;
+                return QVariantMap{{"id", "window-" + QString::number(n)},
+                                   {"body", "window " + QString::number(n) + " end"},
+                                   {"outgoing", mine},
+                                   {"seqno", n},
+                                   {"received", 1700000000 + n},
+                                   {"expires", 1700086400 + n},
+                                   {"state", !state.isEmpty() ? state
+                                             : mine           ? "acknowledged"
+                                                              : "received"}};
+            };
+            const auto lines = [&](int from, int to) { // [from, to), oldest first
+                QVariantList list;
+                for (int n = from; n < to; ++n)
+                    list << line(n);
+                return list;
+            };
+            auto scroll = pane.findChild<QScrollArea *>("chatMessagesScroll");
+            auto bar = scroll->verticalScrollBar();
+            QSignalSpy asked(&pane, &bm::ChatsPane::olderRequested);
+            const auto shown = [&] { return pane.findChildren<QLabel *>("chatBody").size(); };
+            const auto bodyOf = [&](int n) -> QLabel * {
+                for (auto body : pane.findChildren<QLabel *>("chatBody"))
+                    if (body->text().contains("window " + QString::number(n) + " end"))
+                        return body;
+                return nullptr;
+            };
+            const auto topOf = [&](QWidget *w) {
+                return w->mapTo(scroll->viewport(), QPoint(0, 0)).y();
+            };
+            const auto atEnd = [&] { return bar->maximum() > 0 && bar->value() == bar->maximum(); };
+            QVariantList thread = lines(300, 400); // the newest 100 of a long conversation
+            pane.setMessages(thread, true);
+            expect(QTest::qWaitFor(atEnd, 5000) && shown() == 100,
+                   "a long conversation opens at its newest message, as a window of it");
+            QTest::qWait(30);
+            expect(asked.isEmpty(), "far from the top of the window, nothing older is asked for");
+            bar->setValue(500);
+            QTest::qWait(30);
+            expect(asked.size() == 1, "within two screens of the top, older messages are asked for");
+            bar->setValue(450);
+            QTest::qWait(30);
+            expect(asked.size() == 1, "and asked for once, until they come");
+            QLabel *anchor = nullptr; // the first message wholly in view
+            for (int n = 300; n < 400 && !anchor; ++n)
+                if (auto body = bodyOf(n); body && topOf(body) >= 0)
+                    anchor = body;
+            QPointer<QLabel> kept = anchor;
+            const int placed = anchor ? topOf(anchor) : 0;
+            thread = lines(250, 300) + thread;
+            pane.setMessages(thread, true);
+            expect(shown() == 150 && kept && qAbs(topOf(anchor) - placed) <= 1,
+                   "older messages come in above without moving what the reader is looking at");
+            QTest::qWait(50);
+            expect(kept && qAbs(topOf(anchor) - placed) <= 1 && asked.size() == 1,
+                   "and the reader is not asked again while far from the new top");
+            const int reading = bar->value();
+            thread << line(400);
+            pane.setMessages(thread, true);
+            QTest::qWait(50);
+            expect(shown() == 151 && kept && bar->value() == reading &&
+                       qAbs(topOf(anchor) - placed) <= 1,
+                   "a new message does not move a reader who scrolled up into older ones");
+            thread[399 - 250] = line(399, "failed");
+            pane.setMessages(thread, true);
+            auto sent = bodyOf(399) ? bodyOf(399)->parentWidget()->findChild<QLabel *>("chatTick")
+                                    : nullptr;
+            expect(sent && sent->property("tick").toString() == "failed" && kept && shown() == 151 &&
+                       bar->value() == reading,
+                   "a message that moved on is redrawn alone, and the reader stays");
+            bar->setValue(bar->maximum());
+            thread << line(401);
+            pane.setMessages(thread, true);
+            expect(QTest::qWaitFor(atEnd, 5000) && shown() == 152,
+                   "a reader at the newest message follows the new ones");
+            pane.setMessages(thread, false);
+            bar->setValue(0);
+            QTest::qWait(30);
+            expect(asked.size() == 1, "with nothing older left, nothing is asked for");
+            pane.setConversation(personal, "Personal",
+                                 bm::Protocol::identity("chat pane window other").address,
+                                 "Other window contact", false);
+            pane.setMessages(lines(0, 10), true);
+            expect(QTest::qWaitFor(atEnd, 5000) && shown() == 10,
+                   "another conversation opens at its newest message");
+            QTest::qWait(30);
+            expect(asked.size() == 2,
+                   "a window whose newest end is already near its top asks for older ones at once");
+        }
+        // A message's label is as tall as a plain QLabel makes it, whatever the text and the
+        // width: a line, a paragraph that wraps, a list with code and a link, other scripts, a
+        // word longer than the bubble. Any other height clips the text or leaves a gap.
+        {
+            bm::ChatsPane pane;
+            pane.resize(640, 420);
+            pane.show();
+            pane.setConversation(personal, "Personal", chatAddress, "Label contact", false);
+            const QStringList texts = {
+                "ok",
+                "A line of some length, as wide as its text and no more.",
+                "Just checking in about the **release**: the build for macOS is green, Windows is "
+                "still waiting on the signing certificate. I will push the notes once CI finishes.",
+                "Notes:\n\n1. Bump the version in `CMakeLists.txt`\n2. Dispatch CI\n3. Check "
+                "[the notes](https://example.org/notes)\n\n```\ncmake --build build\nctest\n```\n"
+                "Then publish.",
+                "Ünïcödé, 日本語のメッセージ, и русский текст, 😀 emoji",
+                "a_very_long_word_without_any_spaces_to_force_wrapping_anywhere_in_the_bubble_and_"
+                "beyond_the_limit_of_its_width_so_that_it_cannot_fit_on_one_line_at_all",
+                "> a quote\n\nand a reply under it"};
+            QVariantList thread;
+            for (int n = 0; n < texts.size(); ++n)
+                thread << QVariantMap{{"id", "label-" + QString::number(n)},
+                                      {"body", texts[n]},
+                                      {"outgoing", n % 2 == 0},
+                                      {"seqno", n + 1},
+                                      {"received", 1700000000 + n},
+                                      {"expires", 1700086400 + n},
+                                      {"state", n % 2 == 0 ? "acknowledged" : "received"}};
+            pane.setMessages(thread);
+            int unequal = 0, checked = 0;
+            for (int width : {640, 900, 520, 380}) {
+                pane.resize(width, 420);
+                QTest::qWait(80);
+                for (auto body : pane.findChildren<QLabel *>("chatBody")) {
+                    QLabel twin(body->text(), body->parentWidget());
+                    twin.setTextFormat(Qt::RichText);
+                    twin.setWordWrap(true);
+                    twin.ensurePolished();
+                    unequal += twin.heightForWidth(body->width()) != body->height();
+                    ++checked;
+                }
+            }
+            expect(checked == 4 * texts.size() && unequal == 0,
+                   "a message's label is as tall as QLabel makes it, for any text and width");
         }
         // Enter sends, and Shift+Enter starts a new line; an empty composer ignores Enter.
         {
@@ -685,6 +836,72 @@ int main(int argc, char **argv) {
                         ++rowsFor;
                 expect(rowsFor == 1 && row(fresh) && row(fresh)->preview() == "first words",
                        "a started chat that gets a message is the same row, not another");
+            }
+            // A long conversation opens as a window of its newest messages, and a page of older
+            // ones comes each time the reader scrolls up to the top of what is shown.
+            {
+                const auto longPeer = bm::Protocol::identity("long chat peer").address;
+                arrive([&](bm::Mailbox &m) {
+                    bm::Mailbox::Batch batch(m);
+                    for (int n = 1; n <= 250; ++n)
+                        m.storeChat("long-" + QString::number(n), longPeer, personal, n,
+                                    "long chat message " + QString::number(n) + " end", expiry,
+                                    false);
+                    batch.commit();
+                });
+                window.findChild<QToolButton *>("folderIcon_Inbox")->click();
+                chatsIcon->click();
+                if (auto chip = chipOf(longPeer))
+                    chip->click();
+                QTest::qWait(50);
+                auto thread = window.findChild<QScrollArea *>("chatMessagesScroll");
+                auto bar = thread->verticalScrollBar();
+                const auto bodiesNow = [&] { return window.findChildren<QLabel *>("chatBody"); };
+                const auto has = [&](int n) {
+                    for (auto body : bodiesNow())
+                        if (body->text().contains("long chat message " + QString::number(n) + " end"))
+                            return true;
+                    return false;
+                };
+                const int window = bm::kChatWindow, page = bm::kChatPage;
+                expect(bodiesNow().size() == window && has(250) && has(250 - window + 1) &&
+                           !has(250 - window),
+                       "a long conversation opens as a window of its newest messages");
+                // A message's label is as tall as a plain QLabel makes it, in this window's style:
+                // anything else clips its text, or leaves a gap under it.
+                int unequal = 0, wider = 0;
+                for (auto body : bodiesNow()) {
+                    QLabel twin(body->text(), body->parentWidget());
+                    twin.setTextFormat(Qt::RichText);
+                    twin.setWordWrap(true);
+                    twin.ensurePolished();
+                    unequal += twin.heightForWidth(body->width()) != body->height();
+                    wider += body->width() < body->minimumWidth();
+                }
+                expect(unequal == 0 && wider == 0,
+                       "a message's label is as tall as QLabel makes it, as wide as its minimum");
+                bar->setValue(0);
+                QTest::qWait(100);
+                expect(bodiesNow().size() == window + page && has(250) &&
+                           has(250 - window - page + 1) && !has(250 - window - page),
+                       "scrolled up to the top, it brings in a page of older messages");
+                for (int more = 0; more < 12; ++more) {
+                    bar->setValue(0);
+                    QTest::qWait(100);
+                }
+                expect(bodiesNow().size() == 250 && has(1) && has(250),
+                       "and again, until it has all of them");
+                bar->setValue(0);
+                QTest::qWait(100);
+                expect(bodiesNow().size() == 250, "with all of them shown, nothing more is asked for");
+                if (auto chip = chipOf(chatAddress))
+                    chip->click();
+                QTest::qWait(50);
+                if (auto chip = chipOf(longPeer))
+                    chip->click();
+                QTest::qWait(50);
+                expect(bodiesNow().size() == window && has(250) && !has(250 - window),
+                       "a conversation opened again is a window of its newest messages again");
             }
             // Two identities, two chats: one peer under each identity is a chat of its own,
             // with its own row and thread, and a row says which identity it is under.
