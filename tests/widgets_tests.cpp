@@ -4050,22 +4050,32 @@ int main(int argc, char **argv) {
                     "an existing file is refused");
             dialog->findChild<QRadioButton *>("phraseKeysButton")->click();
             QTest::keyClicks(phrase, "ynotbit test phrase");
-            QTest::qWait(400);
-            require(address->text() == "BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN" &&
+            // The dialog works out an address 300 ms after the phrase stops changing, on the
+            // window's own thread: wait for what it shows, not for a time a slow machine
+            // overruns.
+            require(QTest::qWaitFor(
+                        [&] { return address->text() == "BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN"; },
+                        10000) &&
                         !dialog->findChild<QLabel *>("rebuildNote")->isVisibleTo(dialog.get()),
                     "a phrase gives its first address, which the phrase alone rebuilds");
             shorter->click();
             require(shorter->text() == "Stop search", "the search runs");
             QTest::keyClicks(phrase, "!");
-            QTest::qWait(400);
-            require(shorter->text() == "Find a shorter address" &&
-                        address->text() ==
-                            bm::phraseIdentity("ynotbit test phrase!", {},
-                                               *bm::firstPair("ynotbit test phrase!", 1))
-                                .address,
+            const auto edited = bm::phraseIdentity("ynotbit test phrase!", {},
+                                                   *bm::firstPair("ynotbit test phrase!", 1))
+                                    .address;
+            require(QTest::qWaitFor(
+                        [&] {
+                            return shorter->text() == "Find a shorter address" &&
+                                   address->text() == edited;
+                        },
+                        10000),
                     "editing the phrase stops the search; the address is the new phrase's");
             QTest::keyClick(phrase, Qt::Key_Backspace);
-            QTest::qWait(400);
+            require(QTest::qWaitFor(
+                        [&] { return address->text() == "BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN"; },
+                        10000),
+                    "the phrase gives its first address again");
             shorter->click();
             require(QTest::qWaitFor(
                         [&] { return address->text() == "BM-NC3eQa6kLxUsWNGFCqAbAJd733dhXkH6"; },
@@ -4143,9 +4153,12 @@ int main(int argc, char **argv) {
             require(dialog.width() == width,
                     "the dialog keeps its width as the keys' source changes");
             QTest::keyClicks(dialog.findChild<QLineEdit *>("phraseField"), "ynotbit test phrase");
-            QTest::qWait(400);
-            require(!create->isEnabled() &&
-                        dialog.findChild<QLabel *>("addressTaken")->isVisibleTo(&dialog),
+            require(QTest::qWaitFor(
+                        [&] {
+                            return !create->isEnabled() &&
+                                   dialog.findChild<QLabel *>("addressTaken")->isVisibleTo(&dialog);
+                        },
+                        10000),
                     "an address already in the vault is said, and not made again");
             dialog.findChild<QRadioButton *>("randomKeysButton")->click();
             auto nickname = dialog.findChild<QLineEdit *>("nicknameField");
@@ -4172,7 +4185,11 @@ int main(int argc, char **argv) {
             file->clear();
             QTest::keyClicks(file, temp.filePath("typed.bmvault"));
             QTest::keyClicks(phrase, "ynotbit test phrase");
-            QTest::qWait(400);
+            auto shown = dialog.findChild<QLabel *>("addressLabel");
+            require(QTest::qWaitFor(
+                        [&] { return shown->text() == "BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN"; },
+                        10000),
+                    "the phrase's keys are there before they are edited");
             QTest::keyClicks(dialog.findChild<QLineEdit *>("newVaultPasswordField"),
                              "long test password");
             QTest::keyClicks(dialog.findChild<QLineEdit *>("newVaultRepeatField"),
@@ -4180,11 +4197,10 @@ int main(int argc, char **argv) {
             QTest::keyClicks(phrase, "!");
             QTest::keyClick(phrase, Qt::Key_Return);
             require(!typed.unlocked(), "Enter right after editing the phrase saves nothing");
-            QTest::qWait(400);
-            require(dialog.findChild<QLabel *>("addressLabel")->text() ==
-                        bm::phraseIdentity("ynotbit test phrase!", {},
-                                           *bm::firstPair("ynotbit test phrase!", 1))
-                            .address,
+            const auto edited = bm::phraseIdentity("ynotbit test phrase!", {},
+                                                   *bm::firstPair("ynotbit test phrase!", 1))
+                                    .address;
+            require(QTest::qWaitFor([&] { return shown->text() == edited; }, 10000),
                     "the address is the edited phrase's");
         }
         {
