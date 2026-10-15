@@ -214,11 +214,62 @@ int main(int argc, char **argv) {
                 "Chats reuses the visible channel rail and hides the mail list");
         require(!window.findChild<QLabel *>("chatPreviewBadge"), "Chats has no preview badge");
         auto toggleRail = window.findChild<QPushButton *>("channelRailToggle");
+        // Chats, Channels and Subscriptions share the rail but not its collapse. Whatever an
+        // earlier run left in the settings, each starts expanded.
+        for (int folder : {4, 5, 11}) {
+            folders->setCurrentRow(folder);
+            if (toggleRail->text() == ">>>")
+                toggleRail->click();
+        }
         const int originalRailWidth = sharedRail->width();
         toggleRail->click();
-        require(sharedRail->width() == (originalRailWidth == 50 ? 190 : 50),
-                "Chats uses the existing collapse control");
-        toggleRail->click();
+        require(sharedRail->width() == 50, "Chats uses the existing collapse control");
+        {
+            // A reader may keep the chans compact beside an expanded chat list, and every
+            // page comes back as it was left.
+            const auto railOn = [&](int folder) {
+                folders->setCurrentRow(folder);
+                QCoreApplication::processEvents();
+                return sharedRail->width();
+            };
+            require(railOn(4) == originalRailWidth && railOn(5) == originalRailWidth &&
+                        toggleRail->text() == "<<<",
+                    "collapsing Chats leaves Channels and Subscriptions expanded");
+            railOn(4);
+            toggleRail->click();
+            require(railOn(5) == originalRailWidth,
+                    "collapsing Channels leaves Subscriptions expanded");
+            require(railOn(4) == 50 && toggleRail->text() == ">>>" && railOn(11) == 50,
+                    "each page comes back as it was left");
+            toggleRail->click(); // Chats, expanded
+            require(railOn(11) == originalRailWidth && railOn(4) == 50,
+                    "expanding Chats leaves Channels collapsed");
+            // Each page's rail is kept for the next start. The rail is hidden while a
+            // window has no mailbox, so its pages are told by the width they were given.
+            const auto railsOf = [&](const QString &node) {
+                bm::Session own(temp.filePath(node), true);
+                bm::DesktopWindow reopened(own);
+                auto reopenedFolders = reopened.findChild<QListWidget *>("folders");
+                auto reopenedRail = reopened.findChild<QWidget *>("channelRail");
+                QList<int> widths;
+                for (int folder : {4, 5, 11}) {
+                    reopenedFolders->setCurrentRow(folder);
+                    widths << reopenedRail->maximumWidth();
+                }
+                return widths;
+            };
+            require(railsOf("rail-node") == QList<int>({50, originalRailWidth, originalRailWidth}),
+                    "a window opened later has each page's rail as it was left");
+            toggleRail->click(); // Channels, expanded again
+            // One collapse for the whole rail was all that older versions kept: a reader
+            // who had collapsed it finds all three pages collapsed, to change one by one.
+            QSettings().remove("railCollapsed");
+            QSettings().setValue("channelRailCollapsed", true);
+            require(railsOf("rail-node") == QList<int>({50, 50, 50}),
+                    "a rail collapsed before the pages had each their own is collapsed on all");
+            QSettings().remove("channelRailCollapsed");
+            railOn(11);
+        }
         const auto chatAddress = bm::Protocol::identity("chat rail test").address;
         require(session.addContact(chatAddress, "Chat rail contact"), "Add contact for chat rail");
         QCoreApplication::processEvents();
@@ -236,7 +287,7 @@ int main(int argc, char **argv) {
                 "Starting a chat opens it");
         folders->setCurrentRow(4);
         require(sharedRail->isVisible() && sharedRail->width() == originalRailWidth,
-                "Channels keeps the same rail and collapse state");
+                "Channels shows the same rail");
         chatsIcon->click();
         require(window.findChild<QLabel *>("chatTitle")->text() == "Chat rail contact",
                 "Returning to Chats restores its selected conversation");

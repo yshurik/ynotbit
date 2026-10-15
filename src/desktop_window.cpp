@@ -1982,7 +1982,12 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
     setObjectName("desktopWindow");
     setWindowIcon(windowLogo());
     listDensity_ = QSettings().value("listDensity", "comfortable").toString();
-    channelRailCollapsed_ = QSettings().value("channelRailCollapsed", false).toBool();
+    // Older versions kept one collapse for the rail of all its pages, and no longer write it: a
+    // page never changed since has it still, so a reader who had collapsed the rail finds every
+    // page collapsed, to expand one by one.
+    const bool collapsedBefore = QSettings().value("channelRailCollapsed", false).toBool();
+    for (const QString page : {"Channels", "Broadcasts", "Chats"})
+        railCollapsed_[page] = QSettings().value("railCollapsed/" + page, collapsedBefore).toBool();
     if (listDensity_ != "compact" && listDensity_ != "cozy" && listDensity_ != "comfortable")
         listDensity_ = "comfortable";
     resize(1160, 780);
@@ -2153,10 +2158,11 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
             joinChannel();
         refreshChannels();
     })->setObjectName("joinOrCreateChannelButton");
-    button({}, railOuter, [this] { setChannelRailCollapsed(!channelRailCollapsed_); })
-        ->setObjectName("channelRailToggle");
+    button({}, railOuter, [this] {
+        setChannelRailCollapsed(!railCollapsed());
+    })->setObjectName("channelRailToggle");
     split->addWidget(rail);
-    setChannelRailCollapsed(channelRailCollapsed_);
+    refreshChannels();
     auto middle = listColumn_ = new QWidget;
     middle->setObjectName("listColumn");
     middle->setFixedWidth(300);
@@ -2940,6 +2946,7 @@ void DesktopWindow::refreshChannels() {
     const bool broadcasts = folders_->currentRow() == 5;
     updateRailTexts();
     const bool chats = folders_->currentRow() == 11;
+    const bool collapsed = railCollapsed(); // as this page has it; the others keep theirs
     // Chats: each chat of the vault's identities, the newest first, those started here
     // and not yet written in before them. A chat is between one identity and a peer, so
     // one peer can be in the list twice.
@@ -3000,7 +3007,7 @@ void DesktopWindow::refreshChannels() {
         chip->setChecked(chipKey == active);
         if (auto row = qobject_cast<ChatRow *>(chip)) {
             const auto info = chatInfo.value(chipKey);
-            row->setCollapsed(channelRailCollapsed_);
+            row->setCollapsed(collapsed);
             row->setVia(severalIdentities ? info.value("local").toString() : QString(),
                         info.value("localLabel").toString());
             row->setSummary(info.value("body").toString(), info.value("received").toLongLong(),
@@ -3013,7 +3020,7 @@ void DesktopWindow::refreshChannels() {
         const auto &chipAddress = chipKey; // not a chat: its key is its address
         const bool unread = !chats && (broadcasts ? session_.broadcastUnread(chipAddress)
                                                   : session_.channelUnread(chipAddress));
-        if (channelRailCollapsed_) {
+        if (collapsed) {
             // No name to embolden when collapsed: unread mail is a dot on the
             // identicon's corner instead.
             QPixmap badge(24, 24);
@@ -3045,7 +3052,7 @@ void DesktopWindow::refreshChannels() {
     // The same chans as shown: only the selection and unread mail can have
     // changed, so the chips stay. Made anew, the rail painted empty for a
     // moment before they showed, a blink at every switch.
-    QString shown = QString("%1 %2 %3").arg(broadcasts).arg(chats).arg(channelRailCollapsed_);
+    QString shown = QString("%1 %2 %3").arg(broadcasts).arg(chats).arg(collapsed);
     // A new message moves its conversation up the chat list: the rows are moved, not
     // made again, so the list is not told by its order.
     auto listed = entries;
@@ -3090,19 +3097,19 @@ void DesktopWindow::refreshChannels() {
             // Collapsed, the rail is a column of identicons; the name moves to
             // the tooltip.
             QPushButton *chip = chats ? new ChatRow(chipAddress, label)
-                                      : new QPushButton(channelRailCollapsed_ ? QString() : label);
+                                      : new QPushButton(collapsed ? QString() : label);
             chip->setObjectName("channelChip");
             chip->setCheckable(true);
             // One selected at a time, and a click on it keeps it selected.
             chip->setAutoExclusive(true);
             chip->setProperty("address", chipAddress);
             chip->setProperty("key", chipKey);
-            chip->setStyleSheet(QString("QPushButton{text-align:%1;padding:%2;border:0;"
-                                        "border-radius:6px;} QPushButton:checked{"
-                                        "background:palette(highlight);"
-                                        "color:palette(highlighted-text);}")
-                                    .arg(channelRailCollapsed_ ? "center" : "left",
-                                         channelRailCollapsed_ ? "5px 4px" : "8px 10px"));
+            chip->setStyleSheet(
+                QString("QPushButton{text-align:%1;padding:%2;border:0;"
+                        "border-radius:6px;} QPushButton:checked{"
+                        "background:palette(highlight);"
+                        "color:palette(highlighted-text);}")
+                    .arg(collapsed ? "center" : "left", collapsed ? "5px 4px" : "8px 10px"));
             chip->setCursor(Qt::PointingHandCursor);
             if (!chats) // a chat row words its own, with the identity
                 chip->setToolTip(
@@ -3203,37 +3210,50 @@ void DesktopWindow::updateChatsIcon(bool force) {
     }
     button->setIcon(QIcon(pixmap));
 }
+QString DesktopWindow::railPage() const {
+    const int folder = folders_->currentRow();
+    return folder == 11 ? "Chats" : folder == 5 ? "Broadcasts" : "Channels";
+}
+bool DesktopWindow::railCollapsed() const {
+    return railCollapsed_.value(railPage());
+}
 void DesktopWindow::updateRailTexts() {
     const bool broadcasts = folders_->currentRow() == 5;
     const bool chats = folders_->currentRow() == 11;
-    auto heading = channelRail_->findChild<QLabel *>("channelRailHeading");
-    heading->setText(channelRailCollapsed_ ? (chats ? "⋯" : broadcasts ? "@" : "#")
-                     : chats ? tr("Chats").toUpper()
-                     : broadcasts ? tr("SUBSCRIPTIONS") : tr("CHANNELS"));
-    auto toggle = channelRail_->findChild<QPushButton *>("channelRailToggle");
-    toggle->setToolTip(chats ? (channelRailCollapsed_ ? tr("Expand the chat list") : tr("Collapse the chat list"))
-                            : (channelRailCollapsed_ ? tr("Expand the channel list") : tr("Collapse the channel list")));
-    auto join = channelRail_->findChild<QPushButton *>("joinOrCreateChannelButton");
-    join->setText(channelRailCollapsed_ ? "+"
-                  : chats               ? tr("New chat")
-                  : broadcasts          ? tr("+ Subscribe…")
-                                        : tr("+ Join or create…"));
-    join->setToolTip(!channelRailCollapsed_ ? QString()
-                     : chats                ? tr("New chat")
-                     : broadcasts           ? tr("Subscribe to broadcasts")
-                                            : tr("Join or create a chan"));
-}
-void DesktopWindow::setChannelRailCollapsed(bool collapsed) {
-    channelRailCollapsed_ = collapsed;
-    QSettings().setValue("channelRailCollapsed", collapsed);
+    const bool collapsed = railCollapsed();
+    // A column of names, or of identicons alone, as the page now shown has it: the rail
+    // changes with the page. Setting what is set already does nothing, so this costs
+    // nothing at every refresh.
     channelRail_->setFixedWidth(collapsed ? 50 : 190);
     static_cast<QVBoxLayout *>(channelRail_->layout())
         ->setContentsMargins(collapsed ? 6 : 10, 5, collapsed ? 4 : 2, 12);
-    channelRail_->findChild<QLabel *>("channelRailHeading")
-        ->setAlignment(collapsed ? Qt::AlignHCenter : Qt::AlignLeft);
+    auto heading = channelRail_->findChild<QLabel *>("channelRailHeading");
+    heading->setAlignment(collapsed ? Qt::AlignHCenter : Qt::AlignLeft);
+    heading->setText(collapsed    ? (chats        ? "⋯"
+                                     : broadcasts ? "@"
+                                                  : "#")
+                     : chats      ? tr("Chats").toUpper()
+                     : broadcasts ? tr("SUBSCRIPTIONS")
+                                  : tr("CHANNELS"));
     auto toggle = channelRail_->findChild<QPushButton *>("channelRailToggle");
     toggle->setText(collapsed ? ">>>" : "<<<");
-    toggle->setToolTip(collapsed ? tr("Expand the channel list") : tr("Collapse the channel list"));
+    toggle->setToolTip(
+        chats ? (collapsed ? tr("Expand the chat list") : tr("Collapse the chat list"))
+              : (collapsed ? tr("Expand the channel list") : tr("Collapse the channel list")));
+    auto join = channelRail_->findChild<QPushButton *>("joinOrCreateChannelButton");
+    join->setText(collapsed    ? "+"
+                  : chats      ? tr("New chat")
+                  : broadcasts ? tr("+ Subscribe…")
+                               : tr("+ Join or create…"));
+    join->setToolTip(!collapsed   ? QString()
+                     : chats      ? tr("New chat")
+                     : broadcasts ? tr("Subscribe to broadcasts")
+                                  : tr("Join or create a chan"));
+}
+void DesktopWindow::setChannelRailCollapsed(bool collapsed) {
+    const auto page = railPage();
+    railCollapsed_[page] = collapsed;
+    QSettings().setValue("railCollapsed/" + page, collapsed);
     refreshChannels();
 }
 void DesktopWindow::setListDensity(QString density) {

@@ -1,6 +1,7 @@
 #pragma once
 #include "appearance.h"
 #include "letter_render.h"
+#include <QHash>
 #include <QMainWindow>
 #include <QVariantMap>
 class QListView;
@@ -47,7 +48,7 @@ class DesktopWindow : public QMainWindow {
     int chatWindow_ = 0;       // how many of its newest messages the open chat shows
     QStringList startedChats_; // chats started here and not yet written in, newest first
     QString listDensity_;
-    bool channelRailCollapsed_ = false;
+    QHash<QString, bool> railCollapsed_; // for each page of the rail (railPage()): is it collapsed
     QAbstractItemDelegate *letterDelegate_ = nullptr;
     QLabel *listCountLabel_;
     QLineEdit *search_;
@@ -85,11 +86,16 @@ class DesktopWindow : public QMainWindow {
     void refreshChannels();
     // The open chat's messages: a window of its newest ones; *older says more are kept.
     QVariantList chatThread(bool *older);
-    void updateRailTexts(); // the rail heading and add button for its page
+    void updateRailTexts(); // the rail's width, heading and buttons for its page
+    // The page the one rail is for, by the name of its folder: Channels, Broadcasts (shown as
+    // Subscriptions) or Chats. Each keeps its own collapse.
+    QString railPage() const;
+    // Whether the rail is collapsed on the page now shown.
+    bool railCollapsed() const;
     void updateChatsIcon(bool force = false); // the Chats button's dot for unread chats
     void setListDensity(QString density);
     void openSettings();
-    void setChannelRailCollapsed(bool collapsed);
+    void setChannelRailCollapsed(bool collapsed); // for the page now shown; the others keep theirs
     void updateListCount();
     void showVaultPasswordFor(QString path);
     void newVault();    // the new vault dialog
