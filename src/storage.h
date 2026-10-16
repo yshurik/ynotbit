@@ -3,6 +3,7 @@
 #include <QMap>
 #include <QString>
 #include <QVector>
+#include <bmc/secret.h>
 #include <map>
 #include <memory>
 #include <optional>
@@ -26,28 +27,7 @@ inline int letterTextBytes(const QString &subject, const QString &body) {
 // Drafts stay on this device, so they may run well past what the network
 // carries: a letter that grew too large can always be kept and trimmed.
 constexpr int kMaxDraftBytes = 4 * 1024 * 1024;
-class Secret {
-    unsigned char *p_ = nullptr;
-    size_t n_ = 0;
-
-  public:
-    explicit Secret(size_t n = 0);
-    ~Secret();
-    Secret(Secret &&other) noexcept;
-    Secret &operator=(Secret &&other) noexcept;
-    Secret(const Secret &) = delete;
-    Secret &operator=(const Secret &) = delete;
-    unsigned char *data() {
-        return p_;
-    }
-    const unsigned char *data() const {
-        return p_;
-    }
-    size_t size() const {
-        return n_;
-    }
-    void clear();
-};
+using Secret = bmc::Secret;
 struct Identity {
     QString label, address;
     bool chan = false;
@@ -157,12 +137,13 @@ class Mailbox {
     };
     void store(const QString &hash, const QString &from, const QString &to, const QString &subject,
                const QString &body, qint64 checkpoint, const QString &folder = "Inbox");
-    QString queueChat(const QString &local, const QString &peer, const QString &body, qint64 expires);
+    QString queueChat(const QString &local, const QString &peer, const QString &body,
+                      qint64 expires);
     void storeRouted(const QString &id, const QString &sender, const QString &recipient,
                      const QString &subject, const QString &body, qint64 checkpoint,
                      const QString &folder, qint64 expires);
-    void storeChat(const QString &id, const QString &sender, const QString &recipient,
-                   qint64 seqno, const QString &body, qint64 expires, bool outgoing = false);
+    void storeChat(const QString &id, const QString &sender, const QString &recipient, qint64 seqno,
+                   const QString &body, qint64 expires, bool outgoing = false);
     // A thread, oldest first. With a limit, only its newest messages (a window of it), and
     // in *more whether older ones are left.
     QVector<ChatMessage> chatMessages(const QString &local, const QString &peer, int limit = 0,

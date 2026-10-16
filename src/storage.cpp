@@ -28,35 +28,6 @@ struct SensitiveBytes {
             sodium_memzero(bytes.data(), size_t(bytes.size()));
     }
 };
-Secret::Secret(size_t n) : n_(n) {
-    if (sodium_init() < 0)
-        fail("Cannot initialize cryptography");
-    if (n) {
-        p_ = static_cast<unsigned char *>(sodium_malloc(n));
-        if (!p_)
-            throw std::bad_alloc();
-        sodium_memzero(p_, n);
-    }
-}
-Secret::~Secret() {
-    clear();
-}
-void Secret::clear() {
-    if (p_)
-        sodium_free(p_);
-    p_ = nullptr;
-    n_ = 0;
-}
-Secret::Secret(Secret &&o) noexcept
-    : p_(std::exchange(o.p_, nullptr)), n_(std::exchange(o.n_, 0)) {}
-Secret &Secret::operator=(Secret &&o) noexcept {
-    if (this != &o) {
-        clear();
-        p_ = std::exchange(o.p_, nullptr);
-        n_ = std::exchange(o.n_, 0);
-    }
-    return *this;
-}
 QString channelName(const QString &label) {
     auto name = label.trimmed();
     if (name.startsWith("[chan] "))
@@ -437,20 +408,31 @@ QVector<Message> Mailbox::messageSummaries(int limit) const {
 static QByteArray messageFilter(const QString &search, const QString &recipient, bool unreadOnly,
                                 bool anonymousOnly) {
     QByteArray filter(" WHERE folder=?");
-    if (!recipient.isEmpty()) filter += " AND recipient=?";
-    if (unreadOnly) filter += " AND unread<>0";
-    if (anonymousOnly) filter += " AND sender=recipient";
-    if (!search.isEmpty()) filter += " AND (instr(lower(subject),lower(?)) OR instr(lower(sender),lower(?)) OR instr(lower(recipient),lower(?)) OR instr(lower(body),lower(?)))";
+    if (!recipient.isEmpty())
+        filter += " AND recipient=?";
+    if (unreadOnly)
+        filter += " AND unread<>0";
+    if (anonymousOnly)
+        filter += " AND sender=recipient";
+    if (!search.isEmpty())
+        filter += " AND (instr(lower(subject),lower(?)) OR instr(lower(sender),lower(?)) OR "
+                  "instr(lower(recipient),lower(?)) OR instr(lower(body),lower(?)))";
     return filter;
 }
 QVector<Message> Mailbox::messageSummaries(const QString &folder, const QString &search, int offset,
                                            int limit, const QString &recipient, bool unreadOnly,
                                            bool anonymousOnly) const {
-    const auto query = QByteArray("SELECT hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received FROM messages") + messageFilter(search,recipient,unreadOnly,anonymousOnly) + " ORDER BY received DESC,rowid DESC LIMIT ? OFFSET ?";
+    const auto query =
+        QByteArray(
+            "SELECT hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received "
+            "FROM messages") +
+        messageFilter(search, recipient, unreadOnly, anonymousOnly) +
+        " ORDER BY received DESC,rowid DESC LIMIT ? OFFSET ?";
     Statement s(db_, query.constData());
     s.text(1, folder);
     int parameter = 2;
-    if (!recipient.isEmpty()) s.text(parameter++,recipient);
+    if (!recipient.isEmpty())
+        s.text(parameter++, recipient);
     if (!search.isEmpty())
         for (int i = 0; i < 4; ++i)
             s.text(parameter++, search);
@@ -464,29 +446,38 @@ QVector<Message> Mailbox::messageSummaries(const QString &folder, const QString 
 }
 int Mailbox::messageCount(const QString &folder, const QString &search, const QString &recipient,
                           bool unreadOnly, bool anonymousOnly) const {
-    const auto query = QByteArray("SELECT count(*) FROM messages") + messageFilter(search,recipient,unreadOnly,anonymousOnly);
+    const auto query = QByteArray("SELECT count(*) FROM messages") +
+                       messageFilter(search, recipient, unreadOnly, anonymousOnly);
     Statement s(db_, query.constData());
     s.text(1, folder);
     int parameter = 2;
-    if (!recipient.isEmpty()) s.text(parameter++,recipient);
+    if (!recipient.isEmpty())
+        s.text(parameter++, recipient);
     if (!search.isEmpty())
         for (int i = 0; i < 4; ++i)
             s.text(parameter++, search);
     s.row();
     return int(s.number(0));
 }
-QStringList Mailbox::messageHashes(const QString &folder, const QString &recipient,
-                                   bool unreadOnly, bool anonymousOnly) const {
-    const auto query = QByteArray("SELECT hash FROM messages") + messageFilter({},recipient,unreadOnly,anonymousOnly) + " ORDER BY received DESC,rowid DESC";
+QStringList Mailbox::messageHashes(const QString &folder, const QString &recipient, bool unreadOnly,
+                                   bool anonymousOnly) const {
+    const auto query = QByteArray("SELECT hash FROM messages") +
+                       messageFilter({}, recipient, unreadOnly, anonymousOnly) +
+                       " ORDER BY received DESC,rowid DESC";
     Statement s(db_, query.constData());
     s.text(1, folder);
-    if (!recipient.isEmpty()) s.text(2, recipient);
+    if (!recipient.isEmpty())
+        s.text(2, recipient);
     QStringList hashes;
-    while (s.row()) hashes << s.text(0);
+    while (s.row())
+        hashes << s.text(0);
     return hashes;
 }
 QVector<Message> Mailbox::messageSummaries(const QStringList &hashes) const {
-    Statement s(db_, "SELECT hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received FROM messages WHERE hash=?");
+    Statement s(
+        db_,
+        "SELECT hash,sender,recipient,substr(subject,1,240),substr(body,1,240),folder,received "
+        "FROM messages WHERE hash=?");
     QVector<Message> list;
     for (const auto &hash : hashes) {
         s.reset();
@@ -502,16 +493,21 @@ int Mailbox::messagePosition(const QString &hash, const QString &folder, const Q
     const auto filter = messageFilter({}, recipient, unreadOnly, anonymousOnly);
     const auto bind = [&](Statement &s) {
         s.text(1, folder);
-        if (!recipient.isEmpty()) s.text(2, recipient);
+        if (!recipient.isEmpty())
+            s.text(2, recipient);
         return recipient.isEmpty() ? 2 : 3;
     };
-    Statement at(db_, (QByteArray("SELECT received,rowid FROM messages") + filter + " AND hash=?").constData());
+    Statement at(
+        db_,
+        (QByteArray("SELECT received,rowid FROM messages") + filter + " AND hash=?").constData());
     at.text(bind(at), hash);
     if (!at.row())
         return -1;
     const qint64 received = at.number(0), rowid = at.number(1);
     // Rows above it: newer, or as new and inserted later (the list's order).
-    Statement before(db_, (QByteArray("SELECT count(*) FROM messages") + filter + " AND (received>? OR (received=? AND rowid>?))").constData());
+    Statement before(db_, (QByteArray("SELECT count(*) FROM messages") + filter +
+                           " AND (received>? OR (received=? AND rowid>?))")
+                              .constData());
     int parameter = bind(before);
     before.number(parameter++, received);
     before.number(parameter++, received);
@@ -520,10 +516,12 @@ int Mailbox::messagePosition(const QString &hash, const QString &folder, const Q
     return int(before.number(0));
 }
 QStringList Mailbox::channelAddresses(const QString &folder) const {
-    Statement s(db_, "SELECT DISTINCT recipient FROM messages WHERE folder=? AND recipient<>'' ORDER BY recipient");
+    Statement s(db_, "SELECT DISTINCT recipient FROM messages WHERE folder=? AND recipient<>'' "
+                     "ORDER BY recipient");
     s.text(1, folder);
     QStringList result;
-    while (s.row()) result << s.text(0);
+    while (s.row())
+        result << s.text(0);
     return result;
 }
 bool Mailbox::channelUnread(const QString &recipient, const QString &folder) const {

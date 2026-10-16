@@ -1,6 +1,7 @@
 // A small test harness with no dependency: tests register themselves when the program starts and
 // tests/bmclient/main.cpp runs them.
 #pragma once
+#include <bmc/bytes.h>
 #include <functional>
 #include <sstream>
 #include <string>
@@ -34,6 +35,8 @@ template <class T> std::string show(const T &value) {
         return std::to_string(static_cast<long long>(value));
     } else if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>) {
         return "\"" + std::string(value) + "\"";
+    } else if constexpr (std::is_same_v<T, bmc::Bytes>) {
+        return "bytes[" + std::to_string(value.size()) + "] " + bmc::hex(value);
     } else if constexpr (requires(std::ostream &out) { out << value; }) {
         std::ostringstream out;
         out << value;
