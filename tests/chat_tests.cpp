@@ -109,6 +109,34 @@ int main(int argc, char **argv) {
         mailbox.storeChat("hash-d", "BM-friend", "BM-local", 1, "from a friend", expiry, false);
         require(mailbox.chatSummaries().first().peer == "BM-friend" && mailbox.chatUnread() == 2,
                 "the conversation with the newest message comes first");
+        {
+            // What a service has still to answer: the chats nobody has looked at, oldest first
+            // across every conversation, and each marked read by itself, by its id.
+            mailbox.storeChat("q-1", "BM-friend", "BM-local", 2, "first", expiry, false);
+            mailbox.storeChat("q-2", "BM-friend", "BM-local", 3, "second", expiry, false);
+            const auto waiting = mailbox.unreadChats(100);
+            require(waiting.size() == mailbox.chatUnread() && waiting.size() >= 2 &&
+                        waiting[waiting.size() - 2].id == "q-1" && waiting.last().id == "q-2" &&
+                        waiting.last().peerAddress == "BM-friend" &&
+                        waiting.last().localAddress == "BM-local" &&
+                        waiting.last().body == "second" && waiting.last().seqno == 3 &&
+                        !waiting.last().outgoing,
+                    "the unread chats come oldest first, from every conversation");
+            for (const auto &chat : waiting)
+                require(!chat.outgoing, "what we sent is never waiting to be answered");
+            require(mailbox.unreadChats(1).size() == 1 &&
+                        mailbox.unreadChats(1).first().id == waiting.first().id,
+                    "no more than asked for");
+            const int before = mailbox.chatUnread();
+            require(mailbox.markChatMessageRead("q-1") && mailbox.chatUnread() == before - 1 &&
+                        mailbox.unreadChats(100).last().id == "q-2",
+                    "a chat marked read by its id leaves the others unread");
+            require(!mailbox.markChatMessageRead("q-1") && !mailbox.markChatMessageRead("nobody") &&
+                        !mailbox.markChatMessageRead(id) && mailbox.chatUnread() == before - 1,
+                    "reading what is read, what is ours or what is not there changes nothing");
+            require(mailbox.markChatMessageRead("q-2") && mailbox.chatUnread() == before - 2,
+                    "and the last one");
+        }
         // A chat lives on the network until its expiry, and in its owner's mailbox until its
         // owner deletes it: the expiry ends a chat's delivery, never the chat.
         const auto brief = QDateTime::currentSecsSinceEpoch() + 2;

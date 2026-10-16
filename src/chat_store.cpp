@@ -117,6 +117,31 @@ int Mailbox::markChatRead(const QString &local, const QString &peer) {
     s.row();
     return sqlite3_changes(db_);
 }
+QVector<ChatMessage> Mailbox::unreadChats(int limit) const {
+    QVector<ChatMessage> result;
+    // The partial index chat_unread holds exactly these rows, in this order.
+    Statement s(db_,
+                "SELECT id,local_address,peer_address,direction,seqno,body,received,expires,state "
+                "FROM chat_messages WHERE direction='in' AND unread=1 "
+                "ORDER BY received,rowid LIMIT ?");
+    s.number(1, std::max(1, limit));
+    while (s.row())
+        result << ChatMessage{s.text(0),   s.text(1),   s.text(2),   s.text(5),         s.text(8),
+                              s.number(4), s.number(6), s.number(7), s.text(3) == "out"};
+    return result;
+}
+QString Mailbox::chatState(const QString &id) const {
+    Statement s(db_, "SELECT state FROM chat_messages WHERE id=?");
+    s.text(1, id);
+    return s.row() ? s.text(0) : QString();
+}
+bool Mailbox::markChatMessageRead(const QString &id) {
+    Statement s(db_,
+                "UPDATE chat_messages SET unread=0 WHERE id=? AND direction='in' AND unread=1");
+    s.text(1, id);
+    s.row();
+    return sqlite3_changes(db_) > 0;
+}
 void Mailbox::endChatDeliveries(qint64 time) {
     Statement jobs(db_, "DELETE FROM network_jobs WHERE owner IN (SELECT id FROM chat_messages WHERE expires<=?)");
     jobs.number(1,time); jobs.row();

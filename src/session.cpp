@@ -100,6 +100,7 @@ Session::Session(QString root, bool offline, QObject *parent)
     recentMailboxPaths_ = recent.value("recentMailboxes").toStringList();
     retentionMB_ = std::clamp(recent.value("retentionMB", 2048).toInt(), 64, 32768);
     retentionDays_ = std::clamp(recent.value("retentionDays", 90).toInt(), 1, 3650);
+    listenPort_ = configuredPort();
     restartSoon_.setSingleShot(true);
     restartSoon_.setInterval(1000);
     connect(&restartSoon_, &QTimer::timeout, this, &Session::restartNode);
@@ -115,6 +116,8 @@ Session::Session(QString root, bool offline, QObject *parent)
         }
     });
     connect(&node_, &QProcess::errorOccurred, this, [this] {
+        if (stoppingNode_)
+            return; // stopped by this session (even killed, when it would not stop): no problem
         error_ = tr("Node: %1").arg(node_.errorString());
         emit changed();
     });
@@ -173,9 +176,17 @@ QString Session::status() const {
     if (pending > 0)
         base += " · " + tr("objects downloading: %1").arg(pending);
     const int port = status.value("listen_port").toInt();
-    if (port > 0 && port != kNodePort)
-        base += " · " + tr("port %1 is taken, listening on %2").arg(kNodePort).arg(port);
+    if (port > 0 && port != configuredPort())
+        base += " · " + tr("port %1 is taken, listening on %2").arg(configuredPort()).arg(port);
     return base;
+}
+// A service may ask for a port of its own (listenPort in its settings); a desktop listens on the
+// protocol's.
+quint16 Session::configuredPort() const {
+    const int port = QSettings(root_ + "/desktop.ini", QSettings::IniFormat)
+                         .value("listenPort", kNodePort)
+                         .toInt();
+    return port > 0 && port < 65536 ? quint16(port) : kNodePort;
 }
 // Lower layers throw English (see src/i18n/error_catalog.cpp); messages this
 // class raised itself are already translated and pass through unchanged.
@@ -660,8 +671,9 @@ void Session::tick() {
     try {
         // The node rewrites status.json every second; offline, its last values stand.
         QFile nodeStatus(root_ + "/status.json");
+        QJsonObject node;
         if (nodeStatus.open(QIODevice::ReadOnly)) {
-            const auto node = QJsonDocument::fromJson(nodeStatus.read(4096)).object();
+            node = QJsonDocument::fromJson(nodeStatus.read(4096)).object();
             if (node.contains("objects")) {
                 objectCount_ = node.value("objects").toInteger();
                 objectBytes_ = node.value("object_bytes").toInteger();
@@ -673,6 +685,23 @@ void Session::tick() {
             if (port > 0 && port != listenPort_) {
                 listenPort_ = quint16(port);
                 updatePortMapping();
+            }
+        }
+        // A node that runs but does no good (its status stopped, or no peer for too long) is
+        // started again; a node that has exited is restarted by its finished() handler.
+        if (!offline_ && node_.state() == QProcess::Running) {
+            using Verdict = NodeWatch::Verdict;
+            const auto now = QDateTime::currentSecsSinceEpoch();
+            const auto verdict =
+                nodeWatch_.judge(now, node.value("time").toInteger(), node.value("peers").toInt());
+            if (verdict != Verdict::Fine) {
+                // For logs, not for the window: not translated.
+                watchdogNote_ =
+                    verdict == Verdict::Hung
+                        ? QString("its status stopped for %1 s").arg(nodeWatch_.hungAfter)
+                        : QString("no peer for %1 minutes").arg(nodeWatch_.lonelyAfter / 60);
+                ++watchdogRestarts_;
+                restartNode();
             }
         }
         if (mailboxOpen()) {
@@ -701,7 +730,16 @@ void Session::tick() {
     }
     emit changed();
 }
-bool Session::sendChat(QString from, QString peer, QString body) {
+QString Session::chatState(QString id) const {
+    if (!mailboxOpen() || id.isEmpty())
+        return {};
+    try {
+        return mailbox_.chatState(id);
+    } catch (const std::exception &) {
+        return {};
+    }
+}
+bool Session::sendChat(QString from, QString peer, QString body, QString *id) {
     bool queued = false;
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
@@ -714,7 +752,10 @@ bool Session::sendChat(QString from, QString peer, QString body) {
               tr("Enter a valid Bitmessage recipient address"));
         check(!body.trimmed().isEmpty() && body.toUtf8().size() <= kMaxChatBodyBytes,
               tr("Chat message must be between 1 and 8192 bytes"));
-        mailbox_.queueChat(from, peer, body, QDateTime::currentSecsSinceEpoch() + kChatTtlSeconds);
+        const auto queuedId = mailbox_.queueChat(
+            from, peer, body, QDateTime::currentSecsSinceEpoch() + kChatTtlSeconds);
+        if (id)
+            *id = queuedId;
         Delivery::rereadKept(mailbox_);
         refresh();
         queued = true;
@@ -743,6 +784,33 @@ int Session::markChatRead(QString local, QString peer) {
         return mailbox_.markChatRead(local, peer);
     } catch (const std::exception &) {
         return 0;
+    }
+}
+QVariantList Session::unreadChats(int limit) const {
+    QVariantList result;
+    if (!mailboxOpen())
+        return result;
+    try {
+        for (const auto &message : mailbox_.unreadChats(limit))
+            result << QVariantMap{{"id", message.id},
+                                  {"local", message.localAddress},
+                                  {"peer", message.peerAddress},
+                                  {"body", message.body},
+                                  {"seqno", message.seqno},
+                                  {"received", message.received}};
+    } catch (const std::exception &) {
+        result.clear();
+    }
+    return result;
+}
+// Not through attempt(), like markChatRead: a service calls it between polls.
+bool Session::markChatMessageRead(QString id) {
+    if (!mailboxOpen() || id.isEmpty())
+        return false;
+    try {
+        return mailbox_.markChatMessageRead(id);
+    } catch (const std::exception &) {
+        return false;
     }
 }
 // The chats of this vault's identities, the one with the newest message first. A chat is
@@ -1100,6 +1168,12 @@ QStringList Session::nodeArguments() const {
     if (!listen)
         args << "-i";
     args << "-R" << QString::number(retentionMB_) << "-A" << QString::number(retentionDays_);
+    // A service asks for more peers (the node's own are eight of each) and a port of its own.
+    for (const auto &[key, option] : {std::pair{"maxOutgoing", "-o"}, {"maxIncoming", "-n"}})
+        if (const int count = config.value(key).toInt(); count > 0)
+            args << option << QString::number(count);
+    if (config.value("listenPort").toInt() > 0)
+        args << "-p" << QString::number(configuredPort());
     if (!peer.isEmpty())
         args << "-P" << peer << "-L";
     if (!proxy.isEmpty())
@@ -1110,6 +1184,7 @@ void Session::startNode() {
     updatePortMapping();
     if (offline_)
         return;
+    nodeWatch_.restarted(QDateTime::currentSecsSinceEpoch());
     QFile::remove(root_ + "/status.json");
     lastNodeStatus_ = {};
     nodeError_.clear();
@@ -1124,14 +1199,19 @@ void Session::restartNode() {
     ++nodeRestarts_;
     attempt([&] {
         if (node_.state() != QProcess::NotRunning) {
+            stoppingNode_ = true;
             node_.terminate();
             if (!node_.waitForFinished(3000)) {
                 node_.kill();
                 node_.waitForFinished(1000);
             }
+            stoppingNode_ = false;
         }
         startNode();
     });
+}
+void Session::setNodeWatchdog(int lonelyMinutes) {
+    nodeWatch_.lonelyAfter = std::max(0, lonelyMinutes) * 60;
 }
 void Session::setNetworkEnabled(bool enabled) {
     offline_ = !enabled;

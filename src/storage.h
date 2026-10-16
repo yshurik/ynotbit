@@ -172,6 +172,13 @@ class Mailbox {
     int chatUnread() const;
     // Marks the peer's messages to this identity as looked at; how many were not.
     int markChatRead(const QString &local, const QString &peer);
+    // What a service has still to answer: the received chats nobody has looked at, oldest first
+    // across every conversation, at most limit. One indexed read however long the chats are.
+    QVector<ChatMessage> unreadChats(int limit) const;
+    // Marks one received chat as looked at, by its id: false if it is not there or already read.
+    bool markChatMessageRead(const QString &id);
+    // The delivery state of a chat, by its id; empty if there is none.
+    QString chatState(const QString &id) const;
     // The network work of the chats past their expiry ends. The chats stay in the mailbox: an
     // expiry belongs to the network object, and is no reason to delete what its owner keeps.
     void endChatDeliveries(qint64 time);

@@ -1,8 +1,8 @@
 #pragma once
 #include "cache.h"
 #include "delivery.h"
-#include <utility>
 #include "message_model.h"
+#include "node_watch.h"
 #include "port_mapper.h"
 #include "storage.h"
 #include <QJsonObject>
@@ -11,6 +11,7 @@
 #include <QProcess>
 #include <QTimer>
 #include <QVariantList>
+#include <utility>
 namespace bm {
 class Session : public QObject {
     Q_OBJECT
@@ -46,6 +47,11 @@ class Session : public QObject {
     int retentionMB_ = 2048, retentionDays_ = 90;
     QTimer restartSoon_;   // see scheduleRestart()
     int nodeRestarts_ = 0;
+    bool stoppingNode_ = false; // restartNode() is stopping the node: its end is no problem
+    NodeWatch nodeWatch_;       // see setNodeWatchdog(): a node that runs but does no good
+    QString watchdogNote_;      // why the watchdog last restarted the node
+    int watchdogRestarts_ = 0;
+    quint16 configuredPort() const; // the listen port the node is asked for (8444 by default)
     qint64 objectCount_ = 0, objectBytes_ = 0;
     int incoming_ = 0; // established_incoming from the node's status.json
     std::unique_ptr<PortMapper> portMapper_;
@@ -115,6 +121,17 @@ class Session : public QObject {
     int nodeRestarts() const {
         return nodeRestarts_;
     }
+    // A node whose status stopped coming is restarted, always. With lonelyMinutes above zero a node
+    // that has had no peer that long is too (a service that must keep its network asks for it; a
+    // desktop that is simply offline does not). Never twice within five minutes.
+    void setNodeWatchdog(int lonelyMinutes);
+    // Why the watchdog last restarted the node ("" if it has not), and how many times.
+    QString watchdogNote() const {
+        return watchdogNote_;
+    }
+    int watchdogRestarts() const {
+        return watchdogRestarts_;
+    }
     bool gpuEnabled() const;
     Q_INVOKABLE void setGpuEnabled(bool on);
     // Incoming connections (default on); never while a proxy is set.
@@ -179,7 +196,11 @@ class Session : public QObject {
     Q_INVOKABLE QVariantMap message(QString id) const;
     QHash<QString, QString> names() const;
     static QString errorText(const std::exception &e);
-    bool sendChat(QString from, QString peer, QString body);
+    // Queues a chat; *id, if asked for, is the new message's id, to follow it with chatState().
+    bool sendChat(QString from, QString peer, QString body, QString *id = nullptr);
+    // Where the delivery of a chat of ours has got to ("queued", "awaiting_ack",
+    // "acknowledged"...); empty if there is no such chat.
+    QString chatState(QString id) const;
     // A conversation, oldest first; with a limit, only its newest messages (a window of it),
     // and in *more whether older ones are kept.
     QVariantList chatMessages(QString local, QString peer, int limit = 0, bool *more = nullptr) const;
@@ -201,6 +222,11 @@ class Session : public QObject {
     }
     // What has come in this conversation is looked at. How many messages were not.
     int markChatRead(QString local, QString peer);
+    // The chats still to be answered, oldest first across every conversation, at most limit:
+    // id, local, peer, body, seqno, received. What a service works through.
+    QVariantList unreadChats(int limit) const;
+    // One received chat looked at, by its id: false if it is not there or was read already.
+    bool markChatMessageRead(QString id);
     QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const;
     int messageCount(const QString &folder, const QString &search, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messageCount(folder, search, recipient, unreadOnly, anonymousOnly) : 0; }
     QStringList messageHashes(const QString &folder, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messageHashes(folder, recipient, unreadOnly, anonymousOnly) : QStringList(); }

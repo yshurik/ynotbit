@@ -3762,6 +3762,27 @@ int main(int argc, char **argv) {
             require(!noListen(), "without the proxy it listens again");
         }
         {
+            // A service asks for more peers and a port of its own in its node's settings;
+            // a desktop asks for none of it and gets the node's defaults.
+            const auto root = temp.filePath("service-node");
+            QDir().mkpath(root);
+            {
+                QSettings config(root + "/desktop.ini", QSettings::IniFormat);
+                config.setValue("maxOutgoing", 16);
+                config.setValue("maxIncoming", 32);
+                config.setValue("listenPort", 8555);
+            }
+            bm::Session service(root, true);
+            const auto args = " " + service.nodeArguments().join(' ') + " ";
+            require(args.contains(" -o 16 ") && args.contains(" -n 32 ") &&
+                        args.contains(" -p 8555 "),
+                    "a service's node gets the peer limits and the port it was set to");
+            bm::Session desktop(temp.filePath("desktop-node"), true);
+            const auto plain = " " + desktop.nodeArguments().join(' ') + " ";
+            require(!plain.contains(" -o ") && !plain.contains(" -n ") && !plain.contains(" -p "),
+                    "a desktop's node asks for none of it");
+        }
+        {
             const int folderBefore = folders->currentRow();
             window.findChild<QAction *>("settingsAction")->trigger();
             auto settings = window.findChild<QWidget *>("settingsPane");

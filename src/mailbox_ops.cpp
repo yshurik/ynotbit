@@ -78,6 +78,9 @@ void Mailbox::migrate() {
     // Chats made before unread counts: all of them read.
     if (!column(db_, "chat_messages", "unread"))
         sql("ALTER TABLE chat_messages ADD COLUMN unread INTEGER NOT NULL DEFAULT 0");
+    // The chats still to be looked at, which a service reads again and again: its own small index.
+    sql("CREATE INDEX IF NOT EXISTS chat_unread ON chat_messages(received) "
+        "WHERE direction='in' AND unread=1");
     t.commit();
 }
 QString Mailbox::saveDraft(const QString &id, const QString &from, const QString &to,
