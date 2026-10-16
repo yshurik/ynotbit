@@ -1,27 +1,16 @@
 #pragma once
 #include <QByteArray>
-#include <atomic>
-#include <mutex>
-#include <thread>
-#include <vector>
+#include <bmc/pow.h>
+
 namespace bm {
 class ProofOfWork {
-    std::atomic_bool cancel_{false}, done_{false};
-    std::vector<std::thread> workers_;
-    std::mutex resultMutex_;
-    QByteArray result_;
-    void join();
+    bmc::ProofOfWork core_;
 
   public:
-    ~ProofOfWork() {
-        stop();
-    }
     // Searches on workerCount() threads; done() turns true when one finds a nonce.
     void start(QByteArray object, quint64 trials = 1000, quint64 extra = 1000);
     void stop();
-    bool done() const {
-        return done_;
-    }
+    bool done() const;
     QByteArray take();
     // Every core but one, so the window stays responsive while a letter is prepared.
     static unsigned workerCount();
