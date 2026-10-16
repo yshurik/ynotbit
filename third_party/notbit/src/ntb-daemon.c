@@ -89,8 +89,11 @@ static struct ntb_netaddress option_proxy_address;
 static bool option_listen = true;
 static long option_retention_mb = 2048;
 static long option_retention_days = 90;
+/* Zero leaves the network's own default of eight */
+static long option_max_outgoing = 0;
+static long option_max_incoming = 0;
 
-static const char options[] = "-a:l:du:g:D:p:eP:hm:LbBr:iTR:A:";
+static const char options[] = "-a:l:du:g:D:p:eP:hm:LbBr:iTR:A:o:n:";
 
 static void
 add_address(struct address **list,
@@ -192,7 +195,11 @@ usage(void)
                " -R <MiB>              Keep at most this much of the object\n"
                "                       store (default 2048).\n"
                " -A <days>             Drop stored objects received more than\n"
-               "                       this many days ago (default 90).\n");
+               "                       this many days ago (default 90).\n"
+               " -o <count>            Keep this many outgoing peers (default\n"
+               "                       8, at most 64).\n"
+               " -n <count>            Accept this many incoming peers (default\n"
+               "                       8, at most 512).\n");
         exit(EXIT_FAILURE);
 }
 
@@ -311,6 +318,16 @@ process_arguments(int argc, char **argv, struct ntb_error **error)
 
                 case 'A':
                         if (!parse_positive(optarg, &option_retention_days, error))
+                                goto error;
+                        break;
+
+                case 'o':
+                        if (!parse_positive(optarg, &option_max_outgoing, error))
+                                goto error;
+                        break;
+
+                case 'n':
+                        if (!parse_positive(optarg, &option_max_incoming, error))
                                 goto error;
                         break;
 
@@ -480,6 +497,10 @@ add_addresses(struct ntb_network *nw,
                                                   error))
                         return false;
         }
+
+        ntb_network_set_peer_limits(nw,
+                                    (int) MIN(option_max_outgoing, 1000),
+                                    (int) MIN(option_max_incoming, 1000));
 
         if (option_only_explicit_addresses)
                 ntb_network_set_only_use_explicit_addresses(nw, true);

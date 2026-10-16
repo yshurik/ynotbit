@@ -27,12 +27,50 @@
 #include "ntb-win32.h"
 #else
 #include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #endif
 #include <errno.h>
 #include <string.h>
 
 #include "ntb-socket.h"
 #include "ntb-file-error.h"
+
+/* The system asks a peer that has been silent this long, again every
+ * INTERVAL seconds, and gives up after COUNT asks without an answer:
+ * 60 + 4 * 15 = two minutes to find a peer that vanished (a laptop that
+ * slept, a router that forgot the flow). The node's own timeout is ten
+ * minutes of silence, and a busy link is never silent. */
+#define NTB_SOCKET_KEEPALIVE_IDLE 60
+#define NTB_SOCKET_KEEPALIVE_INTERVAL 15
+#define NTB_SOCKET_KEEPALIVE_COUNT 4
+
+static void
+set_int_option(int sock, int level, int name, int value)
+{
+        /* The cast is for Windows' setsockopt. Best effort: an option a
+         * system lacks leaves its default. */
+        (void) setsockopt(sock, level, name, (const char *) &value, sizeof value);
+}
+
+void
+ntb_socket_set_keepalive(int sock)
+{
+        set_int_option(sock, SOL_SOCKET, SO_KEEPALIVE, 1);
+#if defined(TCP_KEEPIDLE)
+        set_int_option(sock, IPPROTO_TCP, TCP_KEEPIDLE, NTB_SOCKET_KEEPALIVE_IDLE);
+#elif defined(TCP_KEEPALIVE)
+        /* macOS: the idle time in seconds */
+        set_int_option(sock, IPPROTO_TCP, TCP_KEEPALIVE, NTB_SOCKET_KEEPALIVE_IDLE);
+#endif
+#if defined(TCP_KEEPINTVL)
+        set_int_option(sock, IPPROTO_TCP, TCP_KEEPINTVL, NTB_SOCKET_KEEPALIVE_INTERVAL);
+#endif
+#if defined(TCP_KEEPCNT)
+        set_int_option(sock, IPPROTO_TCP, TCP_KEEPCNT, NTB_SOCKET_KEEPALIVE_COUNT);
+#endif
+}
 
 bool
 ntb_socket_set_nonblock(int sock,

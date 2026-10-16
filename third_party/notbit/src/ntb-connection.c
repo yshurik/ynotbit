@@ -1081,6 +1081,7 @@ connect_socket(const struct ntb_netaddress *address,
                 ntb_close(sock);
                 return -1;
         }
+        ntb_socket_set_keepalive(sock);
 
         if (connect(sock,
                     &native_address.sockaddr,
@@ -1157,6 +1158,7 @@ ntb_connection_accept(int server_sock,
                 ntb_close(sock);
                 return NULL;
         }
+        ntb_socket_set_keepalive(sock);
 
         ntb_netaddress_from_native(&address, &native_address);
 

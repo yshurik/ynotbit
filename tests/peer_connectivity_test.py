@@ -3,6 +3,8 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -40,7 +42,7 @@ class Connectivity(unittest.IsolatedAsyncioTestCase):
         self.log.close()
         self.tmp.cleanup()
 
-    async def listeners(self, count, mode='healthy'):
+    def handler(self, mode='healthy'):
         async def serve(reader, writer):
             self.accepted += 1
             ordinal = self.accepted
@@ -64,23 +66,83 @@ class Connectivity(unittest.IsolatedAsyncioTestCase):
                         await writer.drain()
             except (OSError, asyncio.IncompleteReadError):
                 self.closed += 1
-        def handler(r, w):
+        def handle(r, w):
             self.tasks.append(asyncio.create_task(serve(r, w)))
+        return handle
+
+    async def listeners(self, count, mode='healthy'):
         result = []
         for _ in range(count):
-            s = await asyncio.start_server(handler, '127.0.0.1', 0)
+            s = await asyncio.start_server(self.handler(mode), '127.0.0.1', 0)
             self.servers.append(s)
             result.append(s.sockets[0].getsockname()[1])
         return result
 
-    async def start(self, ports=(), explicit=True):
-        cmd = [BINARY, BACKEND, '-D', str(self.root), '-b', '-B', '-L', '-i']
+    async def serve_on(self, port, mode='healthy'):
+        """A listener on a port chosen earlier: a peer that is back."""
+        s = await asyncio.start_server(self.handler(mode), '127.0.0.1', port)
+        self.servers.append(s)
+        return s
+
+    async def dead_port(self):
+        """A port nobody listens on, yet."""
+        s = await asyncio.start_server(lambda r, w: None, '127.0.0.1', 0)
+        port = s.sockets[0].getsockname()[1]
+        s.close()
+        await s.wait_closed()
+        return port
+
+    def saved(self, port):
+        """What the node saved of one endpoint in peer-state-v1.txt, once it has."""
+        try:
+            text = (self.root / 'peer-state-v1.txt').read_text()
+        except OSError:
+            return None
+        for line in text.splitlines():
+            f = line.split(',')
+            if len(f) >= 8 and f[3] == f'127.0.0.1:{port}':
+                return {'success': int(f[4]), 'attempt': int(f[5]), 'retry': int(f[6]),
+                        'failures': int(f[7])}
+        return None
+
+    async def start(self, ports=(), explicit=True, extra=(), listen=None):
+        cmd = [BINARY, BACKEND, '-D', str(self.root), '-b', '-B', '-L']
+        cmd += ['-a', f'127.0.0.1:{listen}'] if listen else ['-i']
         if explicit:
             cmd.append('-e')
         for port in ports:
             cmd += ['-P', f'127.0.0.1:{port}']
+        cmd += list(extra)
         self.process = await asyncio.create_subprocess_exec(*cmd, stdout=self.log, stderr=self.log)
         self.started = time.monotonic()
+
+    async def inbound(self, port):
+        """A peer that dials the node and completes the handshake; False if it is not let in."""
+        try:
+            reader, writer = await asyncio.wait_for(asyncio.open_connection('127.0.0.1', port), 3)
+        except (OSError, asyncio.TimeoutError):
+            return False
+        self.writers.append(writer)
+        try:
+            writer.write(frame('version', version('127.0.0.1', 1)))
+            await writer.drain()
+            got = set()
+            while not {'version', 'verack'} <= got:
+                command, _ = await asyncio.wait_for(receive(reader), 4)
+                got.add(command)
+            writer.write(frame('verack'))
+            await writer.drain()
+        except (OSError, asyncio.TimeoutError, asyncio.IncompleteReadError):
+            return False
+
+        async def read():
+            try:
+                while True:
+                    await receive(reader)
+            except (OSError, asyncio.IncompleteReadError, ValueError):
+                pass
+        self.tasks.append(asyncio.create_task(read()))
+        return True
 
     def status(self):
         if self.process.returncode is not None:
@@ -154,6 +216,128 @@ class Connectivity(unittest.IsolatedAsyncioTestCase):
                 for p in ports]))
         await self.start(explicit=False)
         await self.until(lambda: self.status().get('peers') == 5, 15)
+
+    # A peer the operator named is a choice, not a guess. It may be a node that is only
+    # sometimes up (an app that is quit and started again), so it is dialed again in
+    # seconds for as long as it takes; the hour a stale public address waits is for
+    # addresses most of which are dead. Before, a quiet app cost the responder minutes.
+    async def test_explicit_peer_that_comes_up_late_is_dialed_within_seconds(self):
+        port = await self.dead_port()
+        await self.start([port])
+        await self.until(lambda: self.status().get('attempts', 0) >= 1, 5)
+        await asyncio.sleep(1)
+        await self.serve_on(port)
+        await self.until(lambda: self.status().get('peers') == 1, 20)
+
+    async def test_explicit_peer_that_went_away_is_dialed_again_within_seconds(self):
+        (port,) = await self.listeners(1)
+        await self.start([port])
+        await self.until(lambda: self.status().get('peers') == 1, 10)
+        # Connections first: since Python 3.12 wait_closed() waits for them.
+        for w in self.writers:
+            w.close()
+        self.servers[0].close()
+        await self.servers[0].wait_closed()
+        await self.until(lambda: self.status().get('peers') == 0, 10)
+        await asyncio.sleep(1)
+        await self.serve_on(port)
+        await self.until(lambda: self.status().get('peers') == 1, 20)
+
+    async def test_explicit_peer_ignores_a_backoff_saved_by_an_earlier_run(self):
+        (port,) = await self.listeners(1)
+        now = int(time.time())
+        # Six failures and an hour to wait, as an app that was quit all night leaves it.
+        (self.root / 'peer-state-v1.txt').write_text(
+            f'{now - 100},1,1,127.0.0.1:{port},{now - 100},{now - 10},{now + 3600},6\n')
+        await self.start([port])
+        await self.until(lambda: self.status().get('peers') == 1, 10)
+
+    # An address that connected within 28 days is worth coming back to: when it fails it may
+    # be our own network that was down, so it waits minutes, not the hour a dead one does.
+    async def test_peer_that_worked_is_retried_within_minutes(self):
+        if BACKEND != '--node':
+            self.skipTest('the Qt relay keeps no such schedule')
+        port = await self.dead_port()
+        now = int(time.time())
+        (self.root / 'peer-state-v1.txt').write_text(
+            f'{now - 3600},1,1,127.0.0.1:{port},{now - 3600},{now - 3600},0,5\n')
+        await self.start(explicit=False)
+        await self.until(lambda: (self.saved(port) or {}).get('failures') == 6, 15)
+        self.assertLessEqual(self.saved(port)['retry'] - int(time.time()), 305)
+
+    async def test_peer_that_never_worked_keeps_the_public_schedule(self):
+        if BACKEND != '--node':
+            self.skipTest('the Qt relay keeps no such schedule')
+        port = await self.dead_port()
+        now = int(time.time())
+        (self.root / 'peer-state-v1.txt').write_text(
+            f'{now - 3600},1,1,127.0.0.1:{port},0,{now - 3600},0,5\n')
+        await self.start(explicit=False)
+        await self.until(lambda: (self.saved(port) or {}).get('failures') == 6, 15)
+        self.assertGreater(self.saved(port)['retry'] - int(time.time()), 1800)
+
+    # A node that wants to be well connected (a service, not a desktop app) asks for more
+    # slots; the default stays at the eight a desktop needs.
+    async def test_outgoing_slots_are_an_option(self):
+        if BACKEND != '--node':
+            self.skipTest('the Qt relay has no such option')
+        await self.start(await self.listeners(20), extra=['-o', '12'])
+        await self.until(lambda: self.status().get('peers') == 12, 10)
+        for _ in range(20):
+            self.assertLessEqual(self.status()['peers'], 12)
+            await asyncio.sleep(.1)
+
+    async def inbound_peers(self, count, extra=()):
+        s = await asyncio.start_server(lambda r, w: None, '127.0.0.1', 0)
+        port = s.sockets[0].getsockname()[1]
+        s.close()
+        await s.wait_closed()
+        await self.start(listen=port, extra=extra)
+        await self.until(lambda: 'listen_port' in self.status() and self.status()['listen_port'], 10)
+        results = await asyncio.gather(*[self.inbound(port) for _ in range(count)])
+        return sum(results)
+
+    async def test_incoming_slots_default_to_eight(self):
+        if BACKEND != '--node':
+            self.skipTest('the Qt relay has no such option')
+        self.assertEqual(await self.inbound_peers(12), 8)
+        await self.until(lambda: self.status().get('established_incoming') == 8, 10)
+
+    async def test_incoming_slots_are_an_option(self):
+        if BACKEND != '--node':
+            self.skipTest('the Qt relay has no such option')
+        self.assertEqual(await self.inbound_peers(12, extra=['-n', '12']), 12)
+        await self.until(lambda: self.status().get('established_incoming') == 12, 10)
+
+    # The system probes a peer that went quiet (a laptop that slept, a router that forgot
+    # the flow), on the sockets the node dials and on those it accepts. Linux only:
+    # `ss -o` shows the timer.
+    async def test_peer_sockets_are_kept_alive(self):
+        if sys.platform != 'linux' or not shutil.which('ss') or BACKEND != '--node':
+            self.skipTest('needs the notbit node and ss, as on Linux')
+
+        def timers(*filters):
+            return subprocess.run(['ss', '-tnoH', 'state', 'established', *filters],
+                                  capture_output=True, text=True).stdout
+        (port,) = await self.listeners(1)
+        s = await asyncio.start_server(lambda r, w: None, '127.0.0.1', 0)
+        listen = s.sockets[0].getsockname()[1]
+        s.close()
+        await s.wait_closed()
+        await self.start([port], listen=listen)
+        await self.until(lambda: self.status().get('peers') == 1, 10)
+        self.assertTrue(await self.inbound(listen))
+
+        async def keepalive(filter, what):
+            # ss shows one timer at a time: the retransmit one while data is in flight, the
+            # keepalive one once the socket is quiet.
+            for _ in range(100):
+                if 'keepalive' in timers(filter):
+                    return
+                await asyncio.sleep(.1)
+            self.fail(f'no keepalive timer on {what}: {timers(filter)!r}')
+        await keepalive(f'( dport = :{port} )', 'a socket the node dialed')
+        await keepalive(f'( sport = :{listen} )', 'a socket the node accepted')
 
     async def test_churn_replenishes_outgoing_target(self):
         await self.start(await self.listeners(16))

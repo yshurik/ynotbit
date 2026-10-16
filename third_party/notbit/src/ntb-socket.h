@@ -32,4 +32,10 @@ bool
 ntb_socket_set_nonblock(int sock,
                         struct ntb_error **error);
 
+/* Have the system probe a peer that has gone quiet, and drop the connection
+ * when it does not answer: about two minutes for one that vanished. Best
+ * effort; where the timers cannot be set the system's own apply. */
+void
+ntb_socket_set_keepalive(int sock);
+
 #endif /* NTB_SOCKET_H */

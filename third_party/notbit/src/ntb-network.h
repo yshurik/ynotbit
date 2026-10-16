@@ -104,6 +104,13 @@ ntb_network_add_peer_address(struct ntb_network *nw,
 struct ntb_signal *
 ntb_network_get_new_object_signal(struct ntb_network *nw);
 
+/* How many outgoing and incoming peers are wanted; zero leaves the default
+ * (eight each). A service that wants to be well connected asks for more. */
+void
+ntb_network_set_peer_limits(struct ntb_network *nw,
+                            int outgoing,
+                            int incoming);
+
 void
 ntb_network_set_only_use_explicit_addresses(struct ntb_network *nw,
                                             bool value);

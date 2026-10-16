@@ -129,6 +129,13 @@ else()
  target_compile_definitions(notbit_engine PRIVATE _GNU_SOURCE)
  target_compile_options(notbit_engine PRIVATE -Wno-deprecated-declarations -include sys/types.h)
 endif()
+if(NOT WIN32)
+ # Peer sockets are kept alive by the system (SO_KEEPALIVE with minutes, not hours).
+ add_executable(socket_tests tests/socket_tests.c)
+ target_include_directories(socket_tests PRIVATE ${NTB}/src)
+ target_link_libraries(socket_tests PRIVATE notbit_engine)
+ add_test(NAME socket-keepalive COMMAND socket_tests)
+endif()
 # Names for addresses: coolname's vocabulary, pinned in third_party/coolname.
 set(COOLNAME_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/coolname)
 file(GLOB COOLNAME_DATA CONFIGURE_DEPENDS ${COOLNAME_DIR}/data/*)

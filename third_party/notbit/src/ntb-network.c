@@ -124,8 +124,12 @@ ntb_network_error;
 #define NTB_NETWORK_SAVE_ADDR_LIST_TIMEOUT NTB_NETWORK_GC_TIMEOUT
 
 /* If we end up with this many incoming connections then we'll stop accepting
- * new ones */
+ * new ones. The default: a node can be told to want more, up to the limits
+ * below, which keep what is asked within the file descriptors and the
+ * bandwidth of a machine. */
 #define NTB_NETWORK_MAX_INCOMING_PEERS 8
+#define NTB_NETWORK_LIMIT_OUTGOING_PEERS 64
+#define NTB_NETWORK_LIMIT_INCOMING_PEERS 512
 
 /* We only keep track of up to this many rejected inventories. If we
  * end up with more then we'll delete the older ones. This is intended
@@ -241,6 +245,9 @@ struct ntb_network {
 
         int n_outgoing_peers;
         int n_incoming_peers;
+        /* How many of each are wanted: a desktop's own few, or a service's more */
+        int max_outgoing_peers;
+        int max_incoming_peers;
         struct ntb_list peers;
 
         int n_unconnected_addrs;
@@ -427,13 +434,26 @@ free_inventory(struct ntb_network_inventory *inv)
         ntb_slice_free(&ntb_network_inventory_allocator, inv);
 }
 
+/* How long a failure keeps this address away depends on what it is: one the
+ * operator named, one that has worked lately, or one nobody knows. */
+static enum ntb_peer_kind
+addr_kind(const struct ntb_network_addr *addr)
+{
+        if (addr->type == NTB_NETWORK_ADDR_EXPLICITLY_ADDED)
+                return NTB_PEER_EXPLICIT;
+        if (ntb_peer_proven(ntb_main_context_get_wall_clock(NULL), addr->last_success_wall))
+                return NTB_PEER_PROVEN;
+        return NTB_PEER_DISCOVERED;
+}
+
 static void
 address_failed(struct ntb_network *nw, struct ntb_network_addr *addr, unsigned retry)
 {
         unsigned delay;
         if (addr->consecutive_failures < 32)
                 addr->consecutive_failures++;
-        delay = ntb_peer_backoff(addr->consecutive_failures, (unsigned) rand());
+        delay = ntb_peer_backoff_kind(addr_kind(addr), addr->consecutive_failures,
+                                      (unsigned) rand());
         delay = MAX(delay, MIN(retry, 3600));
         addr->next_attempt_us = ntb_main_context_get_monotonic_clock(NULL) + delay * UINT64_C(1000000);
         addr->retry_wall = ntb_main_context_get_wall_clock(NULL) + delay;
@@ -698,7 +718,7 @@ ntb_network_tick(struct ntb_network *nw)
                 if (peer->state == NTB_NETWORK_PEER_STATE_CONNECTED)
                         continue;
                 if (peer->direction == NTB_NETWORK_OUTGOING &&
-                    stats.established_outgoing >= NTB_NETWORK_NUM_OUTGOING_PEERS) {
+                    stats.established_outgoing >= nw->max_outgoing_peers) {
                         peer->neutral_close = true;
                         remove_peer(nw, peer);
                 } else if (ntb_peer_setup_expired(now, peer->setup_started_us, nw->use_proxy)) {
@@ -715,7 +735,7 @@ ntb_network_tick(struct ntb_network *nw)
                 nw->dial_tokens = 4;
                 nw->dial_refill_us = now;
         }
-        while (stats.established_outgoing < NTB_NETWORK_NUM_OUTGOING_PEERS &&
+        while (stats.established_outgoing < nw->max_outgoing_peers &&
                stats.pending_outgoing < pending_limit && nw->dial_tokens) {
                 /* Reservoir sampling is uniform and never indexes past the list. */
                 unsigned count = 0;
@@ -912,7 +932,7 @@ connection_established(struct ntb_network *nw,
         struct ntb_network_peer_stats stats;
         ntb_network_get_peer_stats(nw, &stats);
         if (peer->direction == NTB_NETWORK_OUTGOING &&
-            stats.established_outgoing >= NTB_NETWORK_NUM_OUTGOING_PEERS) {
+            stats.established_outgoing >= nw->max_outgoing_peers) {
                 peer->neutral_close = true;
                 remove_peer(nw, peer);
                 return false;
@@ -1702,8 +1722,17 @@ store_for_each_addr_cb(const struct ntb_store_addr *addr,
         entry->services = addr->services;
         entry->last_success_wall = MAX(entry->last_success_wall, success);
         entry->last_attempt_wall = MIN(addr->last_attempt, now);
+        /* A peer the operator named is dialed at once: what an earlier run
+         * saved of its failures (an app that was quit all night) is no reason
+         * to wait. Others wait for what their kind allows, no longer. */
+        if (entry->type == NTB_NETWORK_ADDR_EXPLICITLY_ADDED) {
+                entry->consecutive_failures = 0;
+                entry->retry_wall = 0;
+                entry->next_attempt_us = 0;
+                return;
+        }
         entry->consecutive_failures = MIN(addr->failures, 32);
-        entry->retry_wall = MIN(addr->retry, now + 3600);
+        entry->retry_wall = MIN(addr->retry, now + (int64_t) ntb_peer_retry_limit(addr_kind(entry)));
         if (entry->retry_wall > now)
                 entry->next_attempt_us = ntb_main_context_get_monotonic_clock(NULL) +
                     (entry->retry_wall - now) * UINT64_C(1000000);
@@ -1783,13 +1812,15 @@ listen_socket_source_cb(struct ntb_main_context_source *source,
 
         peer->direction = NTB_NETWORK_INCOMING;
         nw->n_incoming_peers++;
+        /* Counted now, so the limit is the limit and not one more. */
+        update_all_listen_socket_sources(nw);
 }
 
 static void
 update_listen_socket_source(struct ntb_network *nw,
                             struct ntb_network_listen_socket *listen_socket)
 {
-        if (nw->n_incoming_peers >= NTB_NETWORK_MAX_INCOMING_PEERS) {
+        if (nw->n_incoming_peers >= nw->max_incoming_peers) {
                 if (listen_socket->source) {
                         ntb_main_context_remove_source(listen_socket->source);
                         listen_socket->source = NULL;
@@ -1863,6 +1894,8 @@ ntb_network_new(void)
 
         nw->n_outgoing_peers = 0;
         nw->n_incoming_peers = 0;
+        nw->max_outgoing_peers = NTB_NETWORK_NUM_OUTGOING_PEERS;
+        nw->max_incoming_peers = NTB_NETWORK_MAX_INCOMING_PEERS;
         nw->n_unconnected_addrs = 0;
         nw->dial_refill_us = ntb_main_context_get_monotonic_clock(NULL);
         nw->dial_tokens = 4;
@@ -2114,6 +2147,10 @@ ntb_network_add_peer_address(struct ntb_network *nw,
                 return false;
 
         addr->type = NTB_NETWORK_ADDR_EXPLICITLY_ADDED;
+        /* A peer the operator names is wanted now, whatever was known of it. */
+        addr->consecutive_failures = 0;
+        addr->next_attempt_us = 0;
+        addr->retry_wall = 0;
 
         return true;
 }
@@ -2122,6 +2159,18 @@ struct ntb_signal *
 ntb_network_get_new_object_signal(struct ntb_network *nw)
 {
         return &nw->new_object_signal;
+}
+
+void
+ntb_network_set_peer_limits(struct ntb_network *nw,
+                            int outgoing,
+                            int incoming)
+{
+        if (outgoing > 0)
+                nw->max_outgoing_peers = MIN(outgoing, NTB_NETWORK_LIMIT_OUTGOING_PEERS);
+        if (incoming > 0)
+                nw->max_incoming_peers = MIN(incoming, NTB_NETWORK_LIMIT_INCOMING_PEERS);
+        update_all_listen_socket_sources(nw);
 }
 
 void
