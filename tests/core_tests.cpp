@@ -6,12 +6,15 @@
 #include "pow.h"
 #include "protocol.h"
 #include "protocol_wire.h"
+#include "sound_theme.h"
 #include "storage.h"
 #include <QCoreApplication>
 #include <QDataStream>
 #include <QDateTime>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QPair>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QtEndian>
@@ -21,6 +24,7 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <miniz.h>
 #include <sqlcipher/sqlite3.h>
 using namespace bm;
 static void require(bool b, const char *m) {
@@ -35,6 +39,40 @@ static void rejects(const std::function<void()> &f) {
         bad = true;
     }
     require(bad, "expected rejection");
+}
+// A WAV header with a few samples: enough for the format checks, which never
+// look at the audio itself.
+static QByteArray wavBytes(int rate, int channels, int bits, int format = 1) {
+    const int bytesPerSample = bits / 8;
+    const int frames = 8;
+    const QByteArray samples(frames * channels * bytesPerSample, '\0');
+    const quint32 dataSize = quint32(samples.size());
+    QByteArray out;
+    QDataStream stream(&out, QIODevice::WriteOnly);
+    stream.setByteOrder(QDataStream::LittleEndian);
+    stream.writeRawData("RIFF", 4);
+    stream << quint32(36 + dataSize);
+    stream.writeRawData("WAVE", 4);
+    stream.writeRawData("fmt ", 4);
+    stream << quint32(16) << quint16(format) << quint16(channels) << quint32(rate)
+           << quint32(rate * channels * bytesPerSample) << quint16(channels * bytesPerSample)
+           << quint16(bits);
+    stream.writeRawData("data", 4);
+    stream << dataSize;
+    stream.writeRawData(samples.constData(), samples.size());
+    return out;
+}
+// A ZIP holding the given entries, as the settings page would be handed one.
+static QString writeThemeZip(const QString &path, const QVector<QPair<QString, QByteArray>> &files) {
+    mz_zip_archive zip{};
+    if (!mz_zip_writer_init_file(&zip, QFile::encodeName(path).constData(), 0))
+        return {};
+    for (const auto &file : files)
+        mz_zip_writer_add_mem(&zip, file.first.toUtf8().constData(), file.second.constData(),
+                              size_t(file.second.size()), MZ_DEFAULT_LEVEL);
+    mz_zip_writer_finalize_archive(&zip);
+    mz_zip_writer_end(&zip);
+    return path;
 }
 // A router for PortMapper tests: counts calls; answers as told.
 struct RouterLog {
@@ -616,8 +654,109 @@ int main(int argc, char **argv) {
             require(fresh.identities().size() == 1,
                     "an identity already there, or keys under another address, are refused");
         }
+        {
+            // Sound themes: the events a theme fills, and what a directory that
+            // does is listed as. The built-in zip is unpacked and checked by the
+            // desktop test, which has the compiled-in resource.
+            QTemporaryDir themes;
+            require(soundEvents().size() == 2 && soundEventFile("new-chat") == "new-chat.wav" &&
+                        soundEventFile("new-mail") == "new-mail.wav" &&
+                        soundEventFile("nope").isEmpty(),
+                    "two sound events, each with the file name a theme uses");
+            require(installedSoundThemes(themes.path()).isEmpty(),
+                    "a directory with no themes lists none, and invents none");
+            require(!importSoundTheme(d.filePath("letters.bmmail"), themes.path(), nullptr, nullptr),
+                    "a file that is not a ZIP is not a theme");
+            QDir().mkpath(themes.path() + "/sound-themes/quiet");
+            QDir().mkpath(themes.path() + "/sound-themes/not-a-theme");
+            QFile wav(themes.path() + "/sound-themes/quiet/new-mail.wav");
+            require(wav.open(QIODevice::WriteOnly), "make a theme file");
+            wav.write("RIFF....WAVEfmt ");
+            wav.close();
+            QFile manifest(themes.path() + "/sound-themes/quiet/theme.json");
+            if (manifest.open(QIODevice::WriteOnly)) {
+                manifest.write("{\"name\":\"Quiet\"}");
+                manifest.close();
+            }
+            const auto listed = installedSoundThemes(themes.path());
+            require(listed.size() == 1 && listed.first().id == "quiet" &&
+                        listed.first().name == "Quiet" && !listed.first().builtin,
+                    "a directory holding an event file is a theme, named by its theme.json");
+            require(findSoundTheme("quiet", themes.path()).id == "quiet" &&
+                        findSoundTheme("absent", themes.path()).id == "quiet",
+                    "the chosen theme is found by id, else the first installed one");
+            require(!soundFileFor(listed.first(), "new-mail").isEmpty() &&
+                        soundFileFor(listed.first(), "new-chat").isEmpty(),
+                    "a theme gives the events it fills, and nothing for the others");
+        }
+        {
+            // Importing a theme checks every sound before writing any of it: Qt
+            // does not resample a sound effect, so a file the output device
+            // cannot render would be played into silence. Better to refuse it.
+            QTemporaryDir themes;
+            const AudioLimits device{44100, 96000, 1, 2};
+            const QString slow = writeThemeZip(
+                themes.filePath("slow.zip"),
+                {{"new-chat.wav", wavBytes(22050, 1, 16)},
+                 {"new-mail.wav", wavBytes(48000, 2, 16)}});
+            SoundTheme theme;
+            QString error;
+            require(!importSoundTheme(slow, themes.path(), &theme, &error, device) &&
+                        error.contains("22050") && error.contains("new-chat.wav"),
+                    "a sound the output device cannot play is refused, naming the file");
+            require(installedSoundThemes(themes.path()).isEmpty(),
+                    "a refused theme is not left half installed");
+            require(importSoundTheme(slow, themes.path(), &theme, &error, AudioLimits{}),
+                    "with no output device known, only the file's own format is checked");
+            require(theme.id == "slow" && QFile::exists(theme.dir + "/new-chat.wav"),
+                    "a theme takes its id from the zip's name when it has no theme.json");
+            const QString fits = writeThemeZip(
+                themes.filePath("fits.zip"),
+                {{"sounds/new-chat.wav", wavBytes(48000, 1, 16)},
+                 {"sounds/new-mail.wav", wavBytes(44100, 2, 16)},
+                 {"theme.json", "{\"id\":\"fits\",\"name\":\"Fits\"}"}});
+            require(importSoundTheme(fits, themes.path(), &theme, &error, device) &&
+                        theme.id == "fits" && theme.name == "Fits" &&
+                        QFile::exists(theme.dir + "/new-chat.wav"),
+                    "a theme in a folder inside the zip is unpacked flat");
+            for (const auto &bad : QVector<QPair<QString, QByteArray>>{
+                     {"new-chat.wav", QByteArray("not a wav at all")},
+                     {"new-chat.wav", wavBytes(48000, 1, 8)},
+                     {"new-chat.wav", wavBytes(48000, 1, 16, 3)}}) {
+                const QString zip = writeThemeZip(themes.filePath("bad.zip"), {bad});
+                error.clear();
+                require(!importSoundTheme(zip, themes.path(), nullptr, &error, device) &&
+                            !error.isEmpty(),
+                        "a sound that is not 16-bit PCM WAV is refused, saying why");
+            }
+        }
+        {
+            // Arrivals are counted once per new incoming row; that count is what
+            // Session watches to play a sound. Replays, broadcasts, drafts and
+            // our own outgoing chats are not arrivals.
+            Vault inbox;
+            inbox.create(d.filePath("arrivals.bmvault"), "long test password");
+            const auto key = inbox.addMailboxKey();
+            Mailbox arrivals;
+            arrivals.create(d.filePath("arrivals.bmmail"), key, inbox.mailboxKey(key));
+            require(arrivals.incomingLetterCount() == 0 && arrivals.incomingChatCount() == 0,
+                    "a fresh mailbox has had no arrivals");
+            arrivals.store("letter-1", "BM-peer", "BM-local", "hi", "body", -1, "Inbox");
+            require(arrivals.incomingLetterCount() == 1, "a new Inbox letter is an arrival");
+            arrivals.store("letter-1", "BM-peer", "BM-local", "hi", "body", -1, "Inbox");
+            require(arrivals.incomingLetterCount() == 1, "the same letter again is not one");
+            arrivals.store("chan-1", "BM-peer", "BM-local", "hi", "body", -1, "Broadcasts");
+            require(arrivals.incomingLetterCount() == 1, "a broadcast is not a new email");
+            const auto expiry = QDateTime::currentSecsSinceEpoch() + 86400;
+            arrivals.storeChat("chat-1", "BM-peer", "BM-local", 1, "hello", expiry, false);
+            require(arrivals.incomingChatCount() == 1, "a new incoming chat is an arrival");
+            arrivals.storeChat("chat-1", "BM-peer", "BM-local", 1, "hello", expiry, false);
+            require(arrivals.incomingChatCount() == 1, "the same chat again is not one");
+            arrivals.storeChat("chat-2", "BM-local", "BM-peer", 2, "mine", expiry, true);
+            require(arrivals.incomingChatCount() == 1, "our own outgoing chat is not an arrival");
+        }
         std::cout << "PASS: vault, password rotation, SQLCipher, deduplication, backup, chan "
-                     "fixture, authenticated message codec\n";
+                     "fixture, authenticated message codec, sound themes\n";
     } catch (const std::exception &e) {
         std::cerr << "FAIL: " << e.what() << "\n";
         return 1;

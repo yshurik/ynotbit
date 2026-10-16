@@ -124,6 +124,10 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
 - Update notices: signed broadcasts from ynotbit's release address
   (`BM-2666hf5eAbjCJMaPwC7eG3Um55QJGM`) show a banner when a newer version is out,
   without subscribing; **Settings → Notifications** turns them off.
+- Sound notifications: **Settings → Notifications** plays a sound for a new chat or a
+  new email, from a theme of WAV files. The built-in theme is retro, whose two clips
+  are synthesized by `scripts/make-default-theme.py`; a theme is a ZIP holding
+  `new-chat.wav` and `new-mail.wav`, which the same page adds.
 - A separate notbit relay, on Linux, macOS and Windows, receives no vault or
   mailbox keys. It identifies itself to peers as `/ynotbit:<version>/`. Its bounded local
   queue accepts network objects, validates proof of work, and records acceptance,
@@ -163,7 +167,8 @@ An offer to peers is not proof that every peer or the final recipient received i
 
 ## Build and test
 
-Requirements: CMake 3.22+, C++20, Qt 6.8+ (Core, Gui, Widgets, Network, Test), OpenSSL, libsodium, SQLCipher, pkg-config, Ninja.
+Requirements: CMake 3.22+, C++20, Qt 6.8+ (Core, Gui, Widgets, Network, Multimedia,
+Test), OpenSSL, libsodium, SQLCipher, pkg-config, Ninja.
 Python 3 runs the loopback relay tests. Autoconf, Automake, make and Tcl are
 needed when building the pinned storage dependencies from source.
 

@@ -12,9 +12,12 @@
 #include "new_chat_dialog.h"
 #include "join_channel_dialog.h"
 #include "new_vault_dialog.h"
+#include "sound_theme.h"
 #include <QElapsedTimer>
+#include <QFile>
 #include <QFileDialog>
 #include <QSignalSpy>
+#include <QSoundEffect>
 #include <QTest>
 #include <QtWidgets>
 #include <functional>
@@ -193,7 +196,7 @@ int main(int argc, char **argv) {
         require(session.mailboxOpen(), "mailbox unlock");
         std::cout << "Unlock plus mailbox open: " << clock.elapsed() << "ms\n";
         QCoreApplication::setApplicationVersion("9.8.7");
-        bm::DesktopWindow window(session);
+        bm::DesktopWindow window(session, temp.filePath("sounds"));
         window.show();
         auto brand = window.findChild<QLabel *>("brand");
         require(brand && brand->text().contains("ynotbit-9.8.7"),
@@ -248,7 +251,7 @@ int main(int argc, char **argv) {
             // window has no mailbox, so its pages are told by the width they were given.
             const auto railsOf = [&](const QString &node) {
                 bm::Session own(temp.filePath(node), true);
-                bm::DesktopWindow reopened(own);
+                bm::DesktopWindow reopened(own, temp.filePath("sounds-reopened"));
                 auto reopenedFolders = reopened.findChild<QListWidget *>("folders");
                 auto reopenedRail = reopened.findChild<QWidget *>("channelRail");
                 QList<int> widths;
@@ -1263,6 +1266,65 @@ int main(int argc, char **argv) {
                 for (auto action : window.menuBar()->actions())
                     require(action->text() != "Appearance" && action->text() != "Language",
                             "theme and language live in Settings, not in the menu bar");
+            }
+            {
+                // The Notifications page lists the sound themes, the built-in one
+                // first, with a switch and a preview for each event.
+                auto settings = openSettings();
+                auto themes = settings->findChild<QListWidget *>("soundThemesList");
+                require(themes && themes->count() == 1 &&
+                            themes->item(0)->data(Qt::UserRole).toString() == "retro" &&
+                            themes->item(0)->text().contains("Retro"),
+                        "Settings lists the built-in sound theme");
+                require(settings->findChild<QCheckBox *>("soundEnabledCheck") &&
+                            settings->findChild<QCheckBox *>("soundEvent_new-chat") &&
+                            settings->findChild<QCheckBox *>("soundEvent_new-mail") &&
+                            settings->findChild<QPushButton *>("soundPreview_new-chat") &&
+                            settings->findChild<QPushButton *>("addSoundThemeButton"),
+                        "the sound switch, both events and the add-theme button are all there");
+                // The built-in theme was unpacked from the compiled-in zip, so both
+                // of its sounds are on disk and the notifier can find them.
+                auto &sounds = window.soundNotifier();
+                require(!bm::soundFileFor(sounds.currentTheme(), "new-chat").isEmpty() &&
+                            !bm::soundFileFor(sounds.currentTheme(), "new-mail").isEmpty(),
+                        "the built-in theme unpacks both of its sounds");
+                // The shipped sounds must be in a format this output device
+                // renders. Qt does not resample a sound effect, so a 22050 Hz
+                // file loads Ready and then plays into silence.
+                for (const auto &event : bm::soundEvents()) {
+                    QFile file(bm::soundFileFor(sounds.currentTheme(), event.id));
+                    QString why;
+                    require(file.open(QIODevice::ReadOnly) &&
+                                bm::soundFileIsPlayable(file.readAll(), event.file,
+                                                        sounds.audioLimits(), &why),
+                            "the built-in theme's sounds are playable on this output device");
+                }
+                auto enabled = settings->findChild<QCheckBox *>("soundEnabledCheck");
+                enabled->setChecked(false);
+                require(!sounds.enabled(), "the sound switch is remembered");
+                enabled->setChecked(true);
+                require(sounds.enabled(), "turning sounds back on is remembered");
+                auto mail = settings->findChild<QCheckBox *>("soundEvent_new-mail");
+                mail->setChecked(false);
+                require(!sounds.eventEnabled("new-mail"), "an event can be silenced on its own");
+                mail->setChecked(true);
+                require(sounds.eventEnabled("new-mail"), "and turned back on");
+                // The Play button must hand the event's file to a sound effect that
+                // loads: this is the whole path a real arrival takes.
+                require(sounds.findChildren<QSoundEffect *>().isEmpty(),
+                        "no sound effect exists before anything is played");
+                settings->findChild<QPushButton *>("soundPreview_new-chat")->click();
+                const auto effects = sounds.findChildren<QSoundEffect *>();
+                require(effects.size() == 1,
+                        "the preview button builds exactly one sound effect");
+                require(effects.first()->source().toLocalFile().endsWith("/new-chat.wav"),
+                        "the preview button hands the event's own file to the effect");
+                require(QTest::qWaitFor(
+                            [&] { return effects.first()->status() == QSoundEffect::Ready; }, 5000),
+                        "the preview's sound loads ready to play");
+                settings->findChild<QPushButton *>("soundPreview_new-mail")->click();
+                require(sounds.findChildren<QSoundEffect *>().size() == 2,
+                        "the other event loads its own sound effect");
             }
             // A stroke thinner than one pixel at the button's icon size only
             // ever renders as antialiased gray, which reads as a disabled
@@ -3849,7 +3911,7 @@ int main(int argc, char **argv) {
                 }
             } fieldsAtHint;
             bm::Session looks(temp.filePath("looks-node"), true);
-            bm::DesktopWindow lookWindow(looks);
+            bm::DesktopWindow lookWindow(looks, temp.filePath("sounds-looks"));
             lookWindow.show();
             QStringList faults;
             const auto inspect = [&](QDialog *d, const QString &when) {
@@ -4224,7 +4286,7 @@ int main(int argc, char **argv) {
             // A vault made from a window's lock screen is the one it offers next,
             // even when the lock screen offered another before.
             bm::Session own(temp.filePath("window-vault-node"), true);
-            bm::DesktopWindow second(own);
+            bm::DesktopWindow second(own, temp.filePath("sounds-second"));
             second.show();
             bool asked = false;
             // Makes a vault in the dialog the named button or action opens,

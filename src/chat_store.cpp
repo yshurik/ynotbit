@@ -67,6 +67,8 @@ void Mailbox::storeChat(const QString &id, const QString &sender, const QString 
     s.text(1, id); s.text(2, outgoing ? sender : recipient); s.text(3, outgoing ? recipient : sender);
     s.text(4, outgoing ? "out" : "in"); s.number(5, seqno); s.text(6, body);
     s.number(7, time); s.number(8, expires); s.number(9, outgoing ? 0 : 1); s.row();
+    if (!outgoing && sqlite3_changes(db_) > 0)
+        ++incomingChats_;
 }
 QVector<ChatMessage> Mailbox::chatMessages(const QString &local, const QString &peer, int limit,
                                            bool *more) const {

@@ -300,6 +300,7 @@ void Mailbox::sql(const char *q) {
 void Mailbox::connect(const QString &path, const Secret &key, bool create) {
     check(!db_, "Close the current mailbox first");
     check(key.size() == 32, "Invalid mailbox key");
+    incomingLetters_ = incomingChats_ = 0;
     if (create)
         reserveFile(path);
     auto bytes = QFile::encodeName(path);
@@ -410,6 +411,10 @@ void Mailbox::store(const QString &hash, const QString &from, const QString &to,
         s.text(6, folder);
         s.number(7, QDateTime::currentSecsSinceEpoch());
         s.row();
+        // A row that was actually inserted is a letter this mailbox had not
+        // seen: an INSERT OR IGNORE that matched an existing hash is not.
+        if (folder == "Inbox" && sqlite3_changes(db_) > 0)
+            ++incomingLetters_;
         if (c >= 0) // a catch-up pass stores behind the checkpoint and leaves it be
             advance(c);
         t.commit();

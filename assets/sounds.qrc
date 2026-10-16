@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/sounds">
+    <file alias="retro.zip">sounds/retro.zip</file>
+  </qresource>
+</RCC>

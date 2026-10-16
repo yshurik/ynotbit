@@ -123,6 +123,11 @@ struct DeliveryEvent;
 class Mailbox {
     sqlite3 *db_ = nullptr;
     quint64 messageRevision_ = 0;
+    // Incoming letters and chats that were new to the mailbox, counted from
+    // the last open. Only arrivals are counted, and only once each: a catch-up
+    // or retention pass that meets a letter again does not raise them.
+    quint64 incomingLetters_ = 0;
+    quint64 incomingChats_ = 0;
     void connect(const QString &, const Secret &, bool create);
     void sql(const char *);
     void migrate();
@@ -199,6 +204,14 @@ class Mailbox {
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     quint64 messageRevision() const {
         return messageRevision_;
+    }
+    // Arrivals seen since the mailbox was opened, for the new-letter and
+    // new-chat notifications. Session watches them for increases.
+    quint64 incomingLetterCount() const {
+        return incomingLetters_;
+    }
+    quint64 incomingChatCount() const {
+        return incomingChats_;
     }
     void backup(const QString &, const Secret &);
     QString saveDraft(const QString &id, const QString &from, const QString &to,

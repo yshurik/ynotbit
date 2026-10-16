@@ -1,6 +1,7 @@
 #pragma once
 #include "appearance.h"
 #include "letter_render.h"
+#include "sound_notifier.h"
 #include <QHash>
 #include <QMainWindow>
 #include <QVariantMap>
@@ -26,9 +27,11 @@ class LetterPane;
 class DesktopWindow : public QMainWindow {
     Q_OBJECT
   public:
-    explicit DesktopWindow(Session &session);
+    explicit DesktopWindow(Session &session, QString soundThemesDir = {});
     void compose(QVariantMap letter = {}, bool reply = false, bool forward = false);
     void selectMessage(const QString &id);
+    // The sound theme preferences and playback, for the settings page and tests.
+    SoundNotifier &soundNotifier() { return sounds_; }
     // Opens a chat between one of the vault's identities and a peer: listed first and
     // empty until the first message, which makes it a chat of the mailbox.
     void startChat(const QString &local, const QString &peer);
@@ -36,6 +39,7 @@ class DesktopWindow : public QMainWindow {
   private:
     Session &session_;
     Appearance appearance_;
+    SoundNotifier sounds_;
     QListView *letters_;
     QListWidget *folders_;
     int lastFolder_ = 0; // the folder Settings goes back to without a mailbox

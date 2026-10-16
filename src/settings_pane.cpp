@@ -5,21 +5,25 @@
 #include "port_mapper.h"
 #include "pow.h"
 #include "session.h"
+#include "sound_notifier.h"
 #include "updates.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QStandardPaths>
 #include <QThreadPool>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -40,8 +44,8 @@ QLabel *note(const QString &text, const QString &name = {}) {
 }
 } // namespace
 SettingsPane::SettingsPane(Session &session, Appearance &appearance, QString density,
-                           QWidget *parent)
-    : QWidget(parent), session_(session), appearance_(appearance) {
+                           SoundNotifier &sounds, QWidget *parent)
+    : QWidget(parent), session_(session), appearance_(appearance), sounds_(sounds) {
     setObjectName("settingsPane");
     // Headed like the other whole-pane pages, Identities and Contacts.
     auto outer = new QVBoxLayout(this);
@@ -256,7 +260,86 @@ QWidget *SettingsPane::notificationsPage() {
     connect(updateNotices_, &QCheckBox::toggled, &session_, &Session::setUpdateNotices);
     column->addWidget(updateNotices_);
     column->addWidget(note(tr("Kept in the open mailbox.")));
+    column->addWidget(heading(tr("Sounds")));
+    soundEnabled_ = new QCheckBox(tr("Play a sound for new messages"));
+    soundEnabled_->setObjectName("soundEnabledCheck");
+    soundEnabled_->setChecked(sounds_.enabled());
+    connect(soundEnabled_, &QCheckBox::toggled, &sounds_, &SoundNotifier::setEnabled);
+    column->addWidget(soundEnabled_);
+    column->addWidget(note(tr("New letters and chats play the chosen theme's sound.")));
+    soundThemes_ = new QListWidget;
+    soundThemes_->setObjectName("soundThemesList");
+    soundThemes_->setMaximumHeight(140);
+    connect(soundThemes_, &QListWidget::currentRowChanged, this, [this](int row) {
+        if (row < 0)
+            return;
+        const auto id = soundThemes_->item(row)->data(Qt::UserRole).toString();
+        if (!id.isEmpty() && id != sounds_.theme())
+            sounds_.setTheme(id);
+    });
+    column->addWidget(soundThemes_);
+    addSoundTheme_ = new QPushButton(tr("Add theme from ZIP…"));
+    addSoundTheme_->setObjectName("addSoundThemeButton");
+    connect(addSoundTheme_, &QPushButton::clicked, this, &SettingsPane::addSoundTheme);
+    column->addWidget(addSoundTheme_, 0, Qt::AlignLeft);
+    column->addWidget(note(tr("A theme is a ZIP holding new-chat.wav and new-mail.wav, at its top "
+                              "level or in one folder inside it. The sounds must be 16-bit PCM "
+                              "WAV at a rate the output device plays.")));
+    for (const auto &event : soundEvents()) {
+        const QString label =
+            event.id == "new-chat" ? tr("New chat message") : tr("New email");
+        auto row = new QHBoxLayout;
+        auto box = new QCheckBox(label);
+        box->setObjectName("soundEvent_" + event.id);
+        box->setChecked(sounds_.eventEnabled(event.id));
+        connect(box, &QCheckBox::toggled, this,
+                [this, id = event.id](bool on) { sounds_.setEventEnabled(id, on); });
+        soundEvents_.insert(event.id, box);
+        auto preview = new QPushButton(tr("Play"));
+        preview->setObjectName("soundPreview_" + event.id);
+        connect(preview, &QPushButton::clicked, &sounds_,
+                [this, id = event.id] { sounds_.preview(id); });
+        row->addWidget(box);
+        row->addWidget(preview);
+        row->addStretch(1);
+        column->addLayout(row);
+    }
+    refreshSoundThemes();
     return page;
+}
+void SettingsPane::refreshSoundThemes() {
+    if (!soundThemes_)
+        return;
+    QSignalBlocker block(soundThemes_);
+    soundThemes_->clear();
+    const auto themes = sounds_.themes();
+    const QString chosen = sounds_.theme();
+    QListWidgetItem *selected = nullptr;
+    for (const auto &theme : themes) {
+        auto *item = new QListWidgetItem(
+            theme.builtin ? tr("%1 (built-in)").arg(theme.name) : theme.name, soundThemes_);
+        item->setData(Qt::UserRole, theme.id);
+        if (theme.id == chosen || (!selected && chosen.isEmpty() && theme.builtin))
+            selected = item;
+    }
+    if (selected)
+        soundThemes_->setCurrentItem(selected);
+}
+void SettingsPane::addSoundTheme() {
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Add a sound theme"),
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        tr("Sound themes (*.zip)"));
+    if (path.isEmpty())
+        return;
+    SoundTheme theme;
+    QString error;
+    if (!importSoundTheme(path, sounds_.themesDir(), &theme, &error, sounds_.audioLimits())) {
+        QMessageBox::warning(this, tr("Add a sound theme"), error);
+        return;
+    }
+    sounds_.setTheme(theme.id);
+    refreshSoundThemes();
 }
 QWidget *SettingsPane::securityPage() {
     auto page = new QWidget;
@@ -278,6 +361,10 @@ void SettingsPane::refresh() {
     {
         QSignalBlocker block(updateNotices_);
         updateNotices_->setChecked(session_.updateNotices());
+    }
+    {
+        QSignalBlocker block(soundEnabled_);
+        soundEnabled_->setChecked(sounds_.enabled());
     }
     updateNotices_->setEnabled(session_.mailboxOpen() && !updates::publisherAddress().isEmpty());
     changePassword_->setEnabled(session_.unlocked());
