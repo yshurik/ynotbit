@@ -1,10 +1,12 @@
 // The Qt wrappers in src/ call the core (bmclient, which has no Qt) through these conversions.
 #pragma once
+#include "protocol_wire.h"
 #include "storage.h"
 #include <QByteArray>
 #include <QString>
 #include <bmc/bytes.h>
 #include <bmc/identity.h>
+#include <bmc/wire.h>
 #include <sodium.h>
 
 namespace bm::bridge {
@@ -69,4 +71,32 @@ struct SecretText {
         sodium_memzero(value.data(), value.size());
     }
 };
+inline bmc::PublicIdentity toCore(const PublicIdentity &p) {
+    return {toStd(p.address),
+            toBytes(p.signingKey),
+            toBytes(p.encryptionKey),
+            p.nonceTrials,
+            p.extraBytes,
+            p.behaviors,
+            p.chan};
+}
+inline PublicIdentity fromCore(const bmc::PublicIdentity &p) {
+    PublicIdentity r;
+    r.address = fromStd(p.address);
+    r.signingKey = fromBytes(p.signingKey);
+    r.encryptionKey = fromBytes(p.encryptionKey);
+    r.nonceTrials = p.nonceTrials;
+    r.extraBytes = p.extraBytes;
+    r.behaviors = p.behaviors;
+    r.chan = p.chan;
+    return r;
+}
+inline DecodedEnvelope fromCore(bmc::DecodedEnvelope &&e) {
+    DecodedEnvelope r;
+    r.message = fromCore(e.message);
+    r.sender = fromCore(e.sender);
+    r.acknowledgment = fromBytes(e.acknowledgment);
+    r.broadcast = e.broadcast;
+    return r;
+}
 } // namespace bm::bridge
