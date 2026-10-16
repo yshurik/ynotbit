@@ -276,3 +276,7 @@ target_include_directories(bmclient_parity_tests PRIVATE tests)
 target_link_libraries(bmclient_parity_tests PRIVATE bmclient bm_legacy Qt6::Core)
 add_test(NAME bmclient-parity COMMAND bmclient_parity_tests)
 set_tests_properties(bmclient-parity PROPERTIES TIMEOUT 600)
+
+add_executable(golden_gen EXCLUDE_FROM_ALL tests/legacy/golden_gen.cpp)
+target_include_directories(golden_gen PRIVATE tests/legacy)
+target_link_libraries(golden_gen PRIVATE bm_legacy bmclient Qt6::Core)
