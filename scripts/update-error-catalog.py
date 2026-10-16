@@ -21,7 +21,9 @@ CALL = re.compile(r'(?:require\([^;]*?,\s*|runtime_error\()\s*("(?:[^"\\]|\\.)*"
 
 def messages():
     found = []
-    for path in sorted(glob.glob(str(ROOT / "src" / "*.cpp"))):
+    paths = sorted(glob.glob(str(ROOT / "src" / "*.cpp")))
+    paths += sorted(glob.glob(str(ROOT / "bmclient" / "src" / "*.cpp")))
+    for path in paths:
         if pathlib.Path(path).name in SKIP:
             continue
         for match in CALL.finditer(pathlib.Path(path).read_text(encoding="utf-8")):
