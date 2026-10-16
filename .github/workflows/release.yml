@@ -244,6 +244,27 @@ jobs:
           name: ynotbit-windows
           path: ynotbit-windows-x86_64.zip
 
+  core-no-qt:
+    # bmclient, the part of the code bots will run, builds and tests with no Qt on the machine.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config \
+            libssl-dev libsodium-dev libsqlcipher-dev
+
+      - name: Configure
+        run: cmake -S . -B build-core -G Ninja -DYNOTBIT_QT=OFF -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build-core
+
+      - name: Test
+        run: ctest --test-dir build-core --output-on-failure
+
   release:
     needs: [notes, build-linux, build-macos, build-windows]
     if: startsWith(github.ref, 'refs/tags/v')

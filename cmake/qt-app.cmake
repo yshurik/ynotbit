@@ -256,27 +256,11 @@ foreach(target ynotbit desktop_tests readme_screenshots i18n_tests)
  endif()
 endforeach()
 
-
-# --- The old code beside bmclient ----------------------------------------------------------------
-# tests/legacy is a snapshot of the sources slice 1 ports (scripts/legacy-snapshot.sh), in the
-# namespace `legacy`. The parity tests run it and bmclient on the same input. It goes away at the
-# end of the slice, when tests/golden holds what it answered.
-add_library(bm_legacy STATIC tests/legacy/protocol.cpp tests/legacy/protocol_wire.cpp
- tests/legacy/pow.cpp tests/legacy/phrase.cpp tests/legacy/oracle.cpp)
-target_include_directories(bm_legacy PRIVATE tests/legacy)
-target_link_libraries(bm_legacy PUBLIC bmclient Qt6::Core)
-if(MSVC)
- target_compile_options(bm_legacy PRIVATE /FI "${CMAKE_CURRENT_SOURCE_DIR}/src/msvc_ssize_t.h")
-else()
- target_compile_options(bm_legacy PRIVATE -Wno-deprecated-declarations)
-endif()
+# --- bmclient against Qt ---------------------------------------------------------------------------
+# The text, JSON, chat-format and update-notice helpers of bmclient answer as Qt did. These tests run
+# Qt's own functions on random input beside them; they need Qt, so they live here, not in bmclient.
 file(GLOB BMC_PARITY_TESTS CONFIGURE_DEPENDS tests/bmclient/parity/*_test.cpp)
 add_executable(bmclient_parity_tests tests/bmclient/main.cpp ${BMC_PARITY_TESTS})
-target_include_directories(bmclient_parity_tests PRIVATE tests)
-target_link_libraries(bmclient_parity_tests PRIVATE bmclient bm_legacy Qt6::Core)
+target_link_libraries(bmclient_parity_tests PRIVATE bmclient Qt6::Core)
 add_test(NAME bmclient-parity COMMAND bmclient_parity_tests)
 set_tests_properties(bmclient-parity PROPERTIES TIMEOUT 600)
-
-add_executable(golden_gen EXCLUDE_FROM_ALL tests/legacy/golden_gen.cpp)
-target_include_directories(golden_gen PRIVATE tests/legacy)
-target_link_libraries(golden_gen PRIVATE bm_legacy bmclient Qt6::Core)

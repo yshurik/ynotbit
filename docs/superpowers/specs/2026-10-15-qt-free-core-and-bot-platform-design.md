@@ -1,0 +1,374 @@
+# Qt-free core and bot platform — design (2026-10-15)
+
+## Why
+
+`tools/chat_responder` was made robust on 2026-10-15 (reconnect policy, node watchdog, durable
+queue, rate limits), but it cannot be shipped lean: it is a Qt program. Its code closure is
+6,657 lines of `.cpp` with 1,131 Qt uses over 57 Qt classes. It links Qt Core, Gui and Widgets
+because it reaches the vault, the mailbox and the node through `Session`, which holds about 14
+dialog and clipboard calls, and it starts a `QApplication` on the `offscreen` platform only to run. A
+container for it would carry the whole Qt stack.
+
+The goal is larger than the responder. It is a **platform for bots and services**: a library that
+Go, Python and other languages link, running for months in a container, with no Qt anywhere in
+its source.
+
+Qt is not what the client logic is made of, only what its signatures are spelled in:
+
+- The node (`third_party/notbit`, C) has no Qt except one file, `src/relay_bridge.cpp` (104
+  lines), and it only relays. Its daemon runs "without an identity keyring"
+  (`ntb-daemon.c`, `run_main_loop`), so it neither decrypts nor sends. It meets the app in files:
+  `objects.sqlite` in, `publish/*.object` out, `receipts/`, `status.json`.
+- Everything that makes a client lives in `bmcore` (identity, decryption, chat format,
+  acknowledgments, proof of work, sending, the mailbox; about 3,500 lines in twelve files) and
+  `Session` (about 1,300). That logic is plain classes with no Qt event loop: `Delivery::scan`
+  and `Delivery::tick` are called by one timer in `Session::tick`. Only Qt value types
+  (`QString`, `QByteArray`, `QVector`) and a few utilities (`QDataStream`, `QCryptographicHash`,
+  `QSaveFile`, `QUuid`, `QJson*`) tie it to Qt.
+
+## Decisions
+
+1. **Zero Qt in the source of the bot platform.** The user chose this over keeping Qt Core
+   (static or shared) on 2026-10-15.
+2. **Refactor in place, not a second implementation.** The core moves out of Qt and the app
+   uses it too. One implementation of the protocol, shared by the app and the bots. (User's choice
+   over a parallel core.)
+3. **Three layers:** `bmclient` (C++20, std only, namespace `bmc`) at the bottom; `bmbot` (a C
+   ABI and a bot runtime) over it; a Qt "veneer" in `src/` (target `bmcore`) over it. The names
+   `bmclient`, `bmbot`, `bmc` and `bmnode` are chosen here; renaming later is mechanical.
+4. **Language and ABI:** the core is C++20 like the app, with std and the libraries the app already
+   uses (OpenSSL, libsodium, SQLCipher, libsecp256k1, the notbit C code). `bmbot` is `extern "C"`,
+   with no struct crossing the ABI, no callbacks, and JSON for events and status.
+5. **The node stays a child process** that the library spawns (isolation, a watchdog that can
+   kill it). A new Qt-free executable `bmnode` is the node for bots; the app keeps its `--node`
+   re-exec.
+6. **On-disk formats do not change.** Vault, mailbox, `objects.sqlite`, `status.json`,
+   `publish/` and `receipts/` stay byte-compatible. Existing user data keeps opening, and the
+   previous release can open what the new code writes.
+7. **Errors:** the core throws `std::runtime_error` subclasses whose `what()` is the same English
+   text as today, with a `Code` for the C ABI. No localized text in the core. `Session::errorText`
+   keeps translating `what()` through the `bm::Errors` context.
+8. **Scope of the move: the spine.** Message search, the UPnP port mapper, the key-search threads
+   (`KeySearch`), the GPU solver, `i18n`, `appearance`, the models and the widgets stay Qt. GPU proof of
+   work plugs into the core through an interface.
+9. **Platforms:** the core must compile on Linux, macOS and Windows (CI builds it in the app jobs).
+   `bmbot` and the node supervisor are POSIX first (Linux, macOS); Windows later.
+10. **API v1 exposes chats and letters.** The core keeps all app behaviour (broadcasts, chans,
+    contacts, subscriptions).
+11. **Method:** work on the branch `feature/qt-free-core`, in slices that each leave the whole test
+    suite green, with golden vectors taken from today's code before each port (TDD). Nothing is
+    committed or pushed until the user asks, slice by slice. The robustness work now sitting
+    uncommitted in the tree needs committing before slice 1 (the user decides when).
+
+## Design
+
+### Layers
+
+```
+third_party/notbit  (C)      engine, object db, codec            — unchanged except relay_bridge
+bmclient/           (C++20)  Vault, Mailbox, Protocol, Wire, ProofOfWork, Delivery, Cache, Client, node tools
+bmbot/              (C ABI)  libbmbot + bmbot.h: inbox, send, state, status, supervisor, limits
+src/  (bmcore)      (Qt)     veneer: bm::Vault, bm::Mailbox, ... with today's Qt signatures, over bmclient
+src/  (the rest)    (Qt)     Session, windows, models, dialogs                  — unchanged API use
+tools/chat_responder         terminal app on libbmbot's C ABI, no Qt
+```
+
+Dependencies: `bmclient` uses std, `notbit_codec`, `ntb_object_db`, libsecp256k1, OpenSSL,
+libsodium, SQLCipher. `bmbot` uses `bmclient`. `bmcore` uses `bmclient` and Qt. Nothing in
+`bmclient/` or `bmbot/` includes or links Qt; this is checked by building them in a container with
+no Qt installed (see Build) and by `nm`/`ldd` on `libbmbot`.
+
+### What moves, what stays
+
+| Today | Goes to | Notes |
+|---|---|---|
+| `storage.{h,cpp}`: `Secret`, `Identity`, `Message`, `ChatMessage`, `ChatSummary`, `Vault`, `Mailbox`, records | `bmclient/{secret,records,vault,mailbox}.*` | `Secret` is already Qt-free; `SensitiveBytes` becomes a wiped `Bytes` |
+| `mailbox_ops.cpp`, `chat_store.cpp`, `sqlite_helpers.h` | `bmclient/mailbox_*.cpp`, `bmclient/sqlite.h` | `message_search` keeps a Qt-flavoured copy of the helper |
+| `protocol.*`, `protocol_wire.*` | `bmclient/{protocol,wire}.*` | |
+| `pow.*` | `bmclient/pow.*` | `PowSolver` interface; `gpu_pow.*`, `gpu_opencl.cpp`, `gpu_metal.mm` stay and register as the solver |
+| `delivery.*`, `cache.*`, `scanner.*` | `bmclient/{delivery,cache,scanner}.*` | |
+| `chat_format.*`, `updates.*` | `bmclient/*` | needs `bmc::json` |
+| `key_search.*`: `phraseIdentity`, `firstPair`, `zeroBytes` | `bmclient/phrase.*` | the `KeySearch` QObject stays and calls them |
+| `relay_bridge.cpp`, `node_watch.h` | `bmclient/*` | the bridge is rewritten in std; every node executable links it |
+| `Session`: the `tick()` loop, chat sending and validation, `nodeArguments()` | `bmc::Client`, `bmc::NodeConfig` | `Session` keeps the timers, `QProcess`, dialogs, `QSettings`, signals and `tr()` |
+| `tools/chat_bot.*` | `bmbot/` (rate limits, retry, bounded memory) | |
+| `tools/rotating_log.*` | `tools/` (std) | terminal app only |
+
+Everything else in the app stays as it is.
+
+### Conventions of the core
+
+- **Bytes and text.** `using Bytes = std::vector<uint8_t>`; `using ByteView =
+  std::span<const uint8_t>` (the app is C++20); text is UTF-8 `std::string` /
+  `std::string_view`; addresses are `std::string` (`BM-...`); integers are `int64_t`/`uint64_t`.
+- **Unicode.** `QString` counts UTF-16 units and `trimmed()`, `left()`, `toLower()` act on them. The
+  core has `bmc::utf8` helpers (validate, truncate at a code point, trim Unicode white space, UTF-8
+  to UTF-16BE and back). Every place that depends on a `QString` rule is found by `grep`, pinned
+  by a test, and either kept or changed on purpose (listed in the slice that touches it). No
+  locale- or ICU-dependent behaviour in the core.
+- **Time.** Seconds since the epoch, `int64_t`. Functions that need the time take `now`, or a
+  `bmc::Clock` that tests replace. Budgets use `std::chrono::steady_clock`.
+- **Errors.** `bmc::Error : std::runtime_error` with `enum class Code` and the exact English
+  `what()` of today. `scripts/update-error-catalog.py` and `scripts/check-translations.py` learn the
+  new directories, so the `bm::Errors` catalogue and the translations stay complete.
+- **Threads.** The core is single-threaded except `ProofOfWork`, which has its own workers. A
+  `Client` is used by one thread at a time. `bmbot` runs a driver thread and serializes every call
+  on one mutex, so the C API is thread-safe. The app keeps using the core from the GUI thread.
+- **Logging.** The core never prints. Problems and watchdog restarts are values
+  (`Client::notes()`), which `bmbot` turns into events.
+- **Qt to std, for the port:**
+
+| Qt | Core |
+|---|---|
+| `QString`, `QStringList` | `std::string`, `std::vector<std::string>` |
+| `QByteArray` | `Bytes` / `ByteView` |
+| `QVector`, `QMap`, `QHash` | `std::vector`, `std::map`, `std::unordered_map` |
+| `QFile`, `QSaveFile`, `QDir`, `QFileInfo` | `std::filesystem` (paths as UTF-8 through one helper) and an atomic write (temp file, `fsync`, rename) |
+| `QDateTime`, `QElapsedTimer` | `<chrono>`, seconds as `int64_t` |
+| `QUuid::createUuid()` | `bmc::uuid()` (random version 4, same 36-character lowercase text) |
+| `QCryptographicHash` | OpenSSL EVP (SHA-1, 256, 512) |
+| `QtEndian` | explicit big-endian helpers |
+| `QJsonDocument` | `bmc::json`: a small strict parser and writer (objects, arrays, strings with `\u` and surrogates, int64 and double numbers, bool, null) |
+| `QDataStream` | `bmc::qtstream`, only what the vault uses (below) |
+| `QMutex`, `QThread` | `std::mutex`, `std::thread` |
+
+### On-disk compatibility
+
+- **Vault.** File: `BMVAULT2`, 16-byte salt, 24-byte nonce, then XChaCha20-Poly1305 over the
+  payload with the 48-byte header as associated data; the key is Argon2id (3 passes, 64 MiB) of the
+  password. `BMVAULT1` (no default flag) is still read. The payload is a `QDataStream` at
+  `Qt_6_0`: big-endian `quint32` count; per identity a `QString` label, a `QString` address, a
+  `bool` chan, a `bool` default, 64 raw key bytes; then a `quint32` count and, per mailbox key, a
+  `QString` id and 32 raw bytes. A `QString` is a `quint32` byte length followed by UTF-16BE (a null
+  string is length `0xFFFFFFFF`, which the reader accepts as empty). `bmc::qtstream` writes and reads
+  exactly this and nothing else.
+- **Mailbox (`.bmmail`).** A SQLCipher database. The schema, the `user_version` migrations
+  and every SQL statement move as they are. The partial index `chat_unread` stays.
+- **`objects.sqlite`.** Read-only to the client, through the same SQL. The node writes it through
+  `ntb-object-db.c`, untouched.
+- **Node link.** `status.json`, `publish/<uuid>.object` (the name matches `^[a-f0-9-]{36}$`,
+  at most 8 offered per tick) and `receipts/<uuid>.json` keep their names and fields.
+- **Settings.** `desktop.ini` (`QSettings`) stays the app's. The core takes a `NodeConfig` struct;
+  `Session` fills it from the ini, `bmbot` from its JSON config.
+
+### The Qt veneer
+
+`src/storage.h`, `protocol.h`, `protocol_wire.h`, `delivery.h`, `pow.h`, `cache.h`,
+`chat_format.h`, `key_search.h` (the `KeySearch` class), `updates.h` keep their names, namespace
+(`bm`) and Qt signatures. Their `.cpp` files become wrappers over `bmc` objects:
+
+- `bm::Mailbox::store(QString, ...)` converts its arguments (`src/qt_bridge.h`: `s()`, `q()`, byte and
+  struct converters), calls `bmc::Mailbox`, converts the result back. About 100 wrappers for
+  `Mailbox`, the rest are small. `bm::Secret` becomes an alias of `bmc::Secret`.
+- The app and all 27 `ctest` suites keep compiling against the same headers. A test that reaches
+  into an internal (a `sqlite3*`, `detail::Transaction`) gets a small edit, listed in the slice plan.
+- GUI code may adopt `bmc` types later, or never; nothing requires it.
+- A `bm::` object that belongs to a `Session` and a `bmc::Client` share one `bmc::Mailbox` through
+  `std::shared_ptr`.
+
+### The client loop
+
+`bmc::Client` owns (through shared pointers) a `Vault`, a `Mailbox`, a `Cache` and a `Delivery`.
+
+- `step(now, online)` is `Session::tick` without the Qt: bind the mailbox to the cache id, note
+  pruned objects, `scan` with a time budget (512 objects, 150 ms), `Delivery::tick`, return a
+  `StepReport` (activity, working, pruned).
+- Chat and letter services with the rules `Session` has now: `sendChat` (sender is a non-chan
+  identity of the vault, valid recipient different from the sender, 1 to 8192 body bytes, 24 h
+  expiry), `unreadChats`, `markChatMessageRead`, `chatState`, `sendLetter`.
+- `Session::tick` and the chat methods call it; `Session` keeps `QTimer`, `QProcess`, `emit`.
+
+### The node
+
+- **`bmnode`** (new, Qt-free): `ntb_daemon` plus the std relay bridge. It checks its parent as today
+  (`YNOTBIT_PARENT_PID`). The app and the tools keep `--node` re-exec.
+- **`bmc::NodeConfig` and `nodeArguments()`:** a pure function of peer, proxy, listen, port,
+  `maxOutgoing`, `maxIncoming`, retention and the public-or-private choice
+  (`-b -B -e` unless public). `Session::nodeArguments` calls it.
+- **`bmc::NodeWatch`** (already pure) and a **`bmc::NodeSupervisor`** (POSIX: `posix_spawn`, own
+  process group, `waitpid` polling, SIGTERM then SIGKILL after 3 s, restart on exit, watchdog restarts
+  at least 300 s apart). The behaviours are those of `Session` today.
+- **Node status** is read by a `bmc::NodeStatus` parser over `status.json`.
+
+### The bot library
+
+`bmbot/bmbot.h`, a C ABI. All strings are UTF-8 `char*`; every function that can fail returns an `int`
+code (`0` ok, `1` timeout, negative errors: argument, state, auth, io, network, internal) and
+takes an optional `char **error` (English text, freed with `bmbot_free`), so it is safe from Go
+goroutines and Python threads (no thread-local state). Nothing but `bmbot *`, `int`, `const char *`
+and `char **` crosses the ABI.
+
+```c
+int  bmbot_abi_version(void);
+int  bmbot_open(const char *config_json, bmbot **bot, char **error);
+void bmbot_close(bmbot *bot);                       /* wakes waiters, which get a state error */
+int  bmbot_next(bmbot *bot, int timeout_ms, char **event_json, char **error);
+int  bmbot_done(bmbot *bot, const char *event_id, char **error);
+int  bmbot_send_chat(bmbot *bot, const char *from, const char *to, const char *text,
+                     char **id, char **error);
+int  bmbot_send_letter(bmbot *bot, const char *from, const char *to, const char *subject,
+                       const char *body, char **id, char **error);
+int  bmbot_state(bmbot *bot, const char *id, char **state, char **error);
+int  bmbot_status(bmbot *bot, char **status_json, char **error);
+void bmbot_free(void *ptr);
+```
+
+- **Config (JSON):** `data_dir`; `phrase_file` or `phrase` (the address comes from the phrase as
+  today; a secret phrase also derives the vault password, the public default phrase keeps its
+  constant password); `node` (`bin`, `peers`, `public`, `listen`, `port`, `max_outgoing`,
+  `max_incoming`, `watchdog_minutes`); `limits` (per-peer and global burst and per-minute rates, off by
+  default in the library, on in `chat_responder`); `hang_seconds` (the process aborts if the driver
+  loop stalls that long, so Docker or systemd restarts it; off by default in the library, on in
+  `chat_responder`).
+- **Events (`bmbot_next`):** one JSON object: `id`, `kind` (`chat`, `letter`, `note`), `to`, `from`,
+  `subject`, `text`, `seqno`, `received`. The inbox is **durable and at least once**: it is the
+  mailbox's unread chats and letters, oldest first. An event is handed out once per run; it is marked
+  read only by `bmbot_done`; after a crash or restart the ones not done come back. `note` events
+  carry problems and watchdog restarts (the library never prints); they have no `id`, are not
+  durable and need no `bmbot_done`.
+- **States (`bmbot_state`):** the strings the app shows for a chat's delivery, unchanged.
+- **Status:** peers (outgoing, incoming), objects, uptime, counts taken, answered, limited, failed,
+  working, watchdog restarts, the network line, the notes.
+- **Distribution:** `cmake --install` puts `libbmbot` (shared and static), `bmbot.h`, `bmbot.pc`,
+  `bmnode`, `chat_responder` under a prefix. Examples: `bmbot/examples/echo.py` (ctypes) and
+  `echo.go` (cgo).
+
+### chat_responder and the container
+
+- `tools/chat_responder.cpp` is rewritten without Qt, **on the C ABI** (it is the reference
+  consumer): the flags of today (`--phrase-file`, `--public`, `--peer`, `--listen`, `--port`,
+  `--max-outgoing`, `--max-incoming`, `--watchdog`, `--rate`, `--burst`, `--global-rate`,
+  `--global-burst`, `--silent`, `--hello`, `--log`, `--status-file`, `--data-dir`, `--fresh`) keep
+  their meaning and become config. Its answers, rotating log and status file stay.
+- `chat_responder --check <status-file> [--max-age 60] [--peers 1]` exits 0 or 1, for a container
+  health check with no shell tools in the image.
+- `docker/Dockerfile` (multi-stage): a build stage with the toolchain and `scripts/build-dependencies.sh`,
+  configured `-DYNOTBIT_QT=OFF`; a runtime stage (a slim Debian) holding `chat_responder`, `bmnode`
+  and `libbmbot`, running as a non-root user. `docker/compose.yaml`: a data volume, the phrase as a
+  secret file, `restart: unless-stopped`, `init: true`, `stop_grace_period: 30s`, log rotation
+  options, a memory limit, a read-only root with a tmpfs `/tmp`, port 8444, the health check. In
+  bridge networking UPnP cannot work; the doc says to use host networking or forward the port.
+
+### Build and CI
+
+- `option(YNOTBIT_QT "Build the Qt app, tools and tests" ON)`. Off: no `find_package(Qt6)`; the targets are the engine
+  libraries, `bmclient`, `bmbot`, `bmnode`, `chat_responder` and the Qt-free tests. The engine,
+  codec and dependency targets move out of the top of `CMakeLists.txt` into a file both
+  configurations include. (Today `find_package(Qt6 ... Test LinguistTools)` is unconditional.)
+- **Qt-free test harness:** `bmclient/test.h` (registered tests, `CHECK`/`REQUIRE`, `--filter`),
+  no new third-party dependency. Tests live in `tests/bmclient/` and `tests/bmbot/`.
+- **CI:** a new job on a plain Ubuntu image with no Qt packages builds `-DYNOTBIT_QT=OFF`, runs the
+  Qt-free tests, the Python ctypes test and the responder end-to-end test; the existing app jobs
+  build `bmclient` too (this is the Windows and macOS portability check).
+
+## Order of work
+
+Each slice ends with: the full `ctest` of the app green (27 suites plus the new ones), the
+relevant tests green on big1 (Linux), the Qt-free build green in a Qt-less container, and
+the old behaviour unchanged. Estimates are focused working days.
+
+1. **Skeleton and wire (2–3 days).** `YNOTBIT_QT`, the CMake split, `bmclient` skeleton (bytes, text,
+   json, error, hash, uuid, test harness), `Protocol`, `Wire`, `chat_format`, `updates`,
+   `ProofOfWork` with `PowSolver`, the phrase functions. Veneers for them. Golden vectors first (see
+   Testing).
+2. **Storage (3–4 days).** `Secret`, `Vault` with `qtstream`, `Mailbox` and its helpers, chats,
+   records. Veneers `bm::Vault`, `bm::Mailbox`. Golden vault and mailbox files. The riskiest slice: it
+   holds user data.
+3. **Delivery (2–3 days).** `Cache`, `scanMailbox`, `Delivery`, `Client`. `Session` calls `Client`.
+   Qt-free scenario tests (two clients over a node-less "fake node": objects exchanged through
+   `objects.sqlite` files written with the C writer).
+4. **Node (1–2 days).** std relay bridge, `bmnode`, `NodeConfig`, `NodeStatus`, `NodeWatch`,
+   `NodeSupervisor`. The relay and peer-connectivity tests also run against `bmnode`; supervisor
+   tests (kill -9, SIGSTOP).
+5. **Bot platform (3 days).** `bmbot`, `bmbot.h`, install rules, `chat_responder` on the ABI, `--check`,
+   the heartbeat abort, Python and Go examples, Dockerfile and compose, `docs/bot-platform.md`,
+   `docs/chat-responder.md` updated, a 24 h soak.
+
+The user can stop after any slice with a working app and a smaller Qt surface. One implementation
+plan is written per slice, when the previous slice is done, because each slice depends on what the
+earlier ones find.
+
+## Testing
+
+- **Golden vectors, taken from today's code before each port:** address from phrases and labels, the
+  phrase key pairs, `decodeMessage` / `decodeBroadcast` / `decodePubkey` of fixed ciphertexts and
+  objects, the deterministic parts of every encoder, `inventoryHash`, `trialValue`,
+  `ProofOfWork::valid`, chat JSON in and out (with the invalid cases of `parseChatMessage`), vault v1 and
+  v2 files, mailbox files at every schema version the migrations know (migration tests). Stored under
+  `tests/golden/`, with the small program that made them kept in `scripts/`.
+- **Cross-implementation, while both exist:** objects and files written by the new code are read by the
+  old code and the other way round. Because the veneer replaces the old code, this runs as a manual
+  gate, `scripts/compat-check.sh`: it builds the commit before the slice in a worktree and opens each
+  one's vault and mailbox with the other.
+- **Existing suites** are the regression net for the veneer.
+- **Scenario tests, Qt-free:** chats end to end between two `Client`s (queued, ack and message proof of
+  work, awaiting ack, acknowledged), expiry, retry, restart with unread chats (at least once), rate
+  limits, bad input; they replace the `Session`-based `chatbot_tests`.
+- **`bmbot`:** the ABI called from C, from Python ctypes (CI) and from Go cgo (when `go` is present),
+  two bots chatting over a private node link (`-P` each other), a SIGKILL of the node, a SIGSTOP of the
+  node, a stalled driver (abort), `bmbot_close` while another thread waits in `bmbot_next`.
+- **Qt-freedom:** the Qt-less container build; `nm -D`/`ldd` on `libbmbot`, `bmnode`,
+  `chat_responder` show no Qt.
+- **Performance:** the scan throughput (objects per second against ten identities) measured before and
+  after slice 3.
+- **Mutation checks** on the risky logic (vault serialization, at-least-once inbox, rate limits).
+
+## Acceptance
+
+- A fresh Debian container with no Qt builds and runs `chat_responder`; the image holds no Qt file
+  and its size is recorded.
+- The app builds on Linux, macOS and Windows (CI), passes its suite where it does today and behaves
+  as before. A vault and a mailbox made by the previous release open in the new one, and the previous
+  release opens what the new one wrote (`compat-check.sh`).
+- The data folder `chat_responder` has today (the default public phrase, and a secret phrase) keeps
+  opening with the same address and layout.
+- A live chat between the app (new build) and a containerized responder works with the delivery
+  states the app shows today.
+- The Python and Go examples run.
+- A 24 h soak of the container: the peers never stay at 0, memory is flat, the watchdog's actions are
+  logged, and a `docker kill` is survived with the same address.
+
+## Risks
+
+1. **Vault bytes.** `QDataStream` is Qt's format. Mitigation: `qtstream` limited to what the vault uses,
+   golden v1 and v2 files, the cross-open gate.
+2. **Unicode.** UTF-16 rules become UTF-8 rules. Mitigation: the `grep` list and tests above; a chat
+   answer is cut at a code point, not at a byte.
+3. **The veneer is large and mechanical.** The compiler finds most mistakes and the existing suites
+   exercise the rest.
+4. **Windows.** MSVC C++20 and path encoding in `std::filesystem` are checked only by CI. Mitigation:
+   a `bmc::path()` helper, no POSIX call outside the supervisor.
+5. **Threading.** One SQLite connection per `Mailbox`; `bmbot` serializes access; `message_search`
+   keeps its own connection as now.
+6. **Scope creep and time.** Slices have exit criteria and a stopping point. The estimate (11 to 15
+   working days) is a guess that slice 2 will most likely move.
+7. **Two spellings of one thing during a slice** (old and new code): kept short by deleting the old
+   implementation at the end of each slice; the golden files outlive it.
+
+## Out of scope
+
+- A Windows `bmbot` and node supervisor; message search, UPnP and GPU in the core; `KeySearch`
+  threads in the core; broadcast, chan and contact functions in `bmbot` v1.
+- A daemon speaking JSON over a socket on top of `libbmbot` (about a day, later, if wanted).
+- Python wheels, a Go module, other packaging.
+- Changing the GUI code to use `bmc` types.
+
+## Later
+
+- `bmbot` v2: broadcasts and chans, subscriptions, contacts.
+- The JSON-over-socket daemon.
+- Windows.
+- A canary: a second bot that `--hello`s the first and a monitor that waits for the answer.
+
+## Notes after slice 1
+
+What slice 1 settled that the design left open, for the plans of the next slices:
+
+- **Layout.** Headers are `bmclient/include/bmc/*.h` (included as `<bmc/...>`), sources `bmclient/src/*.cpp`, tests `tests/bmclient/`. The Qt wrappers keep their file names in `src/` and convert through `src/qt_bridge.h`.
+- **`IdentityRef`.** The codec takes `bmc::IdentityRef`, a borrowed view of an identity (address, chan flag, the 64 key bytes), so a wrapper does not copy keys per call. `bm::bridge::CoreIdentity` makes one from a `bm::Identity`.
+- **Update notices.** `bmc::updates` holds the pure functions and the two addresses. The default subscriptions with their translated label, and the setting keys, stay in `src/updates.{h,cpp}` (lupdate and `scripts/check-translations.py` read that file); slice 3 decides whether `Delivery` needs them in the core.
+- **`Wire::encodeMessageText`.** A msg whose text is given as bytes; `encodeMessage` is it with `Subject:..\nBody:..`. Text that is not UTF-8 is refused when sending (it cannot come from the Qt app); when reading, it is decoded the way `QString::fromUtf8` did (a leading BOM dropped, one U+FFFD per byte of an invalid sequence).
+- **Qt behaviours measured (Qt 6.8.3) and reproduced**: `QString::fromUtf8` (above), `QChar::isSpace`, `QString::toInt`, and `QJsonDocument::fromJson` with its leniencies (raw control characters and unknown escapes in strings, `.5` and `5.` as numbers, lone surrogate escapes become `?`, last duplicate key wins, a leading BOM is skipped, depth limit 1024, underflow to zero is an error). `tests/bmclient/parity/*_test.cpp` run Qt beside the core and stay while the Qt app exists.
+- **Parity method.** `scripts/legacy-snapshot.sh <commit>` copies the old sources of a slice into `tests/legacy` under the namespace `legacy` behind plain types (`oracle::`); the parity tests ran old and new side by side; the answers were frozen into `tests/golden` and the snapshot deleted. Slices 2 to 4 can repeat it (the script lists slice 1's files; change the list).
+- **The error catalogue** (`scripts/update-error-catalog.py`) reads `bmclient/src/*.cpp` too. Messages that must reach the translators are written as `require(cond, "text")` or `std::runtime_error("text")`; a new message that only a bot can meet is thrown as `bmc::Error(Code, "text")`, which the script does not list.
+- **CI.** A new job `core-no-qt` in `.github/workflows/release.yml` builds and tests `-DYNOTBIT_QT=OFF` on a plain Ubuntu runner. It is not among the `needs` of the release job.
