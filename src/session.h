@@ -1,6 +1,5 @@
 #pragma once
 #include "message_model.h"
-#include "node_watch.h"
 #include "port_mapper.h"
 #include "storage.h"
 #include <QJsonObject>
@@ -10,6 +9,7 @@
 #include <QTimer>
 #include <QVariantList>
 #include <bmc/client.h>
+#include <bmc/node_watch.h>
 #include <utility>
 namespace bm {
 class Session : public QObject {
@@ -50,7 +50,7 @@ class Session : public QObject {
     QTimer restartSoon_; // see scheduleRestart()
     int nodeRestarts_ = 0;
     bool stoppingNode_ = false; // restartNode() is stopping the node: its end is no problem
-    NodeWatch nodeWatch_;       // see setNodeWatchdog(): a node that runs but does no good
+    bmc::NodeWatch nodeWatch_;       // see setNodeWatchdog(): a node that runs but does no good
     QString watchdogNote_;      // why the watchdog last restarted the node
     int watchdogRestarts_ = 0;
     quint16 configuredPort() const; // the listen port the node is asked for (8444 by default)

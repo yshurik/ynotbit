@@ -689,7 +689,7 @@ void Session::tick() {
         // A node that runs but does no good (its status stopped, or no peer for too long) is
         // started again; a node that has exited is restarted by its finished() handler.
         if (!offline_ && node_.state() == QProcess::Running) {
-            using Verdict = NodeWatch::Verdict;
+            using Verdict = bmc::NodeWatch::Verdict;
             const auto now = QDateTime::currentSecsSinceEpoch();
             const auto verdict =
                 nodeWatch_.judge(now, node.value("time").toInteger(), node.value("peers").toInt());
