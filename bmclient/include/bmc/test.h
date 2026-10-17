@@ -2,6 +2,9 @@
 // tests/bmclient/main.cpp runs them.
 #pragma once
 #include <bmc/bytes.h>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <sstream>
 #include <string>
@@ -44,6 +47,27 @@ template <class T> std::string show(const T &value) {
     } else {
         return "<value>";
     }
+}
+// A fresh directory under the system temp path, one per call.
+inline std::string tempDir() {
+    static int counter = 0;
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    auto dir = std::filesystem::temp_directory_path() /
+               ("bmc-test-" + std::to_string(stamp) + "-" + std::to_string(++counter));
+    std::filesystem::create_directories(dir);
+    return dir.string();
+}
+inline void writeFile(const std::string &path, bmc::ByteView bytes) {
+    std::ofstream out(path, std::ios::binary);
+    out.write(reinterpret_cast<const char *>(bytes.data()), std::streamsize(bytes.size()));
+}
+inline bmc::Bytes readFile(const std::string &path) {
+    std::ifstream in(path, std::ios::binary);
+    bmc::Bytes out;
+    char c;
+    while (in.get(c))
+        out.push_back(uint8_t(c));
+    return out;
 }
 } // namespace bmc::test
 

@@ -18,6 +18,9 @@ bool isSpace(char32_t c);
 // QString::trimmed().isEmpty(), for text that is valid UTF-8 (a byte that is not is not white
 // space).
 bool isBlank(std::string_view utf8);
+// QString::trimmed(): the white space (QChar::isSpace) at both ends is dropped. A byte that is not
+// part of a well-formed sequence is not white space, so it stops the trim.
+std::string_view trim(std::string_view utf8);
 // QString::toInt(&ok) in base 10: ASCII white space (9 to 13, the space) around, one sign,
 // digits, 32 bits; otherwise 0 and *ok = false.
 int toInt(std::string_view s, bool *ok = nullptr);

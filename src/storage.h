@@ -4,6 +4,7 @@
 #include <QString>
 #include <QVector>
 #include <bmc/secret.h>
+#include <bmc/vault.h>
 #include <map>
 #include <memory>
 #include <optional>
@@ -57,13 +58,7 @@ struct ChatSummary {
 // "[chan] <phrase>" and a bare "<name>" both become "#<name>".
 QString channelName(const QString &label);
 class Vault {
-    QString path_;
-    Secret wrapping_;
-    QByteArray salt_;
-    bool unlocked_ = false;
-    std::vector<Identity> identities_;
-    std::map<QString, Secret> mailboxKeys_;
-    void save();
+    bmc::Vault core_;
 
   public:
     ~Vault() {
@@ -74,11 +69,9 @@ class Vault {
     void changePassword(const QByteArray &password);
     void lock();
     bool unlocked() const {
-        return unlocked_;
+        return core_.unlocked();
     }
-    const std::vector<Identity> &identities() const {
-        return identities_;
-    }
+    std::vector<Identity> identities() const;
     QString addIdentity(const QString &label);
     // An identity made beforehand (the new vault dialog's): its keys are checked
     // against its address and kept as they are.

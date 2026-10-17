@@ -42,6 +42,16 @@ void qtstream::writeRaw(ByteView raw) {
     bytes_.insert(bytes_.end(), raw.begin(), raw.end());
 }
 
+Bytes qtstream::readRaw(size_t n) {
+    if (at_ + n > bytes_.size()) {
+        ok_ = false;
+        return {};
+    }
+    Bytes out(bytes_.begin() + at_, bytes_.begin() + at_ + n);
+    at_ += n;
+    return out;
+}
+
 qtstream &qtstream::operator>>(uint32_t &v) {
     if (!get32(bytes_, at_, v))
         ok_ = false;

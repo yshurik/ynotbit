@@ -5,6 +5,9 @@ build*/
 *.bmvault
 *.bmmail
 *.bmmail-*
+# ...except the fixtures the storage tests read, written by the previous release.
+!tests/golden/*.bmvault
+!tests/golden/*.bmmail
 keys.dat
 notbit-data/
 ynotbit-data/

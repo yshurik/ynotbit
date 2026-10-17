@@ -1,5 +1,6 @@
 #include "storage.h"
 #include "protocol.h"
+#include "qt_bridge.h"
 #include "sqlite_helpers.h"
 #include <QDataStream>
 #include <QDateTime>
@@ -7,6 +8,7 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QSettings>
+#include <QStringList>
 #include <QUuid>
 #include <algorithm>
 #include <cstring>
@@ -21,29 +23,8 @@ static void check(bool b, const QString &m) {
     if (!b)
         fail(m);
 }
-struct SensitiveBytes {
-    QByteArray bytes;
-    ~SensitiveBytes() {
-        if (!bytes.isEmpty())
-            sodium_memzero(bytes.data(), size_t(bytes.size()));
-    }
-};
 QString channelName(const QString &label) {
-    auto name = label.trimmed();
-    if (name.startsWith("[chan] "))
-        name = name.mid(7).trimmed();
-    if (name.isEmpty() || name.startsWith('#'))
-        return name;
-    return '#' + name;
-}
-static Secret derive(const QByteArray &password, const QByteArray &salt) {
-    check(!password.isEmpty(), "Enter a vault password");
-    Secret key(32);
-    check(crypto_pwhash(key.data(), 32, password.constData(), password.size(),
-                        reinterpret_cast<const unsigned char *>(salt.constData()), 3,
-                        64 * 1024 * 1024, crypto_pwhash_ALG_ARGON2ID13) == 0,
-          "Insufficient memory to unlock vault");
-    return key;
+    return bridge::fromStd(bmc::channelName(bridge::toStd(label)));
 }
 static void reserveFile(const QString &path) {
     QFile f(path);
@@ -52,212 +33,75 @@ static void reserveFile(const QString &path) {
     check(f.setPermissions(QFile::ReadOwner | QFile::WriteOwner),
           "Cannot protect file permissions");
 }
-void Vault::create(const QString &path, const QByteArray &password) {
-    check(!unlocked_, "Lock the current vault first");
-    check(!password.isEmpty(), "Enter a vault password");
-    reserveFile(path);
-    try {
-        path_ = path;
-        salt_.resize(16);
-        randombytes_buf(salt_.data(), 16);
-        wrapping_ = derive(password, salt_);
-        unlocked_ = true;
-        save();
-    } catch (...) {
-        lock();
-        QFile::remove(path);
-        throw;
+std::vector<Identity> Vault::identities() const {
+    std::vector<Identity> out;
+    for (const auto &i : core_.identities()) {
+        Identity q;
+        q.label = bridge::fromStd(i.label);
+        q.address = bridge::fromStd(i.address);
+        q.chan = i.chan;
+        q.isDefault = i.isDefault;
+        std::memcpy(q.keys.data(), i.keys.data(), 64);
+        out.push_back(std::move(q));
     }
+    return out;
 }
-void Vault::save() {
-    check(unlocked_, "Vault is locked");
-    check(identities_.size() <= 1024 && mailboxKeys_.size() <= 1024,
-          "Vault capacity exceeded; existing vault preserved");
-    SensitiveBytes plain;
-    QDataStream out(&plain.bytes, QIODevice::WriteOnly);
-    out.setVersion(QDataStream::Qt_6_0);
-    out << quint32(identities_.size());
-    for (const auto &i : identities_) {
-        out << i.label << i.address << i.chan << i.isDefault;
-        out.writeRawData(reinterpret_cast<const char *>(i.keys.data()), 64);
-    }
-    out << quint32(mailboxKeys_.size());
-    for (const auto &[id, key] : mailboxKeys_) {
-        out << id;
-        out.writeRawData(reinterpret_cast<const char *>(key.data()), 32);
-    }
-    check(out.status() == QDataStream::Ok, "Cannot serialize vault");
-    check(plain.bytes.size() + 64 <= 4 * 1024 * 1024,
-          "Vault is too large; existing vault preserved");
-    QByteArray header("BMVAULT2", 8);
-    header += salt_;
-    QByteArray nonce(24, 0);
-    randombytes_buf(nonce.data(), nonce.size());
-    header += nonce;
-    QByteArray cipher(plain.bytes.size() + crypto_aead_xchacha20poly1305_ietf_ABYTES, 0);
-    unsigned long long n = 0;
-    crypto_aead_xchacha20poly1305_ietf_encrypt(
-        reinterpret_cast<unsigned char *>(cipher.data()), &n,
-        reinterpret_cast<const unsigned char *>(plain.bytes.constData()), plain.bytes.size(),
-        reinterpret_cast<const unsigned char *>(header.constData()), header.size(), nullptr,
-        reinterpret_cast<const unsigned char *>(nonce.constData()), wrapping_.data());
-    QSaveFile f(path_);
-    check(f.open(QIODevice::WriteOnly), "Cannot write vault");
-    f.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
-    check(f.write(header) == header.size() && f.write(cipher) == cipher.size() && f.commit(),
-          "Vault save failed; previous vault preserved");
+void Vault::create(const QString &path, const QByteArray &password) {
+    bridge::SecretText pass(password);
+    core_.create(bridge::toStd(path), pass.value);
 }
 void Vault::unlock(const QString &path, const QByteArray &password) {
-    check(!unlocked_, "Lock the current vault first");
-    QFile f(path);
-    check(f.open(QIODevice::ReadOnly), "Cannot open vault");
-    check(f.size() >= 64 && f.size() <= 4 * 1024 * 1024, "Invalid vault size");
-    auto file = f.readAll();
-    auto magic = file.left(8);
-    check(magic == "BMVAULT1" || magic == "BMVAULT2", "Unsupported vault format");
-    bool legacy = magic == "BMVAULT1";
-    auto salt = file.mid(8, 16);
-    auto key = derive(password, salt);
-    SensitiveBytes plain;
-    plain.bytes.resize(file.size() - 48 - 16);
-    unsigned long long n = 0;
-    check(crypto_aead_xchacha20poly1305_ietf_decrypt(
-              reinterpret_cast<unsigned char *>(plain.bytes.data()), &n, nullptr,
-              reinterpret_cast<const unsigned char *>(file.constData() + 48), file.size() - 48,
-              reinterpret_cast<const unsigned char *>(file.constData()), 48,
-              reinterpret_cast<const unsigned char *>(file.constData() + 24), key.data()) == 0,
-          "Wrong password or damaged vault");
-    QDataStream in(plain.bytes);
-    in.setVersion(QDataStream::Qt_6_0);
-    quint32 count = 0;
-    in >> count;
-    check(count <= 1024, "Too many vault identities");
-    std::vector<Identity> identities;
-    for (quint32 j = 0; j < count; ++j) {
-        Identity i;
-        in >> i.label >> i.address >> i.chan;
-        if (!legacy)
-            in >> i.isDefault;
-        check(in.readRawData(reinterpret_cast<char *>(i.keys.data()), 64) == 64, "Truncated vault");
-        identities.push_back(std::move(i));
-    }
-    if (legacy && !identities.empty())
-        identities.front().isDefault = true;
-    in >> count;
-    check(count <= 1024, "Too many mailbox keys");
-    std::map<QString, Secret> keys;
-    for (quint32 j = 0; j < count; ++j) {
-        QString id;
-        in >> id;
-        Secret k(32);
-        check(in.readRawData(reinterpret_cast<char *>(k.data()), 32) == 32, "Truncated vault key");
-        check(keys.emplace(id, std::move(k)).second, "Duplicate mailbox key");
-    }
-    check(in.status() == QDataStream::Ok && in.atEnd(), "Invalid vault contents");
-    path_ = path;
-    salt_ = salt;
-    wrapping_ = std::move(key);
-    identities_ = std::move(identities);
-    mailboxKeys_ = std::move(keys);
-    unlocked_ = true;
-    // Chans were named "[chan] <phrase>" or "<name>" before names took a '#'.
-    // Renaming keeps it, so this changes a vault once.
-    bool renamed = false;
-    for (auto &i : identities_)
-        if (i.chan && channelName(i.label) != i.label) {
-            i.label = channelName(i.label);
-            renamed = true;
-        }
-    if (renamed) {
-        try {
-            save();
-        } catch (...) {
-            // A read-only vault still opens; the names are fixed in memory.
-        }
-    }
-}
-void Vault::lock() {
-    identities_.clear();
-    mailboxKeys_.clear();
-    wrapping_.clear();
-    salt_.clear();
-    path_.clear();
-    unlocked_ = false;
+    bridge::SecretText pass(password);
+    core_.unlock(bridge::toStd(path), pass.value);
 }
 void Vault::changePassword(const QByteArray &password) {
-    check(unlocked_, "Vault is locked");
-    auto oldSalt = salt_;
-    Secret oldKey = std::move(wrapping_);
-    try {
-        salt_.resize(16);
-        salt_.detach();
-        randombytes_buf(salt_.data(), 16);
-        wrapping_ = derive(password, salt_);
-        save();
-    } catch (...) {
-        salt_ = oldSalt;
-        wrapping_ = std::move(oldKey);
-        throw;
-    }
+    bridge::SecretText pass(password);
+    core_.changePassword(pass.value);
+}
+void Vault::lock() {
+    core_.lock();
 }
 QString Vault::addIdentity(const QString &label) {
-    check(unlocked_, "Vault is locked");
-    identities_.push_back(Protocol::identity(label));
-    if (identities_.size() == 1)
-        identities_.back().isDefault = true;
-    try {
-        save();
-    } catch (...) {
-        identities_.pop_back();
-        throw;
-    }
-    return identities_.back().address;
+    return bridge::fromStd(core_.addIdentity(bridge::toStd(label)));
 }
 QString Vault::addIdentity(const Identity &identity) {
-    check(unlocked_, "Vault is locked");
-    const auto keys = reinterpret_cast<const char *>(identity.keys.data());
-    auto copy = Protocol::fromPrivate(identity.label, QByteArray(keys, 32),
-                                      QByteArray(keys + 32, 32), 4, 1, false);
-    check(copy.address == identity.address, "Identity keys do not match its address");
-    for (const auto &i : identities_)
-        check(i.address != copy.address, "Identity already in the vault");
-    identities_.push_back(std::move(copy));
-    if (identities_.size() == 1)
-        identities_.back().isDefault = true;
-    try {
-        save();
-    } catch (...) {
-        identities_.pop_back();
-        throw;
-    }
-    return identities_.back().address;
+    bmc::Identity core;
+    core.label = bridge::toStd(identity.label);
+    core.address = bridge::toStd(identity.address);
+    core.chan = identity.chan;
+    core.isDefault = identity.isDefault;
+    std::memcpy(core.keys.data(), identity.keys.data(), 64);
+    return bridge::fromStd(core_.addIdentity(core));
 }
-
+QString Vault::addChannel(const QString &phrase, const QString &label,
+                          const QString &expectedAddress) {
+    bridge::SecretText pass(phrase);
+    return bridge::fromStd(
+        core_.addChannel(pass.value, bridge::toStd(label), bridge::toStd(expectedAddress)));
+}
+void Vault::importKeys(const QString &path) {
+    core_.importKeys(bridge::toStd(path));
+}
 QString Vault::addMailboxKey() {
-    check(unlocked_, "Vault is locked");
-    auto id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    Secret key(32);
-    randombytes_buf(key.data(), 32);
-    mailboxKeys_.emplace(id, std::move(key));
-    try {
-        save();
-    } catch (...) {
-        mailboxKeys_.erase(id);
-        throw;
-    }
-    return id;
-}
-const Secret &Vault::mailboxKey(const QString &id) const {
-    check(unlocked_, "Vault is locked");
-    auto it = mailboxKeys_.find(id);
-    check(it != mailboxKeys_.end(), "Mailbox key is not in this vault");
-    return it->second;
+    return bridge::fromStd(core_.addMailboxKey());
 }
 QStringList Vault::mailboxIds() const {
     QStringList ids;
-    for (const auto &[id, key] : mailboxKeys_)
-        ids << id;
+    for (const auto &id : core_.mailboxIds())
+        ids << bridge::fromStd(id);
     return ids;
+}
+const Secret &Vault::mailboxKey(const QString &id) const {
+    return core_.mailboxKey(bridge::toStd(id));
+}
+void Vault::renameIdentity(const QString &address, const QString &label) {
+    core_.renameIdentity(bridge::toStd(address), bridge::toStd(label));
+}
+void Vault::deleteIdentity(const QString &address) {
+    core_.deleteIdentity(bridge::toStd(address));
+}
+void Vault::setDefaultIdentity(const QString &address) {
+    core_.setDefaultIdentity(bridge::toStd(address));
 }
 using detail::Statement;
 void Mailbox::sql(const char *q) {

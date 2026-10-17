@@ -16,11 +16,11 @@ namespace bm {
 static qint64 now() {
     return QDateTime::currentSecsSinceEpoch();
 }
-static const Identity *identity(const Vault &vault, const QString &address) {
-    for (const auto &i : vault.identities())
+static std::optional<Identity> identity(const Vault &vault, const QString &address) {
+    for (auto &i : vault.identities())
         if (i.address == address)
-            return &i;
-    return nullptr;
+            return std::move(i);
+    return {};
 }
 static bool terminal(const QString &s) {
     return s == "acknowledged" || s == "published" || s == "cancelled" || s == "failed" ||
@@ -91,7 +91,7 @@ void Delivery::plan(Mailbox &m, const Vault &v, qint64 time) {
         }
         if (item.state == "publishing" || item.state == "awaiting_ack" || item.state == "ready")
             continue;
-        const auto *sender = identity(v, item.message.from);
+        const auto sender = identity(v, item.message.from);
         if (!sender) {
             m.setDelivery(item.id, "failed", "Sender identity is missing from this vault");
             continue;
@@ -107,7 +107,7 @@ void Delivery::plan(Mailbox &m, const Vault &v, qint64 time) {
                 continue;
             }
             std::optional<PublicIdentity> recipient;
-            if (auto *local = identity(v, item.message.to))
+            if (auto local = identity(v, item.message.to))
                 recipient = Wire::publicIdentity(*local);
             else if (auto saved = m.publicKey(item.message.to, time))
                 recipient = PublicIdentity{saved->address,

@@ -25,6 +25,8 @@ class qtstream {
     qtstream &operator>>(uint32_t &v);
     qtstream &operator>>(bool &v);
     qtstream &operator>>(std::string &v);
+    // Reads n raw bytes. Fewer than n sets ok() false and returns empty.
+    Bytes readRaw(size_t n);
 
     const Bytes &bytes() const {
         return bytes_;

@@ -96,6 +96,46 @@ bool isBlank(std::string_view s) {
     return true;
 }
 
+std::string_view trim(std::string_view s) {
+    size_t begin = 0;
+    while (begin < s.size()) {
+        const size_t n = sequenceLength(s.substr(begin));
+        if (n == 0)
+            break;
+        const auto cont = [&](size_t k) { return char32_t(uint8_t(s[begin + k]) & 0x3f); };
+        char32_t c = uint8_t(s[begin]);
+        if (n == 2)
+            c = ((c & 0x1f) << 6) | cont(1);
+        else if (n == 3)
+            c = ((c & 0x0f) << 12) | (cont(1) << 6) | cont(2);
+        else if (n == 4)
+            c = ((c & 0x07) << 18) | (cont(1) << 12) | (cont(2) << 6) | cont(3);
+        if (!isSpace(c))
+            break;
+        begin += n;
+    }
+    size_t end = begin, last = begin;
+    while (end < s.size()) {
+        const size_t n = sequenceLength(s.substr(end));
+        if (n == 0) {
+            last = ++end;
+            continue;
+        }
+        const auto cont = [&](size_t k) { return char32_t(uint8_t(s[end + k]) & 0x3f); };
+        char32_t c = uint8_t(s[end]);
+        if (n == 2)
+            c = ((c & 0x1f) << 6) | cont(1);
+        else if (n == 3)
+            c = ((c & 0x0f) << 12) | (cont(1) << 6) | cont(2);
+        else if (n == 4)
+            c = ((c & 0x07) << 18) | (cont(1) << 12) | (cont(2) << 6) | cont(3);
+        end += n;
+        if (!isSpace(c))
+            last = end;
+    }
+    return s.substr(begin, last - begin);
+}
+
 int toInt(std::string_view s, bool *ok) {
     const auto fail = [&] {
         if (ok)
