@@ -332,12 +332,14 @@ void Delivery::processJobs(Mailbox &m, bool online, int64_t time) {
             continue;
         }
         // Recreate an absent job after a relay crash, but never expose ack templates.
-        if (!std::filesystem::exists(path(spool))) {
-            std::filesystem::create_directories(path(root_ + "/publish"));
+        if (!std::filesystem::exists(path(spool), ignored)) {
+            std::filesystem::create_directories(path(root_ + "/publish"), ignored);
             try {
                 writeFileAtomic(path(spool), j.payload);
             } catch (const Error &) {
-                throw Error(Code::Io, "Cannot queue encrypted object for relay");
+                // require(), not a bare throw: the catalogue lists require() text, and the desktop
+                // shows this one in the outbox.
+                require(false, "Cannot queue encrypted object for relay", Code::Io);
             }
         }
         if (j.state != "submitted") {

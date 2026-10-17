@@ -44,7 +44,9 @@ Cache::~Cache() {
 bool Cache::ready() {
     if (!db_) {
         const auto file = root_ + "/" NTB_OBJECT_DB_FILE;
-        if (!std::filesystem::exists(path(file)))
+        std::error_code
+            ignored; // a path that cannot be probed is not a store, as QFile::exists said
+        if (!std::filesystem::exists(path(file), ignored))
             return false;
         // Read-write so the WAL index can be updated; never CREATE: only the
         // node makes this file.
