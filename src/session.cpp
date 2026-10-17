@@ -761,8 +761,11 @@ QVariantList Session::unreadChats(int limit) const {
                                   {"local", bridge::fromStd(message.localAddress)},
                                   {"peer", bridge::fromStd(message.peerAddress)},
                                   {"body", bridge::fromStd(message.body)},
-                                  {"seqno", message.seqno},
-                                  {"received", message.received}};
+                                  // qint64, explicitly: QVariant's six integer constructors leave
+                                  // the core's int64_t ambiguous where it is `long` (Linux), while
+                                  // it is `long long` (macOS) and exact there.
+                                  {"seqno", qint64(message.seqno)},
+                                  {"received", qint64(message.received)}};
     } catch (const std::exception &) {
         result.clear();
     }
