@@ -138,4 +138,68 @@ std::string_view truncateUtf8(std::string_view s, size_t maxBytes) {
         --n;
     return s.substr(0, n);
 }
+
+std::u16string utf16FromUtf8(std::string_view in) {
+    std::u16string out;
+    size_t i = 0;
+    while (i < in.size()) {
+        const size_t n = sequenceLength(in.substr(i));
+        if (n == 0) {
+            out.push_back(0xfffd); // one replacement per invalid byte, as QString::fromUtf8
+            ++i;
+            continue;
+        }
+        const auto b = [&](size_t k) { return uint8_t(in[i + k]); };
+        char32_t c = b(0);
+        if (n == 2)
+            c = (c & 0x1f) << 6 | (b(1) & 0x3f);
+        else if (n == 3)
+            c = (c & 0x0f) << 12 | (b(1) & 0x3f) << 6 | (b(2) & 0x3f);
+        else if (n == 4)
+            c = (c & 0x07) << 18 | (b(1) & 0x3f) << 12 | (b(2) & 0x3f) << 6 | (b(3) & 0x3f);
+        if (c <= 0xffff) {
+            out.push_back(char16_t(c));
+        } else {
+            c -= 0x10000;
+            out.push_back(char16_t(0xd800 + (c >> 10)));
+            out.push_back(char16_t(0xdc00 + (c & 0x3ff)));
+        }
+        i += n;
+    }
+    return out;
+}
+
+std::string utf8FromUtf16(std::u16string_view in) {
+    std::string out;
+    for (size_t i = 0; i < in.size(); ++i) {
+        char32_t c = in[i];
+        if (c >= 0xd800 && c <= 0xdbff) {
+            if (i + 1 < in.size() && in[i + 1] >= 0xdc00 && in[i + 1] <= 0xdfff)
+                c = 0x10000 + ((c - 0xd800) << 10) + (in[++i] - 0xdc00);
+            else {
+                out += '?';
+                continue;
+            }
+        } else if (c >= 0xdc00 && c <= 0xdfff) {
+            out += '?';
+            continue;
+        }
+        if (c < 0x80) {
+            out += char(c);
+        } else if (c < 0x800) {
+            out += char(0xc0 | (c >> 6));
+            out += char(0x80 | (c & 0x3f));
+        } else if (c < 0x10000) {
+            out += char(0xe0 | (c >> 12));
+            out += char(0x80 | ((c >> 6) & 0x3f));
+            out += char(0x80 | (c & 0x3f));
+        } else {
+            out += char(0xf0 | (c >> 18));
+            out += char(0x80 | ((c >> 12) & 0x3f));
+            out += char(0x80 | ((c >> 6) & 0x3f));
+            out += char(0x80 | (c & 0x3f));
+        }
+    }
+    return out;
+}
 } // namespace bmc::text

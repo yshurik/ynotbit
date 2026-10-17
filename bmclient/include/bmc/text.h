@@ -23,4 +23,9 @@ bool isBlank(std::string_view utf8);
 int toInt(std::string_view s, bool *ok = nullptr);
 // The longest prefix of at most maxBytes bytes that ends between two characters.
 std::string_view truncateUtf8(std::string_view s, size_t maxBytes);
+// UTF-8 to UTF-16 code units and back, as QString::fromUtf8 then QString::utf16 gave them and as
+// QString::toUtf8 gave them back: an invalid UTF-8 byte becomes one U+FFFD, a non-BMP character a
+// surrogate pair, and a lone surrogate a '?'. This is what the vault's QDataStream payload holds.
+std::u16string utf16FromUtf8(std::string_view utf8);
+std::string utf8FromUtf16(std::u16string_view units);
 } // namespace bmc::text
