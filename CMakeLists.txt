@@ -98,6 +98,7 @@ else()
  target_compile_options(notbit_engine PRIVATE -Wno-deprecated-declarations -include sys/types.h)
 endif()
 if(NOT WIN32)
+ add_subdirectory(bmbot)
  # Peer sockets are kept alive by the system (SO_KEEPALIVE with minutes, not hours).
  add_executable(socket_tests tests/socket_tests.c)
  target_include_directories(socket_tests PRIVATE ${NTB}/src)
