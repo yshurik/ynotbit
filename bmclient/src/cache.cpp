@@ -15,8 +15,8 @@
 namespace bmc {
 namespace {
 // A store the node is writing, or one that is not a store at all, reports the message the app has
-// always shown for it, not SQLite's own.
-[[noreturn]] void unreadable() {
+// always shown for it, not SQLite's own. It always throws, so the return after a catch is dead.
+void unreadable() {
     require(false, "Network cache database error");
 }
 std::string join(const std::vector<std::string> &parts, char separator) {
@@ -62,6 +62,7 @@ bool Cache::ready() {
     } catch (const std::exception &) {
         unreadable();
     }
+    return false;
 }
 
 std::vector<CachedObject> Cache::after(int64_t sequence, int limit) {
@@ -90,6 +91,7 @@ bool Cache::hasAfter(int64_t sequence) {
     } catch (const std::exception &) {
         unreadable();
     }
+    return false;
 }
 
 int64_t Cache::firstSequence() {
@@ -102,6 +104,7 @@ int64_t Cache::firstSequence() {
     } catch (const std::exception &) {
         unreadable();
     }
+    return 0;
 }
 
 std::string Cache::id() {
@@ -113,6 +116,7 @@ std::string Cache::id() {
     } catch (const std::exception &) {
         unreadable();
     }
+    return {};
 }
 
 int scanMailbox(Cache &cache, Mailbox &mailbox, const Vault &vault, int limit) {
