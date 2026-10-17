@@ -2,13 +2,14 @@
 #include "message_model.h"
 #include "port_mapper.h"
 #include "storage.h"
-#include <QJsonObject>
 #include <QLockFile>
 #include <QObject>
-#include <QProcess>
 #include <QTimer>
 #include <QVariantList>
 #include <bmc/client.h>
+#include <bmc/node_config.h>
+#include <bmc/node_status.h>
+#include <bmc/node_supervisor.h>
 #include <bmc/node_watch.h>
 #include <utility>
 namespace bm {
@@ -38,28 +39,32 @@ class Session : public QObject {
     QString root_, vaultPath_, mailPath_, mailKey_, pendingVaultPath_, error_, activity_;
     QStringList recentVaultPaths_, recentMailboxPaths_;
     std::optional<quint64> displayedRevision_;
-    QProcess node_;
+    // The node process, and what it last said: the core owns how to start and stop it, this class
+    // owns when (the timers below) and what the window shows.
+    std::unique_ptr<bmc::NodeSupervisor> node_;
     QTimer timer_;
     std::unique_ptr<QLockFile> nodeLock_, vaultLock_, mailLock_;
     bool busy_ = false;
     bool offline_ = false;
-    QString nodeError_;                  // why the node last stopped, shown in status()
-    quint16 listenPort_ = 8444;          // the node's actual listen port, from status.json
-    mutable QJsonObject lastNodeStatus_; // last status.json read, see status()
+    QString nodeError_;         // why the node last stopped, shown in status()
+    quint16 listenPort_ = 8444; // the node's actual listen port, from status.json
+    mutable std::optional<bmc::NodeStatus> lastNodeStatus_; // last status.json read, see status()
+    QString lastStderrLine_; // the last line of the node's stderr shown, see pollNode()
     int retentionMB_ = 2048, retentionDays_ = 90;
     QTimer restartSoon_; // see scheduleRestart()
     int nodeRestarts_ = 0;
-    bool stoppingNode_ = false; // restartNode() is stopping the node: its end is no problem
-    bmc::NodeWatch nodeWatch_;       // see setNodeWatchdog(): a node that runs but does no good
-    QString watchdogNote_;      // why the watchdog last restarted the node
+    bmc::NodeWatch nodeWatch_; // see setNodeWatchdog(): a node that runs but does no good
+    QString watchdogNote_;     // why the watchdog last restarted the node
     int watchdogRestarts_ = 0;
-    quint16 configuredPort() const; // the listen port the node is asked for (8444 by default)
+    quint16 configuredPort() const;     // the listen port the node is asked for (8444 by default)
+    bmc::NodeConfig nodeConfig() const; // what the node is started with, in the core's terms
     qint64 objectCount_ = 0, objectBytes_ = 0;
     int incoming_ = 0; // established_incoming from the node's status.json
     std::unique_ptr<PortMapper> portMapper_;
     void updatePortMapping();
     void bindMailboxToCache();
     void startNode();
+    void pollNode();
     void attempt(const std::function<void()> &f);
     void refresh();
     void clearMessages();
@@ -149,7 +154,7 @@ class Session : public QObject {
         return *portMapper_;
     }
     static bool wantsPortMapping(bool online, bool listen, bool upnp, const QString &proxy) {
-        return online && listen && upnp && proxy.isEmpty();
+        return bmc::wantsPortMapping(online, listen, upnp, proxy.toStdString());
     }
     // A new vault at path holding identity, its first and default, in place of
     // the open vault, which stays open when the new file cannot be reserved;

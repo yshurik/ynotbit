@@ -16,23 +16,19 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
-#include <QHostAddress>
 #include <QInputDialog>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QLineEdit>
 #include <QLocale>
 #include <QMessageBox>
 #include <QSet>
 #include <QSettings>
 #include <QStandardPaths>
-#include <QUrl>
 #include <QUuid>
 #include <algorithm>
 #include <bmc/clock.h>
+#include <bmc/path.h>
 #include <stdexcept>
 namespace bm {
-static constexpr quint16 kNodePort = 8444; // the node's NTB_PROTO_DEFAULT_PORT
 static QString addressInput(const QString &title, const QString &label, bool *accepted) {
     QInputDialog dialog;
     dialog.setWindowTitle(title);
@@ -106,36 +102,9 @@ Session::Session(QString root, bool offline, QObject *parent)
     restartSoon_.setInterval(1000);
     connect(&restartSoon_, &QTimer::timeout, this, &Session::restartNode);
     ProofOfWork::setGpuEnabled(QSettings().value("gpu", true).toBool());
-    connect(&node_, &QProcess::readyReadStandardOutput, this,
-            [this] { node_.readAllStandardOutput(); });
-    connect(&node_, &QProcess::readyReadStandardError, this, [this] {
-        auto text = QString::fromUtf8(node_.readAllStandardError()).trimmed();
-        if (!text.isEmpty()) {
-            nodeError_ = text.section('\n', -1).left(200);
-            error_ = tr("Node: %1").arg(text.left(400));
-            emit changed();
-        }
-    });
-    connect(&node_, &QProcess::errorOccurred, this, [this] {
-        if (stoppingNode_)
-            return; // stopped by this session (even killed, when it would not stop): no problem
-        error_ = tr("Node: %1").arg(node_.errorString());
-        emit changed();
-    });
-    connect(&node_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-            [this](int code, QProcess::ExitStatus exit) {
-                if (nodeError_.isEmpty() && (code || exit == QProcess::CrashExit))
-                    nodeError_ =
-                        exit == QProcess::CrashExit ? tr("crashed") : tr("exit code %1").arg(code);
-                // What stopped it (a busy port, a locked store) may clear by itself.
-                QTimer::singleShot(30000, this, [this] {
-                    if (!offline_ && node_.state() == QProcess::NotRunning)
-                        startNode();
-                });
-                emit changed();
-            });
     portMapper_ = std::make_unique<PortMapper>(miniupnpcBackend());
     connect(portMapper_.get(), &PortMapper::changed, this, &Session::changed);
+    node_ = std::make_unique<bmc::NodeSupervisor>(nodeConfig());
     startNode();
     connect(&timer_, &QTimer::timeout, this, &Session::tick);
     timer_.start(750);
@@ -144,39 +113,36 @@ Session::Session(QString root, bool offline, QObject *parent)
 Session::~Session() {
     timer_.stop();
     lock();
-    if (node_.state() != QProcess::NotRunning) {
-        node_.terminate();
-        if (!node_.waitForFinished(3000)) {
-            node_.kill();
-            node_.waitForFinished(1000);
-        }
-    }
+    // Idempotent, and a no-op when nothing runs; the node also stops on its own when the app is
+    // gone (the relay bridge checks the parent). Even so, a killed node would not flush its store.
+    if (node_)
+        node_->stop();
 }
 QString Session::status() const {
     if (offline_)
         return tr("Offline · outgoing objects stay queued");
-    if (node_.state() != QProcess::Running)
+    if (!node_->running())
         return nodeError_.isEmpty()
                    ? tr("Node stopped · outgoing objects stay queued")
                    : tr("Node stopped: %1 · outgoing objects stay queued").arg(nodeError_);
-    QFile f(root_ + "/status.json");
     // Windows refuses the open for the instant the relay atomically replaces
     // the file; keep the last status read rather than flickering to "starting".
-    if (f.open(QIODevice::ReadOnly))
-        lastNodeStatus_ = QJsonDocument::fromJson(f.read(4096)).object();
-    else if (lastNodeStatus_.isEmpty())
+    if (const auto read =
+            bmc::NodeStatus::fromFile(bmc::path(bridge::toStd(root_ + "/status.json"))))
+        lastNodeStatus_ = read;
+    else if (!lastNodeStatus_)
         return tr("Node starting · connecting to peers");
-    const auto &status = lastNodeStatus_;
-    if (QDateTime::currentSecsSinceEpoch() - status.value("time").toInteger() > 10)
+    const auto &status = *lastNodeStatus_;
+    if (bmc::now() - status.time > 10)
         return tr("Node status unavailable");
-    auto peers = status.value("peers").toInt();
-    auto pending = status.value("pending").toInt();
+    auto peers = status.peers;
+    auto pending = status.pending;
     // "label: n" wording, so no language needs plural forms here.
     auto base = peers ? tr("Connected peers: %1 · receiving and relaying").arg(peers)
                       : tr("No connected peers · waiting for network");
     if (pending > 0)
         base += " · " + tr("objects downloading: %1").arg(pending);
-    const int port = status.value("listen_port").toInt();
+    const int port = status.listenPort;
     if (port > 0 && port != configuredPort())
         base += " · " + tr("port %1 is taken, listening on %2").arg(configuredPort()).arg(port);
     return base;
@@ -184,10 +150,25 @@ QString Session::status() const {
 // A service may ask for a port of its own (listenPort in its settings); a desktop listens on the
 // protocol's.
 quint16 Session::configuredPort() const {
-    const int port = QSettings(root_ + "/desktop.ini", QSettings::IniFormat)
-                         .value("listenPort", kNodePort)
-                         .toInt();
-    return port > 0 && port < 65536 ? quint16(port) : kNodePort;
+    return quint16(nodeConfig().listenPort());
+}
+// The settings the node is started with, in the core's terms: the app's own binary, started with
+// --node, so the node is this program and its behaviour is the one the desktop has always had.
+bmc::NodeConfig Session::nodeConfig() const {
+    QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
+    bmc::NodeConfig node;
+    node.root = bridge::toStd(root_);
+    node.maildir = bridge::toStd(root_ + "/unused-maildir");
+    node.bin = QCoreApplication::applicationFilePath().toStdString();
+    node.listen = listenEnabled() && proxy().isEmpty();
+    node.retentionMB = retentionMB_;
+    node.retentionDays = retentionDays_;
+    node.maxOutgoing = config.value("maxOutgoing").toInt();
+    node.maxIncoming = config.value("maxIncoming").toInt();
+    node.port = config.value("listenPort").toInt();
+    node.peer = bridge::toStd(config.value("peer").toString());
+    node.proxy = bridge::toStd(proxy());
+    return node;
 }
 // Lower layers throw English (see src/i18n/error_catalog.cpp); messages this
 // class raised itself are already translated and pass through unchanged.
@@ -668,31 +649,29 @@ void Session::tick() {
     if (busy_)
         return;
     try {
+        pollNode();
         // The node rewrites status.json every second; offline, its last values stand.
-        QFile nodeStatus(root_ + "/status.json");
-        QJsonObject node;
-        if (nodeStatus.open(QIODevice::ReadOnly)) {
-            node = QJsonDocument::fromJson(nodeStatus.read(4096)).object();
-            if (node.contains("objects")) {
-                objectCount_ = node.value("objects").toInteger();
-                objectBytes_ = node.value("object_bytes").toInteger();
-                incoming_ = node.value("established_incoming").toInt();
-            }
+        const auto read =
+            bmc::NodeStatus::fromFile(bmc::path(bridge::toStd(root_ + "/status.json")));
+        if (read) {
+            lastNodeStatus_ = read;
+            objectCount_ = read->objects;
+            objectBytes_ = read->objectBytes;
+            incoming_ = read->establishedIncoming;
             // The node listens elsewhere while another program holds its port,
             // and moves back when the port frees: the router mapping follows.
-            const int port = node.value("listen_port").toInt();
-            if (port > 0 && port != listenPort_) {
-                listenPort_ = quint16(port);
+            if (read->listenPort > 0 && read->listenPort != listenPort_) {
+                listenPort_ = quint16(read->listenPort);
                 updatePortMapping();
             }
         }
         // A node that runs but does no good (its status stopped, or no peer for too long) is
-        // started again; a node that has exited is restarted by its finished() handler.
-        if (!offline_ && node_.state() == QProcess::Running) {
+        // started again; a node that has exited is restarted by pollNode().
+        if (!offline_ && node_->running()) {
             using Verdict = bmc::NodeWatch::Verdict;
-            const auto now = QDateTime::currentSecsSinceEpoch();
-            const auto verdict =
-                nodeWatch_.judge(now, node.value("time").toInteger(), node.value("peers").toInt());
+            const auto now = bmc::now();
+            const auto verdict = nodeWatch_.judge(now, lastNodeStatus_ ? lastNodeStatus_->time : 0,
+                                                  lastNodeStatus_ ? lastNodeStatus_->peers : 0);
             if (verdict != Verdict::Fine) {
                 // For logs, not for the window: not translated.
                 watchdogNote_ =
@@ -704,8 +683,7 @@ void Session::tick() {
             }
         }
         if (mailboxOpen()) {
-            const auto report =
-                client_->step(bmc::now(), !offline_ && node_.state() == QProcess::Running);
+            const auto report = client_->step(bmc::now(), !offline_ && node_->running());
             if (report.open) {
                 refresh();
                 activity_ = report.upToDate ? tr("Mailbox up to date with retained objects")
@@ -1138,54 +1116,50 @@ void Session::closeMailbox() {
     emit changed();
 }
 QStringList Session::nodeArguments() const {
-    QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
-    auto peer = config.value("peer").toString(), proxy = config.value("proxy").toString();
-    // Listening next to a proxy would publish the real IP the proxy hides.
-    const bool listen = config.value("listen", true).toBool() && proxy.isEmpty();
-    QStringList args{"--node", "-D", root_, "-m", root_ + "/unused-maildir"};
-    if (!listen)
-        args << "-i";
-    args << "-R" << QString::number(retentionMB_) << "-A" << QString::number(retentionDays_);
-    // A service asks for more peers (the node's own are eight of each) and a port of its own.
-    for (const auto &[key, option] : {std::pair{"maxOutgoing", "-o"}, {"maxIncoming", "-n"}})
-        if (const int count = config.value(key).toInt(); count > 0)
-            args << option << QString::number(count);
-    if (config.value("listenPort").toInt() > 0)
-        args << "-p" << QString::number(configuredPort());
-    if (!peer.isEmpty())
-        args << "-P" << peer << "-L";
-    if (!proxy.isEmpty())
-        args << "-r" << proxy << "-B";
+    QStringList args;
+    for (const auto &argument : nodeConfig().nodeArguments())
+        args << QString::fromStdString(argument);
     return args;
+}
+// What the node said, and when it went: what the three QProcess signals used to do here.
+void Session::pollNode() {
+    const auto line = QString::fromStdString(node_->standardError()).trimmed();
+    if (!line.isEmpty() && line != lastStderrLine_) {
+        lastStderrLine_ = line;
+        nodeError_ = line;
+        error_ = tr("Node: %1").arg(QString::fromStdString(node_->standardErrorChunk()));
+        emit changed();
+    }
+    if (!node_->poll())
+        return; // still running, or no exit since the last look
+    if (nodeError_.isEmpty() && (node_->exitCode() || node_->crashed()))
+        nodeError_ = node_->crashed() ? tr("crashed") : tr("exit code %1").arg(node_->exitCode());
+    // What stopped it (a busy port, a locked store) may clear by itself.
+    QTimer::singleShot(30000, this, [this] {
+        if (!offline_ && !node_->running())
+            startNode();
+    });
+    emit changed();
 }
 void Session::startNode() {
     updatePortMapping();
     if (offline_)
         return;
-    nodeWatch_.restarted(QDateTime::currentSecsSinceEpoch());
+    nodeWatch_.restarted(bmc::now());
     QFile::remove(root_ + "/status.json");
-    lastNodeStatus_ = {};
+    lastNodeStatus_.reset();
+    lastStderrLine_.clear();
     nodeError_.clear();
-    auto env = QProcessEnvironment::systemEnvironment();
-    env.insert("YNOTBIT_PARENT_PID", QString::number(QCoreApplication::applicationPid()));
-    node_.setProcessEnvironment(env);
-    node_.setProgram(QCoreApplication::applicationFilePath());
-    node_.setArguments(nodeArguments());
-    node_.start();
+    // The environment is the app's own plus YNOTBIT_PARENT_PID, which the node supervisor adds:
+    // the relay bridge stops the node when this process is gone.
+    if (!node_->start())
+        error_ = tr("Node: %1").arg(QString::fromStdString(node_->lastError()));
 }
 void Session::restartNode() {
     ++nodeRestarts_;
     attempt([&] {
-        if (node_.state() != QProcess::NotRunning) {
-            stoppingNode_ = true;
-            node_.terminate();
-            if (!node_.waitForFinished(3000)) {
-                node_.kill();
-                node_.waitForFinished(1000);
-            }
-            stoppingNode_ = false;
-        }
-        startNode();
+        node_->stop();
+        startNode(); // which does the bookkeeping: a new start, not a new process only
     });
 }
 void Session::setNodeWatchdog(int lonelyMinutes) {
@@ -1196,13 +1170,7 @@ void Session::setNetworkEnabled(bool enabled) {
     restartNode();
 }
 bool Session::validEndpoint(const QString &text) {
-    if (text.isEmpty())
-        return true;
-    QUrl url("tcp://" + text);
-    QHostAddress address;
-    return url.isValid() && url.userInfo().isEmpty() && url.path().isEmpty() &&
-           url.query().isEmpty() && url.fragment().isEmpty() && address.setAddress(url.host()) &&
-           url.port() > 0 && url.port() <= 65535;
+    return bmc::validEndpoint(text.toStdString());
 }
 QString Session::peer() const {
     return QSettings(root_ + "/desktop.ini", QSettings::IniFormat).value("peer").toString();
