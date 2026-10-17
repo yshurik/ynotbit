@@ -220,6 +220,7 @@ void NodeSupervisor::stop() {
     if (child > 0)
         ::kill(-child, SIGTERM);
     for (int waited = 0; waited < 3000; waited += 50) {
+        impl_->readWhatItSaid(); // it may be logging its way out, and an unread pipe stops it
         impl_->reap();
         if (impl_->pid <= 0 && (child <= 0 || groupIsGone(child)))
             break;
@@ -229,8 +230,10 @@ void NodeSupervisor::stop() {
     // makes this a failed call and nothing else.
     if (child > 0 && !groupIsGone(child))
         ::kill(-child, SIGKILL);
-    for (int waited = 0; waited < 1000 && impl_->pid > 0 && !impl_->reap(); waited += 50)
+    for (int waited = 0; waited < 1000 && impl_->pid > 0 && !impl_->reap(); waited += 50) {
+        impl_->readWhatItSaid();
         sleepMillis(50);
+    }
     impl_->readWhatItSaid(); // whatever it said on the way out
     impl_->close();
 }

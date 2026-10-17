@@ -157,6 +157,25 @@ TEST(a_restart_forgets_what_the_last_one_said) {
     CHECK(!node.running());
 }
 
+// A node that has a lot to say on the way out is still allowed to say it: while stop() waits for
+// it, the pipe it writes into is read, as QProcess::waitForFinished() read its channels. A node
+// blocked on a full pipe would never exit and would be killed instead of shut down. The child says
+// "ready" on stderr first, so the stop cannot arrive before its trap is installed -- which is a
+// race this test lost once already.
+TEST(a_child_that_logs_its_way_out_is_not_killed_for_it) {
+    Child child("trap 'i=0; while [ $i -lt 4000 ]; do "
+                "echo \"a line of the node log, long enough to fill a pipe\"; i=$((i+1)); "
+                "done; echo came-out-fine >&2; exit 0' TERM; echo ready >&2; sleep 30");
+    bmc::NodeSupervisor node(child.config);
+    CHECK(node.start());
+    CHECK(untilSaid(node, "ready"));
+    node.stop();
+    CHECK(!node.running());
+    CHECK(!node.crashed()); // SIGKILL would show here: it finished on its own terms
+    CHECK_EQ(node.standardError(), std::string("came-out-fine"));
+    CHECK_EQ(node.exitCode(), 0);
+}
+
 TEST(a_child_that_ignores_sigterm_is_killed_after_three_seconds) {
     Child child("trap '' TERM; echo ready >&2; exec sleep 30");
     bmc::NodeSupervisor node(child.config);

@@ -227,6 +227,9 @@ void NodeSupervisor::stop() {
         TerminateJobObject(impl_->job, 1);
     else
         TerminateProcess(impl_->process, 1);
+    // No draining is needed while it is waited for: TerminateProcess ends it at once, so it cannot
+    // be blocked writing to the pipe. (POSIX sends SIGTERM and waits for a shutdown that is
+    // writing.)
     WaitForSingleObject(impl_->process, 3000);
     impl_->reap();
     impl_->readWhatItSaid(); // whatever it said on the way out
