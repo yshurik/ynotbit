@@ -127,10 +127,22 @@ TEST(a_step_reports_objects_retention_removed) {
 
 TEST(a_step_reports_the_mailbox_changing_under_it) {
     Fixture f;
-    const auto before = f.mailbox->messageRevision();
-    fake::cacheObject(f.root, f.incoming("Hello", "Body", bmc::now() + 3600));
-    f.client->step(bmc::now(), false);
-    CHECK(f.mailbox->messageRevision() > before);
+    const auto now = bmc::now();
+    // Planning an outgoing letter writes the outbox: the mailbox's update hook moves the revision
+    // the desktop reloads on.
+    const auto draft = f.mailbox->saveDraft({}, f.me, f.peer, "Subject", "Body");
+    f.mailbox->setSetting("draftkind:" + draft, "direct");
+    f.client->sendLetter(draft, now);
+    const auto afterQueue = f.mailbox->messageRevision();
+    f.client->step(now, false);
+    CHECK_EQ(f.mailbox->outgoing(draft).state, std::string("awaiting_pubkey"));
+    CHECK(f.mailbox->messageRevision() > afterQueue);
+    // A scan that stores an incoming letter writes through the same hook.
+    const auto afterPlan = f.mailbox->messageRevision();
+    fake::cacheObject(f.root, f.incoming("Hello", "Body", now + 3600));
+    f.client->step(now, false);
+    CHECK_EQ(f.mailbox->messageCount("Inbox", ""), size_t(1));
+    CHECK(f.mailbox->messageRevision() > afterPlan);
 }
 
 TEST(a_chat_needs_an_own_sender_and_a_real_recipient) {
