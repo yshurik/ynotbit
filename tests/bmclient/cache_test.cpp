@@ -47,6 +47,8 @@ TEST(a_missing_store_reads_as_empty) {
     CHECK(!cache.hasAfter(0));
     CHECK_EQ(cache.firstSequence(), int64_t(0));
     CHECK_EQ(cache.id(), std::string());
+    // Reading a store that is not there does not make one: only the node writes this file.
+    CHECK(!std::filesystem::exists(bmc::path(root + "/" NTB_OBJECT_DB_FILE)));
 }
 
 TEST(a_store_reads_back_in_order) {
