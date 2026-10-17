@@ -2,10 +2,13 @@
 
 The core of a Bitmessage client with no Qt: bytes and UTF-8 helpers, a JSON reader, identities and
 keys, the objects of the network (`Wire`), the simple message of the engine the app started from
-(`Protocol`), keys from a phrase, the chat format, update-notice helpers, proof of work, and the
-app's storage: the vault (the identities and mailbox keys in one encrypted file) and the mailbox
+(`Protocol`), keys from a phrase, the chat format, update-notice helpers, proof of work, the app's
+storage: the vault (the identities and mailbox keys in one encrypted file) and the mailbox
 (letters, chats, deliveries, jobs, keys, subscriptions, contacts and settings in one SQLCipher
-file). The Qt app reaches it through thin wrappers in `src/`; the bot library `bmbot` (a later
+file), the node's object store read in std (`bmc::Cache`, `objects.sqlite`), the delivery engine
+(`bmc::Delivery`: the outbox state machine, the spool and the receipts the relay writes, and the
+incoming scan) and `bmc::Client`, which owns the four and is the loop the Qt app and a bot both
+drive. The Qt app reaches it through thin wrappers in `src/`; the bot library `bmbot` (a later
 slice) is built on it. Design:
 `docs/superpowers/specs/2026-10-15-qt-free-core-and-bot-platform-design.md`.
 
@@ -31,7 +34,9 @@ Build and test without Qt:
 `scripts/check-qt-free.sh [ssh-host]` does it in a Debian container that has no Qt.
 
 Tests are in `tests/bmclient/` and use the small harness in `include/bmc/test.h`. Most are unit
-tests; the vault's and the mailbox's also read the frozen files in `tests/golden/`. With Qt,
+tests; the vault's and the mailbox's also read the frozen files in `tests/golden/`, and
+`scenario_test.cpp` runs two clients against `fake_node.h`, which does the node's and the relay's
+work in the test. With Qt,
 `tests/bmclient/parity/` runs Qt's own functions beside the core's (text, JSON, chat, updates, and
 the `QDataStream` the vault payload is written with). `scripts/compat-check.sh` is the
 cross-release gate: it builds the pre-slice commit in a worktree with the Qt app's code and
