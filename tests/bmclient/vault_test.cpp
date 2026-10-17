@@ -2,6 +2,7 @@
 #include <bmc/test.h>
 #include <bmc/vault.h>
 #include <filesystem>
+#include <iostream>
 
 using bmc::Vault;
 
@@ -81,9 +82,19 @@ TEST(a_failed_save_keeps_the_previous_vault) {
     v.create(path, "pw");
     v.addIdentity("me");
     const auto before = bmc::test::readFile(path);
-    // A read-only directory makes the atomic write fail before the target is touched.
-    std::filesystem::permissions(dir, std::filesystem::perms::owner_read |
-                                          std::filesystem::perms::owner_exec);
+    // A read-only directory makes the atomic write fail before the target is touched. Root is not
+    // bound by the permission bits (a container runs as root), so probe with a file of our own and
+    // skip where they are not enforced rather than report a failure that is the user's, not the
+    // vault's.
+    const auto readOnly = std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec;
+    std::filesystem::permissions(dir, readOnly);
+    bmc::test::writeFile(dir + "/probe", bmc::view(std::string("x")));
+    const bool enforced = !std::filesystem::exists(dir + "/probe");
+    if (!enforced) {
+        std::filesystem::permissions(dir, std::filesystem::perms::owner_all);
+        std::cerr << "skipped: the permission bits are not enforced for this user" << std::endl;
+        return;
+    }
     CHECK_THROWS(v.addIdentity("second"));
     std::filesystem::permissions(dir, std::filesystem::perms::owner_all);
     CHECK_EQ(bmc::test::readFile(path), before);
