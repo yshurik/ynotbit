@@ -8,6 +8,7 @@
 #include <bmc/vault.h>
 #include <cstdio>
 #include <filesystem>
+#include <iostream>
 
 using bmc::Vault;
 
@@ -30,6 +31,27 @@ std::string writeTemp(const std::string &name, const std::string &text) {
 
 std::string hexOf(const bmc::Secret &secret) {
     return bmc::hex(bmc::ByteView(secret.data(), secret.size()));
+}
+
+// What the vault holds, as one string: an editing call that fails has to leave this as it was.
+std::string snapshot(const Vault &v) {
+    std::string out;
+    for (const auto &i : v.identities())
+        out += i.address + "|" + i.label + "|" + (i.isDefault ? "1" : "0") + ";";
+    return out;
+}
+
+// Make a directory read-only and answer whether the permission bits actually bind this user. Root
+// is not bound by them (a container runs as root), so a test of a failed write probes with a file
+// of its own rather than reporting a failure that belongs to the user and not to the vault.
+bool makeReadOnly(const std::string &dir) {
+    const auto readOnly = std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec;
+    std::filesystem::permissions(dir, readOnly);
+    bmc::test::writeFile(dir + "/probe", bmc::view(std::string("x")));
+    const bool enforced = !std::filesystem::exists(dir + "/probe");
+    if (!enforced)
+        std::filesystem::permissions(dir, std::filesystem::perms::owner_all);
+    return enforced;
 }
 } // namespace
 
@@ -194,4 +216,51 @@ TEST(the_default_identity_moves) {
     CHECK_EQ(again.identities()[1].address, second);
     CHECK(again.identities()[1].isDefault);
     CHECK(!again.identities()[0].isDefault);
+}
+
+TEST(a_save_that_fails_leaves_the_vault_as_it_was) {
+    const auto dir = bmc::test::tempDir();
+    const auto path = dir + "/rollback.bmvault";
+    Vault v;
+    v.create(path, "password");
+    const auto first = v.addIdentity("first");
+    const auto second = v.addIdentity("second");
+    const auto keys = writeTemp("rollback-keys.dat", kKeysDat);
+    // The vault is this user's to read but not to write: every editing call below reaches its
+    // save() and fails there, and has to put back what it changed in memory.
+    if (!makeReadOnly(dir)) {
+        std::cerr << "skipped: the permission bits are not enforced for this user" << std::endl;
+        return;
+    }
+    const auto before = snapshot(v);
+    const auto bytes = bmc::test::readFile(path);
+    CHECK_THROWS(v.addIdentity("third"));
+    CHECK_THROWS(v.addIdentity(bmc::Protocol::identity("fourth")));
+    CHECK_THROWS(v.addChannel("general", "general", kGeneralChan));
+    CHECK_THROWS(v.importKeys(keys));
+    CHECK_THROWS(v.renameIdentity(second, "renamed"));
+    CHECK_THROWS(v.deleteIdentity(first));
+    CHECK_THROWS(v.setDefaultIdentity(second));
+    CHECK_THROWS(v.changePassword("another password"));
+    CHECK_EQ(snapshot(v), before); // identities, labels, chans and the default, all as they were
+    CHECK_EQ(bmc::hex(bmc::test::readFile(path)), bmc::hex(bytes)); // and so is the file
+    // The password change is the one that would lock the owner out if it rolled back halfway, so
+    // the vault is opened again with the password it still has.
+    Vault again;
+    again.unlock(path, "password");
+    CHECK_EQ(snapshot(again), before);
+}
+
+TEST(keys_dat_lines_that_are_odd_or_repeated_are_read_loosely) {
+    const auto path = bmc::test::tempDir() + "/odd.bmvault";
+    // A line with no '=' in it is skipped, and the same section written twice is one identity and
+    // not two -- and not an error either, since one of them was new.
+    const auto odd =
+        writeTemp("odd.dat", std::string("a line with no equals sign\n") + kKeysDat + kKeysDat);
+    Vault v;
+    v.create(path, "password");
+    v.importKeys(odd);
+    CHECK_EQ(v.identities().size(), size_t(1));
+    CHECK_EQ(v.identities().front().address, std::string(kGeneralChan));
+    CHECK_EQ(v.identities().front().label, std::string("#General"));
 }

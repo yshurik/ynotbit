@@ -4,6 +4,7 @@
 #include <bmc/random.h>
 #include <bmc/test.h>
 #include <filesystem>
+#include <sqlcipher/sqlite3.h>
 
 using bmc::Mailbox;
 
@@ -16,6 +17,20 @@ bmc::Secret key32(uint8_t fill = 0x01) {
 }
 std::string aNewMailbox(const char *name = "m.bmmail") {
     return bmc::test::tempDir() + "/" + name;
+}
+// A mailbox file the tests open with the raw SQLCipher API, to put it into a state the public API
+// would never make: another format version, or metadata that is not there at all. The key is the
+// same 32 bytes the mailbox itself keys the file with.
+void editMailbox(const std::string &path, const bmc::Secret &key, const char *sql) {
+    sqlite3 *db = nullptr;
+    if (sqlite3_open_v2(path.c_str(), &db, SQLITE_OPEN_READWRITE, nullptr) != SQLITE_OK)
+        bmc::test::fail(__FILE__, __LINE__, "cannot open the mailbox file");
+    const bool keyed = sqlite3_key(db, key.data(), 32) == SQLITE_OK;
+    const bool ran = keyed && sqlite3_exec(db, sql, nullptr, nullptr, nullptr) == SQLITE_OK;
+    const std::string why = ran ? std::string() : sqlite3_errmsg(db);
+    sqlite3_close(db);
+    if (!ran)
+        bmc::test::fail(__FILE__, __LINE__, why);
 }
 } // namespace
 
@@ -229,4 +244,61 @@ TEST(a_wrong_mailbox_key_is_refused) {
     Mailbox other;
     CHECK_THROWS(other.open(path, key32(0x02)));
     CHECK(!other.isOpen());
+}
+
+TEST(a_mailbox_of_another_format_or_with_no_metadata_is_refused) {
+    const auto path = aNewMailbox("format.bmmail");
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    m.close();
+    // A file whose user_version is not one this build knows: refused by name, with the file left
+    // where it is, as the vault's own format check does.
+    editMailbox(path, key, "PRAGMA user_version=3");
+    try {
+        Mailbox later;
+        later.open(path, key);
+        bmc::test::fail(__FILE__, __LINE__, "a mailbox of a later format was opened");
+    } catch (const bmc::Error &e) {
+        CHECK_EQ(std::string(e.what()), std::string("Unsupported mailbox format"));
+        CHECK_EQ(int(e.code()), int(bmc::Code::Invalid));
+    }
+    editMailbox(path, key, "PRAGMA user_version=2");
+    // One that claims this format but has no metadata row is not a mailbox either, and was not
+    // removed by the open that failed.
+    editMailbox(path, key, "DELETE FROM meta");
+    try {
+        Mailbox empty;
+        empty.open(path, key);
+        bmc::test::fail(__FILE__, __LINE__, "a mailbox with no metadata was opened");
+    } catch (const bmc::Error &e) {
+        CHECK_EQ(std::string(e.what()), std::string("Invalid mailbox"));
+        CHECK_EQ(int(e.code()), int(bmc::Code::Invalid));
+    }
+    CHECK(std::filesystem::exists(path));
+}
+
+TEST(a_scan_batch_commits_what_it_stored_or_leaves_it_out) {
+    const auto path = aNewMailbox("batch.bmmail");
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    {
+        Mailbox::Batch batch(m);
+        m.store("hash-1", "BM-2cA", "BM-2cB", "Subject", "Body", 5);
+        batch.commit();
+    }
+    CHECK_EQ(m.messageCount("Inbox", ""), 1);
+    CHECK_EQ(m.checkpoint(), int64_t(5));
+    // A batch that is not committed leaves nothing behind at all: the letters and the checkpoint it
+    // moved are both back where they were, which is what a scan that throws wants.
+    {
+        Mailbox::Batch batch(m);
+        m.store("hash-2", "BM-2cA", "BM-2cB", "Subject", "Body", 9);
+        CHECK_EQ(m.messageCount("Inbox", ""), 2); // visible inside the batch
+        CHECK_EQ(m.checkpoint(), int64_t(9));
+    }
+    CHECK_EQ(m.messageCount("Inbox", ""), 1);
+    CHECK_EQ(m.checkpoint(), int64_t(5));
+    m.close();
 }

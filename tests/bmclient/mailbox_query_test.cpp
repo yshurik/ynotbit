@@ -44,8 +44,9 @@ TEST(the_list_filters_by_search_recipient_and_unread) {
     // Folder first, then the three flags of the filter.
     CHECK_EQ(m.messageCount("Inbox", ""), 2);
     CHECK_EQ(m.messageCount("Archive", ""), 1);
-    CHECK_EQ(m.messageCount("Inbox", "", "BM-2cBob"), 2);   // both were sent to Bob
-    CHECK_EQ(m.messageCount("Inbox", "", "BM-2cAlice"), 0); // Alice is the sender, not the recipient
+    CHECK_EQ(m.messageCount("Inbox", "", "BM-2cBob"), 2); // both were sent to Bob
+    CHECK_EQ(m.messageCount("Inbox", "", "BM-2cAlice"),
+             0); // Alice is the sender, not the recipient
     CHECK_EQ(m.messageCount("Inbox", "", "", false, true), 1); // anonymous: sender==recipient
     CHECK_EQ(m.messageCount("Inbox", "", "", true), 2);
     m.markRead("hash-a");
@@ -163,4 +164,36 @@ TEST(a_closed_mailbox_says_so_and_a_short_key_is_refused) {
     CHECK_THROWS(m.create(path, "key-3", key32()));
     CHECK_EQ(m.keyId(), std::string("key-1")); // the first one is still the open one
     m.close();
+}
+
+TEST(the_same_filter_serves_the_summaries_the_hashes_and_the_position) {
+    const auto path = aNewMailbox("filters.bmmail");
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    bmc::setClockForTesting(testClock);
+    storeThree(m);
+    // The summaries' call takes the search and the recipient, the hashes' and the position's the
+    // recipient; each binds them into its own query in its own order.
+    CHECK_EQ(m.messageSummaries("Inbox", "alpha", 0, 10, "BM-2cBob").size(), size_t(2));
+    CHECK_EQ(m.messageSummaries("Inbox", "nothing like it", 0, 10, "BM-2cBob").size(), size_t(0));
+    CHECK_EQ(m.messageSummaries("Archive", "", 0, 10, "BM-2cDave").size(), size_t(1));
+    CHECK_EQ(m.messageHashes("Inbox", "BM-2cBob").size(), size_t(2));
+    CHECK_EQ(m.messageHashes("Inbox", "BM-2cCarol").size(), size_t(0));
+    CHECK_EQ(m.messagePosition("hash-a", "Inbox", "BM-2cBob"), 1);
+    CHECK_EQ(m.messagePosition("hash-a", "Inbox", "BM-2cCarol"), -1);
+    m.close();
+    bmc::setClockForTesting(nullptr);
+}
+
+TEST(a_closed_mailbox_refuses_the_scan_state_as_well) {
+    const auto path = aNewMailbox("closed2.bmmail");
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    m.close();
+    CHECK_THROWS(m.advance(5));
+    CHECK_THROWS(m.checkpoint());
+    CHECK_THROWS(m.bindCache("cache-1"));
+    CHECK_THROWS(m.bindIdentities("fp-1"));
 }

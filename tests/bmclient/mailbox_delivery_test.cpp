@@ -102,3 +102,15 @@ TEST(a_chat_delivery_is_acknowledged_too) {
     CHECK_EQ(m.outgoing(chat).state, std::string("acknowledged"));
     m.close();
 }
+
+TEST(a_delivery_state_that_is_not_one_is_refused) {
+    const auto path = aNewMailbox("states.bmmail");
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    const auto id = m.saveDraft({}, "BM-2cA", "BM-2cB", "Subject", "Body");
+    m.queueDraft(id, "direct", soon());
+    CHECK_THROWS(m.setDelivery(id, "almost done", "detail"));
+    CHECK_EQ(m.outgoing(id).state, std::string("queued")); // and nothing was written
+    m.close();
+}
