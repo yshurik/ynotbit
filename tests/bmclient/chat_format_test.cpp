@@ -100,3 +100,9 @@ TEST(chat_parse_reads_documents_the_way_qt_did) {
     CHECK_EQ(payload.body, body);
     CHECK_EQ(payload.seqno, 77);
 }
+
+TEST(a_chat_body_that_is_not_utf8_is_refused) {
+    CHECK_THROWS(bmc::chatMessageBody(1, "\xff"));
+    CHECK_THROWS(bmc::chatMessageBody(1, std::string("ok\xff", 3)));
+    CHECK(!bmc::chatMessageBody(1, "\xf0\x9f\x98\x80").empty());
+}

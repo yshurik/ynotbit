@@ -124,3 +124,10 @@ TEST(proof_of_work_ignores_a_solver_that_lies_and_tells_it_to_disable) {
     bmc::ProofOfWork::setSolverEnabled(true);
     bmc::ProofOfWork::setSolver(nullptr);
 }
+
+TEST(proof_of_work_refuses_an_object_that_is_not_one) {
+    bmc::ProofOfWork pow;
+    CHECK_THROWS(pow.start(bmc::Bytes()));       // nothing at all
+    CHECK_THROWS(pow.start(bmc::unhex("0000"))); // shorter than a header
+    CHECK(!pow.done());                          // and no worker was left running for it
+}

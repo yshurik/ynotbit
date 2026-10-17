@@ -4,6 +4,7 @@
 #include <bmc/hash.h>
 #include <bmc/identity.h>
 #include <bmc/random.h>
+#include <bmc/records.h>
 #include <bmc/secret.h>
 #include <bmc/test.h>
 #include <chrono>
@@ -163,4 +164,26 @@ TEST(identity_ref_borrows_an_identity) {
     CHECK_EQ(bmc::letterTextBytes("ab", "cde"), 8 + 2 + 6 + 3);
     CHECK_EQ(bmc::kMaxObjectBytes, 262144);
     CHECK_EQ(bmc::kMaxLetterText, 261000);
+}
+
+TEST(the_hasher_adds_in_pieces_and_refuses_an_unknown_digest) {
+    bmc::Hasher pieces(bmc::Digest::Sha256);
+    pieces.add(bmc::view(std::string("a")));
+    pieces.add(bmc::view(std::string("bc")));
+    CHECK_EQ(bmc::hex(pieces.result()),
+             bmc::hex(bmc::hash(bmc::Digest::Sha256, bmc::view(std::string("abc")))));
+    // Sha512 through the same path, with nothing added at all.
+    bmc::Hasher sha512(bmc::Digest::Sha512);
+    CHECK_EQ(bmc::hex(sha512.result()), bmc::hex(bmc::hash(bmc::Digest::Sha512, bmc::ByteView())));
+    // A digest value that is none of the three is refused, not hashed with whatever the context was
+    // left holding.
+    CHECK_THROWS(bmc::Hasher(bmc::Digest(3)));
+}
+
+TEST(a_channel_name_gets_one_hash_and_no_prefix_of_its_own) {
+    CHECK_EQ(bmc::channelName("general"), std::string("#general"));
+    CHECK_EQ(bmc::channelName("  #friends  "), std::string("#friends"));
+    CHECK_EQ(bmc::channelName("[chan]  talk"), std::string("#talk"));
+    CHECK_EQ(bmc::channelName("#"), std::string("#"));
+    CHECK_EQ(bmc::channelName("   "), std::string(""));
 }

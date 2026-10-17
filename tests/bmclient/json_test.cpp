@@ -1,5 +1,6 @@
 #include <bmc/json.h>
 #include <bmc/test.h>
+#include <clocale>
 #include <cstdint>
 #include <string>
 
@@ -147,4 +148,38 @@ TEST(json_quote_escapes_what_qt_escaped) {
     // quote() output parses back to the same text.
     const std::string text = "mixed \"quotes\" \\ and \n lines \xc3\xa9 \xf0\x9f\x98\x80";
     CHECK_EQ(parse("{\"a\":" + bmc::json::quote(text) + "}")->at("a").toString(), text);
+}
+
+TEST(json_reads_the_false_literal_and_the_escapes_left_over) {
+    // The false literal was the one Qt form the suite had never read.
+    CHECK(!parse("{\"a\":false}")->at("a").toBool(true));
+    CHECK(parse("{\"a\":true}")->at("a").toBool(false));
+    // toDouble and toInteger of something that is not a number are the fallback asked for, not zero
+    // and not a throw.
+    CHECK(parse("{\"a\":false}")->at("a").toDouble(1.5) == 1.5);
+    CHECK(parse("{\"a\":\"1\"}")->at("a").toInteger(7) == 7);
+    CHECK(parse("{\"a\":1.5}")->at("a").toDouble() == 1.5);
+    // A \u escape with upper-case hex digits, one that is a surrogate pair, and one cut short.
+    CHECK_EQ(parse("[\"\\u00E9\"]")->items()[0].toString(), std::string("\xc3\xa9"));
+    CHECK_EQ(parse("[\"\\uD83D\\uDE00\"]")->items()[0].toString(), std::string("\xf0\x9f\x98\x80"));
+    CHECK(!parse("[\"\\u00\"]"));
+    // A backslash before a byte of 0x80 or more: Qt read the byte as the Latin-1 character of that
+    // number.
+    CHECK_EQ(parse("[\"\\\xe9\"]")->items()[0].toString(), std::string("\xc3\xa9"));
+    // A document that ends in a number is not one (Qt's parser wanted something after it), and
+    // neither is one nested deeper than its limit of object levels.
+    CHECK(!parse("[1"));
+    std::string deep;
+    for (int i = 0; i < 1100; ++i)
+        deep += "{\"a\":";
+    deep += "1";
+    for (int i = 0; i < 1100; ++i)
+        deep += "}";
+    CHECK(!parse(deep));
+    // A decimal point that is not the C locale's is still read as one: a peer's number does not
+    // depend on the machine that reads it.
+    if (std::setlocale(LC_NUMERIC, "de_DE.UTF-8")) {
+        CHECK(parse("[1.5]")->items()[0].toDouble() == 1.5);
+        std::setlocale(LC_NUMERIC, "C");
+    }
 }

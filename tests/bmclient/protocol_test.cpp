@@ -117,3 +117,26 @@ TEST(phrase_keys_match_the_reference_addresses) {
     CHECK_EQ(bmc::phrase::zeroBytes("nonsense"), 0);
     CHECK(!bmc::phrase::firstPair(phrase, 6, 2000).has_value()); // none within the limit
 }
+
+TEST(encode_message_refuses_text_that_is_not_utf8) {
+    auto sender = bmc::Protocol::identity("sender");
+    auto recipient = bmc::Protocol::identity("recipient");
+    const auto expires = bmc::now() + 3600;
+    CHECK_THROWS(bmc::Protocol::encodeMessage(sender, recipient, "subject", "\xff", expires));
+    CHECK_THROWS(bmc::Protocol::encodeMessage(sender, recipient, "\xff", "body", expires));
+    CHECK_THROWS(bmc::Protocol::encodeMessage(sender, recipient, "two\nlines", "body", expires));
+    CHECK(!bmc::Protocol::encodeMessage(sender, recipient, "subject", "body", expires).empty());
+}
+
+TEST(a_key_pair_that_is_not_on_the_curve_is_refused) {
+    // pairZeroBytes counts the zero bytes at the front of the RIPE hash of the address the pair
+    // makes; -1 is a scalar secp256k1 will not take (zero, or its order).
+    bmc::phrase::Context ctx;
+    unsigned char signing[32], encryption[32];
+    bmc::phrase::key("general", 0, signing);
+    bmc::phrase::key("general", 1, encryption);
+    CHECK(ctx.pairZeroBytes(signing, encryption) >= 0);
+    const unsigned char zero[32] = {};
+    CHECK_EQ(ctx.pairZeroBytes(zero, encryption), -1);
+    CHECK_EQ(ctx.pairZeroBytes(signing, zero), -1);
+}

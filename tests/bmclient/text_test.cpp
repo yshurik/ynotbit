@@ -139,3 +139,36 @@ TEST(truncate_utf8_cuts_between_characters) {
              "\xf0\x9f\x98\x80");
     CHECK_EQ(std::string(bmc::text::truncateUtf8("\xf0\x9f\x98\x80", 3)), "");
 }
+
+TEST(trim_drops_the_white_space_qt_trimmed_and_nothing_else) {
+    using bmc::text::trim;
+    CHECK_EQ(trim("  a b  "), std::string_view("a b"));
+    // QChar::isSpace has multi-byte members: NBSP, U+2000, U+2028, U+2029, U+3000, U+1680, U+0085.
+    // The byte offsets of the two loops are where a trim gets this wrong.
+    CHECK_EQ(trim("\xc2\xa0\xe2\x80\x80x\xe2\x80\xa9"), std::string_view("x"));
+    CHECK_EQ(trim("\xe3\x80\x80x\xe1\x9a\x80"), std::string_view("x"));
+    CHECK_EQ(trim(" \xc2\x85x"), std::string_view("x"));
+    CHECK_EQ(trim("\xe2\x80\xa8"), std::string_view(""));
+    // A four-byte character is not white space: it ends the trim like any other character.
+    CHECK_EQ(trim("\xf0\x9f\x98\x80x"), std::string_view("\xf0\x9f\x98\x80x"));
+    CHECK_EQ(trim(" \xf0\x9f\x98\x80"), std::string_view("\xf0\x9f\x98\x80"));
+    CHECK_EQ(trim("x\xf0\x9f\x98\x80 "), std::string_view("x\xf0\x9f\x98\x80"));
+    // A byte that is not part of a well-formed sequence is not white space either: it stops the
+    // trim at the front, and at the back everything from it on counts as a character.
+    CHECK_EQ(trim("\xff  "), std::string_view("\xff"));
+    CHECK_EQ(trim("abc\xff "), std::string_view("abc\xff"));
+    // The four-byte lead bytes run from 0xf0 to 0xf4, the last of them only up to U+10FFFF.
+    CHECK_EQ(bmc::text::sequenceLength("\xf1\x80\x80\x80"), size_t(4));
+    CHECK_EQ(bmc::text::sequenceLength("\xf3\xbf\xbf\xbf"), size_t(4));
+    CHECK_EQ(bmc::text::sequenceLength("\xf4\x90\x80\x80"), size_t(0)); // above U+10FFFF
+    CHECK(!bmc::text::isBlank("\xf0\x9f\x98\x80")); // four bytes, not white space
+    CHECK(bmc::text::isBlank("\xe3\x80\x80"));
+    // The payload form: one U+FFFD per invalid byte going in, and '?' for a surrogate that has no
+    // partner coming back.
+    CHECK(bmc::text::utf16FromUtf8("\xff") == std::u16string(1, u'\ufffd'));
+    const auto two_replacement = bmc::text::utf16FromUtf8(std::string("a\xff\xff"
+                                                                      "b"));
+    const std::u16string two_expected{u'a', char16_t(0xfffd), char16_t(0xfffd), u'b'};
+    CHECK(two_replacement == two_expected);
+    CHECK(bmc::text::utf8FromUtf16(std::u16string{char16_t(0xdc00)}) == std::string("?"));
+}
