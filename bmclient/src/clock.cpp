@@ -15,6 +15,16 @@ int64_t now() {
         .count();
 }
 
+int64_t nowMillis() {
+    // Qt's QDateTime::currentMSecsSinceEpoch() rounds to the nearest millisecond, so a chat's
+    // sequence number is the same number the Qt app would have written. Truncating would put
+    // the core a millisecond behind Qt's clock about half the time.
+    const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::system_clock::now().time_since_epoch())
+                            .count();
+    return (micros + 500) / 1000;
+}
+
 void setClockForTesting(int64_t (*clock)()) {
     replacement = clock;
 }

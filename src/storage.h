@@ -3,6 +3,7 @@
 #include <QMap>
 #include <QString>
 #include <QVector>
+#include <bmc/mailbox.h>
 #include <bmc/secret.h>
 #include <bmc/vault.h>
 #include <map>
@@ -94,13 +95,7 @@ struct Subscription;
 struct Contact;
 struct DeliveryEvent;
 class Mailbox {
-    sqlite3 *db_ = nullptr;
-    quint64 messageRevision_ = 0;
-    void connect(const QString &, const Secret &, bool create);
-    void sql(const char *);
-    void migrate();
-    void deliveryUpdate(const QString &id, const QString &state, const QString &detail,
-                        qint64 nextAttempt);
+    std::shared_ptr<bmc::Mailbox> core_ = std::make_shared<bmc::Mailbox>();
 
   public:
     ~Mailbox() {
@@ -110,7 +105,7 @@ class Mailbox {
     void open(const QString &, const Secret &);
     void close();
     bool isOpen() const {
-        return db_ != nullptr;
+        return core_->isOpen();
     }
     QString keyId() const;
     void bindCache(const QString &cacheId);
@@ -121,7 +116,7 @@ class Mailbox {
     // Groups many writes into one commit (one disk sync); without commit(),
     // all of them roll back.
     class Batch {
-        std::unique_ptr<detail::Transaction> t_;
+        std::unique_ptr<bmc::Mailbox::Batch> t_;
 
       public:
         explicit Batch(Mailbox &);
@@ -179,7 +174,7 @@ class Mailbox {
     bool channelUnread(const QString &recipient, const QString &folder = "Channels") const;
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     quint64 messageRevision() const {
-        return messageRevision_;
+        return core_->messageRevision();
     }
     void backup(const QString &, const Secret &);
     QString saveDraft(const QString &id, const QString &from, const QString &to,

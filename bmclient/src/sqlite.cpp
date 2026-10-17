@@ -20,7 +20,10 @@ Statement::~Statement() {
 }
 
 void Statement::text(int n, std::string_view t) {
-    check(sqlite3_bind_text(s_, n, t.data(), int(t.size()), SQLITE_TRANSIENT));
+    // Qt's toUtf8().constData() is never null, so an empty string binds as an empty
+    // TEXT, not as NULL: the columns it lands in are NOT NULL.
+    static const char empty = 0;
+    check(sqlite3_bind_text(s_, n, t.empty() ? &empty : t.data(), int(t.size()), SQLITE_TRANSIENT));
 }
 
 void Statement::number(int n, int64_t i) {
@@ -28,7 +31,8 @@ void Statement::number(int n, int64_t i) {
 }
 
 void Statement::blob(int n, ByteView b) {
-    check(sqlite3_bind_blob(s_, n, b.data(), int(b.size()), SQLITE_TRANSIENT));
+    static const uint8_t empty = 0;
+    check(sqlite3_bind_blob(s_, n, b.empty() ? &empty : b.data(), int(b.size()), SQLITE_TRANSIENT));
 }
 
 void Statement::reset() {

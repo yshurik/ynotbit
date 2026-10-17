@@ -91,6 +91,107 @@ inline PublicIdentity fromCore(const bmc::PublicIdentity &p) {
     r.chan = p.chan;
     return r;
 }
+inline ChatMessage fromCore(const bmc::ChatMessage &m) {
+    ChatMessage r;
+    r.id = fromStd(m.id);
+    r.localAddress = fromStd(m.localAddress);
+    r.peerAddress = fromStd(m.peerAddress);
+    r.body = fromStd(m.body);
+    r.state = fromStd(m.state);
+    r.seqno = m.seqno;
+    r.received = m.received;
+    r.expires = m.expires;
+    r.outgoing = m.outgoing;
+    return r;
+}
+inline ChatSummary fromCore(const bmc::ChatSummary &s) {
+    ChatSummary r;
+    r.local = fromStd(s.local);
+    r.peer = fromStd(s.peer);
+    r.body = fromStd(s.body);
+    r.state = fromStd(s.state);
+    r.received = s.received;
+    r.outgoing = s.outgoing;
+    r.unread = s.unread;
+    return r;
+}
+inline OutboxItem fromCore(const bmc::OutboxItem &o) {
+    OutboxItem r;
+    r.id = fromStd(o.id);
+    r.kind = fromStd(o.kind);
+    r.state = fromStd(o.state);
+    r.error = fromStd(o.error);
+    r.objectHash = fromStd(o.objectHash);
+    r.ackToken = fromBytes(o.ackToken);
+    r.ackObject = fromBytes(o.ackObject);
+    r.expires = o.expires;
+    r.nextAttempt = o.nextAttempt;
+    r.attempts = o.attempts;
+    r.message = fromCore(o.message);
+    r.chat = o.chat;
+    return r;
+}
+inline NetworkJob fromCore(const bmc::NetworkJob &j) {
+    NetworkJob r;
+    r.id = fromStd(j.id);
+    r.owner = fromStd(j.owner);
+    r.kind = fromStd(j.kind);
+    r.address = fromStd(j.address);
+    r.state = fromStd(j.state);
+    r.hash = fromStd(j.hash);
+    r.error = fromStd(j.error);
+    r.payload = fromBytes(j.payload);
+    r.expires = j.expires;
+    r.nonceTrials = j.nonceTrials;
+    r.extraBytes = j.extraBytes;
+    return r;
+}
+inline bmc::NetworkJob toCore(const NetworkJob &j) {
+    bmc::NetworkJob r;
+    r.id = toStd(j.id);
+    r.owner = toStd(j.owner);
+    r.kind = toStd(j.kind);
+    r.address = toStd(j.address);
+    r.state = toStd(j.state);
+    r.hash = toStd(j.hash);
+    r.error = toStd(j.error);
+    r.payload = toBytes(j.payload);
+    r.expires = j.expires;
+    r.nonceTrials = j.nonceTrials;
+    r.extraBytes = j.extraBytes;
+    return r;
+}
+inline StoredPublicKey fromCore(const bmc::StoredPublicKey &k) {
+    StoredPublicKey r;
+    r.address = fromStd(k.address);
+    r.signingKey = fromBytes(k.signingKey);
+    r.encryptionKey = fromBytes(k.encryptionKey);
+    r.nonceTrials = k.nonceTrials;
+    r.extraBytes = k.extraBytes;
+    r.behaviors = k.behaviors;
+    r.expires = k.expires;
+    return r;
+}
+inline bmc::StoredPublicKey toCore(const StoredPublicKey &k) {
+    bmc::StoredPublicKey r;
+    r.address = toStd(k.address);
+    r.signingKey = toBytes(k.signingKey);
+    r.encryptionKey = toBytes(k.encryptionKey);
+    r.nonceTrials = k.nonceTrials;
+    r.extraBytes = k.extraBytes;
+    r.behaviors = k.behaviors;
+    r.expires = k.expires;
+    return r;
+}
+inline Subscription fromCore(const bmc::Subscription &s) {
+    return Subscription{fromStd(s.address), fromStd(s.label)};
+}
+inline Contact fromCore(const bmc::Contact &c) {
+    return Contact{fromStd(c.address), fromStd(c.label), c.added};
+}
+inline DeliveryEvent fromCore(const bmc::DeliveryEvent &e) {
+    return DeliveryEvent{e.timestamp, fromStd(e.state), fromStd(e.detail)};
+}
 inline DecodedEnvelope fromCore(bmc::DecodedEnvelope &&e) {
     DecodedEnvelope r;
     r.message = fromCore(e.message);
