@@ -16,6 +16,13 @@ bmc::Secret key32(uint8_t fill = 0x01) {
 int64_t soon() {
     return bmc::now() + 3600;
 }
+// A clock of the test's own, so the messages it stores have `received` values that disagree with
+// their rowids: the partial index's order is (received, rowid), and an implementation that read
+// the table in rowid order would answer differently.
+int64_t fakeClock = 1'000'000;
+int64_t testClock() {
+    return fakeClock;
+}
 } // namespace
 
 TEST(a_queued_chat_gets_a_millisecond_number_that_keeps_growing) {
@@ -104,15 +111,22 @@ TEST(unread_chats_are_the_partial_index_in_received_order) {
     auto key = key32();
     Mailbox m;
     m.create(path, "key-1", key);
-    for (int i = 1; i <= 3; ++i)
-        m.storeChat("chat-in-" + std::to_string(i), "BM-peer", "BM-local", i,
-                    "in " + std::to_string(i), soon());
+    bmc::setClockForTesting(testClock);
+    // Received out of order: chat-in-3 came first, then in-1, then in-2.
+    fakeClock = 2000;
+    m.storeChat("chat-in-3", "BM-peer", "BM-local", 3, "in 3", soon());
+    fakeClock = 1000;
+    m.storeChat("chat-in-1", "BM-peer", "BM-local", 1, "in 1", soon());
+    fakeClock = 3000;
+    m.storeChat("chat-in-2", "BM-peer", "BM-local", 2, "in 2", soon());
     // A sent chat is queued for the network: it has a delivery record; a stored one does not.
+    fakeClock = 4000;
     const auto outgoingId = m.queueChat("BM-local", "BM-peer", "out", soon());
     CHECK_EQ(m.chatUnread(), 3);
     CHECK_EQ(m.unreadChats(2).size(), size_t(2));
     CHECK_EQ(m.unreadChats(10).front().id, std::string("chat-in-1")); // oldest first
-    CHECK_EQ(m.unreadChats(10).back().id, std::string("chat-in-3"));
+    CHECK_EQ(m.unreadChats(10).back().id, std::string("chat-in-2"));  // newest, not last written
+    CHECK_EQ(m.unreadChats(2).back().id, std::string("chat-in-3"));   // the window keeps the order
     CHECK(m.markChatMessageRead("chat-in-1"));
     CHECK(!m.markChatMessageRead("chat-in-1")); // already read
     CHECK(!m.markChatMessageRead(outgoingId));  // ours, never unread
@@ -162,6 +176,7 @@ TEST(unread_chats_are_the_partial_index_in_received_order) {
     // An overnight drop is a direct message, so it cannot be retried.
     CHECK_THROWS(m.retry(outgoingId, soon()));
     m.close();
+    bmc::setClockForTesting(nullptr);
 }
 
 TEST(the_golden_mailbox_chats_of_the_previous_release_read) {

@@ -1,11 +1,19 @@
-// What the old Qt code answered, kept as files (made by tests/legacy/golden_gen.cpp at the end of
-// slice 1, from the old protocol, wire and proof-of-work code). Fields are separated by '|'; text
-// and bytes are hexadecimal.
+// What the old Qt code answered, kept as files. Fields are separated by '|'; text and bytes are
+// hexadecimal.
+//
+// derivations.txt and objects.txt: made by tests/legacy/golden_gen.cpp at the end of slice 1, from
+// the old protocol, wire and proof-of-work code.
+// qtstream.txt: made by a Qt 6.8.3 QDataStream at version Qt_6_0, for the corners of the vault
+// payload's encoding (a 255-character string, non-BMP text, a null string, a lone surrogate).
+// The vault and the mailbox of the previous release are the binary files beside these
+// (vault-*.bmvault, mailbox-*.bmmail): the vault's and the mailbox's tests read them, and
+// scripts/compat-check.sh has the previous release's own code read them too.
 #include <algorithm>
 #include <bmc/bytes.h>
 #include <bmc/phrase.h>
 #include <bmc/pow.h>
 #include <bmc/protocol.h>
+#include <bmc/qtstream.h>
 #include <bmc/test.h>
 #include <bmc/wire.h>
 #include <fstream>
@@ -172,4 +180,71 @@ TEST(golden_objects_made_by_the_old_code_are_read_and_the_damaged_refused) {
         }
     }
     CHECK(messages >= 24 && legacy >= 24 && pubkeys >= 6 && broadcasts >= 6 && rejected >= 60);
+}
+
+TEST(golden_qtstream_is_the_encoding_qt_wrote) {
+    int strings = 0, numbers = 0, blobs = 0;
+    for (const auto &r : records("qtstream.txt")) {
+        const auto &kind = r.at(0);
+        if (kind == "string") {
+            const std::string text = raw(r.at(2));
+            bmc::qtstream out;
+            out << text;
+            CHECK_EQ(bmc::hex(out.bytes()), r.at(3));
+            std::string back;
+            bmc::qtstream in(bmc::unhex(r.at(3)));
+            in >> back;
+            CHECK(in.ok() && in.atEnd());
+            CHECK_EQ(back, text);
+            ++strings;
+        } else if (kind == "null_string") {
+            // No core string is null, but Qt's null QString is out there and reads as empty.
+            std::string back = "x";
+            bmc::qtstream in(bmc::unhex(r.at(3)));
+            in >> back;
+            CHECK(in.ok() && in.atEnd());
+            CHECK_EQ(back, std::string());
+        } else if (kind == "utf16") {
+            // Read only: no UTF-8 text makes a lone surrogate. It becomes '?', as toUtf8 makes it.
+            std::string back;
+            bmc::qtstream in(bmc::unhex(r.at(3)));
+            in >> back;
+            CHECK(in.ok());
+            CHECK_EQ(back, std::string("?"));
+        } else if (kind == "uint32") {
+            const auto value = uint32_t(std::stoul(r.at(2)));
+            bmc::qtstream out;
+            out << value;
+            CHECK_EQ(bmc::hex(out.bytes()), r.at(3));
+            uint32_t back = 0;
+            bmc::qtstream in(bmc::unhex(r.at(3)));
+            in >> back;
+            CHECK(in.ok() && in.atEnd());
+            CHECK_EQ(back, value);
+            ++numbers;
+        } else if (kind == "bool") {
+            const bool value = r.at(2) == "1";
+            bmc::qtstream out;
+            out << value;
+            CHECK_EQ(bmc::hex(out.bytes()), r.at(3));
+            bool back = !value;
+            bmc::qtstream in(bmc::unhex(r.at(3)));
+            in >> back;
+            CHECK(in.ok() && in.atEnd());
+            CHECK_EQ(back, value);
+            ++numbers;
+        } else if (kind == "raw") {
+            const auto bytes = bmc::unhex(r.at(2));
+            bmc::qtstream out;
+            out.writeRaw(bytes);
+            CHECK_EQ(bmc::hex(out.bytes()), r.at(3));
+            bmc::qtstream in(bytes);
+            CHECK_EQ(bmc::hex(in.readRaw(bytes.size())), r.at(2));
+            CHECK(in.ok());
+            ++blobs;
+        } else {
+            bmc::test::fail(__FILE__, __LINE__, "unknown record " + kind);
+        }
+    }
+    CHECK(strings >= 8 && numbers >= 8 && blobs >= 3);
 }

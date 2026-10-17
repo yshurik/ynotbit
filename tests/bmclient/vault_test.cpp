@@ -98,3 +98,21 @@ TEST(a_wrong_password_is_refused) {
     CHECK_THROWS(again.unlock(path, "wrong"));
     CHECK(!again.unlocked());
 }
+
+TEST(a_vault_of_a_later_format_is_refused) {
+    // Only BMVAULT1 and BMVAULT2 exist; anything else is refused by name, before any decryption,
+    // so the refusal is the format's and not the password's.
+    const auto path = bmc::test::tempDir() + "/future.bmvault";
+    bmc::Bytes file(256, 0x00);
+    std::copy_n(reinterpret_cast<const uint8_t *>("BMVAULT3"), 8, file.begin());
+    bmc::test::writeFile(path, file);
+    Vault v;
+    try {
+        v.unlock(path, "any password at all");
+        bmc::test::fail(__FILE__, __LINE__, "BMVAULT3 was accepted");
+    } catch (const bmc::Error &e) {
+        CHECK_EQ(std::string(e.what()), std::string("Unsupported vault format"));
+        CHECK_EQ(int(e.code()), int(bmc::Code::Invalid));
+    }
+    CHECK(!v.unlocked());
+}

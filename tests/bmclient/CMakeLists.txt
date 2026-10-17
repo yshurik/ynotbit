@@ -5,3 +5,7 @@ add_executable(bmclient_tests main.cpp foundation_test.cpp text_test.cpp json_te
 target_link_libraries(bmclient_tests PRIVATE bmclient)
 target_compile_definitions(bmclient_tests PRIVATE BMC_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/golden")
 add_test(NAME bmclient COMMAND bmclient_tests)
+# The Qt-free half of scripts/compat-check.sh: it writes a vault and a mailbox for the previous
+# release to open, and prints a report of what it reads for the two to be compared.
+add_executable(storage_gen storage_gen.cpp)
+target_link_libraries(storage_gen PRIVATE bmclient)
