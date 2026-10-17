@@ -539,3 +539,19 @@ Expected: 29 Qt entries and the core entries, the new `bmnode` ones included.
 - `SLICE4_BASE=<Task 0> scripts/compat-check.sh`: PASS.
 - `python3 scripts/update-error-catalog.py --check` and `scripts/check-translations.py`: unchanged and passing.
 - The desktop's node: started from the same argv, the same strings, the same restart rules; `ps` while the app runs shows the node command line `Task 0` recorded.
+
+The numbers these gates actually produced are in **Results**, below.
+
+## Results
+
+Recorded after execution, on the tree of `98c9ddb`, with `17883bf` (`SLICE4_BASE`) as the pre-slice commit.
+
+- **macOS, Qt `ctest`:** `36/36` in 202 s (`-j2`). Thirty-six entries are the 29 of slice 3 plus the seven `bmnode` ones Task 6 registers. `desktop`, `lifecycle`, `peer-connectivity`, `relay` and `listen-fallback` all pass, which is `Session` starting a real node through `bmc::NodeSupervisor`.
+- **macOS, core `ctest`:** `10/10` — the five of slice 3, plus `relay-bmnode`, `relay-verack-first-bmnode`, `relay-download-bmnode`, `listen-fallback-bmnode` and `peer-connectivity-bmnode`. `bmclient_tests` alone is `160 run, 0 failed`.
+- **`scripts/check-qt-free.sh big1`:** `QT-FREE BUILD OK`, 5/5, with `bmnode` built and the supervisor's POSIX code compiled and run on glibc for the first time.
+- **Linux, Qt `ctest`** (Ubuntu 25.04, Qt 6.8.3, `QT_QPA_PLATFORM=offscreen`, serial): `36/36` in 519 s. This is the whole app, its suites and the node tests on Linux, and the app target had never built there — see the fix below.
+- **`SLICE2_BASE=17883bf scripts/compat-check.sh`:** PASS. The previous release and the core read each other's vault and mailbox, and both read the four golden files. (The script's variable is `SLICE2_BASE`; the "SLICE4_BASE" of the steps above is that hash.)
+- **`python3 scripts/update-error-catalog.py --check`:** `CATALOGUE-OK`; **`scripts/check-translations.py`:** `PASS: 6 translations complete`. Neither file changed, and `update_translations` was not run.
+- **The desktop's node argv, by `ps`:** the app ran with a temporary data directory and a settings file asking for everything (`listen=false`, `proxy=127.0.0.1:9`, `peer=127.0.0.1:9`, `maxOutgoing=32`, `maxIncoming=16`, `listenPort=9000`). The child was the app itself with the frozen Task 0 "everything" line, exactly — `--node -D <root> -m <root>/unused-maildir -i -R 2048 -A 90 -o 32 -n 16 -p 9000 -P 127.0.0.1:9 -L -r 127.0.0.1:9 -B` — and it went with the app on SIGTERM. The peer and the proxy deliberately point at port 9: nothing listens, nothing is contacted, and no port is bound (`-i`).
+- **One pre-existing break, found by the Linux gate and fixed in its own commit (`b7fe50b`):** `Session::unreadChats` handed a core `int64_t` to `QVariant`, which has six integer constructors — exact for `long long` (macOS), a conversion from `long` (Linux), so GCC calls it ambiguous. The app target, `desktop_tests` and `chatbot_tests` therefore did not build on Linux at all; the Linux gates of slices 2 and 3 ran subsets that included no target compiling `session.cpp`, which is why it went unseen (the line landed with `Session::unreadChats`, which also took `session.cpp` into `chatbot_tests`). One explicit `qint64(...)`. The plan's Linux step said "the same 29/29 as macOS"; the tree builds there now, so the gate runs in full.
+- **Deviations from the steps, recorded where they happened:** Task 0's probe went into `desktop_tests` rather than `core_tests` (a `bmc::Client` lives in `bmcore`, `Session` does not); Task 7's `restartNode()` calls `stop()` then `startNode()` rather than the supervisor's `restart()`; Task 8 Step 5's expected count is 36, not 29, since Task 6 adds the `bmnode` entries the same Step 4 lists.
