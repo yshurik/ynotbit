@@ -1,13 +1,16 @@
 #pragma once
 #include <QString>
+#include <bmc/updates.h>
 #include <optional>
 namespace bm::updates {
 // The ynotbit release announcements: broadcasts signed by one publisher
 // address. Every mailbox hears them without subscribing, unless turned off.
 QString publisherAddress();
 void setPublisherAddressForTesting(const QString &address);
-inline const QString kNotifySetting = "updates:notify"; // "off" turns notices off
-inline const QString kLatestSetting = "updates:latest"; // newest announced version
+// The keys the delivery engine reads: one spelling, in the core, so a bot and
+// the app cannot drift apart.
+inline const QString kNotifySetting = QString::fromStdString(bmc::updates::kNotifySetting);
+inline const QString kLatestSetting = QString::fromStdString(bmc::updates::kLatestSetting);
 inline const QString kDismissedSetting = "updates:dismissed"; // a version
 // Subscriptions every mailbox starts with: added once when a mailbox first
 // opens, so unsubscribing sticks. The label is untranslated (Session::tr).

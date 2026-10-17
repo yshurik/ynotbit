@@ -59,9 +59,19 @@ struct ChatSummary {
 // "[chan] <phrase>" and a bare "<name>" both become "#<name>".
 QString channelName(const QString &label);
 class Vault {
-    bmc::Vault core_;
+    std::shared_ptr<bmc::Vault> core_ = std::make_shared<bmc::Vault>();
 
   public:
+    Vault() = default;
+    explicit Vault(std::shared_ptr<bmc::Vault> core) : core_(std::move(core)) {}
+    Vault(const Vault &) = delete;
+    Vault &operator=(const Vault &) = delete;
+    bmc::Vault &core() const {
+        return *core_;
+    }
+    const std::shared_ptr<bmc::Vault> &corePtr() const {
+        return core_;
+    }
     ~Vault() {
         lock();
     }
@@ -70,7 +80,7 @@ class Vault {
     void changePassword(const QByteArray &password);
     void lock();
     bool unlocked() const {
-        return core_.unlocked();
+        return core_->unlocked();
     }
     std::vector<Identity> identities() const;
     QString addIdentity(const QString &label);
@@ -98,6 +108,16 @@ class Mailbox {
     std::shared_ptr<bmc::Mailbox> core_ = std::make_shared<bmc::Mailbox>();
 
   public:
+    Mailbox() = default;
+    explicit Mailbox(std::shared_ptr<bmc::Mailbox> core) : core_(std::move(core)) {}
+    Mailbox(const Mailbox &) = delete;
+    Mailbox &operator=(const Mailbox &) = delete;
+    bmc::Mailbox &core() const {
+        return *core_;
+    }
+    const std::shared_ptr<bmc::Mailbox> &corePtr() const {
+        return core_;
+    }
     ~Mailbox() {
         close();
     }

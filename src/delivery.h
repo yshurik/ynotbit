@@ -2,20 +2,26 @@
 #include "cache.h"
 #include "pow.h"
 #include "storage.h"
+#include <bmc/delivery.h>
+#include <memory>
 namespace bm {
+// The delivery engine bmc::Delivery runs, with the Qt types in front: the proof of work, the
+// outbox states and the receipts are the core's, the time comes from bmc::now() here.
 class Delivery {
-    QString root_, mining_;
-    ProofOfWork pow_;
-    void plan(Mailbox &, const Vault &, qint64);
-    void processJobs(Mailbox &, bool);
-    int catchUpBroadcasts(Cache &, Mailbox &, const QString &publisher);
+    std::shared_ptr<bmc::Delivery> core_;
 
   public:
-    explicit Delivery(QString root) : root_(std::move(root)) {}
-    void stop() {
-        pow_.stop();
-        mining_.clear();
+    explicit Delivery(QString root);
+    ~Delivery() = default;
+    Delivery(const Delivery &) = delete;
+    Delivery &operator=(const Delivery &) = delete;
+    bmc::Delivery &core() const {
+        return *core_;
     }
+    const std::shared_ptr<bmc::Delivery> &corePtr() const {
+        return core_;
+    }
+    void stop();
     void cancel(Mailbox &, const QString &);
     void retry(Mailbox &, const QString &);
     // Up to limit objects; with a budget, stops once that many milliseconds
@@ -25,8 +31,6 @@ class Delivery {
     // tried against the identities), e.g. for a recipient's key already here.
     static void rereadKept(Mailbox &);
     void tick(Mailbox &, const Vault &, bool online);
-    bool working() const {
-        return !mining_.isEmpty();
-    }
+    bool working() const;
 };
 } // namespace bm

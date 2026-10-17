@@ -4,12 +4,17 @@
 // this file is not compiled into any target.
 #include <QtGlobal>
 static const char *const kErrorCatalog[] = {
-    QT_TRANSLATE_NOOP("bm::Errors", "Network cache database error"),
-    QT_TRANSLATE_NOOP("bm::Errors", "Invalid outgoing object"),
-    QT_TRANSLATE_NOOP("bm::Errors", "Cannot queue encrypted object for relay"),
     QT_TRANSLATE_NOOP("bm::Errors", "Cannot open mailbox"),
     QT_TRANSLATE_NOOP("bm::Errors", "Cannot apply mailbox key"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Network cache database error"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Open a mailbox first"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Choose a sender from this vault"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Enter a valid Bitmessage recipient address"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Chat message must be between 1 and 8192 bytes"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Subject must be one line"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Write a message before sending"),
     QT_TRANSLATE_NOOP("bm::Errors", "Letter is too large"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Invalid outgoing object"),
     QT_TRANSLATE_NOOP("bm::Errors", "Only drafts can be edited"),
     QT_TRANSLATE_NOOP("bm::Errors", "This letter already has a delivery record; duplicate it as a new draft"),
     QT_TRANSLATE_NOOP("bm::Errors", "Letter no longer exists"),

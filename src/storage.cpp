@@ -33,7 +33,7 @@ static void reserveFile(const QString &path) {
 }
 std::vector<Identity> Vault::identities() const {
     std::vector<Identity> out;
-    for (const auto &i : core_.identities()) {
+    for (const auto &i : core_->identities()) {
         Identity q;
         q.label = bridge::fromStd(i.label);
         q.address = bridge::fromStd(i.address);
@@ -46,21 +46,21 @@ std::vector<Identity> Vault::identities() const {
 }
 void Vault::create(const QString &path, const QByteArray &password) {
     bridge::SecretText pass(password);
-    core_.create(bridge::toStd(path), pass.value);
+    core_->create(bridge::toStd(path), pass.value);
 }
 void Vault::unlock(const QString &path, const QByteArray &password) {
     bridge::SecretText pass(password);
-    core_.unlock(bridge::toStd(path), pass.value);
+    core_->unlock(bridge::toStd(path), pass.value);
 }
 void Vault::changePassword(const QByteArray &password) {
     bridge::SecretText pass(password);
-    core_.changePassword(pass.value);
+    core_->changePassword(pass.value);
 }
 void Vault::lock() {
-    core_.lock();
+    core_->lock();
 }
 QString Vault::addIdentity(const QString &label) {
-    return bridge::fromStd(core_.addIdentity(bridge::toStd(label)));
+    return bridge::fromStd(core_->addIdentity(bridge::toStd(label)));
 }
 QString Vault::addIdentity(const Identity &identity) {
     bmc::Identity core;
@@ -69,37 +69,37 @@ QString Vault::addIdentity(const Identity &identity) {
     core.chan = identity.chan;
     core.isDefault = identity.isDefault;
     std::memcpy(core.keys.data(), identity.keys.data(), 64);
-    return bridge::fromStd(core_.addIdentity(core));
+    return bridge::fromStd(core_->addIdentity(core));
 }
 QString Vault::addChannel(const QString &phrase, const QString &label,
                           const QString &expectedAddress) {
     bridge::SecretText pass(phrase);
     return bridge::fromStd(
-        core_.addChannel(pass.value, bridge::toStd(label), bridge::toStd(expectedAddress)));
+        core_->addChannel(pass.value, bridge::toStd(label), bridge::toStd(expectedAddress)));
 }
 void Vault::importKeys(const QString &path) {
-    core_.importKeys(bridge::toStd(path));
+    core_->importKeys(bridge::toStd(path));
 }
 QString Vault::addMailboxKey() {
-    return bridge::fromStd(core_.addMailboxKey());
+    return bridge::fromStd(core_->addMailboxKey());
 }
 QStringList Vault::mailboxIds() const {
     QStringList ids;
-    for (const auto &id : core_.mailboxIds())
+    for (const auto &id : core_->mailboxIds())
         ids << bridge::fromStd(id);
     return ids;
 }
 const Secret &Vault::mailboxKey(const QString &id) const {
-    return core_.mailboxKey(bridge::toStd(id));
+    return core_->mailboxKey(bridge::toStd(id));
 }
 void Vault::renameIdentity(const QString &address, const QString &label) {
-    core_.renameIdentity(bridge::toStd(address), bridge::toStd(label));
+    core_->renameIdentity(bridge::toStd(address), bridge::toStd(label));
 }
 void Vault::deleteIdentity(const QString &address) {
-    core_.deleteIdentity(bridge::toStd(address));
+    core_->deleteIdentity(bridge::toStd(address));
 }
 void Vault::setDefaultIdentity(const QString &address) {
-    core_.setDefaultIdentity(bridge::toStd(address));
+    core_->setDefaultIdentity(bridge::toStd(address));
 }
 namespace {
 template <class Out, class In> QVector<Out> convertAll(const std::vector<In> &in) {
@@ -167,8 +167,8 @@ int Mailbox::messageCount(const QString &folder, const QString &search, const QS
     return core_->messageCount(bridge::toStd(folder), bridge::toStd(search),
                                bridge::toStd(recipient), unreadOnly, anonymousOnly);
 }
-QStringList Mailbox::messageHashes(const QString &folder, const QString &recipient,
-                                   bool unreadOnly, bool anonymousOnly) const {
+QStringList Mailbox::messageHashes(const QString &folder, const QString &recipient, bool unreadOnly,
+                                   bool anonymousOnly) const {
     QStringList hashes;
     for (const auto &h : core_->messageHashes(bridge::toStd(folder), bridge::toStd(recipient),
                                               unreadOnly, anonymousOnly))
