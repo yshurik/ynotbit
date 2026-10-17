@@ -7,6 +7,10 @@
 namespace bmc::updates {
 std::string publisherAddress();
 void setPublisherAddressForTesting(std::string address);
+// The setting keys Delivery reads. The translated labels and the default subscriptions stay in
+// the Qt veneer (src/updates.cpp), because lupdate reads that file.
+inline const std::string kNotifySetting = "updates:notify"; // "off" turns notices off
+inline const std::string kLatestSetting = "updates:latest"; // newest announced version
 // "Bitmessage digest": weekly news of the network.
 std::string digestAddress();
 // The version a subject such as "ynotbit 0.5.2" announces:
