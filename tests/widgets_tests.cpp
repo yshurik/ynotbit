@@ -1,6 +1,7 @@
 #include "desktop_window.h"
 #include "chats_pane.h"
 #include "session.h"
+#include <bmc/node_config.h>
 #include "ntb-object-db.h"
 #include "updates.h"
 #include "feed_view.h"
@@ -17,6 +18,7 @@
 #include <QSignalSpy>
 #include <QTest>
 #include <QtWidgets>
+#include <algorithm>
 #include <functional>
 #include <iostream>
 #ifdef Q_OS_MACOS
@@ -90,6 +92,81 @@ int main(int argc, char **argv) {
     watchdog.start(450000);
     app.setOrganizationName("YnotbitTests");
     app.setApplicationName("Widgets");
+    // TEMPORARY (slice 4, Tasks 2 and 7): the core's argv and endpoint parsing against the Qt
+    // ones they replace, while both exist. Removed in Task 8.
+    if (argc > 1 && std::string(argv[1]) == "--node-args") {
+        const std::pair<const char *, QVariantMap> configurations[] = {
+            {"default", {}},
+            {"no-listen", {{"listen", false}}},
+            {"port", {{"listenPort", 8445}}},
+            {"maxpeers", {{"maxOutgoing", 16}, {"maxIncoming", 4}}},
+            {"peer", {{"peer", "127.0.0.1:8444"}}},
+            {"proxy", {{"proxy", "127.0.0.1:9050"}}},
+            {"retention", {{"retentionMB", 64}, {"retentionDays", 1}}},
+            {"everything", {{"listenPort", 9000},
+                            {"maxOutgoing", 32},
+                            {"maxIncoming", 16},
+                            {"peer", "127.0.0.1:8444"},
+                            {"proxy", "127.0.0.1:9050"},
+                            {"retentionMB", 128},
+                            {"retentionDays", 7}}}};
+        for (const auto &[name, settings] : configurations) {
+            QTemporaryDir dir;
+            {
+                QSettings ini(dir.filePath("desktop.ini"), QSettings::IniFormat);
+                for (auto it = settings.begin(); it != settings.end(); ++it)
+                    ini.setValue(it.key(), it.value());
+            }
+            bm::Session session(dir.path(), true);
+            bmc::NodeConfig config;
+            config.root = dir.path().toStdString();
+            config.maildir = (dir.path() + "/unused-maildir").toStdString();
+            config.proxy = settings.value("proxy").toString().toStdString();
+            config.listen = settings.value("listen", true).toBool() && config.proxy.empty();
+            config.peer = settings.value("peer").toString().toStdString();
+            config.retentionMB = settings.value("retentionMB", 2048).toInt();
+            config.retentionDays = settings.value("retentionDays", 90).toInt();
+            config.maxOutgoing = settings.value("maxOutgoing").toInt();
+            config.maxIncoming = settings.value("maxIncoming").toInt();
+            config.port = settings.value("listenPort").toInt();
+            config.clampRetention();
+            QStringList core;
+            for (const auto &arg : config.nodeArguments())
+                core << QString::fromStdString(arg);
+            if (session.nodeArguments() != core)
+                std::cerr << "PARITY FAILED for " << name << ": " << session.nodeArguments().join(' ').toStdString()
+                          << " != " << core.join(' ').toStdString() << "\n";
+            else
+                std::cout << "PARITY " << name << " ok\n";
+        }
+        const char *endpoints[] = {"",          "127.0.0.1:8444", "1.2.3.4",      "1.2.3.4:0",
+                                   "1.2.3.4:65536", "a b:1",       "1.2.3.4:8444/x", "1.2.3.4:8444?x",
+                                   "1.2.3.4:8444#x", "user@1.2.3.4:8444", "[::1]:8444", "[::1]",
+                                   "::1:8444",   ":8444",          "localhost:8444", "1.2.3.4:080",
+                                   "1.2.3.4:8444 ", "tcp://1.2.3.4:8444", "0.0.0.0:8444",
+                                   "255.255.255.255:8444", "1.2.3.4:65535", "1.2.3.4:1", "  ",
+                                   "1.2.3.4:", "1.2.3.4:-1", "999.1.1.1:8444", "1.2.3.4:008444",
+                                   "1.2.3.4:0000065536", "::1", "[::ffff:1.2.3.4]:8444",
+                                   "[1.2.3.4]:8444", " 1.2.3.4:8444", "1.2.3.4:8444\t",
+                                   "1.2.3.4:8444\n", "[::1]:80", "1.2.3.4:8444%201", "1.2.3.4:08",
+                                   "010.2.3.4:8444", "1.2.3.4:+8444", "1.2.3.4:8444:8444",
+                                   "1.2.3.4:8444.", "1.2.3.4.5:8444"};
+        // The two strings where the core is deliberately laxer: it trims both ends, Qt only the
+        // start, and the app trims what it saves, so no user can tell.
+        const char *laxer[] = {"1.2.3.4:8444 ", "1.2.3.4:8444\t", "1.2.3.4:8444\n"};
+        int mismatched = 0;
+        for (const char *e : endpoints) {
+            const bool qt = bm::Session::validEndpoint(QString::fromUtf8(e));
+            const bool core = bmc::validEndpoint(e);
+            const bool expected = std::find(std::begin(laxer), std::end(laxer), std::string(e)) !=
+                                  std::end(laxer);
+            if (qt != core && !(expected && core))
+                ++mismatched, std::cerr << "PARITY FAILED endpoint [" << e << "]: qt " << qt
+                                        << " core " << core << "\n";
+        }
+        std::cout << "PARITY " << (mismatched ? "FAILED" : "OK") << " endpoints\n";
+        return mismatched ? 1 : 0;
+    }
     QTemporaryDir temp;
     // A long vault path, like a macOS runner's /var/folders/.../T/...: the
     // locked screen must show it whole-height there too.
