@@ -8,7 +8,12 @@ storage: the vault (the identities and mailbox keys in one encrypted file) and t
 file), the node's object store read in std (`bmc::Cache`, `objects.sqlite`), the delivery engine
 (`bmc::Delivery`: the outbox state machine, the spool and the receipts the relay writes, and the
 incoming scan) and `bmc::Client`, which owns the four and is the loop the Qt app and a bot both
-drive. The Qt app reaches it through thin wrappers in `src/`; the bot library `bmbot` (a later
+drive. The node is here too: `bmc::NodeConfig` (the settings and the argv they make),
+`bmc::NodeStatus` (the status.json the relay writes), `bmc::NodeWatch` (the watchdog's judgement,
+pure) and `bmc::NodeSupervisor` (the process: spawn into a group of its own, poll, SIGTERM, then
+SIGKILL), with the relay bridge in `src/relay_bridge.cpp` — the ciphertext-only filesystem
+boundary, the status, the spool and the receipts. `bmnode/` builds them without Qt. The Qt app
+reaches it through thin wrappers in `src/`; the bot library `bmbot` (a later
 slice) is built on it. Design:
 `docs/superpowers/specs/2026-10-15-qt-free-core-and-bot-platform-design.md`.
 
@@ -32,6 +37,14 @@ Build and test without Qt:
     ctest --test-dir build-core --output-on-failure
 
 `scripts/check-qt-free.sh [ssh-host]` does it in a Debian container that has no Qt.
+
+`bmnode` is the node on its own, without Qt: the notbit engine with `bmclient`'s relay bridge
+linked in (`bmnode/main.cpp` defines the one symbol the engine calls once a second). It takes the
+same argument list the app gives itself, a leading `--node` included, so one argv and one
+`YNOTBIT_TEST_NODE_FLAG` serve both, and the node tests (`tests/relay_test.py`,
+`relay_download_test.py`, `listen_fallback_test.py`, `peer_connectivity_test.py`) run against
+either. The desktop keeps starting *itself* with `--node`, so what a user runs and what the tests
+run are the same program.
 
 Tests are in `tests/bmclient/` and use the small harness in `include/bmc/test.h`. Most are unit
 tests; the vault's and the mailbox's also read the frozen files in `tests/golden/`, and
