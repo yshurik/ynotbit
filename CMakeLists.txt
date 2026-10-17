@@ -109,6 +109,11 @@ target_link_libraries(netaddress_tests PRIVATE notbit_codec)
 add_test(NAME netaddress COMMAND netaddress_tests)
 add_subdirectory(bmclient)
 add_subdirectory(tests/bmclient)
+# bmnode: the node without Qt, for the container, the bot library and the node tests. The notbit
+# daemon plus the std relay bridge, which is the symbol the daemon calls once a second.
+add_executable(bmnode bmnode/main.cpp bmclient/src/relay_bridge.cpp)
+target_include_directories(bmnode PRIVATE ${NTB}/src bmclient/src)
+target_link_libraries(bmnode PRIVATE bmclient notbit_engine)
 if(YNOTBIT_QT)
  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/qt-app.cmake)
 endif()
