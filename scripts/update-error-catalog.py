@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Regenerate src/i18n/error_catalog.cpp from the storage/protocol layers.
 
-Those layers throw plain English messages (require(..., "text") and
-std::runtime_error("text")). The desktop translates them where it shows them,
-in the "bm::Errors" context; this catalogue exists only so lupdate extracts
-them. Run it after changing such a message, or with --check (as CI does) to
-fail when the catalogue is out of date.
+Those layers throw plain English messages (require(..., "text"), with an
+optional Code, and std::runtime_error("text")). The desktop translates them
+where it shows them, in the "bm::Errors" context; this catalogue exists only so
+lupdate extracts them. Run it after changing such a message, or with --check
+(as CI does) to fail when the catalogue is out of date.
 """
 import glob
 import pathlib
@@ -16,7 +16,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "src" / "i18n" / "error_catalog.cpp"
 # The UI layers translate their own messages with tr().
 SKIP = {"session.cpp", "desktop_window.cpp", "main.cpp"}
-CALL = re.compile(r'(?:require\([^;]*?,\s*|runtime_error\()\s*("(?:[^"\\]|\\.)*"(?:\s*"(?:[^"\\]|\\.)*")*)\s*\)', re.S)
+# require(cond, "text"[, Code::X]) and runtime_error("text"). A message thrown as
+# bmc::Error(Code, "text") is deliberately not listed: only a bot meets it.
+CALL = re.compile(r'(?:require\([^;]*?,\s*|runtime_error\()\s*('
+                  r'"(?:[^"\\]|\\.)*"(?:\s*"(?:[^"\\]|\\.)*")*)\s*(?:,\s*Code::\w+)?\s*\)',
+                  re.S)
 
 
 def messages():

@@ -15,6 +15,7 @@ static const char *const kErrorCatalog[] = {
     QT_TRANSLATE_NOOP("bm::Errors", "Write a message before sending"),
     QT_TRANSLATE_NOOP("bm::Errors", "Letter is too large"),
     QT_TRANSLATE_NOOP("bm::Errors", "Invalid outgoing object"),
+    QT_TRANSLATE_NOOP("bm::Errors", "Cannot queue encrypted object for relay"),
     QT_TRANSLATE_NOOP("bm::Errors", "Only drafts can be edited"),
     QT_TRANSLATE_NOOP("bm::Errors", "This letter already has a delivery record; duplicate it as a new draft"),
     QT_TRANSLATE_NOOP("bm::Errors", "Letter no longer exists"),
