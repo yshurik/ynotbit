@@ -1,4 +1,5 @@
 // Runs the tests registered by bmc/test.h: `bmclient_tests [--list] [--filter text]`.
+#include <bmc/clock.h>
 #include <bmc/test.h>
 #include <cstdio>
 #include <cstring>
@@ -25,9 +26,13 @@ int main(int argc, char **argv) {
             std::printf("PASS %s\n", c.name);
         } catch (const bmc::test::Failure &f) {
             ++failed;
+            // A test that failed part way through may have left a clock of its own behind, and
+            // every test after it would run on that clock.
+            bmc::setClockForTesting(nullptr);
             std::printf("FAIL %s: %s\n", c.name, f.message.c_str());
         } catch (const std::exception &e) {
             ++failed;
+            bmc::setClockForTesting(nullptr);
             std::printf("FAIL %s: unexpected exception: %s\n", c.name, e.what());
         }
         std::fflush(stdout);

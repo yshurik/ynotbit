@@ -1,5 +1,6 @@
 #include <bmc/error.h>
 #include <bmc/sqlite.h>
+#include <bmc/text.h>
 #include <cstring>
 
 namespace bmc {
@@ -51,8 +52,12 @@ bool Statement::row() {
 
 std::string Statement::text(int n) const {
     const auto *p = sqlite3_column_text(s_, n);
-    return p ? std::string(reinterpret_cast<const char *>(p), size_t(sqlite3_column_bytes(s_, n)))
-             : std::string();
+    if (!p)
+        return std::string();
+    // What QString::fromUtf8 gave the previous release: a leading byte order mark is dropped and an
+    // invalid sequence becomes U+FFFD, so the text does not depend on who reads the column.
+    return text::sanitizeUtf8(
+        std::string_view(reinterpret_cast<const char *>(p), size_t(sqlite3_column_bytes(s_, n))));
 }
 
 int64_t Statement::number(int n) const {

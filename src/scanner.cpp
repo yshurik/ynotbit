@@ -8,7 +8,8 @@ int scanMailbox(Cache &cache, Mailbox &mailbox, const Vault &vault, int limit) {
     if (!vault.unlocked() || !mailbox.isOpen())
         return 0;
     QStringList addresses;
-    for (const auto &identity : vault.identities())
+    const auto identities = vault.identities();
+    for (const auto &identity : identities)
         addresses << identity.address;
     addresses.sort();
     mailbox.bindIdentities(QString::fromLatin1(
@@ -22,7 +23,7 @@ int scanMailbox(Cache &cache, Mailbox &mailbox, const Vault &vault, int limit) {
         }
         const auto data = o.payload;
         bool found = false;
-        for (const auto &i : vault.identities()) {
+        for (const auto &i : identities) {
             auto decoded = Protocol::decodeMessage(data, i);
             if (decoded) {
                 const auto header = Wire::header(data);

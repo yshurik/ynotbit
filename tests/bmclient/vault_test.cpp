@@ -6,6 +6,21 @@
 
 using bmc::Vault;
 
+namespace {
+// Make a directory read-only and answer whether the permission bits actually bind this user. Root
+// is not bound by them (a container runs as root), so a test of a failed write probes with a file
+// of its own rather than reporting a failure that belongs to the user and not to the vault.
+bool makeReadOnly(const std::string &dir) {
+    const auto readOnly = std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec;
+    std::filesystem::permissions(dir, readOnly);
+    bmc::test::writeFile(dir + "/probe", bmc::view(std::string("x")));
+    const bool enforced = !std::filesystem::exists(dir + "/probe");
+    if (!enforced)
+        std::filesystem::permissions(dir, std::filesystem::perms::owner_all);
+    return enforced;
+}
+} // namespace
+
 TEST(a_vault_round_trips_through_the_core) {
     const auto path = bmc::test::tempDir() + "/v.bmvault";
     Vault v;
@@ -67,12 +82,19 @@ TEST(a_read_only_vault_still_opens) {
     const auto dir = bmc::test::tempDir();
     const auto path = dir + "/ro.bmvault";
     bmc::test::writeFile(path, fixtures::goldenVaultOldLabel());
-    std::filesystem::permissions(path, std::filesystem::perms::owner_read);
+    const auto before = bmc::test::readFile(path);
+    // The vault is this user's to read but not to write: the directory is read-only, so the atomic
+    // write cannot even make its temporary file, and the rename that opening wants is the fallback
+    // path -- kept in memory, with the file on disk left as it was.
+    if (!makeReadOnly(dir)) {
+        std::cerr << "skipped: the permission bits are not enforced for this user" << std::endl;
+        return;
+    }
     Vault v;
     v.unlock(path, fixtures::goldenPassword());
     CHECK_EQ(v.identities().front().label, std::string("#x")); // renamed in memory
-    std::filesystem::permissions(path, std::filesystem::perms::owner_read |
-                                           std::filesystem::perms::owner_write);
+    std::filesystem::permissions(dir, std::filesystem::perms::owner_all);
+    CHECK_EQ(bmc::test::readFile(path), before); // the save failed, so the file is unchanged
 }
 
 TEST(a_failed_save_keeps_the_previous_vault) {
@@ -82,22 +104,32 @@ TEST(a_failed_save_keeps_the_previous_vault) {
     v.create(path, "pw");
     v.addIdentity("me");
     const auto before = bmc::test::readFile(path);
-    // A read-only directory makes the atomic write fail before the target is touched. Root is not
-    // bound by the permission bits (a container runs as root), so probe with a file of our own and
-    // skip where they are not enforced rather than report a failure that is the user's, not the
-    // vault's.
-    const auto readOnly = std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec;
-    std::filesystem::permissions(dir, readOnly);
-    bmc::test::writeFile(dir + "/probe", bmc::view(std::string("x")));
-    const bool enforced = !std::filesystem::exists(dir + "/probe");
-    if (!enforced) {
-        std::filesystem::permissions(dir, std::filesystem::perms::owner_all);
+    // A read-only directory makes the atomic write fail before the target is touched.
+    if (!makeReadOnly(dir)) {
         std::cerr << "skipped: the permission bits are not enforced for this user" << std::endl;
         return;
     }
     CHECK_THROWS(v.addIdentity("second"));
     std::filesystem::permissions(dir, std::filesystem::perms::owner_all);
     CHECK_EQ(bmc::test::readFile(path), before);
+}
+
+TEST(vault_limits_are_refused) {
+    // The vault holds at most 1024 mailbox keys: the 1025th is refused, the in-memory map is rolled
+    // back, and the file on disk keeps exactly the 1024 that were saved. The identity count is
+    // guarded by the same require.
+    const auto path = bmc::test::tempDir() + "/limits.bmvault";
+    Vault v;
+    v.create(path, "pw");
+    for (int i = 0; i < 1024; ++i)
+        v.addMailboxKey();
+    CHECK_EQ(v.mailboxIds().size(), size_t(1024));
+    CHECK_THROWS(v.addMailboxKey());
+    CHECK_EQ(v.mailboxIds().size(), size_t(1024)); // rolled back, not left one too large
+    v.lock();
+    Vault again;
+    again.unlock(path, "pw");
+    CHECK_EQ(again.mailboxIds().size(), size_t(1024));
 }
 
 TEST(a_wrong_password_is_refused) {

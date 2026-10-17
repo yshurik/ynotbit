@@ -75,7 +75,9 @@ void Mailbox::connect(const std::string &path, const Secret &key, bool create) {
     const auto file = bmc::path(path);
     if (create)
         reserveFile(file);
-    if (sqlite3_open_v2(file.string().c_str(), &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX,
+    // The path the caller gave, not the native one: SQLite takes UTF-8 and makes its own wide path
+    // on Windows, so there is nothing to convert here.
+    if (sqlite3_open_v2(path.c_str(), &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX,
                         nullptr) != SQLITE_OK) {
         close();
         if (create)

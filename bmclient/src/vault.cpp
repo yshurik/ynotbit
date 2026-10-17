@@ -20,7 +20,7 @@ extern "C" {
 namespace bmc {
 namespace {
 Bytes readFile(const std::filesystem::path &p) {
-    std::FILE *f = std::fopen(p.string().c_str(), "rb");
+    std::FILE *f = openFile(p, "rb");
     if (!f)
         throw Error(Code::Io, "Cannot open vault");
     std::fseek(f, 0, SEEK_END);
@@ -123,7 +123,15 @@ void Vault::save() {
 
 void Vault::unlock(const std::string &path, const std::string &password) {
     require(!unlocked_, "Lock the current vault first");
-    const auto file = readFile(bmc::path(path));
+    const auto filePath = bmc::path(path);
+    // The size is checked before the file is read: a vault that is not one must not be pulled into
+    // memory in full and refused afterwards. A file that cannot even be measured is left to
+    // readFile, which says that it cannot be opened.
+    std::error_code ec;
+    const auto measured = std::filesystem::file_size(filePath, ec);
+    if (!ec)
+        require(measured >= 64 && measured <= 4 * 1024 * 1024, "Invalid vault size");
+    const auto file = readFile(filePath);
     require(file.size() >= 64 && file.size() <= 4 * 1024 * 1024, "Invalid vault size");
     const std::string magic = stringOf(ByteView(file.data(), 8));
     require(magic == "BMVAULT1" || magic == "BMVAULT2", "Unsupported vault format");
@@ -278,7 +286,7 @@ std::string Vault::addChannel(const std::string &phrase, const std::string &labe
 
 void Vault::importKeys(const std::string &path) {
     require(unlocked_, "Vault is locked");
-    std::FILE *f = std::fopen(bmc::path(path).string().c_str(), "rb");
+    std::FILE *f = openFile(bmc::path(path), "rb");
     require(f != nullptr, "Cannot read keys file");
     std::fseek(f, 0, SEEK_END);
     const long size = std::ftell(f);
