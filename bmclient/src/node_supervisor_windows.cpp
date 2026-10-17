@@ -1,7 +1,8 @@
 // The node process on Windows: CreateProcess into a job object, a pipe for what it says, and
 // TerminateJobObject to stop the whole group. There are no signals, so a stop is a kill — which
-// is what QProcess::terminate did to this windowless child — and "crashed" means the app stopped
-// it, as QProcess called that a CrashExit.
+// is what QProcess::terminate did to this windowless child — and "crashed" is an NTSTATUS exit
+// code, the one thing here that means the system ended it rather than the program returning. A
+// child's stdout goes to the null device, because it is the node's log and the app never showed it.
 //
 // This unit is compiled on Windows only; POSIX builds get node_supervisor_posix.cpp.
 #ifdef _WIN32
