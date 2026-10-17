@@ -22,6 +22,10 @@ class Mailbox {
     void migrate();
     void deliveryUpdate(const std::string &id, const std::string &state, const std::string &detail,
                         int64_t nextAttempt);
+    // The chat halves of outbox(), outgoing() and acknowledge(), which live in mailbox_chats.cpp.
+    std::vector<OutboxItem> outboxChats() const;
+    std::optional<OutboxItem> outgoingChat(const std::string &id) const;
+    std::vector<std::string> chatAckIds(ByteView token) const;
 
   public:
     ~Mailbox();
