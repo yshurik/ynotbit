@@ -2,9 +2,9 @@
 add_executable(bmclient_tests main.cpp foundation_test.cpp text_test.cpp json_test.cpp
     chat_format_test.cpp updates_test.cpp protocol_test.cpp wire_test.cpp pow_test.cpp
     qtstream_test.cpp vault_test.cpp vault_edit_test.cpp mailbox_test.cpp mailbox_query_test.cpp
-    mailbox_delivery_test.cpp mailbox_chat_test.cpp sqlite_test.cpp path_test.cpp
+    mailbox_delivery_test.cpp mailbox_chat_test.cpp sqlite_test.cpp path_test.cpp cache_test.cpp
     golden_test.cpp)
-target_link_libraries(bmclient_tests PRIVATE bmclient)
+target_link_libraries(bmclient_tests PRIVATE bmclient ntb_object_db)
 target_compile_definitions(bmclient_tests PRIVATE BMC_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/golden")
 add_test(NAME bmclient COMMAND bmclient_tests)
 # The Qt-free half of scripts/compat-check.sh: it writes a vault and a mailbox for the previous
