@@ -77,3 +77,30 @@ TEST(qtstream_refuses_a_truncated_or_oversized_payload) {
         CHECK(!in.atEnd()); // one byte left over
     }
 }
+
+TEST(qtstream_reads_raw_bytes_and_refuses_a_short_read) {
+    qtstream in(bmc::unhex("00ff01"));
+    CHECK_EQ(bmc::hex(in.readRaw(2)), std::string("00ff"));
+    CHECK(in.ok());
+    CHECK(in.readRaw(5).empty()); // fewer bytes than asked for
+    CHECK(!in.ok());
+    CHECK_EQ(bmc::hex(in.readRaw(1)), std::string("01")); // refused, and so it did not move
+    CHECK(in.atEnd());
+}
+
+TEST(qtstream_reads_a_bool_and_a_length_that_are_not_there) {
+    // Nothing to read at all: what a vault payload cut short looks like.
+    qtstream empty;
+    bool b = true;
+    empty >> b;
+    CHECK(!empty.ok());
+    CHECK(b); // untouched
+    // The length of a string is a quint32 of its own; fewer than four bytes leave it unread, so
+    // nothing was consumed.
+    qtstream cut(bmc::unhex("0000"));
+    std::string s = "before";
+    cut >> s;
+    CHECK(!cut.ok());
+    CHECK_EQ(s, std::string("before")); // untouched
+    CHECK(!cut.atEnd());
+}
