@@ -1,11 +1,12 @@
 #include "session.h"
+#include "appearance.h"
 #include "chat_format.h"
 #include "i18n.h"
-#include "appearance.h"
 #include "message_model.h"
 #include "pow.h"
 #include "protocol.h"
 #include "protocol_wire.h"
+#include "qt_bridge.h"
 #include "scanner.h"
 #include "updates.h"
 #include <QApplication>
@@ -19,15 +20,16 @@
 #include <QInputDialog>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QLocale>
 #include <QLineEdit>
+#include <QLocale>
 #include <QMessageBox>
-#include <QSettings>
 #include <QSet>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
 #include <QUuid>
 #include <algorithm>
+#include <bmc/clock.h>
 #include <stdexcept>
 namespace bm {
 static constexpr quint16 kNodePort = 8444; // the node's NTB_PROTO_DEFAULT_PORT
@@ -55,16 +57,16 @@ struct Password {
 };
 static Password password(const QString &title, bool confirm = false) {
     bool ok = false;
-    QString text =
-        QInputDialog::getText(nullptr, title, Session::tr("Vault password"), QLineEdit::Password, {}, &ok);
+    QString text = QInputDialog::getText(nullptr, title, Session::tr("Vault password"),
+                                         QLineEdit::Password, {}, &ok);
     if (!ok)
         throw std::runtime_error("Cancelled");
     Password p{text.toUtf8()};
     text.fill(QChar(0));
     check(!p.bytes.isEmpty(), Session::tr("Password cannot be empty"));
     if (confirm) {
-        auto repeated =
-            QInputDialog::getText(nullptr, title, Session::tr("Repeat password"), QLineEdit::Password, {}, &ok);
+        auto repeated = QInputDialog::getText(nullptr, title, Session::tr("Repeat password"),
+                                              QLineEdit::Password, {}, &ok);
         auto b = repeated.toUtf8();
         bool same = ok && b == p.bytes;
         sodium_memzero(b.data(), b.size());
@@ -91,8 +93,7 @@ Session::Session(QString root, bool offline, QObject *parent)
     QDir().mkpath(root_);
     nodeLock_ = std::make_unique<QLockFile>(root_ + "/desktop.lock");
     check(nodeLock_->tryLock(), tr("Another app instance is using this node folder"));
-    cache_ = std::make_unique<Cache>(root_);
-    delivery_ = std::make_unique<Delivery>(root_);
+    client_ = std::make_shared<bmc::Client>(vaultCore_, mailboxCore_, bridge::toStd(root_));
     QSettings recent(root_ + "/desktop.ini", QSettings::IniFormat);
     vaultPath_ = recent.value("vault").toString();
     mailPath_ = recent.value("mailbox").toString();
@@ -124,8 +125,8 @@ Session::Session(QString root, bool offline, QObject *parent)
     connect(&node_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
             [this](int code, QProcess::ExitStatus exit) {
                 if (nodeError_.isEmpty() && (code || exit == QProcess::CrashExit))
-                    nodeError_ = exit == QProcess::CrashExit ? tr("crashed")
-                                                             : tr("exit code %1").arg(code);
+                    nodeError_ =
+                        exit == QProcess::CrashExit ? tr("crashed") : tr("exit code %1").arg(code);
                 // What stopped it (a busy port, a locked store) may clear by itself.
                 QTimer::singleShot(30000, this, [this] {
                     if (!offline_ && node_.state() == QProcess::NotRunning)
@@ -199,10 +200,8 @@ QString Session::document() const {
 QVariantList Session::identities() const {
     QVariantList result;
     for (const auto &i : vault_.identities())
-        result << QVariantMap{{"label", i.label},
-                              {"address", i.address},
-                              {"chan", i.chan},
-                              {"default", i.isDefault}};
+        result << QVariantMap{
+            {"label", i.label}, {"address", i.address}, {"chan", i.chan}, {"default", i.isDefault}};
     return result;
 }
 void Session::attempt(const std::function<void()> &f) {
@@ -402,7 +401,7 @@ void Session::createMailbox() {
             return;
         check(!QFile::exists(p),
               tr("Choose a new filename; existing mailbox documents are never overwritten"));
-        delivery_->stop();
+        client_->delivery().stop();
         mailbox_.close();
         clearMessages();
         mailLock_.reset();
@@ -423,11 +422,10 @@ void Session::createMailbox() {
     });
 }
 void Session::bindMailboxToCache() {
-    boundCacheId_ = cache_->id();
-    mailbox_.bindCache(boundCacheId_);
+    client_->bindMailboxToCache();
 }
 void Session::openMailboxPath(const QString &p) {
-    delivery_->stop();
+    client_->delivery().stop();
     check(unlocked(), tr("Unlock a vault first"));
     mailbox_.close();
     clearMessages();
@@ -476,8 +474,7 @@ void Session::openMailboxAt(QString path) {
 }
 void Session::lock() {
     emit aboutToCloseMailbox();
-    if (delivery_)
-        delivery_->stop();
+    client_->delivery().stop();
     QSettings recent(root_ + "/desktop.ini", QSettings::IniFormat);
     recent.setValue("vault", vaultPath_);
     recent.setValue("mailbox", mailPath_);
@@ -516,14 +513,16 @@ bool Session::joinChannel(QString phrase, const QString &name, const QString &ex
 void Session::importIdentities() {
     attempt([&] {
         check(unlocked(), tr("Unlock a vault first"));
-        auto p = QFileDialog::getOpenFileName(nullptr, tr("Import notbit / PyBitmessage identities"),
-                                              documentsPath(), tr("Key files (*.dat);;All files (*)"));
+        auto p =
+            QFileDialog::getOpenFileName(nullptr, tr("Import notbit / PyBitmessage identities"),
+                                         documentsPath(), tr("Key files (*.dat);;All files (*)"));
         if (p.isEmpty())
             return;
         vault_.importKeys(p);
         if (mailboxOpen())
             mailbox_.advance(0);
-        activity_ = tr("Identities imported into the encrypted vault. The source file was preserved.");
+        activity_ =
+            tr("Identities imported into the encrypted vault. The source file was preserved.");
     });
 }
 void Session::changePassword() {
@@ -705,26 +704,20 @@ void Session::tick() {
             }
         }
         if (mailboxOpen()) {
-            // A new id means the node created or emptied its store: read it from the start.
-            if (cache_->id() != boundCacheId_)
-                bindMailboxToCache();
-            if (cache_->firstSequence() > mailbox_.checkpoint() + 1)
-                prunedUnread_ = true;
-            // A time budget, not a count: catching up (a new identity, first
-            // sync) goes as fast as the window can spare, ~150 ms per tick.
-            delivery_->scan(*cache_, mailbox_, vault_, 512, 150);
-            delivery_->tick(mailbox_, vault_, !offline_ && node_.state() == QProcess::Running);
-            refresh();
-            activity_ = !cache_->hasAfter(mailbox_.checkpoint())
-                            ? tr("Mailbox up to date with retained objects")
-                            : tr("Inspecting cached objects · checkpoint %1")
-                                  .arg(mailbox_.checkpoint());
+            const auto report =
+                client_->step(bmc::now(), !offline_ && node_.state() == QProcess::Running);
+            if (report.open) {
+                refresh();
+                activity_ = report.pruned
+                                ? tr("Retention cleanup removed older objects · Some older letters "
+                                     "may no longer be recoverable")
+                            : report.upToDate ? tr("Mailbox up to date with retained objects")
+                                              : tr("Inspecting cached objects · checkpoint %1")
+                                                    .arg(qint64(report.checkpoint));
+            }
+            if (report.working)
+                activity_ = tr("Preparing outgoing proof of work · locking pauses preparation");
         }
-        if (delivery_->working())
-            activity_ = tr("Preparing outgoing proof of work · locking pauses preparation");
-        if (prunedUnread_)
-            activity_ = tr("Retention cleanup removed older objects · Some older letters may no "
-                           "longer be recoverable");
     } catch (const std::exception &e) {
         error_ = errorText(e);
     }
@@ -734,7 +727,7 @@ QString Session::chatState(QString id) const {
     if (!mailboxOpen() || id.isEmpty())
         return {};
     try {
-        return mailbox_.chatState(id);
+        return bridge::fromStd(client_->chatState(bridge::toStd(id)));
     } catch (const std::exception &) {
         return {};
     }
@@ -743,20 +736,10 @@ bool Session::sendChat(QString from, QString peer, QString body, QString *id) {
     bool queued = false;
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
-        bool own = false;
-        for (const auto &identity : vault_.identities())
-            if (!identity.chan && identity.address == from)
-                own = true;
-        check(own, tr("Choose a sender from this vault"));
-        check(Wire::validAddress(peer) && peer != from,
-              tr("Enter a valid Bitmessage recipient address"));
-        check(!body.trimmed().isEmpty() && body.toUtf8().size() <= kMaxChatBodyBytes,
-              tr("Chat message must be between 1 and 8192 bytes"));
-        const auto queuedId = mailbox_.queueChat(
-            from, peer, body, QDateTime::currentSecsSinceEpoch() + kChatTtlSeconds);
+        const auto queuedId = client_->sendChat(bridge::toStd(from), bridge::toStd(peer),
+                                                bridge::toStd(body), bmc::now());
         if (id)
-            *id = queuedId;
-        Delivery::rereadKept(mailbox_);
+            *id = bridge::fromStd(queuedId);
         refresh();
         queued = true;
     });
@@ -769,9 +752,12 @@ QVariantList Session::chatMessages(QString local, QString peer, int limit, bool 
     if (!mailboxOpen() || local.isEmpty() || peer.isEmpty())
         return result;
     for (const auto &message : mailbox_.chatMessages(local, peer, limit, more))
-        result << QVariantMap{{"id", message.id}, {"body", message.body},
-                              {"outgoing", message.outgoing}, {"seqno", message.seqno},
-                              {"received", message.received}, {"expires", message.expires},
+        result << QVariantMap{{"id", message.id},
+                              {"body", message.body},
+                              {"outgoing", message.outgoing},
+                              {"seqno", message.seqno},
+                              {"received", message.received},
+                              {"expires", message.expires},
                               {"state", message.state}};
     return result;
 }
@@ -791,11 +777,11 @@ QVariantList Session::unreadChats(int limit) const {
     if (!mailboxOpen())
         return result;
     try {
-        for (const auto &message : mailbox_.unreadChats(limit))
-            result << QVariantMap{{"id", message.id},
-                                  {"local", message.localAddress},
-                                  {"peer", message.peerAddress},
-                                  {"body", message.body},
+        for (const auto &message : client_->unreadChats(limit))
+            result << QVariantMap{{"id", bridge::fromStd(message.id)},
+                                  {"local", bridge::fromStd(message.localAddress)},
+                                  {"peer", bridge::fromStd(message.peerAddress)},
+                                  {"body", bridge::fromStd(message.body)},
                                   {"seqno", message.seqno},
                                   {"received", message.received}};
     } catch (const std::exception &) {
@@ -808,7 +794,7 @@ bool Session::markChatMessageRead(QString id) {
     if (!mailboxOpen() || id.isEmpty())
         return false;
     try {
-        return mailbox_.markChatMessageRead(id);
+        return client_->markChatMessageRead(bridge::toStd(id));
     } catch (const std::exception &) {
         return false;
     }
@@ -856,25 +842,15 @@ bool Session::sendLetter(QString id) {
     bool sent = false;
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
-        auto m = mailbox_.message(id);
-        bool own = false;
-        for (const auto &i : vault_.identities())
-            if (i.address == m.from)
-                own = true;
-        check(own, tr("Choose a sender from this vault"));
-        auto kind = mailbox_.setting("draftkind:" + id, "direct");
-        check(kind == "broadcast" || Wire::validAddress(m.to),
-              tr("Enter a valid Bitmessage recipient address"));
-        check(!m.subject.contains('\n') && !m.subject.contains('\r'), tr("Subject must be one line"));
-        check(!m.body.trimmed().isEmpty(), tr("Write a message before sending"));
+        const auto m = mailbox_.message(id);
+        // The one rule with UI wording of its own: the client's refusal is a bare backstop.
         const int size = letterTextBytes(m.subject, m.body);
         check(size <= kMaxLetterText,
               tr("This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.")
                   .arg(QLocale().formattedDataSize(size, 0, QLocale::DataSizeTraditionalFormat),
                        QLocale().formattedDataSize(kMaxLetterText, 0,
                                                    QLocale::DataSizeTraditionalFormat)));
-        mailbox_.queueDraft(id, kind, QDateTime::currentSecsSinceEpoch() + 4 * 86400);
-        Delivery::rereadKept(mailbox_); // the recipient's key may already be kept
+        client_->sendLetter(bridge::toStd(id), bmc::now());
         refresh();
         sent = true;
         activity_ = tr("Letter queued. Follow its progress in Outbox.");
@@ -884,14 +860,14 @@ bool Session::sendLetter(QString id) {
 void Session::retryLetter(QString id) {
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
-        delivery_->retry(mailbox_, id);
+        client_->delivery().retry(mailbox_.core(), bridge::toStd(id));
         refresh();
     });
 }
 void Session::cancelLetter(QString id) {
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
-        delivery_->cancel(mailbox_, id);
+        client_->delivery().cancel(mailbox_.core(), bridge::toStd(id));
         refresh();
     });
 }
@@ -941,8 +917,7 @@ QVariantList Session::deliveryHistory(QString id) {
     try {
         for (const auto &e : mailbox_.events(id))
             result << QVariantMap{
-                {"time",
-                 formatDateTime(QDateTime::fromSecsSinceEpoch(e.timestamp), true)},
+                {"time", formatDateTime(QDateTime::fromSecsSinceEpoch(e.timestamp), true)},
                 {"state", e.state},
                 {"detail", e.detail}};
     } catch (const std::exception &e) {
@@ -986,10 +961,11 @@ QVariantList Session::broadcastSources() const {
                                                 {"subscribed", true},
                                                 {"updates", true}};
     for (const auto &s : mailbox_.subscriptions())
-        sources[s.address] = {{"address", s.address},
-                              {"label", s.label.trimmed().isEmpty() ? s.address : s.label.trimmed()},
-                              {"subscribed", true},
-                              {"updates", s.address == updates::publisherAddress()}};
+        sources[s.address] = {
+            {"address", s.address},
+            {"label", s.label.trimmed().isEmpty() ? s.address : s.label.trimmed()},
+            {"subscribed", true},
+            {"updates", s.address == updates::publisherAddress()}};
     QVariantList result;
     for (const auto &v : sources)
         result << v;
@@ -1041,7 +1017,8 @@ QString Session::contactProblem(QString address) const {
         return tr("That is not a valid Bitmessage address");
     for (const auto &i : vault_.identities())
         if (i.address == address)
-            return i.chan ? tr("That is one of your chans") : tr("That is one of your own identities");
+            return i.chan ? tr("That is one of your chans")
+                          : tr("That is one of your own identities");
     return {};
 }
 bool Session::addContact(QString address, QString label) {
@@ -1122,8 +1099,8 @@ void Session::renameIdentity(QString address) {
     attempt([&] {
         check(unlocked(), tr("Unlock a vault first"));
         bool ok = false;
-        auto label =
-            QInputDialog::getText(nullptr, tr("Rename identity"), tr("Label"), QLineEdit::Normal, {}, &ok);
+        auto label = QInputDialog::getText(nullptr, tr("Rename identity"), tr("Label"),
+                                           QLineEdit::Normal, {}, &ok);
         if (ok)
             vault_.renameIdentity(address, label);
     });
@@ -1151,7 +1128,7 @@ void Session::deleteIdentity(QString address) {
 }
 void Session::closeMailbox() {
     emit aboutToCloseMailbox();
-    delivery_->stop();
+    client_->delivery().stop();
     mailbox_.close();
     mailLock_.reset();
     clearMessages();
