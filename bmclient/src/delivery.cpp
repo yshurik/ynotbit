@@ -12,7 +12,6 @@
 #include <bmc/vault.h>
 #include <bmc/wire.h>
 #include <chrono>
-#include <cstdio>
 #include <filesystem>
 #include <ntb-object-db.h>
 #include <optional>
