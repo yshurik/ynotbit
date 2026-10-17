@@ -103,6 +103,10 @@ set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen
 add_test(NAME node-rejects-bad-retention COMMAND ynotbit --node -D ${CMAKE_CURRENT_BINARY_DIR}/bad-retention-node -R 0)
 add_test(NAME node-rejects-bad-age COMMAND ynotbit --node -D ${CMAKE_CURRENT_BINARY_DIR}/bad-retention-node -A x)
 set_tests_properties(node-rejects-bad-retention node-rejects-bad-age PROPERTIES WILL_FAIL TRUE TIMEOUT 10)
+# The same two checks against the node without Qt: the engine validates both, whatever starts it.
+add_test(NAME node-rejects-bad-retention-bmnode COMMAND $<TARGET_FILE:bmnode> --node -D ${CMAKE_CURRENT_BINARY_DIR}/bad-retention-bmnode -R 0)
+add_test(NAME node-rejects-bad-age-bmnode COMMAND $<TARGET_FILE:bmnode> --node -D ${CMAKE_CURRENT_BINARY_DIR}/bad-retention-bmnode -A x)
+set_tests_properties(node-rejects-bad-retention-bmnode node-rejects-bad-age-bmnode PROPERTIES WILL_FAIL TRUE TIMEOUT 10)
 qt_add_executable(desktop_tests tests/widgets_tests.cpp src/i18n.cpp src/quoting.cpp src/letter_document.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h src/desktop_window.cpp src/desktop_window.h src/settings_pane.cpp src/settings_pane.h src/new_vault_dialog.cpp src/new_vault_dialog.h src/letter_render.cpp src/letter_render.h src/feed_view.cpp src/feed_view.h src/appearance.cpp src/appearance.h
  assets/icons.qrc
  third_party/qrcodegen/qrcodegen.cpp third_party/qrcodegen/qrcodegen.hpp)
