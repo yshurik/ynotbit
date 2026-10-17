@@ -37,9 +37,14 @@ class NodeSupervisor {
     bool running() const;
     int64_t pid() const; // 0 when it is not running
     int exitCode() const;
-    bool crashed() const; // the last exit was a signal, not a code
-    bool exited() const;  // an exit has been seen since the last start()
-    // Why the spawn failed, or why it last stopped; "" while there is nothing to say.
+    // The last exit was the operating system ending it rather than the program returning: a signal
+    // (POSIX) or an NTSTATUS exit code (Windows). A stop() this class was asked for is not reported
+    // by poll(), so nobody reads this for a stop; a SIGKILL of a node that ignored SIGTERM does
+    // show here, as WIFSIGNALED did.
+    bool crashed() const;
+    bool exited() const; // an exit has been seen since the last start()
+    // Why the spawn failed; "" while there is nothing to say. An exit's reason is the child's last
+    // stderr line, which Session shows.
     const std::string &lastError() const;
     // The last line the child wrote to stderr, and the chunk it came in: the app shows the chunk
     // as "Node: %1" and keeps the line as the reason the node stopped. Trimmed; 200 and 400 bytes

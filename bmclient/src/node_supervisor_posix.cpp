@@ -61,13 +61,32 @@ struct NodeSupervisor::Impl {
         exitCode = crashed ? 0 : WIFEXITED(status) ? WEXITSTATUS(status) : 0;
         return true;
     }
+    void closeOne(int &descriptor) {
+        if (descriptor >= 0) {
+            ::close(descriptor);
+            descriptor = -1;
+        }
+    }
     void close() {
-        if (fd >= 0) {
-            ::close(fd);
-            fd = -1;
+        closeOne(fd);
+        closeOne(outFd);
+    }
+    // The node logs to stdout, and the app dropped every word of it (QProcess kept the two
+    // channels apart, and Session read that one to throw it away). It is still read: a pipe nobody
+    // drains fills up and the node would block on its own log.
+    void discardWhatItLogged() {
+        char buffer[4096];
+        while (outFd >= 0) {
+            const ssize_t got = ::read(outFd, buffer, sizeof buffer);
+            if (got > 0)
+                continue;
+            if (got == 0 || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR))
+                closeOne(outFd);
+            break;
         }
     }
     void readWhatItSaid() {
+        discardWhatItLogged();
         if (fd < 0)
             return;
         std::string arrived;
@@ -79,9 +98,9 @@ struct NodeSupervisor::Impl {
                 continue;
             }
             if (got == 0) // the child closed it, or exited
-                close();
+                closeOne(fd);
             else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
-                close();
+                closeOne(fd);
             break;
         }
         const std::string text = trimmed(arrived);
@@ -94,7 +113,8 @@ struct NodeSupervisor::Impl {
 
     NodeConfig config;
     pid_t pid = 0;
-    int fd = -1;
+    int fd = -1;    // the child's stderr: what the app shows
+    int outFd = -1; // the child's stdout: its log, dropped
     int exitCode = 0;
     bool crashed = false, exited = false;
     std::string lastError, line, chunk;
@@ -114,18 +134,29 @@ bool NodeSupervisor::start() {
     impl_->exited = impl_->crashed = false;
     impl_->exitCode = 0;
     impl_->lastError.clear();
-    int ends[2];
+    impl_->line.clear(); // the dead child's last words are not the new child's
+    impl_->chunk.clear();
+    int ends[2];    // the child's stderr: what the app shows
+    int outEnds[2]; // the child's stdout: the node's log, read and dropped
     if (::pipe(ends) != 0) {
         impl_->lastError = std::strerror(errno);
         return false;
     }
-    // The child's stdout is read and dropped, as Session did with readyReadStandardOutput.
+    if (::pipe(outEnds) != 0) {
+        impl_->lastError = std::strerror(errno);
+        ::close(ends[0]);
+        ::close(ends[1]);
+        return false;
+    }
+    // Two pipes, as QProcess had two channels. On one, the node's log would arrive as its errors.
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, ends[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, outEnds[1], STDOUT_FILENO);
     posix_spawn_file_actions_adddup2(&actions, ends[1], STDERR_FILENO);
     posix_spawn_file_actions_addclose(&actions, ends[0]);
     posix_spawn_file_actions_addclose(&actions, ends[1]);
+    posix_spawn_file_actions_addclose(&actions, outEnds[0]);
+    posix_spawn_file_actions_addclose(&actions, outEnds[1]);
     // A group of its own, so stopping the node stops whatever the node forked.
     posix_spawnattr_t attributes;
     posix_spawnattr_init(&attributes);
@@ -152,16 +183,21 @@ bool NodeSupervisor::start() {
     posix_spawn_file_actions_destroy(&actions);
     posix_spawnattr_destroy(&attributes);
     ::close(ends[1]);
+    ::close(outEnds[1]);
     if (failure != 0) {
         ::close(ends[0]);
+        ::close(outEnds[0]);
         impl_->lastError = std::strerror(failure);
         return false;
     }
     impl_->pid = child;
     impl_->fd = ends[0];
-    const int flags = fcntl(impl_->fd, F_GETFL, 0);
-    if (flags >= 0)
-        fcntl(impl_->fd, F_SETFL, flags | O_NONBLOCK);
+    impl_->outFd = outEnds[0];
+    for (int *descriptor : {&impl_->fd, &impl_->outFd}) {
+        const int flags = fcntl(*descriptor, F_GETFL, 0);
+        if (flags >= 0)
+            fcntl(*descriptor, F_SETFL, flags | O_NONBLOCK);
+    }
     return true;
 }
 
@@ -175,6 +211,9 @@ bool NodeSupervisor::poll() {
 void NodeSupervisor::stop() {
     // The group's id is the child's pid, and it is still that id after the child itself is reaped:
     // a process the node forked may outlive it (which is why the stop goes to the whole group).
+    // Reaping first is what makes this a call on a freed pid: another process could take that pid
+    // between the reap and the kill. The window is one kill wide, and the alternative (a pidfd, or
+    // never reaping until after the kill) buys less than it costs; the app stops the node it owns.
     const pid_t child = impl_->pid;
     impl_->readWhatItSaid();
     impl_->reap();

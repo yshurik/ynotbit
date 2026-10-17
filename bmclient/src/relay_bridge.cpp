@@ -64,27 +64,47 @@ bool isJobId(std::string_view id) {
     return true;
 }
 
-// The status object QJsonObject wrote, key for key and in its sorted order.
+// The status object the Qt bridge wrote: the same values, in QJsonObject's sorted key order, as
+// QJsonDocument::toJson() wrote them -- four spaces a level, a colon and a space, a trailing
+// newline. A reader would take either, but these files are the app's own, and the constraint is
+// their bytes.
+std::string jsonObject(const std::vector<std::pair<const char *, std::string>> &members) {
+    std::string text = "{\n";
+    for (size_t i = 0; i < members.size(); ++i) {
+        text += "    \"";
+        text += members[i].first;
+        text += "\": ";
+        text += members[i].second;
+        if (i + 1 < members.size())
+            text += ',';
+        text += '\n';
+    }
+    return text + "}\n";
+}
+
 std::string statusJson(int peers, int pending, int64_t now, int64_t objects, int64_t objectBytes,
                        const ntb_network_peer_stats &stats, int listenPort) {
     auto number = [](int64_t value) { return std::to_string(value); };
-    return "{\"attempts\":" + number(int64_t(stats.attempts)) +
-           ",\"eligible_addresses\":" + number(stats.eligible_addresses) +
-           ",\"established_incoming\":" + number(stats.established_incoming) +
-           ",\"established_outgoing\":" + number(stats.established_outgoing) +
-           ",\"known_addresses\":" + number(stats.known_addresses) +
-           ",\"listen_port\":" + number(listenPort) + ",\"object_bytes\":" + number(objectBytes) +
-           ",\"objects\":" + number(objects) + ",\"peers\":" + number(peers) +
-           ",\"pending\":" + number(pending) +
-           ",\"pending_outgoing\":" + number(stats.pending_outgoing) +
-           ",\"rejections\":" + number(int64_t(stats.rejections)) +
-           ",\"setup_timeouts\":" + number(int64_t(stats.setup_timeouts)) +
-           ",\"time\":" + number(now) + "}";
+    return jsonObject({{"attempts", number(int64_t(stats.attempts))},
+                       {"eligible_addresses", number(stats.eligible_addresses)},
+                       {"established_incoming", number(stats.established_incoming)},
+                       {"established_outgoing", number(stats.established_outgoing)},
+                       {"known_addresses", number(stats.known_addresses)},
+                       {"listen_port", number(listenPort)},
+                       {"object_bytes", number(objectBytes)},
+                       {"objects", number(objects)},
+                       {"peers", number(peers)},
+                       {"pending", number(pending)},
+                       {"pending_outgoing", number(stats.pending_outgoing)},
+                       {"rejections", number(int64_t(stats.rejections))},
+                       {"setup_timeouts", number(int64_t(stats.setup_timeouts))},
+                       {"time", number(now)}});
 }
 
 std::string receiptJson(const char *state, const std::string &hash, int64_t now) {
-    return "{\"hash\":" + bmc::json::quote(hash) + ",\"state\":" + bmc::json::quote(state) +
-           ",\"time\":" + std::to_string(now) + "}";
+    return jsonObject({{"hash", bmc::json::quote(hash)},
+                       {"state", bmc::json::quote(state)},
+                       {"time", std::to_string(now)}});
 }
 
 // The object, up to the 262145 bytes the Qt bridge read of it.

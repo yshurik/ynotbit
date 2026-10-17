@@ -96,6 +96,36 @@ TEST(what_it_wrote_to_stderr_is_kept) {
     CHECK(!node.running());
 }
 
+// The node logs to stdout -- ntb-daemon.c sends its log there -- and the app never showed a word
+// of it. On one pipe for both, that log would arrive as "the node said": the complaint here comes
+// first and the log line last, so a merged stream would answer with the wrong one.
+TEST(what_it_logs_is_not_what_it_says) {
+    Child child("echo 'cannot bind the port' >&2; echo '[2026] loading saved object store'; "
+                "exec sleep 30");
+    bmc::NodeSupervisor node(child.config);
+    CHECK(node.start());
+    CHECK(untilSaid(node, "cannot bind the port"));
+    CHECK_EQ(node.standardError(), std::string("cannot bind the port"));
+    CHECK_EQ(node.standardErrorChunk(), std::string("cannot bind the port"));
+    node.stop();
+    CHECK(!node.running());
+}
+
+// And the log is still read: a pipe nobody drains fills up, and the node would block on a line of
+// its own log. 200 KB is well past the 64 KB a pipe holds, so a child that got through this and
+// reached its last line was drained.
+TEST(what_it_logs_is_drained_even_though_it_is_dropped) {
+    Child child("i=0; while [ $i -lt 4000 ]; do "
+                "echo '[2026] a line of the node log, long enough to fill a pipe'; "
+                "i=$((i+1)); done; echo 'done logging' >&2; exec sleep 30");
+    bmc::NodeSupervisor node(child.config);
+    CHECK(node.start());
+    CHECK(untilSaid(node, "done logging"));
+    CHECK_EQ(node.standardError(), std::string("done logging"));
+    node.stop();
+    CHECK(!node.running());
+}
+
 TEST(a_restart_starts_it_again_and_the_stop_is_not_news) {
     Child child("exec sleep 30");
     bmc::NodeSupervisor node(child.config);
@@ -107,6 +137,22 @@ TEST(a_restart_starts_it_again_and_the_stop_is_not_news) {
     CHECK(node.pid() > 0);
     CHECK(node.pid() != first);
     CHECK(!node.poll()); // a stop this side asked for is not an exit to report
+    node.stop();
+    CHECK(!node.running());
+}
+
+// And the new child starts with nothing said: Session::startNode() clears what it shows, and the
+// supervisor has to clear what it read, or the dead child's last line is read as the new one's.
+TEST(a_restart_forgets_what_the_last_one_said) {
+    // Complains once, in a file beside itself, and says nothing the second time it runs.
+    Child child("if [ ! -f \"$0.said\" ]; then echo 'the first child complained' >&2; "
+                "touch \"$0.said\"; fi; exec sleep 30");
+    bmc::NodeSupervisor node(child.config);
+    CHECK(node.start());
+    CHECK(untilSaid(node, "the first child complained"));
+    CHECK(node.restart());
+    CHECK(node.standardError().empty());
+    CHECK(node.standardErrorChunk().empty());
     node.stop();
     CHECK(!node.running());
 }

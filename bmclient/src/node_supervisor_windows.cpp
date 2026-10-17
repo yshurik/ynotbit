@@ -78,7 +78,10 @@ struct NodeSupervisor::Impl {
         GetExitCodeProcess(process, &code);
         exitCode = int(code);
         exited = true;
-        crashed = stopRequested;
+        // Windows has no signal. What the operating system kills a process with is an NTSTATUS in
+        // the exit code (an access violation, the job object's kill), and what a program or a
+        // caller chooses is anything below that range -- so the first is the crash.
+        crashed = DWORD(code) >= 0xC0000000u;
         CloseHandle(process);
         process = nullptr;
         if (job) {
@@ -120,7 +123,7 @@ struct NodeSupervisor::Impl {
     NodeConfig config;
     HANDLE process = nullptr, job = nullptr, readEnd = nullptr;
     int exitCode = 0;
-    bool crashed = false, exited = false, stopRequested = false;
+    bool crashed = false, exited = false;
     std::string lastError, line, chunk;
 };
 
@@ -134,7 +137,9 @@ bool NodeSupervisor::start() {
     if (!impl_->reap())
         return true; // still running: nothing to do, as Session never asks twice
     impl_->close();
-    impl_->exited = impl_->crashed = impl_->stopRequested = false;
+    impl_->exited = impl_->crashed = false;
+    impl_->line.clear(); // the dead child's last words are not the new child's
+    impl_->chunk.clear();
     impl_->exitCode = 0;
     impl_->lastError.clear();
     SECURITY_ATTRIBUTES inheritable{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
@@ -174,7 +179,11 @@ bool NodeSupervisor::start() {
     STARTUPINFOW start{};
     start.cb = sizeof start;
     start.dwFlags = STARTF_USESTDHANDLES;
-    start.hStdOutput = writeEnd; // read and dropped, as Session did
+    // Two channels, as QProcess had two. The node's stdout is its log, which the app dropped: it
+    // goes to the null device rather than into the pipe whose text becomes its error message.
+    HANDLE nullDevice = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                    &inheritable, OPEN_EXISTING, 0, nullptr);
+    start.hStdOutput = nullDevice != INVALID_HANDLE_VALUE ? nullDevice : writeEnd;
     start.hStdError = writeEnd;
     PROCESS_INFORMATION process{};
     const BOOL started = CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, TRUE,
@@ -182,6 +191,8 @@ bool NodeSupervisor::start() {
                                         environment.data(), nullptr, &start, &process);
     const std::string failure = started ? std::string() : lastErrorText();
     CloseHandle(writeEnd);
+    if (nullDevice != INVALID_HANDLE_VALUE)
+        CloseHandle(nullDevice);
     if (!started) {
         CloseHandle(readEnd);
         if (job)
@@ -212,7 +223,6 @@ void NodeSupervisor::stop() {
     impl_->readWhatItSaid();
     if (impl_->reap())
         return;
-    impl_->stopRequested = true;
     if (impl_->job)
         TerminateJobObject(impl_->job, 1);
     else
