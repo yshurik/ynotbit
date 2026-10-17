@@ -708,15 +708,16 @@ void Session::tick() {
                 client_->step(bmc::now(), !offline_ && node_.state() == QProcess::Running);
             if (report.open) {
                 refresh();
-                activity_ = report.pruned
-                                ? tr("Retention cleanup removed older objects · Some older letters "
-                                     "may no longer be recoverable")
-                            : report.upToDate ? tr("Mailbox up to date with retained objects")
-                                              : tr("Inspecting cached objects · checkpoint %1")
-                                                    .arg(qint64(report.checkpoint));
+                activity_ = report.upToDate ? tr("Mailbox up to date with retained objects")
+                                            : tr("Inspecting cached objects · checkpoint %1")
+                                                  .arg(qint64(report.checkpoint));
             }
             if (report.working)
                 activity_ = tr("Preparing outgoing proof of work · locking pauses preparation");
+            if (report.pruned)
+                activity_ =
+                    tr("Retention cleanup removed older objects · Some older letters may no "
+                       "longer be recoverable");
         }
     } catch (const std::exception &e) {
         error_ = errorText(e);
