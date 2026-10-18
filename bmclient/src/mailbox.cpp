@@ -72,6 +72,7 @@ void Mailbox::connect(const std::string &path, const Secret &key, bool create) {
         throw Error(Code::State, "Close the current mailbox first");
     if (key.size() != 32)
         throw Error(Code::Argument, "Invalid mailbox key");
+    incomingLetters_ = incomingChats_ = 0;
     const auto file = bmc::path(path);
     if (create)
         reserveFile(file);
@@ -189,6 +190,7 @@ void Mailbox::store(const std::string &hash, const std::string &from, const std:
                     const std::string &subject, const std::string &body, int64_t c,
                     const std::string &folder) {
     Transaction t(db_);
+    bool inserted = false;
     {
         Statement s(
             db_,
@@ -202,10 +204,15 @@ void Mailbox::store(const std::string &hash, const std::string &from, const std:
         s.text(6, folder);
         s.number(7, now());
         s.row();
+        // A row that was actually inserted is a letter this mailbox had not seen: an INSERT OR
+        // IGNORE that matched an existing hash is not.
+        inserted = sqlite3_changes(db_) > 0;
         if (c >= 0) // a catch-up pass stores behind the checkpoint and leaves it be
             advance(c);
     }
     t.commit();
+    if (inserted && folder == "Inbox")
+        ++incomingLetters_;
 }
 
 std::vector<Message> Mailbox::messages() const {

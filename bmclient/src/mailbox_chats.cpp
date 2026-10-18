@@ -159,6 +159,8 @@ void Mailbox::storeChat(const std::string &id, const std::string &sender,
     s.number(8, expires);
     s.number(9, outgoing ? 0 : 1);
     s.row();
+    if (!outgoing && sqlite3_changes(db_) > 0)
+        ++incomingChats_;
 }
 
 std::vector<ChatMessage> Mailbox::chatMessages(const std::string &local, const std::string &peer,

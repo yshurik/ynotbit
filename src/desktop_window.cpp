@@ -1978,9 +1978,15 @@ class MessageWindow : public QDialog {
     LetterPane *pane_;
 };
 } // namespace
-DesktopWindow::DesktopWindow(Session &session) : session_(session) {
+DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session_(session) {
     setObjectName("desktopWindow");
     setWindowIcon(windowLogo());
+    sounds_.setThemesDir(std::move(soundThemesDir));
+    // Unpack the built-in theme now rather than at the first arrival, so the
+    // settings page has something to list and a sound is never missed.
+    sounds_.prepare();
+    connect(&session_, &Session::incomingChat, this, [this] { sounds_.notify("new-chat"); });
+    connect(&session_, &Session::incomingLetter, this, [this] { sounds_.notify("new-mail"); });
     listDensity_ = QSettings().value("listDensity", "comfortable").toString();
     // Older versions kept one collapse for the rail of all its pages, and no longer write it: a
     // page never changed since has it still, so a reader who had collapsed the rail finds every
@@ -2650,7 +2656,7 @@ DesktopWindow::DesktopWindow(Session &session) : session_(session) {
         if (folder == "Settings" && !settings_) {
             // Made when first opened: its Sending page looks for a GPU, which
             // takes a second.
-            settings_ = new SettingsPane(session_, appearance_, listDensity_);
+            settings_ = new SettingsPane(session_, appearance_, listDensity_, sounds_);
             connect(settings_, &SettingsPane::densityChosen, this, &DesktopWindow::setListDensity);
             static_cast<QVBoxLayout *>(reader_->layout())->addWidget(settings_, 1);
         }

@@ -196,6 +196,14 @@ class Mailbox {
     quint64 messageRevision() const {
         return core_->messageRevision();
     }
+    // Arrivals seen since the mailbox was opened, for the new-letter and new-chat notifications.
+    // Session watches them for increases.
+    quint64 incomingLetterCount() const {
+        return core_->incomingLetterCount();
+    }
+    quint64 incomingChatCount() const {
+        return core_->incomingChatCount();
+    }
     void backup(const QString &, const Secret &);
     QString saveDraft(const QString &id, const QString &from, const QString &to,
                       const QString &subject, const QString &body);

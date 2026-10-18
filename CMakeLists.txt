@@ -10,7 +10,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 if(YNOTBIT_QT)
  set(CMAKE_AUTOMOC ON)
  set(CMAKE_AUTORCC ON)
- find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Network Test LinguistTools)
+ find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Network Multimedia Test LinguistTools)
  # Qt 6.8 references AGL, which Apple removed from the macOS 26 SDK.
  # The Widgets desktop does not use this obsolete framework.
  if(APPLE AND CMAKE_OSX_SYSROOT MATCHES "MacOSX26")

@@ -11,8 +11,9 @@ FetchContent_Declare(miniupnpc
  URL_HASH SHA256=8cf2c833b3e76fc4893ff29c2a376e3394962449e5970e373c0a91421724d222
  SOURCE_SUBDIR miniupnpc)
 FetchContent_MakeAvailable(miniupnpc)
-add_library(bmcore src/chat_format.cpp src/chat_store.cpp src/storage.cpp src/mailbox_ops.cpp src/protocol.cpp src/protocol_wire.cpp src/key_search.cpp src/pow.cpp src/gpu_pow.cpp src/gpu_opencl.cpp src/delivery.cpp src/cache.cpp src/scanner.cpp src/updates.cpp src/message_search.cpp src/port_mapper.cpp src/port_mapper_miniupnpc.cpp)
+add_library(bmcore src/chat_format.cpp src/chat_store.cpp src/storage.cpp src/mailbox_ops.cpp src/protocol.cpp src/protocol_wire.cpp src/key_search.cpp src/pow.cpp src/gpu_pow.cpp src/gpu_opencl.cpp src/delivery.cpp src/cache.cpp src/scanner.cpp src/updates.cpp src/message_search.cpp src/port_mapper.cpp src/port_mapper_miniupnpc.cpp src/sound_theme.cpp src/sound_theme.h third_party/miniz/miniz.c)
 target_include_directories(bmcore PUBLIC src)
+target_include_directories(bmcore PRIVATE third_party/miniz)
 target_link_libraries(bmcore PUBLIC Threads::Threads notbit_codec secp256k1 miniupnpc::miniupnpc Qt6::Core Qt6::Network PkgConfig::SODIUM PkgConfig::SQLCIPHER OpenSSL::Crypto ntb_object_db bmclient)
 if(APPLE)
  # Proof of work on the GPU through Metal (src/gpu_metal.mm).
@@ -26,6 +27,8 @@ target_link_libraries(chat_tests PRIVATE bmcore)
 add_test(NAME chat COMMAND chat_tests)
 add_executable(core_tests tests/core_tests.cpp)
 target_link_libraries(core_tests PRIVATE bmcore)
+# The theme tests build their own ZIPs, so they may use the vendored miniz.
+target_include_directories(core_tests PRIVATE third_party/miniz)
 add_test(NAME core COMMAND core_tests)
 
 target_compile_definitions(bmcore PUBLIC SQLITE_HAS_CODEC)
@@ -142,7 +145,9 @@ target_include_directories(chat_scroll_bench PRIVATE src)
 target_link_libraries(chat_scroll_bench PRIVATE Qt6::Widgets)
 foreach(desktop_target ynotbit desktop_tests readme_screenshots feed_scroll_bench)
  target_sources(${desktop_target} PRIVATE src/chats_pane.cpp src/chats_pane.h src/new_chat_dialog.cpp src/new_chat_dialog.h
-  src/join_channel_dialog.cpp src/join_channel_dialog.h)
+  src/join_channel_dialog.cpp src/join_channel_dialog.h
+  src/sound_notifier.cpp src/sound_notifier.h assets/sounds.qrc)
+ target_link_libraries(${desktop_target} PRIVATE Qt6::Multimedia)
 endforeach()
 # Proof-of-work speed on the CPU and on each GPU backend; built only on request:
 #   cmake --build build --target pow_bench && build/pow_bench

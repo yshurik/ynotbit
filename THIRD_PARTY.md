@@ -34,6 +34,13 @@
   Its word lists and patterns are kept unchanged in `third_party/coolname/data/`
   and give each address a name; `src/coolname.cpp` ports its default generator's
   indexing, and ynotbit leaves out the words in `third_party/coolname/excluded.txt`.
+- miniz 3.0.2: https://github.com/richgel999/miniz, MIT (`licenses/miniz.txt`).
+  Vendored unchanged in `third_party/miniz/`; it reads the ZIP archives users
+  install as sound themes (`src/sound_theme.cpp`).
+
+The built-in sound theme's clips are synthesized by `scripts/make-default-theme.py`,
+which is part of this project, so they carry no third party's rights and ship under
+the same terms as the rest of the code. `assets/sounds/README.md` records this.
 
 Dependency license texts are included under `licenses/`.
 

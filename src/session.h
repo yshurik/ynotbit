@@ -62,6 +62,10 @@ class Session : public QObject {
     int incoming_ = 0; // established_incoming from the node's status.json
     std::unique_ptr<PortMapper> portMapper_;
     void updatePortMapping();
+    // Arrival notifications: the counts the mailbox was last watched at, and
+    // whether the first look (which is not an arrival) has happened.
+    quint64 seenLetters_ = 0, seenChats_ = 0;
+    bool arrivalsPrimed_ = false;
     void bindMailboxToCache();
     void startNode();
     void pollNode();
@@ -69,6 +73,7 @@ class Session : public QObject {
     void refresh();
     void clearMessages();
     void tick();
+    void checkArrivals();
     void acquireVault(const QString &);
     std::unique_ptr<QLockFile> lockVaultFile(const QString &); // or throws why there is none
     void openMailboxPath(const QString &);
@@ -313,6 +318,9 @@ class Session : public QObject {
   signals:
     void changed();
     void messagesChanged();
+    // A letter or a chat this mailbox had not seen before, once per arrival.
+    void incomingLetter();
+    void incomingChat();
     void messageRead(QString id);
     void locked();
     void aboutToCloseMailbox();

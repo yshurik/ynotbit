@@ -544,6 +544,7 @@ void Session::rescan() {
     });
 }
 void Session::refresh() {
+    checkArrivals();
     if (!mailboxOpen()) {
         clearMessages();
         return;
@@ -638,6 +639,30 @@ QVariantMap Session::message(QString id) const {
         {"unread", mailbox_.unread(m.hash)},
         {"kind", out.kind.isEmpty() ? mailbox_.setting("draftkind:" + m.hash, "direct") : out.kind},
         {"received", formatDateTime(QDateTime::fromSecsSinceEpoch(m.received))}};
+}
+void Session::checkArrivals() {
+    if (!mailboxOpen()) {
+        arrivalsPrimed_ = false;
+        return;
+    }
+    const quint64 letters = mailbox_.incomingLetterCount();
+    const quint64 chats = mailbox_.incomingChatCount();
+    // The first look at a freshly opened mailbox is the starting point: what an
+    // existing mailbox already holds is not an arrival.
+    if (!arrivalsPrimed_) {
+        arrivalsPrimed_ = true;
+        seenLetters_ = letters;
+        seenChats_ = chats;
+        return;
+    }
+    const bool letter = letters > seenLetters_;
+    const bool chat = chats > seenChats_;
+    seenLetters_ = letters;
+    seenChats_ = chats;
+    if (letter)
+        emit incomingLetter();
+    if (chat)
+        emit incomingChat();
 }
 void Session::clearMessages() {
     displayedRevision_.reset();

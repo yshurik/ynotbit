@@ -17,6 +17,10 @@ class Transaction;
 class Mailbox {
     sqlite3 *db_ = nullptr;
     uint64_t messageRevision_ = 0;
+    // Incoming letters and chats that were new to the mailbox, counted from the last open. Only
+    // arrivals are counted, and only once each: a catch-up or retention pass that meets a letter
+    // again does not raise them.
+    uint64_t incomingLetters_ = 0, incomingChats_ = 0;
     void connect(const std::string &path, const Secret &key, bool create);
     void sql(const char *q);
     void migrate();
@@ -113,6 +117,13 @@ class Mailbox {
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     uint64_t messageRevision() const {
         return messageRevision_;
+    }
+    // Arrivals seen since the mailbox was opened, for the new-letter and new-chat notifications.
+    uint64_t incomingLetterCount() const {
+        return incomingLetters_;
+    }
+    uint64_t incomingChatCount() const {
+        return incomingChats_;
     }
     void backup(const std::string &path, const Secret &key);
     std::string saveDraft(const std::string &id, const std::string &from, const std::string &to,

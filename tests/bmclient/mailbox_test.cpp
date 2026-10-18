@@ -75,6 +75,38 @@ TEST(a_letter_round_trips_and_unread_is_tracked) {
     m.close();
 }
 
+TEST(arrivals_are_counted_once_each_from_the_last_open) {
+    // What the desktop watches to play a sound: a new incoming row, once. A replay, a broadcast and
+    // our own outgoing chat are not arrivals.
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    CHECK_EQ(m.incomingLetterCount(), uint64_t(0));
+    CHECK_EQ(m.incomingChatCount(), uint64_t(0));
+    m.store("letter-1", "BM-peer", "BM-local", "hi", "body", -1, "Inbox");
+    CHECK_EQ(m.incomingLetterCount(), uint64_t(1)); // a new Inbox letter
+    m.store("letter-1", "BM-peer", "BM-local", "hi", "body", -1, "Inbox");
+    CHECK_EQ(m.incomingLetterCount(), uint64_t(1)); // the same letter again is not one
+    m.store("broadcast-1", "BM-peer", "BM-local", "hi", "body", -1, "Broadcasts");
+    CHECK_EQ(m.incomingLetterCount(), uint64_t(1)); // a broadcast is not a new email
+    const auto expiry = bmc::now() + 86400;
+    m.storeChat("chat-1", "BM-peer", "BM-local", 1, "hello", expiry, false);
+    CHECK_EQ(m.incomingChatCount(), uint64_t(1)); // a new incoming chat
+    m.storeChat("chat-1", "BM-peer", "BM-local", 1, "hello", expiry, false);
+    CHECK_EQ(m.incomingChatCount(), uint64_t(1)); // the same chat again is not one
+    m.storeChat("chat-2", "BM-local", "BM-peer", 2, "mine", expiry, true);
+    CHECK_EQ(m.incomingChatCount(), uint64_t(1)); // our own outgoing chat is not an arrival
+    m.close();
+    // Counted from the last open: what the mailbox already holds is not an arrival.
+    m.open(path, key);
+    CHECK_EQ(m.incomingLetterCount(), uint64_t(0));
+    CHECK_EQ(m.incomingChatCount(), uint64_t(0));
+    m.store("letter-1", "BM-peer", "BM-local", "hi", "body", -1, "Inbox");
+    CHECK_EQ(m.incomingLetterCount(), uint64_t(0));
+    m.close();
+}
+
 TEST(a_letter_moves_between_folders_and_is_deleted_from_trash) {
     const auto path = aNewMailbox();
     auto key = key32();
