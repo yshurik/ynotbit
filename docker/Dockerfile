@@ -1,70 +1,60 @@
-# Qt-free core, slice 6: bot platform — Dockerfile
-# Multi-stage build: build stage (host with full toolchain) -> runtime (slim Debian)
-# Use: docker build -t bmbot . && docker run --rm bmbot
-
-FROM ubuntu:22.04 AS builder
-
-# Install build dependencies
+# The bot image: chat_responder, bmnode and libbmbot, with no Qt, in a slim Debian.
+#
+#   scripts/build-image.sh [ssh-host] [tag]     (from the root of the tree)
+#
+# Two stages. The build stage is the recipe of scripts/check-qt-free.sh (a plain Debian, SQLCipher 4
+# built from a pinned commit because Debian ships 3.4.1) with -DYNOTBIT_QT=OFF; the runtime stage
+# holds only what runs. The data (the vault, the mailbox, the node's objects, the log and the status
+# file) is the volume /data; the phrase is a file, mounted read-only at /run/secrets/phrase.
+FROM debian:bookworm-slim AS build
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update -qq && \
-    apt-get install -y -qq --no-install-recommends \
-        build-essential cmake ninja-build pkg-config \
-        ca-certificates curl git file tcl \
-        libssl-dev libsodium-dev \
-        sqlcipher libsqlite3-modern-cpp-dev \
-        libsecp256k1-dev \
-        > /dev/null
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends build-essential cmake ninja-build pkg-config \
+      ca-certificates curl git file tcl libssl-dev libsodium-dev python3 \
+ && rm -rf /var/lib/apt/lists/*
+# SQLCipher is a layer of its own: it changes seldom and takes minutes. A shared library here, so
+# that linking it needs none of the private dependencies of SQLite.
+RUN git clone --depth 1 --branch v4.6.1 https://github.com/sqlcipher/sqlcipher /sqlcipher \
+ && test "$(git -C /sqlcipher rev-parse HEAD)" = c5bd336ece77922433aaf6d6fe8cf203b0c299d5 \
+ && cd /sqlcipher \
+ && ./configure --prefix=/usr/local --enable-shared --enable-tempstore=yes \
+      CFLAGS="-DSQLITE_HAS_CODEC $(pkg-config --cflags libcrypto)" \
+      LDFLAGS="$(pkg-config --libs libcrypto)" >/dev/null \
+ && make -j"$(nproc)" >/dev/null \
+ && make install >/dev/null \
+ && ldconfig \
+ && rm -rf /sqlcipher
+COPY . /src
+RUN cmake -S /src -B /build -G Ninja -DYNOTBIT_QT=OFF -DCMAKE_BUILD_TYPE=Release \
+ && cmake --build /build --target chat_responder bmnode bmbot \
+ && strip /build/chat_responder /build/bmnode
 
-# Install secp256k1 from source (the project pins a specific version)
-WORKDIR /tmp/secp256k1
-RUN git -c --depth 1 fetch --tags https://github.com/bitcoin-core/secp256k1.git && \
-    git checkout v0.6.0 && \
-    ./autogen.sh && \
-    ./configure --enable-ecdh --enable-modular-arch && \
-    make -j$(nproc) && make install > /dev/null
-
-WORKDIR /work
-COPY . /work
-
-# Configure and build the Qt-free targets
-RUN cmake -S /work -B /build -G Ninja -DYNOTBIT_QT=OFF -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build /build --parallel $(nproc)
-
-# Runtime stage
 FROM debian:bookworm-slim
-
-# Create a non-root user
-RUN useradd -m -u 1000 bot
-
-# Copy built artefacts from builder
-COPY --from=builder /build/bmnode /usr/local/bin/bmnode
-COPY --from=builder /build/libbmbot.so /usr/local/lib/libbmbot.so
-COPY --from=builder /build/chat_responder /usr/local/bin/chat_responder
-COPY --from=builder /work /work
-
-# Environment
-ENV HOME=/home/bot \
-    QT_QPA_PLATFORM=offscreen \
-    PATH=/usr/local/bin:/usr/bin:/bin:/home/bot/.local/bin
-
-# Work as the bot user
+ENV DEBIAN_FRONTEND=noninteractive
+# tini is the entrypoint: the responder starts its node as a child, and a container's first
+# process has to pass signals on and reap what exits.
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends libssl3 libsodium23 tini \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10001 --user-group --home-dir /data --shell /usr/sbin/nologin bot \
+ && mkdir -p /data && chown bot:bot /data
+COPY --from=build /usr/local/lib/libsqlcipher.so* /usr/local/lib/
+COPY --from=build /build/bmbot/libbmbot.so* /usr/local/lib/
+COPY --from=build /build/chat_responder /build/bmnode /usr/local/bin/
+COPY bmbot/bmbot.h /usr/local/include/bmbot.h
+RUN ldconfig
 USER bot
-WORKDIR /home/bot
-
-# Node folder (data directory)
-ENV NOTBIT_DATA=/home/bot/node-data
-
-# Expose the chat port
+WORKDIR /data
+VOLUME /data
+# The Bitmessage port: an incoming connection needs it reachable from outside.
 EXPOSE 8444
-
-# Health check: the responder must be able to report its status
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s \
-  CMD chat_responder --check || exit 1
-
-# Initialisation: start the node and responder as the container init
-# (init: true in compose will run this on container start)
-CMD ["/bin/bash", "-c", \
-  "bmnode --data-dir $NOTBIT_DATA -m $NOTBIT_DATA/unused-maildir -i -R 64 -A 1 -P 127.0.0.1:8444 -L &\\n \
-   sleep 3\\n \
-   chat_responder --data-dir $NOTBIT_DATA --fresh --silent --phrase \"slice6 bot\" --peer 127.0.0.1:8444 --status-file /home/bot/status.json &\\n \
-   wait"]
+STOPSIGNAL SIGTERM
+# Healthy when its status file is fresh (made again every ten seconds) and it has a peer.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+  CMD ["chat_responder", "--check", "/data/status.json", "--max-age", "90", "--peers", "1"]
+ENTRYPOINT ["tini", "--", "chat_responder"]
+# No --peer: that default is ynotbit's node on the same machine, and a container has none. A bot
+# keeps 512 MB of the network's objects for four days (the network drops one after about three).
+CMD ["--public", "--peer", "", "--listen", "--port", "8444", "--retention-mb", "512", \
+     "--retention-days", "4", "--data-dir", "/data/state", "--phrase-file", "/run/secrets/phrase", \
+     "--log", "/data/responder.log", "--status-file", "/data/status.json"]

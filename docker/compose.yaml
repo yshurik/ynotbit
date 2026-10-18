@@ -1,34 +1,43 @@
-# Qt-free core, slice 6: bot platform — Docker Compose
-# Run: docker compose up -d --build bbot
-# Stop: docker compose down
-
+# chat_responder as a service that runs for months.
+#
+#   mkdir -p data secrets
+#   head -c 32 /dev/urandom | base64 > secrets/phrase       # the phrase IS the address: keep a copy
+#   sudo chown -R 10001:10001 data secrets && sudo chmod 400 secrets/phrase
+#   docker compose up -d --build
+#   docker compose logs -f        # "Address:  BM-..." is on the first lines
+#
+# In bridge networking UPnP cannot work (the responder has none): port 8444 is published, and the
+# machine's firewall or router must forward it for incoming connections. Outgoing ones need nothing.
 services:
-  bot:
-    build: .
-    container_name: bbot
+  responder:
+    image: ynotbit-bmbot:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: responder
     restart: unless-stopped
-    init: true
     stop_grace_period: 30s
     mem_limit: 512m
-    # read-only root with tmpfs /tmp
-    tmpfs: /tmp:noexec,nosuid,size=64m
-    # data volume for the node folder and phrase
-    volumes:
-      - bot-data:/home/bot/node-data
-      - ./phrase:/home/bot/.phrase:ro
-    # port 8444 is the default NTB_PROTO_DEFAULT_PORT
+    cpus: 2
+    pids_limit: 200
+    # SQLCipher locks the memory its keys are in. Under a small limit (64 KiB on some hosts) every
+    # lock fails and says so on the log, thousands of lines a minute.
+    ulimits:
+      memlock:
+        soft: 33554432
+        hard: 33554432
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     ports:
       - "8444:8444"
-    # health check uses the responder C ABI
-    healthcheck:
-      test: ["CMD", "chat_responder", "--check"]
-      interval: 30s
-      timeout: 10s
-      start_period: 5s
-      retries: 3
-    # environment: the phrase as a secret file volume is already mounted
-    # environment:
-    #   - PHRASE_FILE=/home/bot/.phrase
-
-volumes:
-  bot-data:
+    volumes:
+      - ./data:/data
+      - ./secrets/phrase:/run/secrets/phrase:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
