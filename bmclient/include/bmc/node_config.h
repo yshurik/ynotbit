@@ -20,6 +20,7 @@ struct NodeConfig {
     int port = 0;           // -p when above zero, with listenPort()'s value
     std::string peer;       // -P and -L when set
     std::string proxy;      // -r and -B when set
+    bool linkOnly = false;  // -b -B -e last: no bootstrap, no DNS, only the peer given (a private bot)
     std::string bin;        // the executable to run; not part of the argv
 
     // The port the node is asked for, and the one the app shows when it has nothing better: a

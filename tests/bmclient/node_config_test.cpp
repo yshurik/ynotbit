@@ -56,6 +56,12 @@ TEST(the_arguments_are_the_ones_the_app_builds) {
     shortlived.retentionDays = 1;
     CHECK_EQ(argv(shortlived), std::string("--node -D /nodes/one -m /nodes/one/unused-maildir "
                                            "-R 64 -A 1"));
+    // A private bot links to its peer alone: the three flags come last, after everything else.
+    bmc::NodeConfig privateLink;
+    privateLink.peer = "127.0.0.1:8444";
+    privateLink.linkOnly = true;
+    CHECK_EQ(argv(privateLink), std::string("--node -D /nodes/one -m /nodes/one/unused-maildir "
+                                            "-R 2048 -A 90 -P 127.0.0.1:8444 -L -b -B -e"));
     bmc::NodeConfig all;
     all.listen = false;
     all.retentionMB = 128;

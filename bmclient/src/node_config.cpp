@@ -96,6 +96,10 @@ std::vector<std::string> NodeConfig::nodeArguments() const {
         args.emplace_back(proxy);
         args.emplace_back("-B");
     }
+    // A private bot: the node links to its peer alone. Last, so every other row is unchanged.
+    if (linkOnly)
+        for (const char *flag : {"-b", "-B", "-e"})
+            args.emplace_back(flag);
     return args;
 }
 
