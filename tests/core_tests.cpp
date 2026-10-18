@@ -2,7 +2,6 @@
 #include "gpu_pow.h"
 #include "key_search.h"
 #include "message_search.h"
-#include "node_watch.h"
 #include "port_mapper.h"
 #include "pow.h"
 #include "protocol.h"
@@ -616,55 +615,6 @@ int main(int argc, char **argv) {
             rejects([&] { fresh.addIdentity(forged); });
             require(fresh.identities().size() == 1,
                     "an identity already there, or keys under another address, are refused");
-        }
-        {
-            // The watchdog of a node that runs but does no good. Times are seconds.
-            NodeWatch watch;
-            watch.started = 1000;
-            watch.hungAfter = 120;
-            watch.lonelyAfter = 600;
-            watch.spacing = 300;
-            using V = NodeWatch::Verdict;
-            require(watch.judge(1010, 0, 0) == V::Fine,
-                    "a node just started, with no status yet, is left alone");
-            require(watch.judge(1100, 1099, 0) == V::Fine,
-                    "a node with fresh status and no peers is not yet lonely");
-            // Stale for a while, not for one tick: a Mac that wakes from sleep reads the status
-            // of hours ago for a moment, before the node has written another.
-            require(watch.judge(5000, 1099, 3) == V::Fine, "a stale status is not judged at once");
-            require(watch.judge(5011, 1099, 3) == V::Hung, "a status stale for long is hung");
-            require(watch.judge(5011, 5010, 3) == V::Fine, "a fresh status clears it");
-            // Lonely: no peer for as long as asked, and never while a status is stale.
-            NodeWatch lonely;
-            lonely.started = 0;
-            lonely.lonelyAfter = 600;
-            lonely.spacing = 300;
-            require(lonely.judge(100, 100, 0) == V::Fine && lonely.judge(699, 699, 0) == V::Fine,
-                    "no peers for less than asked is fine");
-            require(lonely.judge(700, 700, 1) == V::Fine && lonely.judge(701, 701, 0) == V::Fine &&
-                        lonely.judge(1300, 1300, 0) == V::Fine,
-                    "a peer that came starts the count again");
-            require(lonely.judge(1301, 1301, 0) == V::Lonely, "no peers for long is lonely");
-            NodeWatch quiet;
-            quiet.started = 0;
-            require(quiet.judge(100000, 100000, 0) == V::Fine,
-                    "without lonelyAfter a node with no peers is never lonely");
-            // A restarted node gets the whole time again.
-            lonely.restarted(1301);
-            require(lonely.judge(1400, 1400, 0) == V::Fine &&
-                        lonely.judge(1999, 1999, 0) == V::Fine,
-                    "a restarted node is not judged at once");
-            require(lonely.judge(2000, 2000, 0) == V::Lonely, "and is judged again after it");
-            // A hung node is not restarted twice within the spacing.
-            NodeWatch spaced;
-            spaced.started = 0;
-            spaced.hungAfter = 60;
-            spaced.spacing = 300;
-            spaced.restarted(1000);
-            require(spaced.judge(1100, 1000, 0) == V::Fine &&
-                        spaced.judge(1111, 1000, 0) == V::Fine,
-                    "a hung node is left alone for the spacing after a restart");
-            require(spaced.judge(1400, 1000, 0) == V::Hung, "and is restarted once it is over");
         }
         std::cout << "PASS: vault, password rotation, SQLCipher, deduplication, backup, chan "
                      "fixture, authenticated message codec\n";

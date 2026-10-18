@@ -1,586 +1,122 @@
-#include "sqlite_helpers.h"
+// The mailbox's letters, deliveries, jobs, keys, subscriptions, contacts and settings: a thin
+// wrapper over bmc::Mailbox (bmclient), which holds the SQL. Each body converts its arguments and
+// its results.
 #include "storage.h"
-#include "chat_format.h"
-#include <QDateTime>
-#include <QSet>
-#include <QUuid>
+#include "qt_bridge.h"
 #include <algorithm>
 namespace bm {
-using detail::Statement;
-using detail::Transaction;
-static void require(bool b, const char *m) {
-    if (!b)
-        throw std::runtime_error(m);
+namespace {
+template <class Out, class In> QVector<Out> convertAll(const std::vector<In> &in) {
+    QVector<Out> out;
+    out.reserve(int(in.size()));
+    for (const auto &v : in)
+        out.push_back(bridge::fromCore(v));
+    return out;
 }
-static qint64 now() {
-    return QDateTime::currentSecsSinceEpoch();
-}
-static QString uuid() {
-    return QUuid::createUuid().toString(QUuid::WithoutBraces);
-}
-static bool column(sqlite3 *db, const char *table, const QString &name) {
-    auto query = QString("PRAGMA table_info(%1)").arg(table).toUtf8();
-    Statement s(db, query.constData());
-    while (s.row())
-        if (s.text(1) == name)
-            return true;
-    return false;
-}
-void Mailbox::migrate() {
-    Transaction t(db_);
-    sql("CREATE INDEX IF NOT EXISTS messages_folder_received ON messages(folder,received)");
-    sql("CREATE INDEX IF NOT EXISTS messages_channel_received ON "
-        "messages(folder,recipient,received)");
-    if (!column(db_, "meta", "cache_id"))
-        sql("ALTER TABLE meta ADD COLUMN cache_id TEXT NOT NULL DEFAULT ''");
-    if (!column(db_, "meta", "identities"))
-        sql("ALTER TABLE meta ADD COLUMN identities TEXT NOT NULL DEFAULT ''");
-    if (!column(db_, "messages", "unread")) {
-        sql("ALTER TABLE messages ADD COLUMN unread INTEGER NOT NULL DEFAULT 1");
-        sql("UPDATE messages SET unread=0 WHERE folder NOT IN ('Inbox','Channels','Broadcasts')");
-    }
-    if (!column(db_, "messages", "previous_folder"))
-        sql("ALTER TABLE messages ADD COLUMN previous_folder TEXT NOT NULL DEFAULT 'Inbox'");
-    sql("CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY REFERENCES messages(hash) ON DELETE "
-        "CASCADE,kind TEXT NOT NULL,state TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',object_hash "
-        "TEXT NOT NULL DEFAULT '',ack_token BLOB NOT NULL DEFAULT X'',ack_object BLOB NOT NULL "
-        "DEFAULT X'',expires INTEGER NOT NULL,next_attempt INTEGER NOT NULL DEFAULT 0,attempts "
-        "INTEGER NOT NULL DEFAULT 1);"
-        "CREATE TABLE IF NOT EXISTS delivery_events(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT "
-        "NOT NULL REFERENCES messages(hash) ON DELETE CASCADE,ts INTEGER NOT NULL,state TEXT NOT "
-        "NULL,detail TEXT NOT NULL);"
-        "CREATE TABLE IF NOT EXISTS network_jobs(id TEXT PRIMARY KEY,owner TEXT NOT NULL,kind TEXT "
-        "NOT NULL,address TEXT NOT NULL,state TEXT NOT NULL,hash TEXT NOT NULL,error TEXT NOT "
-        "NULL,payload BLOB NOT NULL,expires INTEGER NOT NULL,trials INTEGER NOT NULL,extra INTEGER "
-        "NOT NULL);"
-        "CREATE TABLE IF NOT EXISTS public_keys(address TEXT PRIMARY KEY,signing BLOB NOT "
-        "NULL,encryption BLOB NOT NULL,trials INTEGER NOT NULL,extra INTEGER NOT NULL,behaviors "
-        "INTEGER NOT NULL,expires INTEGER NOT NULL);"
-        "CREATE TABLE IF NOT EXISTS subscriptions(address TEXT PRIMARY KEY,label TEXT NOT NULL);"
-        "CREATE TABLE IF NOT EXISTS contacts(address TEXT PRIMARY KEY,label TEXT NOT NULL,added "
-        "INTEGER NOT NULL);"
-        "CREATE TABLE IF NOT EXISTS settings(name TEXT PRIMARY KEY,value TEXT NOT NULL);"
-        "CREATE INDEX IF NOT EXISTS delivery_events_id ON delivery_events(id,seq); PRAGMA "
-        "user_version=2;");
-    sql("CREATE TABLE IF NOT EXISTS chat_messages(id TEXT PRIMARY KEY,local_address TEXT NOT NULL,"
-        "peer_address TEXT NOT NULL,direction TEXT NOT NULL CHECK(direction IN ('in','out')),"
-        "seqno INTEGER NOT NULL,body TEXT NOT NULL,received INTEGER NOT NULL,expires INTEGER NOT NULL,"
-        "state TEXT NOT NULL,unread INTEGER NOT NULL DEFAULT 0,"
-        "UNIQUE(local_address,peer_address,direction,seqno));"
-        "CREATE INDEX IF NOT EXISTS chat_conversation ON chat_messages(local_address,peer_address,received);"
-        "CREATE INDEX IF NOT EXISTS chat_expiry ON chat_messages(expires);"
-        "CREATE TABLE IF NOT EXISTS chat_sequences(local_address TEXT NOT NULL,peer_address TEXT NOT NULL,"
-        "last_seq INTEGER NOT NULL,PRIMARY KEY(local_address,peer_address));"
-        "CREATE TABLE IF NOT EXISTS chat_outbox(id TEXT PRIMARY KEY REFERENCES chat_messages(id) ON DELETE CASCADE,"
-        "state TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',object_hash TEXT NOT NULL DEFAULT '',"
-        "ack_token BLOB NOT NULL DEFAULT X'',ack_object BLOB NOT NULL DEFAULT X'',"
-        "expires INTEGER NOT NULL,next_attempt INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 1);");
-    // Chats made before unread counts: all of them read.
-    if (!column(db_, "chat_messages", "unread"))
-        sql("ALTER TABLE chat_messages ADD COLUMN unread INTEGER NOT NULL DEFAULT 0");
-    // The chats still to be looked at, which a service reads again and again: its own small index.
-    sql("CREATE INDEX IF NOT EXISTS chat_unread ON chat_messages(received) "
-        "WHERE direction='in' AND unread=1");
-    t.commit();
-}
+} // namespace
+
 QString Mailbox::saveDraft(const QString &id, const QString &from, const QString &to,
                            const QString &subject, const QString &body) {
-    require(subject.toUtf8().size() <= 8192 && body.toUtf8().size() <= kMaxDraftBytes,
-            "Letter is too large");
-    auto draft = id.isEmpty() ? "draft-" + uuid() : id;
-    Transaction t(db_);
-    if (!id.isEmpty()) {
-        auto m = message(id);
-        require(m.folder == "Drafts", "Only drafts can be edited");
-        Statement pending(db_, "SELECT state FROM outbox WHERE id=?");
-        pending.text(1, id);
-        require(!pending.row(),
-                "This letter already has a delivery record; duplicate it as a new draft");
-    }
-    Statement s(db_,
-                "INSERT INTO messages(hash,sender,recipient,subject,body,folder,received,unread) "
-                "VALUES(?,?,?,?,?,'Drafts',?,0) ON CONFLICT(hash) DO UPDATE SET "
-                "sender=excluded.sender,recipient=excluded.recipient,subject=excluded.subject,body="
-                "excluded.body,received=excluded.received");
-    s.text(1, draft);
-    s.text(2, from);
-    s.text(3, to);
-    s.text(4, subject);
-    s.text(5, body);
-    s.number(6, now());
-    s.row();
-    t.commit();
-    return draft;
+    return bridge::fromStd(core_->saveDraft(bridge::toStd(id), bridge::toStd(from), bridge::toStd(to),
+                                            bridge::toStd(subject), bridge::toStd(body)));
 }
 Message Mailbox::message(const QString &id) const {
-    Statement s(
-        db_,
-        "SELECT hash,sender,recipient,subject,body,folder,received FROM messages WHERE hash=?");
-    s.text(1, id);
-    require(s.row(), "Letter no longer exists");
-    return {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)};
+    return bridge::fromCore(core_->message(bridge::toStd(id)));
 }
 void Mailbox::queueDraft(const QString &id, const QString &kind, qint64 expires) {
-    require(kind == "direct" || kind == "broadcast", "Invalid delivery type");
-    auto m = message(id);
-    require(m.folder == "Drafts", "Only a draft can be sent");
-    require(!m.from.isEmpty() && (kind == "broadcast" || !m.to.isEmpty()),
-            "Choose a sender and recipient");
-    require(expires > now(), "Message expiry is in the past");
-    Transaction t(db_);
-    Statement s(db_, "INSERT INTO outbox(id,kind,state,expires) VALUES(?,?,'queued',?)");
-    s.text(1, id);
-    s.text(2, kind);
-    s.number(3, expires);
-    s.row();
-    Statement move(db_, "UPDATE messages SET folder='Outbox',unread=0 WHERE hash=?");
-    move.text(1, id);
-    move.row();
-    deliveryUpdate(id, "queued", "Queued for encrypted delivery", 0);
-    t.commit();
-}
-static OutboxItem readOutgoing(Statement &s, bool chat, const Mailbox &mailbox) {
-    OutboxItem o;
-    o.id = s.text(0);
-    o.kind = chat ? "direct" : s.text(1);
-    o.state = s.text(2);
-    o.error = s.text(3);
-    o.objectHash = s.text(4);
-    o.ackToken = s.blob(5);
-    o.ackObject = s.blob(6);
-    o.expires = s.number(7);
-    o.nextAttempt = s.number(8);
-    o.attempts = int(s.number(9));
-    o.chat = chat;
-    if (chat) {
-        const auto local = s.text(10), peer = s.text(11);
-        o.message = {o.id, local, peer, {}, chatMessageBody(s.number(12), s.text(13)),
-                     "Chats", s.number(14)};
-    } else {
-        o.message = mailbox.message(o.id);
-    }
-    return o;
+    core_->queueDraft(bridge::toStd(id), bridge::toStd(kind), expires);
 }
 QVector<OutboxItem> Mailbox::outbox() const {
-    QVector<OutboxItem> result;
-    Statement letters(db_, "SELECT id,kind,state,error,object_hash,ack_token,ack_object,expires,next_attempt,attempts "
-                           "FROM outbox ORDER BY rowid");
-    while (letters.row()) result << readOutgoing(letters, false, *this);
-    // Chats stay in the mailbox for good, so those whose delivery is over (the terminal states
-    // of delivery.cpp) are left out: every tick and every scanned pubkey walks this list.
-    Statement chats(db_, "SELECT o.id,'direct',o.state,o.error,o.object_hash,o.ack_token,o.ack_object,"
-                         "o.expires,o.next_attempt,o.attempts,m.local_address,m.peer_address,m.seqno,"
-                         "m.body,m.received FROM chat_outbox o JOIN chat_messages m ON m.id=o.id "
-                         "WHERE o.state NOT IN ('acknowledged','published','cancelled','failed','expired') "
-                         "ORDER BY m.rowid");
-    while (chats.row()) result << readOutgoing(chats, true, *this);
-    return result;
+    return convertAll<OutboxItem>(core_->outbox());
 }
 OutboxItem Mailbox::outgoing(const QString &id) const {
-    if (id.startsWith("chat-")) {
-        Statement s(db_, "SELECT o.id,'direct',o.state,o.error,o.object_hash,o.ack_token,o.ack_object,"
-                         "o.expires,o.next_attempt,o.attempts,m.local_address,m.peer_address,m.seqno,"
-                         "m.body,m.received FROM chat_outbox o JOIN chat_messages m ON m.id=o.id WHERE o.id=?");
-        s.text(1, id);
-        require(s.row(), "No delivery record for this chat");
-        return readOutgoing(s, true, *this);
-    }
-    Statement s(db_, "SELECT id,kind,state,error,object_hash,ack_token,ack_object,expires,next_attempt,attempts "
-                     "FROM outbox WHERE id=?");
-    s.text(1, id);
-    require(s.row(), "No delivery record for this letter");
-    return readOutgoing(s, false, *this);
-}
-void Mailbox::deliveryUpdate(const QString &id, const QString &state, const QString &detail,
-                             qint64 next) {
-    static const QSet<QString> states = {
-        "queued",       "awaiting_pubkey", "calculating_ack", "calculating_message",
-        "ready",        "publishing",      "awaiting_ack",    "published",
-        "acknowledged", "cancelled",       "failed",          "expired"};
-    require(states.contains(state), "Invalid delivery state");
-    const bool chat = id.startsWith("chat-");
-    Statement s(db_, chat ? "UPDATE chat_outbox SET state=?,error=?,next_attempt=? WHERE id=?"
-                          : "UPDATE outbox SET state=?,error=?,next_attempt=? WHERE id=?");
-    s.text(1, state);
-    s.text(2, state == "failed" || state == "expired" ? detail : QString());
-    s.number(3, next);
-    s.text(4, id);
-    s.row();
-    require(sqlite3_changes(db_) == 1, "Delivery no longer exists");
-    if (chat) {
-        Statement status(db_, "UPDATE chat_messages SET state=? WHERE id=?");
-        status.text(1, state); status.text(2, id); status.row();
-        return;
-    }
-    Statement e(db_, "INSERT INTO delivery_events(id,ts,state,detail) VALUES(?,?,?,?)");
-    e.text(1, id);
-    e.number(2, now());
-    e.text(3, state);
-    e.text(4, detail);
-    e.row();
-    if (state == "acknowledged" || state == "published") {
-        Statement move(db_, "UPDATE messages SET folder='Sent' WHERE hash=? AND folder='Outbox'");
-        move.text(1, id);
-        move.row();
-    }
+    return bridge::fromCore(core_->outgoing(bridge::toStd(id)));
 }
 void Mailbox::setDelivery(const QString &id, const QString &state, const QString &detail,
-                          qint64 next) {
-    Transaction t(db_);
-    deliveryUpdate(id, state, detail, next);
-    t.commit();
+                          qint64 nextAttempt) {
+    core_->setDelivery(bridge::toStd(id), bridge::toStd(state), bridge::toStd(detail), nextAttempt);
 }
 void Mailbox::setAck(const QString &id, const QByteArray &token, const QByteArray &object) {
-    require(token.size() == 32, "Invalid acknowledgment token");
-    Statement s(db_, id.startsWith("chat-")
-                         ? "UPDATE chat_outbox SET ack_token=?,ack_object=? WHERE id=?"
-                         : "UPDATE outbox SET ack_token=?,ack_object=? WHERE id=?");
-    s.blob(1, token);
-    s.blob(2, object);
-    s.text(3, id);
-    s.row();
+    core_->setAck(bridge::toStd(id), bridge::view(token), bridge::view(object));
 }
 void Mailbox::setObjectHash(const QString &id, const QString &hash) {
-    Statement s(db_, id.startsWith("chat-")
-                         ? "UPDATE chat_outbox SET object_hash=? WHERE id=?"
-                         : "UPDATE outbox SET object_hash=? WHERE id=?");
-    s.text(1, hash);
-    s.text(2, id);
-    s.row();
+    core_->setObjectHash(bridge::toStd(id), bridge::toStd(hash));
 }
 bool Mailbox::acknowledge(const QByteArray &token) {
-    if (token.size() != 32)
-        return false;
-    QStringList ids;
-    {
-        Statement s(db_, "SELECT id FROM outbox WHERE ack_token=? AND state NOT IN "
-                         "('cancelled','acknowledged')");
-        s.blob(1, token);
-        while (s.row())
-            ids << s.text(0);
-    }
-    {
-        Statement s(db_, "SELECT id FROM chat_outbox WHERE ack_token=? AND state NOT IN "
-                         "('cancelled','acknowledged')");
-        s.blob(1, token);
-        while (s.row()) ids << s.text(0);
-    }
-    if (ids.isEmpty())
-        return false;
-    Transaction t(db_);
-    for (const auto &id : ids) {
-        deliveryUpdate(id, "acknowledged",
-                       "Recipient acknowledgment received; this is not a read receipt", 0);
-        Statement jobs(db_, "DELETE FROM network_jobs WHERE owner=?");
-        jobs.text(1, id);
-        jobs.row();
-    }
-    t.commit();
-    return true;
+    return core_->acknowledge(bridge::view(token));
 }
 void Mailbox::retry(const QString &id, qint64 expires) {
-    auto o = outgoing(id);
-    require(!o.chat, "Chats cannot be retried after their 24-hour expiry");
-    require(o.state != "acknowledged", "This letter has already been acknowledged");
-    Transaction t(db_);
-    Statement clear(db_, "DELETE FROM network_jobs WHERE owner=?");
-    clear.text(1, id);
-    clear.row();
-    Statement s(
-        db_,
-        "UPDATE outbox SET expires=?,ack_object=X'',object_hash='',attempts=attempts+1 WHERE id=?");
-    s.number(1, expires);
-    s.text(2, id);
-    s.row();
-    Statement move(db_, "UPDATE messages SET folder='Outbox' WHERE hash=?");
-    move.text(1, id);
-    move.row();
-    deliveryUpdate(id, "queued", "Delivery retried; previously published copies cannot be recalled",
-                   0);
-    t.commit();
+    core_->retry(bridge::toStd(id), expires);
 }
 void Mailbox::cancel(const QString &id) {
-    auto o = outgoing(id);
-    require(o.state != "acknowledged" && o.state != "published", "Delivery is already complete");
-    Transaction t(db_);
-    Statement s(db_, "DELETE FROM network_jobs WHERE owner=?");
-    s.text(1, id);
-    s.row();
-    deliveryUpdate(id, "cancelled",
-                   "Further work stopped; already published copies remain on the network", 0);
-    t.commit();
+    core_->cancel(bridge::toStd(id));
 }
 QVector<DeliveryEvent> Mailbox::events(const QString &id) const {
-    Statement s(db_, "SELECT ts,state,detail FROM delivery_events WHERE id=? ORDER BY seq");
-    s.text(1, id);
-    QVector<DeliveryEvent> r;
-    while (s.row())
-        r << DeliveryEvent{s.number(0), s.text(1), s.text(2)};
-    return r;
+    return convertAll<DeliveryEvent>(core_->events(bridge::toStd(id)));
 }
 void Mailbox::recordMilestone(const QString &id, const QString &state, const QString &detail) {
-    if (id.startsWith("chat-")) return;
-    Statement s(db_, "INSERT INTO delivery_events(id,ts,state,detail) SELECT ?,?,?,? WHERE NOT "
-                     "EXISTS (SELECT 1 FROM delivery_events WHERE id=? AND state=?)");
-    s.text(1, id);
-    s.number(2, now());
-    s.text(3, state);
-    s.text(4, detail);
-    s.text(5, id);
-    s.text(6, state);
-    s.row();
+    core_->recordMilestone(bridge::toStd(id), bridge::toStd(state), bridge::toStd(detail));
 }
 QString Mailbox::addJob(NetworkJob job) {
-    if (job.id.isEmpty())
-        job.id = uuid();
-    if (job.state.isEmpty())
-        job.state = "queued";
-    require(job.payload.size() <= 262144 && !job.payload.isEmpty(), "Invalid network object size");
-    require(job.nonceTrials >= 1000 && job.nonceTrials <= 1000000 && job.extraBytes >= 1000 &&
-                job.extraBytes <= 1000000,
-            "Recipient proof-of-work requirement exceeds supported limits");
-    Statement s(db_, "INSERT OR IGNORE INTO network_jobs VALUES(?,?,?,?,?,?,?,?,?,?,?)");
-    s.text(1, job.id);
-    s.text(2, job.owner);
-    s.text(3, job.kind);
-    s.text(4, job.address);
-    s.text(5, job.state);
-    s.text(6, job.hash);
-    s.text(7, job.error);
-    s.blob(8, job.payload);
-    s.number(9, job.expires);
-    s.number(10, job.nonceTrials);
-    s.number(11, job.extraBytes);
-    s.row();
-    return job.id;
+    return bridge::fromStd(core_->addJob(bridge::toCore(job)));
 }
 QVector<NetworkJob> Mailbox::jobs() const {
-    Statement s(db_, "SELECT id,owner,kind,address,state,hash,error,payload,expires,trials,extra "
-                     "FROM network_jobs ORDER BY CASE WHEN kind='incoming-ack' THEN 0 WHEN "
-                     "kind='pubkey' THEN 1 ELSE 2 END,rowid");
-    QVector<NetworkJob> r;
-    while (s.row()) {
-        NetworkJob j;
-        j.id = s.text(0);
-        j.owner = s.text(1);
-        j.kind = s.text(2);
-        j.address = s.text(3);
-        j.state = s.text(4);
-        j.hash = s.text(5);
-        j.error = s.text(6);
-        j.payload = s.blob(7);
-        j.expires = s.number(8);
-        j.nonceTrials = s.number(9);
-        j.extraBytes = s.number(10);
-        r << j;
-    }
-    return r;
+    return convertAll<NetworkJob>(core_->jobs());
 }
 void Mailbox::updateJob(const QString &id, const QString &state, const QByteArray &payload,
                         const QString &hash, const QString &error) {
-    Statement s(db_, "UPDATE network_jobs SET state=?,payload=CASE WHEN ? THEN ? ELSE payload "
-                     "END,hash=CASE WHEN ? THEN ? ELSE hash END,error=? WHERE id=?");
-    s.text(1, state);
-    s.number(2, !payload.isNull());
-    s.blob(3, payload);
-    s.number(4, !hash.isEmpty());
-    s.text(5, hash);
-    s.text(6, error);
-    s.text(7, id);
-    s.row();
+    // A null payload means "leave the stored one"; the core says that with a missing pointer.
+    const bmc::Bytes bytes = payload.isNull() ? bmc::Bytes() : bridge::toBytes(payload);
+    core_->updateJob(bridge::toStd(id), bridge::toStd(state), payload.isNull() ? nullptr : &bytes,
+                     bridge::toStd(hash), bridge::toStd(error));
 }
 void Mailbox::removeJob(const QString &id) {
-    Statement s(db_, "DELETE FROM network_jobs WHERE id=?");
-    s.text(1, id);
-    s.row();
+    core_->removeJob(bridge::toStd(id));
 }
-void Mailbox::savePublicKey(const StoredPublicKey &k) {
-    require(k.signingKey.size() == 65 && k.encryptionKey.size() == 65, "Invalid public-key length");
-    Statement s(db_,
-                "INSERT INTO public_keys VALUES(?,?,?,?,?,?,?) ON CONFLICT(address) DO UPDATE SET "
-                "signing=excluded.signing,encryption=excluded.encryption,trials=excluded.trials,"
-                "extra=excluded.extra,behaviors=excluded.behaviors,expires=excluded.expires");
-    s.text(1, k.address);
-    s.blob(2, k.signingKey);
-    s.blob(3, k.encryptionKey);
-    s.number(4, k.nonceTrials);
-    s.number(5, k.extraBytes);
-    s.number(6, k.behaviors);
-    s.number(7, k.expires);
-    s.row();
+void Mailbox::savePublicKey(const StoredPublicKey &key) {
+    core_->savePublicKey(bridge::toCore(key));
 }
-std::optional<StoredPublicKey> Mailbox::publicKey(const QString &address, qint64 time) const {
-    Statement s(db_, "SELECT address,signing,encryption,trials,extra,behaviors,expires FROM "
-                     "public_keys WHERE address=? AND expires>?");
-    s.text(1, address);
-    s.number(2, time);
-    if (!s.row())
-        return {};
-    return StoredPublicKey{s.text(0),
-                           s.blob(1),
-                           s.blob(2),
-                           quint64(s.number(3)),
-                           quint64(s.number(4)),
-                           quint32(s.number(5)),
-                           s.number(6)};
+std::optional<StoredPublicKey> Mailbox::publicKey(const QString &address, qint64 now) const {
+    const auto key = core_->publicKey(bridge::toStd(address), now);
+    return key ? std::optional<StoredPublicKey>(bridge::fromCore(*key)) : std::nullopt;
 }
 QVector<Subscription> Mailbox::subscriptions() const {
-    Statement s(db_, "SELECT address,label FROM subscriptions ORDER BY label");
-    QVector<Subscription> r;
-    while (s.row())
-        r << Subscription{s.text(0), s.text(1)};
-    return r;
+    return convertAll<Subscription>(core_->subscriptions());
 }
 void Mailbox::subscribe(const QString &address, const QString &label) {
-    require(!address.isEmpty(), "Enter a broadcast address");
-    Transaction t(db_);
-    Statement s(db_, "INSERT INTO subscriptions VALUES(?,?) ON CONFLICT(address) DO UPDATE SET "
-                     "label=excluded.label");
-    s.text(1, address);
-    s.text(2, label);
-    s.row();
-    // No rescan from here: the scan notices the new subscription and reads the
-    // kept broadcasts again on its own (Delivery::catchUpBroadcasts).
-    t.commit();
+    core_->subscribe(bridge::toStd(address), bridge::toStd(label));
 }
 void Mailbox::unsubscribe(const QString &address) {
-    Statement s(db_, "DELETE FROM subscriptions WHERE address=?");
-    s.text(1, address);
-    s.row();
+    core_->unsubscribe(bridge::toStd(address));
 }
 QVector<Contact> Mailbox::contacts() const {
-    Statement s(db_, "SELECT address,label,added FROM contacts ORDER BY label COLLATE NOCASE,address");
-    QVector<Contact> r;
-    while (s.row())
-        r << Contact{s.text(0), s.text(1), s.number(2)};
-    return r;
+    return convertAll<Contact>(core_->contacts());
 }
 void Mailbox::saveContact(const QString &address, const QString &label) {
-    require(!address.isEmpty() && !label.trimmed().isEmpty(), "A contact needs an address and a name");
-    Statement s(db_, "INSERT INTO contacts VALUES(?,?,?) ON CONFLICT(address) DO UPDATE SET "
-                     "label=excluded.label");
-    s.text(1, address);
-    s.text(2, label.trimmed());
-    s.number(3, QDateTime::currentSecsSinceEpoch());
-    s.row();
+    core_->saveContact(bridge::toStd(address), bridge::toStd(label));
 }
 void Mailbox::removeContact(const QString &address) {
-    Statement s(db_, "DELETE FROM contacts WHERE address=?");
-    s.text(1, address);
-    s.row();
+    core_->removeContact(bridge::toStd(address));
 }
 void Mailbox::moveMessage(const QString &id, const QString &folder) {
-    require(folder == "Archive" || folder == "Trash", "Invalid destination folder");
-    auto m = message(id);
-    if (folder == "Trash") {
-        Statement pending(db_, "SELECT state FROM outbox WHERE id=?");
-        pending.text(1, id);
-        if (pending.row())
-            require(
-                QStringList{"acknowledged", "published", "cancelled", "failed", "expired"}.contains(
-                    pending.text(0)),
-                "Cancel active delivery before moving this letter to Trash");
-    }
-    Statement s(db_,
-                "UPDATE messages SET previous_folder=CASE WHEN folder NOT IN ('Archive','Trash') "
-                "THEN folder ELSE previous_folder END,folder=? WHERE hash=?");
-    s.text(1, folder);
-    s.text(2, id);
-    s.row();
+    core_->moveMessage(bridge::toStd(id), bridge::toStd(folder));
 }
 void Mailbox::restoreMessage(const QString &id) {
-    Statement s(db_, "UPDATE messages SET folder=previous_folder WHERE hash=? AND folder IN "
-                     "('Archive','Trash')");
-    s.text(1, id);
-    s.row();
+    core_->restoreMessage(bridge::toStd(id));
 }
 void Mailbox::deleteMessage(const QString &id) {
-    require(message(id).folder == "Trash", "Move the letter to Trash first");
-    Transaction t(db_);
-    Statement jobs(db_, "DELETE FROM network_jobs WHERE owner=?");
-    jobs.text(1, id);
-    jobs.row();
-    Statement s(db_, "DELETE FROM messages WHERE hash=?");
-    s.text(1, id);
-    s.row();
-    t.commit();
+    core_->deleteMessage(bridge::toStd(id));
 }
 void Mailbox::markRead(const QString &id) {
-    Statement s(db_, "UPDATE messages SET unread=0 WHERE hash=? AND unread<>0");
-    s.text(1, id);
-    s.row();
+    core_->markRead(bridge::toStd(id));
 }
 bool Mailbox::unread(const QString &id) const {
-    Statement s(db_, "SELECT unread FROM messages WHERE hash=?");
-    s.text(1, id);
-    return s.row() && s.number(0) != 0;
+    return core_->unread(bridge::toStd(id));
 }
 QString Mailbox::setting(const QString &name, const QString &fallback) const {
-    Statement s(db_, "SELECT value FROM settings WHERE name=?");
-    s.text(1, name);
-    return s.row() ? s.text(0) : fallback;
+    return bridge::fromStd(core_->setting(bridge::toStd(name), bridge::toStd(fallback)));
 }
 void Mailbox::setSetting(const QString &name, const QString &value) {
-    Statement s(
-        db_,
-        "INSERT INTO settings VALUES(?,?) ON CONFLICT(name) DO UPDATE SET value=excluded.value");
-    s.text(1, name);
-    s.text(2, value);
-    s.row();
-}
-void Vault::renameIdentity(const QString &address, const QString &label) {
-    require(unlocked_, "Vault is locked");
-    require(label.size() <= 256, "Identity label is too long");
-    for (auto &i : identities_)
-        if (i.address == address) {
-            auto old = i.label;
-            i.label = i.chan ? channelName(label) : label;
-            try {
-                save();
-            } catch (...) {
-                i.label = old;
-                throw;
-            }
-            return;
-        }
-    throw std::runtime_error("Identity not found");
-}
-void Vault::deleteIdentity(const QString &address) {
-    require(unlocked_, "Vault is locked");
-    auto it = std::find_if(identities_.begin(), identities_.end(),
-                           [&](const Identity &i) { return i.address == address; });
-    require(it != identities_.end(), "Identity not found");
-    auto removed = std::move(*it);
-    auto index = it - identities_.begin();
-    identities_.erase(it);
-    auto hadDefault = removed.isDefault;
-    if (hadDefault && !identities_.empty())
-        identities_.front().isDefault = true;
-    try {
-        save();
-    } catch (...) {
-        identities_.insert(identities_.begin() + index, std::move(removed));
-        if (hadDefault && identities_.size() > 1)
-            identities_[1].isDefault = false;
-        throw;
-    }
-}
-void Vault::setDefaultIdentity(const QString &address) {
-    require(unlocked_, "Vault is locked");
-    require(std::any_of(identities_.begin(), identities_.end(),
-                        [&](const Identity &i) { return i.address == address; }),
-            "Identity not found");
-    std::vector<bool> previous;
-    for (auto &i : identities_) {
-        previous.push_back(i.isDefault);
-        i.isDefault = (i.address == address);
-    }
-    try {
-        save();
-    } catch (...) {
-        for (size_t j = 0; j < identities_.size(); ++j)
-            identities_[j].isDefault = previous[j];
-        throw;
-    }
+    core_->setSetting(bridge::toStd(name), bridge::toStd(value));
 }
 } // namespace bm

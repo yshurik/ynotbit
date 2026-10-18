@@ -1,0 +1,18 @@
+# What docker/Dockerfile does not need to build chat_responder, bmnode and libbmbot.
+.git
+build*
+**/build
+docs
+reports
+research_notes
+design
+assets
+ui
+translations
+licenses
+src
+*.md
+*.png
+*.svg
+*.icns
+*.ico

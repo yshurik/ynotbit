@@ -1,16 +1,16 @@
 #pragma once
-#include "cache.h"
-#include "delivery.h"
 #include "message_model.h"
-#include "node_watch.h"
 #include "port_mapper.h"
 #include "storage.h"
-#include <QJsonObject>
 #include <QLockFile>
 #include <QObject>
-#include <QProcess>
 #include <QTimer>
 #include <QVariantList>
+#include <bmc/client.h>
+#include <bmc/node_config.h>
+#include <bmc/node_status.h>
+#include <bmc/node_supervisor.h>
+#include <bmc/node_watch.h>
 #include <utility>
 namespace bm {
 class Session : public QObject {
@@ -27,39 +27,44 @@ class Session : public QObject {
     Q_PROPERTY(qint64 cacheBytes READ cacheBytes NOTIFY changed)
     Q_PROPERTY(QString activity READ activity NOTIFY changed)
     Q_PROPERTY(QVariantList subscriptions READ subscriptions NOTIFY changed)
-    Vault vault_;
-    Mailbox mailbox_;
+    // The cores a bmc::Client shares with the two wrapper objects: one vault, one mailbox and
+    // one node store, whether the app or a bot is driving them.
+    std::shared_ptr<bmc::Vault> vaultCore_ = std::make_shared<bmc::Vault>();
+    std::shared_ptr<bmc::Mailbox> mailboxCore_ = std::make_shared<bmc::Mailbox>();
+    std::shared_ptr<bmc::Client> client_;
+    Vault vault_{vaultCore_};
+    Mailbox mailbox_{mailboxCore_};
     QString welcomeSource_;
-    std::unique_ptr<Cache> cache_;
-    std::unique_ptr<Delivery> delivery_;
     std::unique_ptr<MessageModel> messageModel_;
     QString root_, vaultPath_, mailPath_, mailKey_, pendingVaultPath_, error_, activity_;
     QStringList recentVaultPaths_, recentMailboxPaths_;
     std::optional<quint64> displayedRevision_;
-    QProcess node_;
+    // The node process, and what it last said: the core owns how to start and stop it, this class
+    // owns when (the timers below) and what the window shows.
+    std::unique_ptr<bmc::NodeSupervisor> node_;
     QTimer timer_;
     std::unique_ptr<QLockFile> nodeLock_, vaultLock_, mailLock_;
     bool busy_ = false;
     bool offline_ = false;
-    QString nodeError_; // why the node last stopped, shown in status()
+    QString nodeError_;         // why the node last stopped, shown in status()
     quint16 listenPort_ = 8444; // the node's actual listen port, from status.json
-    mutable QJsonObject lastNodeStatus_; // last status.json read, see status()
+    mutable std::optional<bmc::NodeStatus> lastNodeStatus_; // last status.json read, see status()
+    QString lastStderrLine_; // the last line of the node's stderr shown, see pollNode()
     int retentionMB_ = 2048, retentionDays_ = 90;
-    QTimer restartSoon_;   // see scheduleRestart()
+    QTimer restartSoon_; // see scheduleRestart()
     int nodeRestarts_ = 0;
-    bool stoppingNode_ = false; // restartNode() is stopping the node: its end is no problem
-    NodeWatch nodeWatch_;       // see setNodeWatchdog(): a node that runs but does no good
-    QString watchdogNote_;      // why the watchdog last restarted the node
+    bmc::NodeWatch nodeWatch_; // see setNodeWatchdog(): a node that runs but does no good
+    QString watchdogNote_;     // why the watchdog last restarted the node
     int watchdogRestarts_ = 0;
-    quint16 configuredPort() const; // the listen port the node is asked for (8444 by default)
+    quint16 configuredPort() const;     // the listen port the node is asked for (8444 by default)
+    bmc::NodeConfig nodeConfig() const; // what the node is started with, in the core's terms
     qint64 objectCount_ = 0, objectBytes_ = 0;
     int incoming_ = 0; // established_incoming from the node's status.json
     std::unique_ptr<PortMapper> portMapper_;
     void updatePortMapping();
-    QString boundCacheId_;
-    bool prunedUnread_ = false; // retention removed objects this mailbox never read
     void bindMailboxToCache();
     void startNode();
+    void pollNode();
     void attempt(const std::function<void()> &f);
     void refresh();
     void clearMessages();
@@ -87,7 +92,9 @@ class Session : public QObject {
     QString activity() const {
         return activity_;
     }
-    MessageModel *messageModel() const { return messageModel_.get(); }
+    MessageModel *messageModel() const {
+        return messageModel_.get();
+    }
     QVariantList identities() const;
     qint64 objectCount() const {
         return objectCount_;
@@ -147,7 +154,7 @@ class Session : public QObject {
         return *portMapper_;
     }
     static bool wantsPortMapping(bool online, bool listen, bool upnp, const QString &proxy) {
-        return online && listen && upnp && proxy.isEmpty();
+        return bmc::wantsPortMapping(online, listen, upnp, proxy.toStdString());
     }
     // A new vault at path holding identity, its first and default, in place of
     // the open vault, which stays open when the new file cannot be reserved;
@@ -203,7 +210,8 @@ class Session : public QObject {
     QString chatState(QString id) const;
     // A conversation, oldest first; with a limit, only its newest messages (a window of it),
     // and in *more whether older ones are kept.
-    QVariantList chatMessages(QString local, QString peer, int limit = 0, bool *more = nullptr) const;
+    QVariantList chatMessages(QString local, QString peer, int limit = 0,
+                              bool *more = nullptr) const;
     // The chats of this vault's identities, the one with the newest message first. A chat
     // is between one identity and a peer: one peer under two identities is two chats.
     QVariantList chatConversations() const;
@@ -227,14 +235,32 @@ class Session : public QObject {
     QVariantList unreadChats(int limit) const;
     // One received chat looked at, by its id: false if it is not there or was read already.
     bool markChatMessageRead(QString id);
-    QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const;
-    int messageCount(const QString &folder, const QString &search, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messageCount(folder, search, recipient, unreadOnly, anonymousOnly) : 0; }
-    QStringList messageHashes(const QString &folder, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messageHashes(folder, recipient, unreadOnly, anonymousOnly) : QStringList(); }
-    int messagePosition(const QString &hash, const QString &folder, const QString &recipient = {}, bool unreadOnly = false, bool anonymousOnly = false) const { return mailboxOpen() ? mailbox_.messagePosition(hash, folder, recipient, unreadOnly, anonymousOnly) : -1; }
+    QVariantList messagePage(const QString &folder, const QString &search, int offset, int limit,
+                             const QString &recipient = {}, bool unreadOnly = false,
+                             bool anonymousOnly = false) const;
+    int messageCount(const QString &folder, const QString &search, const QString &recipient = {},
+                     bool unreadOnly = false, bool anonymousOnly = false) const {
+        return mailboxOpen()
+                   ? mailbox_.messageCount(folder, search, recipient, unreadOnly, anonymousOnly)
+                   : 0;
+    }
+    QStringList messageHashes(const QString &folder, const QString &recipient = {},
+                              bool unreadOnly = false, bool anonymousOnly = false) const {
+        return mailboxOpen() ? mailbox_.messageHashes(folder, recipient, unreadOnly, anonymousOnly)
+                             : QStringList();
+    }
+    int messagePosition(const QString &hash, const QString &folder, const QString &recipient = {},
+                        bool unreadOnly = false, bool anonymousOnly = false) const {
+        return mailboxOpen()
+                   ? mailbox_.messagePosition(hash, folder, recipient, unreadOnly, anonymousOnly)
+                   : -1;
+    }
     // List rows for the given letters, keyed by hash.
     QHash<QString, QVariantMap> messageRows(const QStringList &hashes) const;
     // The open mailbox's key, for a second (search) connection; null when closed.
-    const Secret *mailboxSecret() const { return mailboxOpen() ? &vault_.mailboxKey(mailKey_) : nullptr; }
+    const Secret *mailboxSecret() const {
+        return mailboxOpen() ? &vault_.mailboxKey(mailKey_) : nullptr;
+    }
     QVariantList channels() const;
     bool channelUnread(QString address) const {
         return mailboxOpen() && mailbox_.channelUnread(address);

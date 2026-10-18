@@ -171,10 +171,29 @@ with tempfile.TemporaryDirectory() as temporary:
         rejected_receipt=root/"receipts"/(rejected+".json")
         wait_file(rejected_receipt)
         assert json.loads(rejected_receipt.read_text())["state"]=="rejected"
+        # Two spool entries the bridge refuses to look at: a name that is not a job id, and a
+        # symlink, even one pointing at a real object. Both carry a valid object, so the only
+        # thing that can refuse them is the rule being tested.
+        before=json.loads((root/"status.json").read_text())["time"]
+        bad_name=root/"publish"/("A"*36+".object")  # A job id's length, none of its alphabet.
+        bad_name.write_bytes(payload)
+        target=root/"symlink-target.object"  # A real object, out of the spool's reach.
+        target.write_bytes(payload)
+        link=root/"publish"/(str(uuid.uuid4())+".object")
+        os.symlink(target,link)
+        tick_deadline=time.monotonic()+8
+        while json.loads((root/"status.json").read_text())["time"]<before+2:
+            assert time.monotonic()<tick_deadline,"the relay stopped ticking"
+            time.sleep(.05)
+        assert not (root/"receipts"/(bad_name.stem+".json")).exists(),\
+            "a spool name that is not a job id is not processed"
+        assert not (root/"receipts"/(link.stem+".json")).exists(),\
+            "a symlinked spool entry is not followed, whatever it points at"
+        assert bad_name.exists() and link.is_symlink(),"refused entries are left where they are"
         assert json.loads((root/"status.json").read_text())["peers"]==1
         assert not list(root.rglob("keys.dat"))
         assert not list(root.rglob("maildir"))
-        print("PASS: real loopback handshake, proof-of-work validation, keyless object storage, publication, peer fetch, rejected malformed job, pending-download status, active getaddr")
+        print("PASS: real loopback handshake, proof-of-work validation, keyless object storage, publication, peer fetch, rejected malformed job, refused spool names and symlinks, pending-download status, active getaddr")
     finally:
         process.terminate()
         try: out,err=process.communicate(timeout=5)

@@ -1,0 +1,43 @@
+# chat_responder as a service that runs for months.
+#
+#   mkdir -p data secrets
+#   head -c 32 /dev/urandom | base64 > secrets/phrase       # the phrase IS the address: keep a copy
+#   sudo chown -R 10001:10001 data secrets && sudo chmod 400 secrets/phrase
+#   docker compose up -d --build
+#   docker compose logs -f        # "Address:  BM-..." is on the first lines
+#
+# In bridge networking UPnP cannot work (the responder has none): port 8444 is published, and the
+# machine's firewall or router must forward it for incoming connections. Outgoing ones need nothing.
+services:
+  responder:
+    image: ynotbit-bmbot:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: responder
+    restart: unless-stopped
+    stop_grace_period: 30s
+    mem_limit: 512m
+    cpus: 2
+    pids_limit: 200
+    # SQLCipher locks the memory its keys are in. Under a small limit (64 KiB on some hosts) every
+    # lock fails and says so on the log, thousands of lines a minute.
+    ulimits:
+      memlock:
+        soft: 33554432
+        hard: 33554432
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      - "8444:8444"
+    volumes:
+      - ./data:/data
+      - ./secrets/phrase:/run/secrets/phrase:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

@@ -3,6 +3,9 @@
 #include <QMap>
 #include <QString>
 #include <QVector>
+#include <bmc/mailbox.h>
+#include <bmc/secret.h>
+#include <bmc/vault.h>
 #include <map>
 #include <memory>
 #include <optional>
@@ -26,28 +29,7 @@ inline int letterTextBytes(const QString &subject, const QString &body) {
 // Drafts stay on this device, so they may run well past what the network
 // carries: a letter that grew too large can always be kept and trimmed.
 constexpr int kMaxDraftBytes = 4 * 1024 * 1024;
-class Secret {
-    unsigned char *p_ = nullptr;
-    size_t n_ = 0;
-
-  public:
-    explicit Secret(size_t n = 0);
-    ~Secret();
-    Secret(Secret &&other) noexcept;
-    Secret &operator=(Secret &&other) noexcept;
-    Secret(const Secret &) = delete;
-    Secret &operator=(const Secret &) = delete;
-    unsigned char *data() {
-        return p_;
-    }
-    const unsigned char *data() const {
-        return p_;
-    }
-    size_t size() const {
-        return n_;
-    }
-    void clear();
-};
+using Secret = bmc::Secret;
 struct Identity {
     QString label, address;
     bool chan = false;
@@ -77,15 +59,19 @@ struct ChatSummary {
 // "[chan] <phrase>" and a bare "<name>" both become "#<name>".
 QString channelName(const QString &label);
 class Vault {
-    QString path_;
-    Secret wrapping_;
-    QByteArray salt_;
-    bool unlocked_ = false;
-    std::vector<Identity> identities_;
-    std::map<QString, Secret> mailboxKeys_;
-    void save();
+    std::shared_ptr<bmc::Vault> core_ = std::make_shared<bmc::Vault>();
 
   public:
+    Vault() = default;
+    explicit Vault(std::shared_ptr<bmc::Vault> core) : core_(std::move(core)) {}
+    Vault(const Vault &) = delete;
+    Vault &operator=(const Vault &) = delete;
+    bmc::Vault &core() const {
+        return *core_;
+    }
+    const std::shared_ptr<bmc::Vault> &corePtr() const {
+        return core_;
+    }
     ~Vault() {
         lock();
     }
@@ -94,11 +80,9 @@ class Vault {
     void changePassword(const QByteArray &password);
     void lock();
     bool unlocked() const {
-        return unlocked_;
+        return core_->unlocked();
     }
-    const std::vector<Identity> &identities() const {
-        return identities_;
-    }
+    std::vector<Identity> identities() const;
     QString addIdentity(const QString &label);
     // An identity made beforehand (the new vault dialog's): its keys are checked
     // against its address and kept as they are.
@@ -121,15 +105,19 @@ struct Subscription;
 struct Contact;
 struct DeliveryEvent;
 class Mailbox {
-    sqlite3 *db_ = nullptr;
-    quint64 messageRevision_ = 0;
-    void connect(const QString &, const Secret &, bool create);
-    void sql(const char *);
-    void migrate();
-    void deliveryUpdate(const QString &id, const QString &state, const QString &detail,
-                        qint64 nextAttempt);
+    std::shared_ptr<bmc::Mailbox> core_ = std::make_shared<bmc::Mailbox>();
 
   public:
+    Mailbox() = default;
+    explicit Mailbox(std::shared_ptr<bmc::Mailbox> core) : core_(std::move(core)) {}
+    Mailbox(const Mailbox &) = delete;
+    Mailbox &operator=(const Mailbox &) = delete;
+    bmc::Mailbox &core() const {
+        return *core_;
+    }
+    const std::shared_ptr<bmc::Mailbox> &corePtr() const {
+        return core_;
+    }
     ~Mailbox() {
         close();
     }
@@ -137,7 +125,7 @@ class Mailbox {
     void open(const QString &, const Secret &);
     void close();
     bool isOpen() const {
-        return db_ != nullptr;
+        return core_->isOpen();
     }
     QString keyId() const;
     void bindCache(const QString &cacheId);
@@ -148,7 +136,7 @@ class Mailbox {
     // Groups many writes into one commit (one disk sync); without commit(),
     // all of them roll back.
     class Batch {
-        std::unique_ptr<detail::Transaction> t_;
+        std::unique_ptr<bmc::Mailbox::Batch> t_;
 
       public:
         explicit Batch(Mailbox &);
@@ -157,12 +145,13 @@ class Mailbox {
     };
     void store(const QString &hash, const QString &from, const QString &to, const QString &subject,
                const QString &body, qint64 checkpoint, const QString &folder = "Inbox");
-    QString queueChat(const QString &local, const QString &peer, const QString &body, qint64 expires);
+    QString queueChat(const QString &local, const QString &peer, const QString &body,
+                      qint64 expires);
     void storeRouted(const QString &id, const QString &sender, const QString &recipient,
                      const QString &subject, const QString &body, qint64 checkpoint,
                      const QString &folder, qint64 expires);
-    void storeChat(const QString &id, const QString &sender, const QString &recipient,
-                   qint64 seqno, const QString &body, qint64 expires, bool outgoing = false);
+    void storeChat(const QString &id, const QString &sender, const QString &recipient, qint64 seqno,
+                   const QString &body, qint64 expires, bool outgoing = false);
     // A thread, oldest first. With a limit, only its newest messages (a window of it), and
     // in *more whether older ones are left.
     QVector<ChatMessage> chatMessages(const QString &local, const QString &peer, int limit = 0,
@@ -205,7 +194,7 @@ class Mailbox {
     bool channelUnread(const QString &recipient, const QString &folder = "Channels") const;
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     quint64 messageRevision() const {
-        return messageRevision_;
+        return core_->messageRevision();
     }
     void backup(const QString &, const Secret &);
     QString saveDraft(const QString &id, const QString &from, const QString &to,

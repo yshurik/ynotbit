@@ -1,11 +1,12 @@
 #include "session.h"
+#include "appearance.h"
 #include "chat_format.h"
 #include "i18n.h"
-#include "appearance.h"
 #include "message_model.h"
 #include "pow.h"
 #include "protocol.h"
 #include "protocol_wire.h"
+#include "qt_bridge.h"
 #include "scanner.h"
 #include "updates.h"
 #include <QApplication>
@@ -15,22 +16,19 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
-#include <QHostAddress>
 #include <QInputDialog>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QLocale>
 #include <QLineEdit>
+#include <QLocale>
 #include <QMessageBox>
-#include <QSettings>
 #include <QSet>
+#include <QSettings>
 #include <QStandardPaths>
-#include <QUrl>
 #include <QUuid>
 #include <algorithm>
+#include <bmc/clock.h>
+#include <bmc/path.h>
 #include <stdexcept>
 namespace bm {
-static constexpr quint16 kNodePort = 8444; // the node's NTB_PROTO_DEFAULT_PORT
 static QString addressInput(const QString &title, const QString &label, bool *accepted) {
     QInputDialog dialog;
     dialog.setWindowTitle(title);
@@ -55,16 +53,16 @@ struct Password {
 };
 static Password password(const QString &title, bool confirm = false) {
     bool ok = false;
-    QString text =
-        QInputDialog::getText(nullptr, title, Session::tr("Vault password"), QLineEdit::Password, {}, &ok);
+    QString text = QInputDialog::getText(nullptr, title, Session::tr("Vault password"),
+                                         QLineEdit::Password, {}, &ok);
     if (!ok)
         throw std::runtime_error("Cancelled");
     Password p{text.toUtf8()};
     text.fill(QChar(0));
     check(!p.bytes.isEmpty(), Session::tr("Password cannot be empty"));
     if (confirm) {
-        auto repeated =
-            QInputDialog::getText(nullptr, title, Session::tr("Repeat password"), QLineEdit::Password, {}, &ok);
+        auto repeated = QInputDialog::getText(nullptr, title, Session::tr("Repeat password"),
+                                              QLineEdit::Password, {}, &ok);
         auto b = repeated.toUtf8();
         bool same = ok && b == p.bytes;
         sodium_memzero(b.data(), b.size());
@@ -91,8 +89,7 @@ Session::Session(QString root, bool offline, QObject *parent)
     QDir().mkpath(root_);
     nodeLock_ = std::make_unique<QLockFile>(root_ + "/desktop.lock");
     check(nodeLock_->tryLock(), tr("Another app instance is using this node folder"));
-    cache_ = std::make_unique<Cache>(root_);
-    delivery_ = std::make_unique<Delivery>(root_);
+    client_ = std::make_shared<bmc::Client>(vaultCore_, mailboxCore_, bridge::toStd(root_));
     QSettings recent(root_ + "/desktop.ini", QSettings::IniFormat);
     vaultPath_ = recent.value("vault").toString();
     mailPath_ = recent.value("mailbox").toString();
@@ -105,36 +102,9 @@ Session::Session(QString root, bool offline, QObject *parent)
     restartSoon_.setInterval(1000);
     connect(&restartSoon_, &QTimer::timeout, this, &Session::restartNode);
     ProofOfWork::setGpuEnabled(QSettings().value("gpu", true).toBool());
-    connect(&node_, &QProcess::readyReadStandardOutput, this,
-            [this] { node_.readAllStandardOutput(); });
-    connect(&node_, &QProcess::readyReadStandardError, this, [this] {
-        auto text = QString::fromUtf8(node_.readAllStandardError()).trimmed();
-        if (!text.isEmpty()) {
-            nodeError_ = text.section('\n', -1).left(200);
-            error_ = tr("Node: %1").arg(text.left(400));
-            emit changed();
-        }
-    });
-    connect(&node_, &QProcess::errorOccurred, this, [this] {
-        if (stoppingNode_)
-            return; // stopped by this session (even killed, when it would not stop): no problem
-        error_ = tr("Node: %1").arg(node_.errorString());
-        emit changed();
-    });
-    connect(&node_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-            [this](int code, QProcess::ExitStatus exit) {
-                if (nodeError_.isEmpty() && (code || exit == QProcess::CrashExit))
-                    nodeError_ = exit == QProcess::CrashExit ? tr("crashed")
-                                                             : tr("exit code %1").arg(code);
-                // What stopped it (a busy port, a locked store) may clear by itself.
-                QTimer::singleShot(30000, this, [this] {
-                    if (!offline_ && node_.state() == QProcess::NotRunning)
-                        startNode();
-                });
-                emit changed();
-            });
     portMapper_ = std::make_unique<PortMapper>(miniupnpcBackend());
     connect(portMapper_.get(), &PortMapper::changed, this, &Session::changed);
+    node_ = std::make_unique<bmc::NodeSupervisor>(nodeConfig());
     startNode();
     connect(&timer_, &QTimer::timeout, this, &Session::tick);
     timer_.start(750);
@@ -143,39 +113,36 @@ Session::Session(QString root, bool offline, QObject *parent)
 Session::~Session() {
     timer_.stop();
     lock();
-    if (node_.state() != QProcess::NotRunning) {
-        node_.terminate();
-        if (!node_.waitForFinished(3000)) {
-            node_.kill();
-            node_.waitForFinished(1000);
-        }
-    }
+    // Idempotent, and a no-op when nothing runs; the node also stops on its own when the app is
+    // gone (the relay bridge checks the parent). Even so, a killed node would not flush its store.
+    if (node_)
+        node_->stop();
 }
 QString Session::status() const {
     if (offline_)
         return tr("Offline · outgoing objects stay queued");
-    if (node_.state() != QProcess::Running)
+    if (!node_->running())
         return nodeError_.isEmpty()
                    ? tr("Node stopped · outgoing objects stay queued")
                    : tr("Node stopped: %1 · outgoing objects stay queued").arg(nodeError_);
-    QFile f(root_ + "/status.json");
     // Windows refuses the open for the instant the relay atomically replaces
     // the file; keep the last status read rather than flickering to "starting".
-    if (f.open(QIODevice::ReadOnly))
-        lastNodeStatus_ = QJsonDocument::fromJson(f.read(4096)).object();
-    else if (lastNodeStatus_.isEmpty())
+    if (const auto read =
+            bmc::NodeStatus::fromFile(bmc::path(bridge::toStd(root_ + "/status.json"))))
+        lastNodeStatus_ = read;
+    else if (!lastNodeStatus_)
         return tr("Node starting · connecting to peers");
-    const auto &status = lastNodeStatus_;
-    if (QDateTime::currentSecsSinceEpoch() - status.value("time").toInteger() > 10)
+    const auto &status = *lastNodeStatus_;
+    if (bmc::now() - status.time > 10)
         return tr("Node status unavailable");
-    auto peers = status.value("peers").toInt();
-    auto pending = status.value("pending").toInt();
+    auto peers = status.peers;
+    auto pending = status.pending;
     // "label: n" wording, so no language needs plural forms here.
     auto base = peers ? tr("Connected peers: %1 · receiving and relaying").arg(peers)
                       : tr("No connected peers · waiting for network");
     if (pending > 0)
         base += " · " + tr("objects downloading: %1").arg(pending);
-    const int port = status.value("listen_port").toInt();
+    const int port = status.listenPort;
     if (port > 0 && port != configuredPort())
         base += " · " + tr("port %1 is taken, listening on %2").arg(configuredPort()).arg(port);
     return base;
@@ -183,10 +150,25 @@ QString Session::status() const {
 // A service may ask for a port of its own (listenPort in its settings); a desktop listens on the
 // protocol's.
 quint16 Session::configuredPort() const {
-    const int port = QSettings(root_ + "/desktop.ini", QSettings::IniFormat)
-                         .value("listenPort", kNodePort)
-                         .toInt();
-    return port > 0 && port < 65536 ? quint16(port) : kNodePort;
+    return quint16(nodeConfig().listenPort());
+}
+// The settings the node is started with, in the core's terms: the app's own binary, started with
+// --node, so the node is this program and its behaviour is the one the desktop has always had.
+bmc::NodeConfig Session::nodeConfig() const {
+    QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
+    bmc::NodeConfig node;
+    node.root = bridge::toStd(root_);
+    node.maildir = bridge::toStd(root_ + "/unused-maildir");
+    node.bin = QCoreApplication::applicationFilePath().toStdString();
+    node.listen = listenEnabled() && proxy().isEmpty();
+    node.retentionMB = retentionMB_;
+    node.retentionDays = retentionDays_;
+    node.maxOutgoing = config.value("maxOutgoing").toInt();
+    node.maxIncoming = config.value("maxIncoming").toInt();
+    node.port = config.value("listenPort").toInt();
+    node.peer = bridge::toStd(config.value("peer").toString());
+    node.proxy = bridge::toStd(proxy());
+    return node;
 }
 // Lower layers throw English (see src/i18n/error_catalog.cpp); messages this
 // class raised itself are already translated and pass through unchanged.
@@ -199,10 +181,8 @@ QString Session::document() const {
 QVariantList Session::identities() const {
     QVariantList result;
     for (const auto &i : vault_.identities())
-        result << QVariantMap{{"label", i.label},
-                              {"address", i.address},
-                              {"chan", i.chan},
-                              {"default", i.isDefault}};
+        result << QVariantMap{
+            {"label", i.label}, {"address", i.address}, {"chan", i.chan}, {"default", i.isDefault}};
     return result;
 }
 void Session::attempt(const std::function<void()> &f) {
@@ -402,7 +382,7 @@ void Session::createMailbox() {
             return;
         check(!QFile::exists(p),
               tr("Choose a new filename; existing mailbox documents are never overwritten"));
-        delivery_->stop();
+        client_->delivery().stop();
         mailbox_.close();
         clearMessages();
         mailLock_.reset();
@@ -423,11 +403,10 @@ void Session::createMailbox() {
     });
 }
 void Session::bindMailboxToCache() {
-    boundCacheId_ = cache_->id();
-    mailbox_.bindCache(boundCacheId_);
+    client_->bindMailboxToCache();
 }
 void Session::openMailboxPath(const QString &p) {
-    delivery_->stop();
+    client_->delivery().stop();
     check(unlocked(), tr("Unlock a vault first"));
     mailbox_.close();
     clearMessages();
@@ -476,8 +455,7 @@ void Session::openMailboxAt(QString path) {
 }
 void Session::lock() {
     emit aboutToCloseMailbox();
-    if (delivery_)
-        delivery_->stop();
+    client_->delivery().stop();
     QSettings recent(root_ + "/desktop.ini", QSettings::IniFormat);
     recent.setValue("vault", vaultPath_);
     recent.setValue("mailbox", mailPath_);
@@ -516,14 +494,16 @@ bool Session::joinChannel(QString phrase, const QString &name, const QString &ex
 void Session::importIdentities() {
     attempt([&] {
         check(unlocked(), tr("Unlock a vault first"));
-        auto p = QFileDialog::getOpenFileName(nullptr, tr("Import notbit / PyBitmessage identities"),
-                                              documentsPath(), tr("Key files (*.dat);;All files (*)"));
+        auto p =
+            QFileDialog::getOpenFileName(nullptr, tr("Import notbit / PyBitmessage identities"),
+                                         documentsPath(), tr("Key files (*.dat);;All files (*)"));
         if (p.isEmpty())
             return;
         vault_.importKeys(p);
         if (mailboxOpen())
             mailbox_.advance(0);
-        activity_ = tr("Identities imported into the encrypted vault. The source file was preserved.");
+        activity_ =
+            tr("Identities imported into the encrypted vault. The source file was preserved.");
     });
 }
 void Session::changePassword() {
@@ -669,31 +649,29 @@ void Session::tick() {
     if (busy_)
         return;
     try {
+        pollNode();
         // The node rewrites status.json every second; offline, its last values stand.
-        QFile nodeStatus(root_ + "/status.json");
-        QJsonObject node;
-        if (nodeStatus.open(QIODevice::ReadOnly)) {
-            node = QJsonDocument::fromJson(nodeStatus.read(4096)).object();
-            if (node.contains("objects")) {
-                objectCount_ = node.value("objects").toInteger();
-                objectBytes_ = node.value("object_bytes").toInteger();
-                incoming_ = node.value("established_incoming").toInt();
-            }
+        const auto read =
+            bmc::NodeStatus::fromFile(bmc::path(bridge::toStd(root_ + "/status.json")));
+        if (read) {
+            lastNodeStatus_ = read;
+            objectCount_ = read->objects;
+            objectBytes_ = read->objectBytes;
+            incoming_ = read->establishedIncoming;
             // The node listens elsewhere while another program holds its port,
             // and moves back when the port frees: the router mapping follows.
-            const int port = node.value("listen_port").toInt();
-            if (port > 0 && port != listenPort_) {
-                listenPort_ = quint16(port);
+            if (read->listenPort > 0 && read->listenPort != listenPort_) {
+                listenPort_ = quint16(read->listenPort);
                 updatePortMapping();
             }
         }
         // A node that runs but does no good (its status stopped, or no peer for too long) is
-        // started again; a node that has exited is restarted by its finished() handler.
-        if (!offline_ && node_.state() == QProcess::Running) {
-            using Verdict = NodeWatch::Verdict;
-            const auto now = QDateTime::currentSecsSinceEpoch();
-            const auto verdict =
-                nodeWatch_.judge(now, node.value("time").toInteger(), node.value("peers").toInt());
+        // started again; a node that has exited is restarted by pollNode().
+        if (!offline_ && node_->running()) {
+            using Verdict = bmc::NodeWatch::Verdict;
+            const auto now = bmc::now();
+            const auto verdict = nodeWatch_.judge(now, lastNodeStatus_ ? lastNodeStatus_->time : 0,
+                                                  lastNodeStatus_ ? lastNodeStatus_->peers : 0);
             if (verdict != Verdict::Fine) {
                 // For logs, not for the window: not translated.
                 watchdogNote_ =
@@ -705,26 +683,20 @@ void Session::tick() {
             }
         }
         if (mailboxOpen()) {
-            // A new id means the node created or emptied its store: read it from the start.
-            if (cache_->id() != boundCacheId_)
-                bindMailboxToCache();
-            if (cache_->firstSequence() > mailbox_.checkpoint() + 1)
-                prunedUnread_ = true;
-            // A time budget, not a count: catching up (a new identity, first
-            // sync) goes as fast as the window can spare, ~150 ms per tick.
-            delivery_->scan(*cache_, mailbox_, vault_, 512, 150);
-            delivery_->tick(mailbox_, vault_, !offline_ && node_.state() == QProcess::Running);
-            refresh();
-            activity_ = !cache_->hasAfter(mailbox_.checkpoint())
-                            ? tr("Mailbox up to date with retained objects")
-                            : tr("Inspecting cached objects · checkpoint %1")
-                                  .arg(mailbox_.checkpoint());
+            const auto report = client_->step(bmc::now(), !offline_ && node_->running());
+            if (report.open) {
+                refresh();
+                activity_ = report.upToDate ? tr("Mailbox up to date with retained objects")
+                                            : tr("Inspecting cached objects · checkpoint %1")
+                                                  .arg(qint64(report.checkpoint));
+            }
+            if (report.working)
+                activity_ = tr("Preparing outgoing proof of work · locking pauses preparation");
+            if (report.pruned)
+                activity_ =
+                    tr("Retention cleanup removed older objects · Some older letters may no "
+                       "longer be recoverable");
         }
-        if (delivery_->working())
-            activity_ = tr("Preparing outgoing proof of work · locking pauses preparation");
-        if (prunedUnread_)
-            activity_ = tr("Retention cleanup removed older objects · Some older letters may no "
-                           "longer be recoverable");
     } catch (const std::exception &e) {
         error_ = errorText(e);
     }
@@ -734,7 +706,7 @@ QString Session::chatState(QString id) const {
     if (!mailboxOpen() || id.isEmpty())
         return {};
     try {
-        return mailbox_.chatState(id);
+        return bridge::fromStd(client_->chatState(bridge::toStd(id)));
     } catch (const std::exception &) {
         return {};
     }
@@ -743,20 +715,10 @@ bool Session::sendChat(QString from, QString peer, QString body, QString *id) {
     bool queued = false;
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
-        bool own = false;
-        for (const auto &identity : vault_.identities())
-            if (!identity.chan && identity.address == from)
-                own = true;
-        check(own, tr("Choose a sender from this vault"));
-        check(Wire::validAddress(peer) && peer != from,
-              tr("Enter a valid Bitmessage recipient address"));
-        check(!body.trimmed().isEmpty() && body.toUtf8().size() <= kMaxChatBodyBytes,
-              tr("Chat message must be between 1 and 8192 bytes"));
-        const auto queuedId = mailbox_.queueChat(
-            from, peer, body, QDateTime::currentSecsSinceEpoch() + kChatTtlSeconds);
+        const auto queuedId = client_->sendChat(bridge::toStd(from), bridge::toStd(peer),
+                                                bridge::toStd(body), bmc::now());
         if (id)
-            *id = queuedId;
-        Delivery::rereadKept(mailbox_);
+            *id = bridge::fromStd(queuedId);
         refresh();
         queued = true;
     });
@@ -769,9 +731,12 @@ QVariantList Session::chatMessages(QString local, QString peer, int limit, bool 
     if (!mailboxOpen() || local.isEmpty() || peer.isEmpty())
         return result;
     for (const auto &message : mailbox_.chatMessages(local, peer, limit, more))
-        result << QVariantMap{{"id", message.id}, {"body", message.body},
-                              {"outgoing", message.outgoing}, {"seqno", message.seqno},
-                              {"received", message.received}, {"expires", message.expires},
+        result << QVariantMap{{"id", message.id},
+                              {"body", message.body},
+                              {"outgoing", message.outgoing},
+                              {"seqno", message.seqno},
+                              {"received", message.received},
+                              {"expires", message.expires},
                               {"state", message.state}};
     return result;
 }
@@ -791,13 +756,16 @@ QVariantList Session::unreadChats(int limit) const {
     if (!mailboxOpen())
         return result;
     try {
-        for (const auto &message : mailbox_.unreadChats(limit))
-            result << QVariantMap{{"id", message.id},
-                                  {"local", message.localAddress},
-                                  {"peer", message.peerAddress},
-                                  {"body", message.body},
-                                  {"seqno", message.seqno},
-                                  {"received", message.received}};
+        for (const auto &message : client_->unreadChats(limit))
+            result << QVariantMap{{"id", bridge::fromStd(message.id)},
+                                  {"local", bridge::fromStd(message.localAddress)},
+                                  {"peer", bridge::fromStd(message.peerAddress)},
+                                  {"body", bridge::fromStd(message.body)},
+                                  // qint64, explicitly: QVariant's six integer constructors leave
+                                  // the core's int64_t ambiguous where it is `long` (Linux), while
+                                  // it is `long long` (macOS) and exact there.
+                                  {"seqno", qint64(message.seqno)},
+                                  {"received", qint64(message.received)}};
     } catch (const std::exception &) {
         result.clear();
     }
@@ -808,7 +776,7 @@ bool Session::markChatMessageRead(QString id) {
     if (!mailboxOpen() || id.isEmpty())
         return false;
     try {
-        return mailbox_.markChatMessageRead(id);
+        return client_->markChatMessageRead(bridge::toStd(id));
     } catch (const std::exception &) {
         return false;
     }
@@ -856,25 +824,15 @@ bool Session::sendLetter(QString id) {
     bool sent = false;
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
-        auto m = mailbox_.message(id);
-        bool own = false;
-        for (const auto &i : vault_.identities())
-            if (i.address == m.from)
-                own = true;
-        check(own, tr("Choose a sender from this vault"));
-        auto kind = mailbox_.setting("draftkind:" + id, "direct");
-        check(kind == "broadcast" || Wire::validAddress(m.to),
-              tr("Enter a valid Bitmessage recipient address"));
-        check(!m.subject.contains('\n') && !m.subject.contains('\r'), tr("Subject must be one line"));
-        check(!m.body.trimmed().isEmpty(), tr("Write a message before sending"));
+        const auto m = mailbox_.message(id);
+        // The one rule with UI wording of its own: the client's refusal is a bare backstop.
         const int size = letterTextBytes(m.subject, m.body);
         check(size <= kMaxLetterText,
               tr("This letter is %1; Bitmessage carries at most %2. Shorten it, or trim the quote.")
                   .arg(QLocale().formattedDataSize(size, 0, QLocale::DataSizeTraditionalFormat),
                        QLocale().formattedDataSize(kMaxLetterText, 0,
                                                    QLocale::DataSizeTraditionalFormat)));
-        mailbox_.queueDraft(id, kind, QDateTime::currentSecsSinceEpoch() + 4 * 86400);
-        Delivery::rereadKept(mailbox_); // the recipient's key may already be kept
+        client_->sendLetter(bridge::toStd(id), bmc::now());
         refresh();
         sent = true;
         activity_ = tr("Letter queued. Follow its progress in Outbox.");
@@ -884,14 +842,14 @@ bool Session::sendLetter(QString id) {
 void Session::retryLetter(QString id) {
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
-        delivery_->retry(mailbox_, id);
+        client_->delivery().retry(mailbox_.core(), bridge::toStd(id));
         refresh();
     });
 }
 void Session::cancelLetter(QString id) {
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
-        delivery_->cancel(mailbox_, id);
+        client_->delivery().cancel(mailbox_.core(), bridge::toStd(id));
         refresh();
     });
 }
@@ -941,8 +899,7 @@ QVariantList Session::deliveryHistory(QString id) {
     try {
         for (const auto &e : mailbox_.events(id))
             result << QVariantMap{
-                {"time",
-                 formatDateTime(QDateTime::fromSecsSinceEpoch(e.timestamp), true)},
+                {"time", formatDateTime(QDateTime::fromSecsSinceEpoch(e.timestamp), true)},
                 {"state", e.state},
                 {"detail", e.detail}};
     } catch (const std::exception &e) {
@@ -986,10 +943,11 @@ QVariantList Session::broadcastSources() const {
                                                 {"subscribed", true},
                                                 {"updates", true}};
     for (const auto &s : mailbox_.subscriptions())
-        sources[s.address] = {{"address", s.address},
-                              {"label", s.label.trimmed().isEmpty() ? s.address : s.label.trimmed()},
-                              {"subscribed", true},
-                              {"updates", s.address == updates::publisherAddress()}};
+        sources[s.address] = {
+            {"address", s.address},
+            {"label", s.label.trimmed().isEmpty() ? s.address : s.label.trimmed()},
+            {"subscribed", true},
+            {"updates", s.address == updates::publisherAddress()}};
     QVariantList result;
     for (const auto &v : sources)
         result << v;
@@ -1041,7 +999,8 @@ QString Session::contactProblem(QString address) const {
         return tr("That is not a valid Bitmessage address");
     for (const auto &i : vault_.identities())
         if (i.address == address)
-            return i.chan ? tr("That is one of your chans") : tr("That is one of your own identities");
+            return i.chan ? tr("That is one of your chans")
+                          : tr("That is one of your own identities");
     return {};
 }
 bool Session::addContact(QString address, QString label) {
@@ -1122,8 +1081,8 @@ void Session::renameIdentity(QString address) {
     attempt([&] {
         check(unlocked(), tr("Unlock a vault first"));
         bool ok = false;
-        auto label =
-            QInputDialog::getText(nullptr, tr("Rename identity"), tr("Label"), QLineEdit::Normal, {}, &ok);
+        auto label = QInputDialog::getText(nullptr, tr("Rename identity"), tr("Label"),
+                                           QLineEdit::Normal, {}, &ok);
         if (ok)
             vault_.renameIdentity(address, label);
     });
@@ -1151,7 +1110,7 @@ void Session::deleteIdentity(QString address) {
 }
 void Session::closeMailbox() {
     emit aboutToCloseMailbox();
-    delivery_->stop();
+    client_->delivery().stop();
     mailbox_.close();
     mailLock_.reset();
     clearMessages();
@@ -1160,54 +1119,50 @@ void Session::closeMailbox() {
     emit changed();
 }
 QStringList Session::nodeArguments() const {
-    QSettings config(root_ + "/desktop.ini", QSettings::IniFormat);
-    auto peer = config.value("peer").toString(), proxy = config.value("proxy").toString();
-    // Listening next to a proxy would publish the real IP the proxy hides.
-    const bool listen = config.value("listen", true).toBool() && proxy.isEmpty();
-    QStringList args{"--node", "-D", root_, "-m", root_ + "/unused-maildir"};
-    if (!listen)
-        args << "-i";
-    args << "-R" << QString::number(retentionMB_) << "-A" << QString::number(retentionDays_);
-    // A service asks for more peers (the node's own are eight of each) and a port of its own.
-    for (const auto &[key, option] : {std::pair{"maxOutgoing", "-o"}, {"maxIncoming", "-n"}})
-        if (const int count = config.value(key).toInt(); count > 0)
-            args << option << QString::number(count);
-    if (config.value("listenPort").toInt() > 0)
-        args << "-p" << QString::number(configuredPort());
-    if (!peer.isEmpty())
-        args << "-P" << peer << "-L";
-    if (!proxy.isEmpty())
-        args << "-r" << proxy << "-B";
+    QStringList args;
+    for (const auto &argument : nodeConfig().nodeArguments())
+        args << QString::fromStdString(argument);
     return args;
+}
+// What the node said, and when it went: what the three QProcess signals used to do here.
+void Session::pollNode() {
+    const auto line = QString::fromStdString(node_->standardError()).trimmed();
+    if (!line.isEmpty() && line != lastStderrLine_) {
+        lastStderrLine_ = line;
+        nodeError_ = line;
+        error_ = tr("Node: %1").arg(QString::fromStdString(node_->standardErrorChunk()));
+        emit changed();
+    }
+    if (!node_->poll())
+        return; // still running, or no exit since the last look
+    if (nodeError_.isEmpty() && (node_->exitCode() || node_->crashed()))
+        nodeError_ = node_->crashed() ? tr("crashed") : tr("exit code %1").arg(node_->exitCode());
+    // What stopped it (a busy port, a locked store) may clear by itself.
+    QTimer::singleShot(30000, this, [this] {
+        if (!offline_ && !node_->running())
+            startNode();
+    });
+    emit changed();
 }
 void Session::startNode() {
     updatePortMapping();
     if (offline_)
         return;
-    nodeWatch_.restarted(QDateTime::currentSecsSinceEpoch());
+    nodeWatch_.restarted(bmc::now());
     QFile::remove(root_ + "/status.json");
-    lastNodeStatus_ = {};
+    lastNodeStatus_.reset();
+    lastStderrLine_.clear();
     nodeError_.clear();
-    auto env = QProcessEnvironment::systemEnvironment();
-    env.insert("YNOTBIT_PARENT_PID", QString::number(QCoreApplication::applicationPid()));
-    node_.setProcessEnvironment(env);
-    node_.setProgram(QCoreApplication::applicationFilePath());
-    node_.setArguments(nodeArguments());
-    node_.start();
+    // The environment is the app's own plus YNOTBIT_PARENT_PID, which the node supervisor adds:
+    // the relay bridge stops the node when this process is gone.
+    if (!node_->start())
+        error_ = tr("Node: %1").arg(QString::fromStdString(node_->lastError()));
 }
 void Session::restartNode() {
     ++nodeRestarts_;
     attempt([&] {
-        if (node_.state() != QProcess::NotRunning) {
-            stoppingNode_ = true;
-            node_.terminate();
-            if (!node_.waitForFinished(3000)) {
-                node_.kill();
-                node_.waitForFinished(1000);
-            }
-            stoppingNode_ = false;
-        }
-        startNode();
+        node_->stop();
+        startNode(); // which does the bookkeeping: a new start, not a new process only
     });
 }
 void Session::setNodeWatchdog(int lonelyMinutes) {
@@ -1218,13 +1173,7 @@ void Session::setNetworkEnabled(bool enabled) {
     restartNode();
 }
 bool Session::validEndpoint(const QString &text) {
-    if (text.isEmpty())
-        return true;
-    QUrl url("tcp://" + text);
-    QHostAddress address;
-    return url.isValid() && url.userInfo().isEmpty() && url.path().isEmpty() &&
-           url.query().isEmpty() && url.fragment().isEmpty() && address.setAddress(url.host()) &&
-           url.port() > 0 && url.port() <= 65535;
+    return bmc::validEndpoint(text.toStdString());
 }
 QString Session::peer() const {
     return QSettings(root_ + "/desktop.ini", QSettings::IniFormat).value("peer").toString();
