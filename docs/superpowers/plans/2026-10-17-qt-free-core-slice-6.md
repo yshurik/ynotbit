@@ -1,159 +1,75 @@
 # Qt-free core, slice 6: bot platform (bmbot C ABI) — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Rewritten on 2026-10-18, after the slice was executed: the plan committed as 8da6d81 described a library that was a stub (`bmbot_open`
+> returned 1), listed tasks "already done" that were not, and ended in a "Results" section that no run had produced. This is the plan
+> as it was carried out, and its real results.
 
-**Goal:** a standalone C ABI library `libbmbot` that provides a bot runtime over the Qt-free core (`bmclient`). The library spawns a `bmnode` node process, presents a minimal JSON config, and returns durable inbox events (`chat`, `letter`), delivery states, and status. Python ctypes and Go cgo can call the ABI directly. The library is built as a shared object (`libbmbot.so` / `libbmbot.dylib`) so Python ctypes can `cdll` it, and Go cgo can `#cgo LDFLAGS: -lbmbot`.
+**Goal:** a C ABI library `libbmbot` over `bmclient` that a program in any language can run a Bitmessage bot on, `chat_responder` rewritten
+without Qt as its reference consumer, a container image of them, and a responder running in it.
 
-**Architecture:** `libbmbot` is a thin but complete C library that:
-- Parses a JSON config (`data_dir`, `phrase_file`, `node`, `limits`, `hang_seconds`)
-- Spawns `bmnode` as a child process with the std relay bridge
-- Provides a durable, at-least-once inbox via the node's `objects.sqlite` + `publish/` / `receipts/`
-- Returns events one-shot per run (acked by `bmbot_done`; after crash/restart the undone ones come back)
-- `note` events carry problems and watchdog restarts (the library never prints); they have no `id`, are not durable and need no `bmbot_done`
-- Delivery states (`bmbot_state`) are the same strings the app shows today
-- Status JSON includes peers, objects, uptime, counts taken, answered, limited, failed
-- `bmbot_next` blocks up to `timeout_ms`; returns 1 (no event) or 0 (event filled into `event_json`)
-- `bmbot_send_chat` / `bmbot_send_letter` enqueue outbox messages (the library does not yet transmit them over the wire — that is slice 7)
+**Spec:** `docs/superpowers/specs/2026-10-15-qt-free-core-and-bot-platform-design.md` (§ The bot library, § chat_responder and the container,
+§ Notes after slice 6 for the deviations).
 
-**Tech Stack:** C99 / C++20 interop, the notbit C engine, `bmclient` (Vault/Mailbox/Protocol/Wire), OpenSSL, libsodium, SQLCipher, Python 3 (ctypes), Go (cgo). The library has **no Qt** dependency — it is verified by `nm -D` / `ldd` showing no Qt symbols.
+**Global constraints** (as in the other slices): nothing in `bmclient/`, `bmbot/` or the responder includes or links Qt
+(`scripts/check-qt-free.sh` is the gate); `NodeConfig`'s argv rows stay byte-identical (the only addition, `linkOnly`, is appended last and
+off by default); no user-visible string changes in the Qt app (`scripts/update-error-catalog.py --check` and
+`scripts/check-translations.py` pass unchanged); `clang-format` only on the files this slice wrote; nothing is committed, pushed, tagged or
+released until the user asks.
 
-**Spec:** `docs/superpowers/specs/2026-10-15-qt-free-core-and-bot-platform-design.md`. This is the bot platform slice: `bmbot`, `chat_responder` on the ABI, install rules, examples, Docker, the 24 h soak. It depends on slice 5 (the node duplication ends, the Qt bridge deleted, `NodeConfig` has the private link flags).
+## Tasks (all done; none committed)
 
-**Global Constraints**
-- **Nothing in `bmclient/` or `libbmbot` includes or links Qt**, in headers or sources; `scripts/check-qt-free.sh` is the gate.
-- **The app's node argv is frozen** by slice 4's table. This slice may only append to it: every existing row stays byte-identical.
-- **No user-visible string changes** in the tools; `scripts/update-error-catalog.py --check` and `scripts/check-translations.py` must pass unchanged, and `update_translations` is **not** run in this slice.
-- **`clang-format` only on files this slice edits**, never a tree-wide sweep.
-- **Commit per task**, Conventional Commits, prose body ending `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
-- **Never stage**: `docs/superpowers/plans/2026-10-04-sqlite-object-store.md`, `docs/superpowers/plans/2026-10-15-qt-free-core-slice-1.md`, `docs/superpowers/work-state-2026-10-16.md`, `reports/`, `research_notes/`. `git add -A docs/superpowers` staged one of them once; add files by name.
-- **Nothing is pushed, tagged or released** until the user asks. Do not touch the user's running responder or their other `~/w/ynotbit` copies.
-- **Test isolation**: the Qt suite and the core suite run in sequence, never at the same time; both bind node ports, and so does `scripts/compat-check.sh`.
+- [x] **Task 1: `NodeConfig::linkOnly`.** `-b -B -e` after every other row for a bot that links to its peer alone
+  (`bmclient/include/bmc/node_config.h`, `src/node_config.cpp`, one row in `tests/bmclient/node_config_test.cpp`).
+- [x] **Task 2: the runtime.** `bmbot/bot.{h,cpp}`: `Options::fromJson` (config checked, a phrase file read), the data directory lock, the
+  vault and the mailbox made or opened (the first responder's folders open as they were), `NodeSupervisor` + `NodeWatch` + a driver thread
+  (`Session::tick` without the timer), events (notes, then the oldest unread chat or letter), `done`, `sendChat`, `sendLetter`, `state`,
+  `status`, `close`, and the hang watch (`std::abort()` when the driver stalls, injectable for the test).
+- [x] **Task 3: the ABI.** `bmbot/bmbot.h` (C-callable; the draft had everything inside `#ifdef __cplusplus`) and `bmbot/bmbot.cpp` (codes,
+  ownership of strings). `bmbot/CMakeLists.txt`: the objects once, a shared and a static library, `cmake --install` of the shared one with
+  `bmbot.h` and a pkg-config file.
+- [x] **Task 4: the chat bot and the log, in std.** `tools/chat_bot.{h,cpp}` over a `ChatHost` interface; `tools/rotating_log.{h,cpp}`.
+- [x] **Task 5: `chat_responder`, without Qt, on the C ABI.** The old flags, plus `--hang`, `--retention-mb`, `--retention-days`, `--node-bin`
+  and `--check`; the Qt tool, its engine's Qt tests and its CMake lines are gone from `cmake/qt-app.cmake` and `tests/`.
+- [x] **Task 6: tests.** `tests/bmbot/`: `bmbot_tests` (30 cases), `responder_e2e_test.py`, `ctypes_test.py`; `bmbot/examples/echo.py` is a
+  working echo bot.
+- [x] **Task 7: the image.** `docker/Dockerfile` (the recipe of `scripts/check-qt-free.sh`, then a slim runtime under `tini`),
+  `docker/Dockerfile.dockerignore`, `docker/compose.yaml`, `scripts/build-image.sh`.
+- [x] **Task 8: docs.** `docs/chat-responder.md`, `bmbot/README.md`, the spec's notes after slice 6, this plan.
+- [x] **Task 9: a responder with a vanity address, running.** See "Deployment" below.
 
-**Review Focus**
-1. **libbmbot builds and links without Qt** — `nm -D libbmbot.dylib` shows no Qt symbols; `ldd` shows only OpenSSL, libsodium, SQLCipher, secp256k1, Threads.
-2. **The ABI functions are callable from Python ctypes** — the ctypes test (`tests/bmbot/ctypes_test.py`) passes, including `bmbot_open`, `bmbot_status`, `bmbot_state`, and the library degrades gracefully when `bmnode` is unavailable.
-3. **The Docker image builds and runs** — `docker build` succeeds, `docker run` starts `chat_responder` (on the C ABI), `bmnode`, and `libbmbot`; the health check (`chat_responder --check`) returns 0; `SIGTERM` gracefully stops the container.
-4. **The Python echo example runs** — `python3 bmbot/examples/echo.py` loads the library and calls `bmbot_abi_version` without crash.
-5. **The Go example (when go is present)** compiles `cgo` LDFLAGS `-lbmbot` and links without errors.
-6. **Existing app suites remain green** — `ctest` of the app, the core `bmclient` tests, and the Qt-free container build all pass untouched.
+## Gates, on the tree as it was at the end
 
-**Tasks:**
+| Gate | Result |
+|------|--------|
+| macOS, Qt-free tree (`build-core`), `ctest` | 13 of 13 (231 s), including `bmbot` (30 cases), `responder-e2e` and `bmbot-ctypes` |
+| macOS, Qt tree (`build`), `ctest` | 38 of 38 on the first full run (362 s): the 36 of before, less `chatbot`, plus `bmbot`, `responder-e2e` and `bmbot-ctypes`. On the last full run 37 of 38: `responder-e2e` read the first responder's status file before its ten-second refresh (a race in the test, which now waits for the counters); the three bmbot tests then passed in both trees, and six runs of the end-to-end test in a row |
+| Linux, Debian bookworm container with no Qt (`scripts/check-qt-free.sh big1`) | 13 of 13 (251 s), `QT-FREE BUILD OK`; the first run of it found that `libbmbot.so` did not link (static libraries not position independent) |
+| `scripts/update-error-catalog.py --check`, `scripts/check-translations.py` | pass (6 translations complete) |
+| `-Wall -Wextra` on the new sources | no warnings |
+| Image `docker/Dockerfile` built on big1 (x86_64) | 96.8 MB; runs as uid 10001 with a read-only root; healthy in 75 s on the public network |
+| Stop, recreate, crash | `docker stop`: exit 0, "Bye.", no node left, 0.5 s; recreated on the same volume: same address; the responder killed inside: Docker started it again, same address, healthy in 15 s |
+| Live | see Deployment |
 
-## Task 0: pre-slice commit and golden freeze
+`scripts/compat-check.sh` (vault and mailbox cross-open with the previous release) was not run: this slice writes and reads vaults and
+mailboxes only through `bmc::Vault` and `bmc::Mailbox`, unchanged.
 
-**Files:** none (procedural).
+## Deployment (2026-10-18)
 
-- [ ] **Step 1: Note the pre-slice commit.**
-
-```sh
-git rev-parse HEAD
-```
-
-Expected: the plan's parent, `67894a8`, unless something else landed first. That hash is `SLICE6_BASE`, used by the compat gate in Task 8.
-
-- [ ] **Step 2: the Qt-free gate still passes** — run the app Qt suite and the core suite in sequence, and run `scripts/check-qt-free.sh` in a container. All must be green.
-
-## Task 1: bmbot C ABI library (already done — see below)
-
-The `libbmbot` shared library is built and provides the functions declared in `bmbot/bmbot.h`. See the built artefacts in `bmbot/build/`.
-
-- [ ] **Step 1: verify the library** — run ` otool -L bmbot/build/libbmbot.dylib` and `nm -D bmbot/build/libbmbot.dylib`; verify no Qt symbols.
-
-- [ ] **Step 2: run the ctypes test** — `cd build && python3 -m pytest tests/bmbot/ctypes_test.py -v` (or the equivalent ctest invocation). It must pass.
-
-- [ ] **Step 3: run the echo example** — `python3 bmbot/examples/echo.py`. It must print the ABI version and the open result without crash.
-
-## Task 2: Python ctypes test for CI (already done)
-
-The `tests/bmbot/ctypes_test.py` tests that the shared library loads and the basic ABI functions are callable. It is run by ctest on the plain Ubuntu CI image.
-
-- [ ] **Step 1: verify the test passes** — `cd build && python3 -m pytest tests/bmbot/ctypes_test.py -v`.
-
-- [ ] **Step 2: register it in CMake** — in `cmake/qt-app.cmake`, next to the other Python tests (around line 86, inside `if(Python3_Interpreter_FOUND)`):
-
-```cmake
-add_test(NAME bmbot-ctypes COMMAND ${Python3_EXECUTABLE}
-  ${CMAKE_CURRENT_SOURCE_DIR}/tests/bmbot/ctypes_test.py)
-set_tests_properties(bmbot-ctypes PROPERTIES
-  TIMEOUT 30 ENVIRONMENT "BMBOT_LIB=$<TARGET_FILE:libbmbot>")
-```
-
-- [ ] **Step 3: run it** — `ctest -R bmbot-ctypes --output-on-failure`.
-
-## Task 3: Dockerfile and compose.yaml
-
-**Files:**
-- `docker/Dockerfile`
-- `docker/compose.yaml`
-
-- [ ] **Step 1: Dockerfile** — a multi-stage build. Build stage: `apt-get install` build tools, `cmake`, `ninja`, `pkg-config`, OpenSSL, libsodium, SQLCipher, secp256k1. Configure `-DYNOTBIT_QT=OFF`, `cmake --build .`. Runtime stage: `debian:bookworm-slim`, add user `bot`, copy `libbmbot.so`, `bmnode`, `chat_responder`, set `QT_QPA_PLATFORM=offscreen`, `EXPOSE 8444`, healthcheck (`chat_responder --check`), memory limit, read-only root with tmpfs `/tmp`, port 8444.
-
-- [ ] **Step 2: compose.yaml** — service `bot` with `restart: unless-stopped`, `init: true`, `stop_grace_period: 30s`, a data volume for the node folder, the phrase as a secret file (`/.phrase`), memory limit (`mem_limit: 512m`), read-only root with tmpfs `/tmp`, port 8444 forwarded, health check `chat_responder --check`.
-
-- [ ] **Step 3: build and run** — `docker build -t bmbot-test .` and `docker run --rm bbt-test`. The container should start, the health check should pass, and `SIGTERM` should gracefully stop it.
-
-## Task 4: docs: what slice 6 adds
-
-**Files:**
-- `docs/superpowers/specs/2026-10-15-qt-free-core-and-bot-platform-design.md` (append "Notes after slice 6")
-- `docs/chat-responder.md` (update node-starting and `--public` behaviour)
-- this plan (a `## Results` section, written last, with the real numbers)
-
-- [ ] **Step 1: append to the spec's notes** — add a "Notes after slice 6" section summarising what was added: `libbmbot` shared library, Python ctypes test, Docker + compose, echo example, and the acceptance criteria.
-
-- [ ] **Step 2: update docs/chat-responder.md** — how the responder starts its node now (via `bmnode` / `YNOTBIT_NODE_BIN`, not via its own `--node` branch); what `--public` does (sets `linkOnly` in `desktop.ini`, which `Session::nodeConfig()` reads as `-b -B -e`); that `YNOTBIT_RESPONDER_PUBLIC` is gone.
-
-- [ ] **Step 3: commit**.
-
-```
-docs: record what slice 6 adds
-
-Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
-```
-
-## Task 5: the gates
-
-**Files:** commands and the results note.
-
-- [ ] **Step 1: macOS, the Qt side and the core, in sequence.**
-
-```sh
-export PKG_CONFIG_PATH=/Users/user/w/ynotbit-deps/installed/lib/pkgconfig
-cmake -S . -B build -G Ninja && cmake --build build --parallel 4
-cd build && cctest --output-on-failure           # one more test: bmbot-ctypes
-cd .. && cmake --build build-core --parallel 4 && (cd build-core && ctest --output-on-failure)
-```
-
-- [ ] **Step 2: Linux Qt, on big1** (serialise: it binds the same ports as the next step).
-
-```sh
-rsync -a --delete --exclude '/build' --exclude '/build-*' --exclude '/.tokensave' \
-  --exclude '/reports' --exclude '/research_notes' ./ big1:w/ynotbit-slice6/
-ssh big1 'cd ~/w/ynotbit-slice6 && cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH=/home/user/Qt/6.8.3/gcc_64 -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel 16 && cd build && ctest --output-on-failure'
-```
-
-Do not touch the user's own `~/w/ynotbit` there.
-
-- [ ] **Step 3: the Qt-free container.**
-
-```sh
-scripts/check-qt-free.sh big1
-```
-
-Expected `QT-FREE BUILD OK`, 5/5.
-
-- [ ] **Step 4: the cross-open gate and the text gates.**
-
-```sh
-scripts/compat-check.sh SLICE6_BASE
-scripts/update-error-catalog.py --check
-scripts/check-translations.py
-```
-
-- [ ] **Step 5: the manual probe.** With `YNOTBIT_NODE_BIN` unset, start the app offscreen against a data directory with `peer=127.0.0.1:9, listen=false, linkOnly=true` and confirm with `ps -ww` that the node child is `build/bmnode`; then move `build/bmnode` aside, start it again, and confirm the app still runs (its own node) — the fallback. Record both.
-
-- [ ] **Step 6: write `## Results`** into this plan: the gate numbers with the commit they describe, what the review found, and what stayed undone (the publishers' send path, `bmbot` full transport). Commit it as `docs: record what slice 6's gates ran`.
+The address `BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8` comes from a phrase `<secret>:17507166` found by `bm-vanity`, a copy of big1's
+`tools/bm-shortaddr` that searches phrases at pair 0 for a word in the address (`~/w/bmecho-search` on big1; the tool is not in the tree). It
+was checked three ways before it ran: the tool gives the same addresses as `bm-shortaddr`, it gives the three reference addresses of
+`tests/bmclient/protocol_test.cpp`, and the real `chat_responder` prints the tool's address for a phrase. The image runs on the server `tos` as the
+container `bmecho` (`/data/bmecho`: `run.sh`, `README.txt`, `secrets/phrase`, `data/`), `--restart unless-stopped`, 512 MB, 2 CPUs, read-only
+root, no capabilities, `memlock` raised, port 8444 published and reachable from outside. A second responder on big1, with its own phrase and the
+server as its peer, said hello to the address and got "You said: hello from ..." back in 25 s (getpubkey, pubkey, chat, ack, reply; the
+deployed bot logged `calculating ack`, `calculating message`, `awaiting ack`, `acknowledged`). At that point the bot had 7 peers (4 out, 3 in),
+0.9% of a CPU and 123 MiB.
 
 ## Results
 
-*(Written after execution, on the tree of the last commit of the slice.)*
+*Written on the tree of 2026-10-18; nothing is committed.*
+
+What stayed undone, and why: the Go example (no Go on the build machines; the ABI has nothing a cgo caller wraps); a CI job for the container
+(the script exists); a responder that answers letters (the ABI hands them out; the bot sets them aside); Windows; the 24 h soak (the
+deployment's first hours are above; its log and status file are in `/data/bmecho/data`); `announce_release` and `post_digest` on `bmnode`
+(slice 5's work, which this slice did not need).
