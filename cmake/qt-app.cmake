@@ -156,11 +156,9 @@ target_link_libraries(pow_bench PRIVATE bmcore)
 # request. Dry run unless --send:
 #   cmake --build build --target post_digest
 #   build/post_digest --keys digest_keys.dat --issue issue.md --send
-# A chat peer to try the chats against: it answers every chat it gets; built only
-# on request:
-#   cmake --build build --target chat_responder
-#   build/chat_responder
-foreach(tool announce_release post_digest chat_responder)
+# (chat_responder, a chat peer to try the chats against, has no Qt and is built by the top-level
+# CMakeLists.txt, with its engine and tests.)
+foreach(tool announce_release post_digest)
  qt_add_executable(${tool} EXCLUDE_FROM_ALL tools/${tool}.cpp
   tools/publish_broadcast.cpp tools/publish_broadcast.h
   src/i18n.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h
@@ -169,18 +167,6 @@ foreach(tool announce_release post_digest chat_responder)
  target_link_libraries(${tool} PRIVATE bmcore notbit_engine Qt6::Widgets Qt6::Network)
  target_compile_definitions(${tool} PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
 endforeach()
-# The engine of chat_responder, apart from it so that it can be tested: what a bot or a service
-# made on ynotbit's chats starts from.
-target_sources(chat_responder PRIVATE tools/chat_bot.cpp tools/chat_bot.h
- tools/rotating_log.cpp tools/rotating_log.h)
-qt_add_executable(chatbot_tests tests/chatbot_tests.cpp tools/chat_bot.cpp tools/chat_bot.h
- tools/rotating_log.cpp tools/rotating_log.h src/i18n.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h
- src/appearance.cpp src/appearance.h src/relay_bridge.cpp)
-target_include_directories(chatbot_tests PRIVATE tools)
-target_link_libraries(chatbot_tests PRIVATE bmcore notbit_engine Qt6::Widgets Qt6::Network)
-target_compile_definitions(chatbot_tests PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
-add_test(NAME chatbot COMMAND chatbot_tests)
-set_tests_properties(chatbot PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 120)
 add_executable(outbox_tests tests/outbox_tests.cpp)
 target_link_libraries(outbox_tests PRIVATE bmcore)
 add_test(NAME outbox COMMAND outbox_tests)

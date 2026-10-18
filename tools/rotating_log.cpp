@@ -1,27 +1,52 @@
 #include "rotating_log.h"
+#include <sys/stat.h>
+
 namespace tools {
-RotatingLog::RotatingLog(qint64 maxBytes, int keep) : maxBytes_(maxBytes), keep_(keep) {}
-bool RotatingLog::open(const QString &path) {
-    file_.setFileName(path);
-    return file_.open(QIODevice::Append | QIODevice::Text);
+RotatingLog::RotatingLog(int64_t maxBytes, int keep) : maxBytes_(maxBytes), keep_(keep) {}
+
+RotatingLog::~RotatingLog() {
+    if (file_)
+        std::fclose(file_);
 }
-void RotatingLog::write(const QString &line) {
-    if (!file_.isOpen())
+
+bool RotatingLog::open(const std::string &path) {
+    if (file_)
+        std::fclose(file_);
+    path_ = path;
+    file_ = std::fopen(path.c_str(), "ab");
+    size_ = 0;
+    if (file_) {
+        struct stat info;
+        if (::stat(path.c_str(), &info) == 0)
+            size_ = int64_t(info.st_size);
+    }
+    return file_ != nullptr;
+}
+
+void RotatingLog::write(const std::string &line) {
+    if (!file_)
         return;
-    const auto bytes = line.toUtf8() + '\n';
-    if (file_.size() > 0 && file_.size() + bytes.size() > maxBytes_)
+    const int64_t bytes = int64_t(line.size()) + 1;
+    if (size_ > 0 && size_ + bytes > maxBytes_)
         rotate();
-    file_.write(bytes);
-    file_.flush();
+    if (!file_)
+        return;
+    std::fwrite(line.data(), 1, line.size(), file_);
+    std::fputc('\n', file_);
+    std::fflush(file_);
+    size_ += bytes;
 }
+
 // log.N goes, log.N-1 becomes log.N, ... and the full log becomes log.1.
 void RotatingLog::rotate() {
-    const auto path = file_.fileName();
-    file_.close();
-    QFile::remove(path + "." + QString::number(keep_));
+    std::fclose(file_);
+    file_ = nullptr;
+    std::remove((path_ + "." + std::to_string(keep_)).c_str());
     for (int i = keep_ - 1; i >= 1; --i)
-        QFile::rename(path + "." + QString::number(i), path + "." + QString::number(i + 1));
-    QFile::rename(path, path + ".1");
-    file_.open(QIODevice::Append | QIODevice::Text);
+        std::rename((path_ + "." + std::to_string(i)).c_str(),
+                    (path_ + "." + std::to_string(i + 1)).c_str());
+    std::rename(path_.c_str(), (path_ + ".1").c_str());
+    file_ = std::fopen(path_.c_str(), "ab");
+    size_ = 0;
 }
 } // namespace tools

@@ -9,7 +9,7 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends build-essential cmake ninja-build pkg-config \
-  ca-certificates curl git file tcl passwd libssl-dev libsodium-dev >/dev/null
+  ca-certificates curl git file tcl passwd libssl-dev libsodium-dev python3 >/dev/null
 if dpkg -l | grep -qi "qt6\|libqt\|qtbase"; then echo "Qt is installed in the container"; exit 1; fi
 # SQLCipher is built here rather than taken from the distribution: Debian bookworm ships 3.4.1,
 # whose SQLite has no "INSERT ... ON CONFLICT ... DO UPDATE" and whose key derivation is not the
@@ -47,7 +47,12 @@ echo "QT-FREE BUILD OK"
 '
 # COPYFILE_DISABLE=1 stops macOS bsdtar from storing extended attributes as AppleDouble `._*`
 # members, which Linux GNU tar would extract as real files and the `src/*.c` glob would compile.
-pack() { git ls-files -z --cached --others --exclude-standard | COPYFILE_DISABLE=1 tar --null -T - -cf -; }
+# Files deleted from the tree but still in the index are left out, or tar would stop at them.
+pack() {
+    git ls-files -z --cached --others --exclude-standard |
+        while IFS= read -r -d '' f; do [ -e "$f" ] && printf '%s\0' "$f"; done |
+        COPYFILE_DISABLE=1 tar --null -T - -cf -
+}
 if [ $# -ge 1 ]; then
     pack | ssh "$1" "docker run --rm -i debian:bookworm-slim bash -c '$inner'"
 else

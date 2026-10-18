@@ -1,24 +1,25 @@
-cmake_minimum_required(VERSION 3.18)
-project(bmbot LANGUAGES CXX)
+# bmbot: a bot library with a C ABI over bmclient, and the Qt-free chat_responder on top of it.
+# POSIX only for now: the node supervisor and the data directory lock are.
+# The runtime and the ABI, once, for the shared library and the static one.
+add_library(bmbot_objects OBJECT bot.cpp bmbot.cpp)
+target_include_directories(bmbot_objects PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(bmbot_objects PUBLIC bmclient ${CMAKE_DL_LIBS})
+target_compile_options(bmbot_objects PRIVATE -fvisibility=hidden)
 
-# bmbot: C ABI library for bot runtime — shared so Python ctypes can load it.
-# depends on bmclient (C++20, std only) and the notbit C code
-set(LIBBMBOT_SOURCES
-    bmbot.cpp
-)
+add_library(bmbot SHARED $<TARGET_OBJECTS:bmbot_objects>)
+target_link_libraries(bmbot PRIVATE bmbot_objects)
+target_include_directories(bmbot PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(bmbot PROPERTIES OUTPUT_NAME bmbot VERSION 1.0.0 SOVERSION 1)
 
-# The OpenSSL and other dependencies are provided by the parent CMake
-# (find_package in the top-level CMakeLists.txt).  We re-express the
-# requirements here so the imported targets are visible in this scope.
-find_package(OpenSSL REQUIRED)
-find_package(Threads REQUIRED)
-pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
-pkg_check_modules(SQLCIPHER REQUIRED IMPORTED_TARGET sqlcipher)
+add_library(bmbot_static STATIC $<TARGET_OBJECTS:bmbot_objects>)
+target_link_libraries(bmbot_static PUBLIC bmbot_objects)
+set_target_properties(bmbot_static PROPERTIES OUTPUT_NAME bmbot)
 
-add_library(libbmbot SHARED ${LIBBMBOT_SOURCES})
-target_include_directories(libbmbot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(libbmbot PRIVATE OpenSSL::SSL Threads::Threads PkgConfig::SODIUM PkgConfig::SQLCIPHER)
-
-# Export the C linkage so nothing mangles the names
-set_target_properties(libbmbot PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
-set_target_properties(libbmbot PROPERTIES OUTPUT_NAME "bmbot")
+# cmake --install: the shared library (it holds bmclient; the static one does not hold the
+# libraries below it), its header and a pkg-config file. chat_responder and bmnode are installed by
+# the top-level file.
+include(GNUInstallDirs)
+install(TARGETS bmbot LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(FILES bmbot.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+configure_file(bmbot.pc.in ${CMAKE_CURRENT_BINARY_DIR}/bmbot.pc @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/bmbot.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
