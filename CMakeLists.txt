@@ -11,9 +11,9 @@ if(YNOTBIT_QT)
  set(CMAKE_AUTOMOC ON)
  set(CMAKE_AUTORCC ON)
  find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Network Multimedia Test LinguistTools)
- # Qt 6.8 references AGL, which Apple removed from the macOS 26 SDK.
+ # Qt 6.8 references AGL, which Apple removed from the macOS SDK (26 and later).
  # The Widgets desktop does not use this obsolete framework.
- if(APPLE AND CMAKE_OSX_SYSROOT MATCHES "MacOSX26")
+ if(APPLE AND NOT EXISTS "${CMAKE_OSX_SYSROOT}/System/Library/Frameworks/AGL.framework")
   get_target_property(qt_gui_links WrapOpenGL::WrapOpenGL INTERFACE_LINK_LIBRARIES)
   list(FILTER qt_gui_links EXCLUDE REGEX "AGL")
   set_property(TARGET WrapOpenGL::WrapOpenGL PROPERTY INTERFACE_LINK_LIBRARIES "${qt_gui_links}")
