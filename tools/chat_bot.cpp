@@ -37,8 +37,10 @@ size_t charCount(const std::string &text) {
 }
 } // namespace
 
-ChatBot::ChatBot(ChatHost &host, Handler handler, ChatBotOptions options, Log log)
-    : host_(host), handler_(std::move(handler)), options_(options), log_(std::move(log)) {}
+ChatBot::ChatBot(ChatHost &host, Handler handler, ChatBotOptions options, Log log,
+                 LetterHandler letters)
+    : host_(host), handler_(std::move(handler)), options_(options), log_(std::move(log)),
+      letterHandler_(std::move(letters)) {}
 
 void ChatBot::say(const std::string &line) const {
     if (log_)
@@ -70,7 +72,7 @@ std::string ChatBot::oneLine(const std::string &text) {
 ChatBot::Stats ChatBot::stats() const {
     auto result = stats_;
     result.working = int(jobs_.size());
-    result.tracked = int(peers_.size() + sent_.size());
+    result.tracked = int(peers_.size() + sent_.size() + lettered_.size());
     return result;
 }
 
@@ -80,6 +82,8 @@ void ChatBot::poll(int64_t now) {
     send(now);
     admit(now);
     send(now);
+    admitLetters(now);
+    sendLetters(now);
     watchStates(now);
 }
 
@@ -195,12 +199,7 @@ void ChatBot::send(int64_t now) {
         std::string replyId, why;
         if (host_.send(job.local, job.peer, text, replyId, why)) {
             say("-> " + brief(job.peer) + ": " + oneLine(text));
-            sent_[replyId] = Sent{job.peer, std::string()};
-            sentOrder_.push_back(replyId);
-            while (int(sentOrder_.size()) > options_.track) { // the oldest are let go
-                sent_.erase(sentOrder_.front());
-                sentOrder_.pop_front();
-            }
+            track(replyId, job.peer);
             job.attempts = 0;
             if (++job.next < job.replies.size()) {
                 job.due = now + options_.gapMs;
@@ -218,6 +217,147 @@ void ChatBot::send(int64_t now) {
             finish(job.id);
         } else {
             say("cannot answer " + brief(job.peer) + ": " + why + "; will try again");
+            job.due = now + options_.retryMs;
+            ++i;
+        }
+    }
+}
+
+// Follows an answer that was queued to its end.
+void ChatBot::track(const std::string &replyId, const std::string &peer) {
+    sent_[replyId] = Sent{peer, std::string()};
+    sentOrder_.push_back(replyId);
+    while (int(sentOrder_.size()) > options_.track) { // the oldest are let go
+        sent_.erase(sentOrder_.front());
+        sentOrder_.pop_front();
+    }
+}
+
+// Whether a letter from peer may be answered now: not twice to one sender within the cooldown, and
+// not more than the rate for all senders allows. When it may, the answer is taken: the sender's
+// day starts and a token is used.
+bool ChatBot::letterAllowed(const std::string &peer, int64_t now) {
+    if (options_.letterCooldownMs > 0) {
+        const auto found = lettered_.find(peer);
+        if (found != lettered_.end() && now - found->second < options_.letterCooldownMs) {
+            say("a letter from " + brief(peer) + " is read, not answered: it was answered lately");
+            return false;
+        }
+    }
+    if (options_.lettersPerHour > 0) {
+        if (!lettersStarted_) {
+            letterTokens_ = Bucket{double(options_.letterBurst), now, false, 0};
+            lettersStarted_ = true;
+        } else {
+            letterTokens_.tokens = std::min<double>(
+                options_.letterBurst,
+                letterTokens_.tokens +
+                    std::max<int64_t>(0, now - letterTokens_.last) / 3600000.0 *
+                        options_.lettersPerHour);
+            letterTokens_.last = now;
+        }
+        if (letterTokens_.tokens < 1 - 1e-9) {
+            if (!letterTokens_.said || now - letterTokens_.saidLimited >= kSaySpacingMs) {
+                letterTokens_.said = true;
+                letterTokens_.saidLimited = now;
+                say("too many letters to answer: the letter from " + brief(peer) +
+                    " is read, not answered");
+            }
+            return false;
+        }
+        letterTokens_.tokens -= 1;
+    }
+    if (options_.letterCooldownMs > 0) {
+        if (!lettered_.count(peer) && lettered_.size() >= kMaxPeers) {
+            say("too many senders to count: counting them afresh");
+            lettered_.clear();
+        }
+        lettered_[peer] = now;
+    }
+    return true;
+}
+
+// Takes up the letters nobody has looked at, oldest first, as many as it has room for: each is
+// read, and answered with a letter if the handler has one and the limits allow.
+void ChatBot::admitLetters(int64_t now) {
+    if (options_.letterCooldownMs > 0 && now >= nextLetterPrune_) {
+        nextLetterPrune_ = now + std::max<int64_t>(options_.letterCooldownMs / 10, 1000);
+        for (auto it = lettered_.begin(); it != lettered_.end();)
+            it = now - it->second >= options_.letterCooldownMs ? lettered_.erase(it) : std::next(it);
+    }
+    ChatHost::Letter letter;
+    while (int(letterJobs_.size()) < options_.batch && host_.nextLetter(letter)) {
+        const bool known = std::any_of(letterJobs_.begin(), letterJobs_.end(),
+                                       [&](const LetterJob &job) { return job.id == letter.id; });
+        if (known)
+            continue;
+        ++stats_.letters;
+        say("<- letter from " + brief(letter.peer) + ": " + oneLine(letter.subject));
+        if (!letterHandler_) {
+            say("a letter from " + brief(letter.peer) + " is set aside: this bot answers chats");
+            host_.done(letter.id);
+            continue;
+        }
+        if (letter.peer == letter.local) { // an answer to itself would be answered, for ever
+            say("a letter from its own address is read, not answered");
+            host_.done(letter.id);
+            continue;
+        }
+        std::optional<LetterReply> reply;
+        try {
+            reply = letterHandler_(letter.local, letter.peer, letter.subject, letter.text);
+        } catch (const std::exception &e) {
+            say("the handler failed on a letter from " + brief(letter.peer) + ": " + e.what());
+            ++stats_.failed;
+            host_.done(letter.id);
+            continue;
+        } catch (...) {
+            say("the handler failed on a letter from " + brief(letter.peer));
+            ++stats_.failed;
+            host_.done(letter.id);
+            continue;
+        }
+        if (!reply) {
+            host_.done(letter.id);
+            continue;
+        }
+        // Like a flood of chats, a flood of letters is dropped, not kept for later.
+        if (!letterAllowed(letter.peer, now)) {
+            ++stats_.limited;
+            host_.done(letter.id);
+            continue;
+        }
+        letterJobs_.push_back(
+            LetterJob{letter.id, letter.local, letter.peer, std::move(*reply), now, 0});
+    }
+}
+
+// Sends the letters that are due. A letter is read once its answer is queued; an answer that will
+// not queue is tried again, a few times, and then given up (and the letter read).
+void ChatBot::sendLetters(int64_t now) {
+    for (size_t i = 0; i < letterJobs_.size();) {
+        auto &job = letterJobs_[i];
+        if (job.due > now) {
+            ++i;
+            continue;
+        }
+        std::string replyId, why;
+        if (host_.sendLetter(job.local, job.peer, job.reply.subject, job.reply.body, replyId,
+                             why)) {
+            say("-> letter to " + brief(job.peer) + ": " + oneLine(job.reply.subject));
+            track(replyId, job.peer);
+            ++stats_.lettersAnswered;
+            host_.done(job.id);
+            letterJobs_.erase(letterJobs_.begin() + std::ptrdiff_t(i));
+        } else if (++job.attempts >= options_.maxAttempts) {
+            say("cannot answer the letter from " + brief(job.peer) + ": " + why +
+                "; given up after " + std::to_string(job.attempts) + " attempts");
+            ++stats_.failed;
+            host_.done(job.id);
+            letterJobs_.erase(letterJobs_.begin() + std::ptrdiff_t(i));
+        } else {
+            say("cannot answer the letter from " + brief(job.peer) + ": " + why +
+                "; will try again");
             job.due = now + options_.retryMs;
             ++i;
         }

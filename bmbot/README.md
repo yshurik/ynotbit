@@ -38,7 +38,7 @@ for (;;) {
   `calculating_message`, `awaiting_ack`, `acknowledged`, `failed`, ...
 - **One process to a data directory** (`bmbot_open` fails with `BMBOT_E_STATE` for the second), and the phrase has to be the one the
   data was made with (`BMBOT_E_AUTH`).
-- Limits on how much a bot answers are the bot's: `tools/chat_bot.h` is one (rates per peer and in all, a bounded queue, retries), on
+- Limits on how much a bot answers are the bot's: `tools/chat_bot.h` is one (rates per peer and in all, a bounded queue, retries; a letter is answered with a letter, once a day to a sender), on
   top of this ABI.
 
 Examples: `bmbot/examples/echo.py` (a complete echo bot on ctypes, the library of `tests/bmbot/ctypes_test.py`) and

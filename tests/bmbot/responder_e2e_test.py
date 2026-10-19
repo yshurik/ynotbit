@@ -3,8 +3,9 @@
 
 B says hello to A (--hello); A answers it ("You said: ..."); B logs the answer. That is the whole
 path: the bot library, its node as a child process, proof of work, the objects across a link, the
-acknowledgment. It also checks the status file, --check, and a graceful stop (SIGTERM, "Bye.",
-exit 0, the node gone).
+acknowledgment. B also writes A a letter (--hello-letter), and A answers it with a letter that
+says where chats are: B, which answers nothing, sets that letter aside and says so. It also checks
+the status file, --check, and a graceful stop (SIGTERM, "Bye.", exit 0, the node gone).
 
 usage: responder_e2e_test.py CHAT_RESPONDER BMNODE
 """
@@ -76,7 +77,8 @@ try:
     # A listens; its peer is a port nobody has. A private bot links to its peer alone.
     a, wa = start("a", "--peer", "127.0.0.1:1", "--listen", "--port", str(port))
     address_a = wait_for("A's address", lambda: (re.search(r"Address:\s+(BM-\S+)", read(os.path.join(wa, "stdout.txt"))) or [None, None])[1], 60)
-    b, wb = start("b", "--peer", f"127.0.0.1:{port}", "--silent", "--hello", address_a)
+    b, wb = start("b", "--peer", f"127.0.0.1:{port}", "--silent", "--hello", address_a,
+                  "--hello-letter", address_a)
     address_b = wait_for("B's address", lambda: (re.search(r"Address:\s+(BM-\S+)", read(os.path.join(wb, "stdout.txt"))) or [None, None])[1], 60)
     assert address_a != address_b
 
@@ -85,6 +87,12 @@ try:
     log_a = read(os.path.join(wa, "stdout.txt"))
     assert f"hello from {address_b}" in log_a, "A logged the chat it took up"
     assert "-> " in log_a, "A logged its answer"
+
+    # The letter gets a letter back, not a chat: B (silent) took it up and set it aside.
+    wait_for("A's letter in B's log", lambda: f"a letter from {address_a[:12]}… is set aside" in read(os.path.join(wb, "stdout.txt")), 420)
+    log_a = read(os.path.join(wa, "stdout.txt"))
+    assert f"<- letter from {address_b[:12]}…: hello" in log_a, "A logged the letter it took up"
+    assert f"-> letter to {address_b[:12]}…: Re: hello" in log_a, "A logged the letter it sent back"
 
     # Both are linked to each other, and say so in their status files.
     for work in (wa, wb):
