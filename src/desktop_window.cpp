@@ -1424,6 +1424,23 @@ class ElidedLabel : public QLabel {
     }
     QString full_;
 };
+// Draws a view's addresses in the address font, at the size of the view's own text:
+// addressFont() alone has the platform's fixed-font size (10 px on macOS, beside text of 13), and
+// a model's font keeps its size when the style sheet changes the view's. The first column holds
+// addresses; any other cell that is one (a contact named by its address) gets it too.
+class AddressDelegate : public QStyledItemDelegate {
+  public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+  protected:
+    void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override {
+        QStyledItemDelegate::initStyleOption(option, index);
+        if (index.column() == 0 || index.data().toString().contains("BM-")) {
+            option->font.setFamilies(addressFont().families());
+            option->fontMetrics = QFontMetrics(option->font);
+        }
+    }
+};
 class ContactDialog : public QDialog {
   public:
     ContactDialog(Session &session, QString address, QString label, QWidget *parent)
@@ -2582,6 +2599,7 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     contactsTree_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     contactsTree_->setIconSize(QSize(24, 24));
     contactsTree_->setTextElideMode(Qt::ElideMiddle);
+    contactsTree_->setItemDelegate(new AddressDelegate(contactsTree_));
     // The address book's own order, until a header is clicked.
     contactsTree_->header()->setSortIndicator(-1, Qt::AscendingOrder);
     contactsTree_->setSortingEnabled(true);
@@ -3577,11 +3595,8 @@ void DesktopWindow::refreshContacts() {
             identiconPixmap(address, qRound(contactsTree_->iconSize().width() * ratio));
         identicon.setDevicePixelRatio(ratio);
         auto addressItem = new QStandardItem(QIcon(identicon), address);
-        addressItem->setFont(addressFont());
         auto nicknameItem = new QStandardItem; // nickbot will name it
         auto nameItem = new QStandardItem(label);
-        if (label.contains("BM-"))
-            nameItem->setFont(addressFont());
         for (auto item : {addressItem, nicknameItem, nameItem})
             item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
         contactsModel_->appendRow({addressItem, nicknameItem, nameItem});

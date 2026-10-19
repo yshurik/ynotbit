@@ -2163,6 +2163,54 @@ int main(int argc, char **argv) {
                             bm::identiconPixmap(contactText(row, 0), qRound(side * ratio)).toImage(),
                         "each address is shown with its own identicon");
             }
+            // The address column follows the tree's text size: a model's font would keep its
+            // own, and addressFont() alone has the platform's fixed-font size, 10 px beside text
+            // of 13 on macOS.
+            {
+                const auto addressWidth = [&] {
+                    QCoreApplication::processEvents();
+                    contactTree->doItemsLayout(); // the column fits its contents
+                    return contactTree->header()->sectionSize(0);
+                };
+                const auto usual = addressWidth();
+                contactTree->setStyleSheet("QTreeView{font-size:24px;}");
+                require(addressWidth() > usual + 100, "an address grows with the text of the tree");
+                contactTree->setStyleSheet({});
+                require(addressWidth() == usual, "and shrinks back with it");
+            }
+            {
+                // And it is in the address font (fixed width), not the font of the other
+                // columns: a name that is an address too. Measured as the delegate sizes a cell,
+                // against a plain delegate given each font.
+                QStyleOptionViewItem option;
+                option.initFrom(contactTree);
+                option.widget = contactTree;
+                option.font = contactTree->font();
+                option.fontMetrics = QFontMetrics(option.font);
+                option.decorationSize = contactTree->iconSize();
+                auto mono = option;
+                mono.font.setFamilies(bm::addressFont().families());
+                mono.fontMetrics = QFontMetrics(mono.font);
+                const auto shown = [&](const QModelIndex &cell) {
+                    return contactTree->itemDelegate()->sizeHint(option, cell).width();
+                };
+                const auto plainIn = [&](const QStyleOptionViewItem &font, const QModelIndex &cell) {
+                    return QStyledItemDelegate().sizeHint(font, cell).width();
+                };
+                require(shown(contactCell(0, 0)) == plainIn(mono, contactCell(0, 0)),
+                        "an address is in the address font, at the size of the tree's text");
+                require(shown(contactCell(0, 2)) == plainIn(option, contactCell(0, 2)),
+                        "a name is in the tree's own font");
+                const auto dave = bm::Protocol::identity("Dave without a name").address;
+                require(session.addContact(dave, ""), "add a contact without a name");
+                QCoreApplication::processEvents();
+                const auto row = rowOf(dave);
+                require(row >= 0 && contactText(row, 2) == dave &&
+                            shown(contactCell(row, 2)) == plainIn(mono, contactCell(row, 2)),
+                        "a name that is an address is in the address font too");
+                session.removeContact(dave);
+                QCoreApplication::processEvents();
+            }
             QStringList book, shown;
             for (const auto &c : session.contacts())
                 book << c.toMap()["address"].toString();
