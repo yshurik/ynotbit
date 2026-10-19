@@ -1,4 +1,6 @@
 // A chat peer that stays up: it has an address, answers the chats it gets, and says what it does.
+// A letter it gets (a client with no chats, PyBitmessage, writes letters) is answered with a letter
+// that says where chats are, once a day to a sender.
 // Runs headless, on a vault of its own and with a node of its own, so ynotbit and it chat as two
 // people would. It is a test peer for ynotbit's chats, and made to run for months as a service:
 // what came while it was down is answered when it is back, what it remembers is bounded, a peer
@@ -42,9 +44,13 @@
 //   --rate <n>            answers a peer gets a minute, after a first burst of --burst (30 and
 //                         30); --global-rate and --global-burst for all peers together (300, 200);
 //                         0 sets no limit
-//   --silent              answer nothing: a peer that only listens and logs what it is sent
+//   --silent              answer nothing, to letters too: a peer that only listens and logs what
+//                         it is sent
 //   --hello <address>     say hello to an address once, when it starts: a test of a link, or
 //                         the probe of a monitor that waits for the answer
+//   --hello-letter <address>
+//                         the same with a letter instead of a chat: it tests what a bot answers
+//                         to a letter
 //   --log <file>          also write what it says to a file, rotated at 10 MB, five kept
 //   --status-file <file>  a JSON file made again every ten seconds: peers, counts, uptime
 //   --data-dir <dir>      where its vault, mailbox and objects are kept, as they are given; with
@@ -54,6 +60,7 @@
 //                         exit 0 if the status file is that fresh (60) and says that many peers
 //                         (1), else 1: a health check that needs no shell tools
 #include "chat_bot.h"
+#include "letter_reply.h"
 #include "rotating_log.h"
 #include <algorithm>
 #include <bmbot.h>
@@ -66,9 +73,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -262,9 +271,64 @@ class AbiHost : public tools::ChatHost {
   public:
     AbiHost(bmbot *bot, std::function<void(const std::string &)> say) : bot_(bot), say_(say) {}
 
-    // Notes (problems, watchdog restarts) go to the log; letters are read and set aside: this bot
-    // answers chats.
+    // The bot hands out chats and letters in one stream, oldest first. Each asker takes its own
+    // kind and keeps the other's for the other asker, a few at most: past that the stream waits.
+    // Notes (problems, watchdog restarts) go to the log.
     bool nextChat(Chat &chat) override {
+        while (chats_.empty() && letters_.size() < kHeld && pull()) {
+        }
+        if (chats_.empty())
+            return false;
+        chat = std::move(chats_.front());
+        chats_.pop_front();
+        return true;
+    }
+    bool nextLetter(Letter &letter) override {
+        while (letters_.empty() && chats_.size() < kHeld && pull()) {
+        }
+        if (letters_.empty())
+            return false;
+        letter = std::move(letters_.front());
+        letters_.pop_front();
+        return true;
+    }
+    void done(const std::string &id) override {
+        finish(id);
+    }
+    bool send(const std::string &local, const std::string &peer, const std::string &text,
+              std::string &id, std::string &error) override {
+        char *made = nullptr, *why = nullptr;
+        const int code =
+            bmbot_send_chat(bot_, local.c_str(), peer.c_str(), text.c_str(), &made, &why);
+        id = takeString(made);
+        error = takeString(why);
+        return code == BMBOT_OK;
+    }
+    bool sendLetter(const std::string &local, const std::string &peer, const std::string &subject,
+                    const std::string &body, std::string &id, std::string &error) override {
+        char *made = nullptr, *why = nullptr;
+        const int code = bmbot_send_letter(bot_, local.c_str(), peer.c_str(), subject.c_str(),
+                                           body.c_str(), &made, &why);
+        id = takeString(made);
+        error = takeString(why);
+        return code == BMBOT_OK;
+    }
+    std::string state(const std::string &id) override {
+        char *state = nullptr, *error = nullptr;
+        bmbot_state(bot_, id.c_str(), &state, &error);
+        takeString(error);
+        return takeString(state);
+    }
+
+  private:
+    static constexpr size_t kHeld = 50; // events of the other kind kept for the other asker
+    bmbot *bot_;
+    std::function<void(const std::string &)> say_;
+    std::string lastTrouble_;
+    std::deque<Chat> chats_;
+    std::deque<Letter> letters_;
+    // Files the next event under its kind; false when there is none.
+    bool pull() {
         for (;;) {
             char *event = nullptr, *error = nullptr;
             const int code = bmbot_next(bot_, 0, &event, &error);
@@ -287,40 +351,17 @@ class AbiHost : public tools::ChatHost {
                 say_(parsed->at("text").toString());
                 continue;
             }
-            if (kind == "letter") {
-                say_("a letter from " + ChatBot::brief(parsed->at("from").toString()) +
-                     " is set aside: this bot answers chats");
-                finish(parsed->at("id").toString());
-                continue;
-            }
-            chat = {parsed->at("id").toString(), parsed->at("to").toString(),
-                    parsed->at("from").toString(), parsed->at("text").toString()};
+            if (kind == "letter")
+                letters_.push_back({parsed->at("id").toString(), parsed->at("to").toString(),
+                                    parsed->at("from").toString(),
+                                    parsed->at("subject").toString(),
+                                    parsed->at("text").toString()});
+            else
+                chats_.push_back({parsed->at("id").toString(), parsed->at("to").toString(),
+                                  parsed->at("from").toString(), parsed->at("text").toString()});
             return true;
         }
     }
-    void done(const std::string &id) override {
-        finish(id);
-    }
-    bool send(const std::string &local, const std::string &peer, const std::string &text,
-              std::string &id, std::string &error) override {
-        char *made = nullptr, *why = nullptr;
-        const int code =
-            bmbot_send_chat(bot_, local.c_str(), peer.c_str(), text.c_str(), &made, &why);
-        id = takeString(made);
-        error = takeString(why);
-        return code == BMBOT_OK;
-    }
-    std::string state(const std::string &id) override {
-        char *state = nullptr, *error = nullptr;
-        bmbot_state(bot_, id.c_str(), &state, &error);
-        takeString(error);
-        return takeString(state);
-    }
-
-  private:
-    bmbot *bot_;
-    std::function<void(const std::string &)> say_;
-    std::string lastTrouble_;
     void finish(const std::string &id) {
         char *error = nullptr;
         bmbot_done(bot_, id.c_str(), &error);
@@ -342,7 +383,8 @@ int main(int argc, char **argv) {
                "<path>]\n"
                "                      [--delay <seconds>] [--rate <n>] [--burst <n>]\n"
                "                      [--global-rate <n>] [--global-burst <n>] [--silent]\n"
-               "                      [--hello <address>] [--log <file>] [--status-file <file>]\n"
+               "                      [--hello <address>] [--hello-letter <address>]\n"
+               "                      [--log <file>] [--status-file <file>]\n"
                "                      [--data-dir <dir>] [--fresh]\n"
                "       chat_responder --check <status-file> [--max-age <seconds>] [--peers <n>]\n";
         return 0;
@@ -489,7 +531,13 @@ int main(int argc, char **argv) {
         [&](const std::string &, const std::string &, const std::string &text) {
             return silent ? std::vector<std::string>() : answers(text);
         },
-        options, say);
+        options, say,
+        silent ? ChatBot::LetterHandler()
+               : ChatBot::LetterHandler([](const std::string &local, const std::string &,
+                                           const std::string &subject, const std::string &)
+                                            -> std::optional<ChatBot::LetterReply> {
+                     return tools::letterReply(local, subject);
+                 }));
     if (const auto hello = args.value("--hello"); !hello.empty()) {
         char *id = nullptr, *error = nullptr;
         if (bmbot_send_chat(bot, "", hello.c_str(), ("hello from " + address).c_str(), &id,
@@ -497,6 +545,15 @@ int main(int argc, char **argv) {
             say("Hello:    sent to " + ChatBot::brief(hello));
         else
             say("Hello:    cannot be sent: " + takeString(error));
+        takeString(id);
+    }
+    if (const auto hello = args.value("--hello-letter"); !hello.empty()) {
+        char *id = nullptr, *error = nullptr;
+        if (bmbot_send_letter(bot, "", hello.c_str(), "hello", ("hello from " + address).c_str(),
+                              &id, &error) == BMBOT_OK)
+            say("Hello:    a letter sent to " + ChatBot::brief(hello));
+        else
+            say("Hello:    the letter cannot be sent: " + takeString(error));
         takeString(id);
     }
 
@@ -515,7 +572,9 @@ int main(int argc, char **argv) {
                std::to_string(node.at("objects").toInteger()) +
                " · chats: " + std::to_string(stats.received) + " taken up, " +
                std::to_string(stats.answered) + " answered, " + std::to_string(stats.limited) +
-               " limited, " + std::to_string(stats.failed) + " given up";
+               " limited, " + std::to_string(stats.failed) + " given up" +
+               " · letters: " + std::to_string(stats.letters) + " taken up, " +
+               std::to_string(stats.lettersAnswered) + " answered";
     };
     // For whoever watches it from outside: one small file, made again every ten seconds.
     const auto statusFile = args.value("--status-file");
@@ -535,6 +594,8 @@ int main(int argc, char **argv) {
             ",\"answered\":" + std::to_string(stats.answered) +
             ",\"limited\":" + std::to_string(stats.limited) +
             ",\"failed\":" + std::to_string(stats.failed) +
+            ",\"letters\":" + std::to_string(stats.letters) +
+            ",\"lettersAnswered\":" + std::to_string(stats.lettersAnswered) +
             ",\"working\":" + std::to_string(stats.working) +
             ",\"watchdogRestarts\":" + std::to_string(node.at("watchdog_restarts").toInteger()) +
             "}";

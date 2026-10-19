@@ -23,6 +23,17 @@ QList<DefaultSubscription> defaultSubscriptions();
 QString digestAddress();
 void setDefaultSubscriptionsForTesting(const QList<DefaultSubscription> &subscriptions);
 inline const QString kSeededSetting = "seeded:"; // + address: offered once already
+// Contacts every mailbox starts with: added once when it first opens, or is made, so deleting one
+// sticks. The nickname is the handle the address goes by (/bot, @person, #chan); the label is the
+// name it is saved under.
+struct DefaultContact {
+    QString address, nickname, label;
+};
+QList<DefaultContact> defaultContacts(); // the echo bot
+void setDefaultContactsForTesting(const QList<DefaultContact> &contacts);
+inline const QString kSeededContactSetting = "seeded-contact:"; // + address: added once already
+// An address's nickname is kept in the mailbox's settings, not chosen by the user.
+inline const QString kNicknameSetting = "nickname:"; // + address
 // The version a subject such as "ynotbit 0.5.2" announces.
 std::optional<QString> announcedVersion(const QString &subject);
 // The release page; built here, never taken from a letter.

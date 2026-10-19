@@ -31,6 +31,12 @@ as a child process, `bmnode`, which it finds beside itself or on the `PATH`; `--
   runs again. That is *at least once*: a crash between the last answer and the mark answers a chat twice.
 - **A peer cannot make it answer without limit.** `--rate` answers a minute to one peer after a first `--burst`, and `--global-rate`
   and `--global-burst` for all peers together; what is over is dropped and read, not kept for later.
+- **A letter is answered with a letter.** A client with no chats (PyBitmessage) writes letters, and a chat sent back would show there
+  as a message with no subject and a JSON body. So a letter to the bot is read and answered with a letter that says it answers chats
+  and how to chat with it in ynotbit (`tools/letter_reply.h`). That is once a day to a sender, 60 an hour in all after a first 20,
+  and never to its own address, so that two bots cannot keep each other writing and a flood of letters is not a flood of answers;
+  what is over is read and not answered. The limits are in memory: a restart forgets whom the bot wrote to. `--silent` answers no
+  letters either (they are read and set aside).
 - **What it remembers is bounded.** At most `batch` (50) chats are held, the rates of recent peers are remembered for ten minutes, and
   at most 200 answers are followed to the end of their delivery.
 - **One process to a folder.** Two bots on one data folder would write one mailbox: the second one is refused ("in use by another
@@ -129,7 +135,8 @@ networking nothing can ask a router for it.
 
 ## Trying it
 
-`--hello <address>` says hello to an address once at start, and `--silent` answers nothing: two responders, one `--silent --hello` the
+`--hello <address>` says hello to an address once at start, `--hello-letter <address>` does the same with a letter, to see what a bot
+answers to one, and `--silent` answers nothing: two responders, one `--silent --hello` the
 address of the other, are a chat across a link in a minute, a test of the link or the probe of a monitor that waits for the answer
 (`tests/bmbot/responder_e2e_test.py` does it over two real nodes). Ask it for `/help`, `/ping`, `/time`, `/md`, `/long` and
 `/many 5`; anything else it says back.

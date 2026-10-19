@@ -931,6 +931,18 @@ Date: %1
         <source>Collapse the chat list</source>
         <translation>チャット一覧を折りたたむ</translation>
     </message>
+    <message>
+        <source>Nickname</source>
+        <translation>ニックネーム</translation>
+    </message>
+    <message>
+        <source>Local name</source>
+        <translation>ローカル名</translation>
+    </message>
+    <message>
+        <source>Suggested from the address. Type to use your own name.</source>
+        <translation>アドレスから付けた候補の名前です。自分で名前を入力すると置き換わります。</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

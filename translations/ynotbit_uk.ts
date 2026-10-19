@@ -931,6 +931,18 @@ Date: %1
         <source>Collapse the chat list</source>
         <translation>Згорнути список чатів</translation>
     </message>
+    <message>
+        <source>Nickname</source>
+        <translation>Псевдонім</translation>
+    </message>
+    <message>
+        <source>Local name</source>
+        <translation>Локальне ім&apos;я</translation>
+    </message>
+    <message>
+        <source>Suggested from the address. Type to use your own name.</source>
+        <translation>Ім&apos;я запропоновано за адресою. Введіть власне, щоб замінити його.</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

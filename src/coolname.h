@@ -32,4 +32,7 @@ QSet<QString> excludedWords();
 QStringList addressName(const QString &address);
 // The same, with another list of excluded words.
 QStringList addressName(const QString &address, const QSet<QString> &excluded);
+// An address's name as a title, "Noble Llama of Discourse": each word starts with a capital,
+// but "of", "from" and "the" after the first. Empty for an address that has no name.
+QString addressTitle(const QString &address);
 } // namespace bm

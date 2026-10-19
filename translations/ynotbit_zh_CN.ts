@@ -931,6 +931,18 @@ Date: %1
         <source>Collapse the chat list</source>
         <translation>收起聊天列表</translation>
     </message>
+    <message>
+        <source>Nickname</source>
+        <translation>昵称</translation>
+    </message>
+    <message>
+        <source>Local name</source>
+        <translation>本地名称</translation>
+    </message>
+    <message>
+        <source>Suggested from the address. Type to use your own name.</source>
+        <translation>根据地址生成的建议名称。输入自己的名称即可替换。</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

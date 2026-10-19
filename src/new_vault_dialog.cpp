@@ -83,11 +83,7 @@ QString duration(double seconds) {
 }
 } // namespace
 QString NewVaultDialog::nicknameFor(const QString &address) {
-    auto words = addressName(address);
-    for (qsizetype i = 0; i < words.size(); ++i)
-        if (i == 0 || (words[i] != "of" && words[i] != "from" && words[i] != "the"))
-            words[i][0] = words[i][0].toUpper();
-    return words.join(' ');
+    return addressTitle(address);
 }
 QString NewVaultDialog::slugFor(const QString &nickname) {
     QString slug;
