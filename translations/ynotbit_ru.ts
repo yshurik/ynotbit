@@ -939,6 +939,10 @@ Date: %1
         <source>Local name</source>
         <translation>Локальное имя</translation>
     </message>
+    <message>
+        <source>Suggested from the address. Type to use your own name.</source>
+        <translation>Имя предложено по адресу. Введите своё, чтобы заменить его.</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

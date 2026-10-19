@@ -939,6 +939,10 @@ Date: %1
         <source>Local name</source>
         <translation>本地名称</translation>
     </message>
+    <message>
+        <source>Suggested from the address. Type to use your own name.</source>
+        <translation>根据地址生成的建议名称。输入自己的名称即可替换。</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

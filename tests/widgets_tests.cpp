@@ -1,5 +1,6 @@
 #include "desktop_window.h"
 #include "chats_pane.h"
+#include "coolname.h"
 #include "session.h"
 #include "ntb-object-db.h"
 #include "updates.h"
@@ -2045,10 +2046,37 @@ int main(int argc, char **argv) {
                     "an unknown recipient shows an add-to-contacts button and no name");
             require(!addSender->isVisible() && fromName->isVisible() && !fromName->text().isEmpty(),
                     "your own address shows its identity name and no add button");
+            // A letter's own window has the same button, and the same dialog.
+            {
+                for (auto action : window.findChildren<QAction *>())
+                    if (action->text() == "Open in new window")
+                        action->trigger();
+                auto popout = window.findChildren<QDialog *>("messageWindow").last();
+                auto popAdd = popout->findChild<QToolButton *>("addRecipientContact");
+                require(popAdd && popAdd->isVisible(),
+                        "a letter's own window offers to add an unknown recipient");
+                QTimer::singleShot(30, &window, [&] {
+                    auto dialog = window.findChild<QDialog *>("contactDialog");
+                    require(dialog->findChild<QLineEdit *>("contactNameField")->text() ==
+                                    bm::addressTitle(alice) &&
+                                dialog->findChild<QLabel *>("contactNameHint")->isVisible(),
+                            "from a letter's own window the dialog offers the name too");
+                    dialog->findChild<QPushButton *>("contactCancelButton")->click();
+                });
+                popAdd->click();
+                require(!session.isContact(alice), "cancelling the dialog adds no contact");
+                popout->close();
+                QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            }
             QTimer::singleShot(30, &window, [&] {
                 auto dialog = window.findChild<QDialog *>("contactDialog");
                 require(dialog && dialog->findChild<QLineEdit *>("contactAddressField")->text() == alice,
                         "the add dialog arrives with the address filled in");
+                auto name = dialog->findChild<QLineEdit *>("contactNameField");
+                require(name->text() == bm::addressTitle(alice) &&
+                            name->selectedText() == name->text() &&
+                            dialog->findChild<QLabel *>("contactNameHint")->isVisible(),
+                        "the reader's add button brings a dialog offering the address's name");
                 auto save = dialog->findChild<QPushButton *>("contactSaveButton");
                 require(save->isEnabled(), "a valid new address can be saved straight away");
                 if (!boldAndWhole(save))
@@ -2082,6 +2110,68 @@ int main(int argc, char **argv) {
                 dialog->findChild<QPushButton *>("contactCancelButton")->click();
             });
             window.findChild<QPushButton *>("addContactButton")->click();
+            // The Add contact dialog offers the name made from a new address (a coolname, in
+            // title case), and keeps it only until a name of your own is typed.
+            {
+                const auto dora = bm::Protocol::identity("Dora for the name offer").address;
+                const auto erin = bm::Protocol::identity("Erin for the name offer").address;
+                const auto doraName = bm::addressTitle(dora), erinName = bm::addressTitle(erin);
+                require(doraName.split(' ').size() >= 3 && doraName.at(0).isUpper() &&
+                            doraName != erinName,
+                        "test sanity: two addresses, two names of three words or more");
+                const auto addDialog = [&](const std::function<void(QDialog *)> &body) {
+                    QTimer::singleShot(30, &window, [&, body] {
+                        auto dialog = window.findChild<QDialog *>("contactDialog");
+                        require(dialog, "the Add contact dialog opens");
+                        body(dialog);
+                    });
+                    window.findChild<QPushButton *>("addContactButton")->click();
+                };
+                QApplication::clipboard()->clear();
+                addDialog([&](QDialog *dialog) {
+                    auto name = dialog->findChild<QLineEdit *>("contactNameField");
+                    auto addressField = dialog->findChild<QLineEdit *>("contactAddressField");
+                    auto hint = dialog->findChild<QLabel *>("contactNameHint");
+                    require(hint && name->text().isEmpty() && !hint->isVisible(),
+                            "with no address there is no name to offer");
+                    addressField->setText(dora);
+                    require(name->text() == doraName && hint->isVisible(),
+                            "a new address brings the name made from it, marked as a suggestion");                    addressField->setText(erin);
+                    require(name->text() == erinName && hint->isVisible(),
+                            "another address brings its own name");
+                    addressField->setText("BM-garbage");
+                    require(name->text().isEmpty() && !hint->isVisible(),
+                            "an address that cannot be a contact takes the suggestion back");
+                    addressField->setText(alice);
+                    require(name->text().isEmpty() && !hint->isVisible(),
+                            "an address already in the book gets no suggestion: saving would "
+                            "rename it");
+                    addressField->setText(dora);
+                    name->setText("Dora");
+                    require(!hint->isVisible(), "a name of your own is not marked as a suggestion");
+                    addressField->setText(erin);
+                    require(name->text() == "Dora" && !hint->isVisible(),
+                            "a name of your own stays when the address changes");
+                    dialog->findChild<QPushButton *>("contactCancelButton")->click();
+                });
+                addDialog([&](QDialog *dialog) {
+                    dialog->findChild<QLineEdit *>("contactAddressField")->setText(dora);
+                    dialog->findChild<QPushButton *>("contactSaveButton")->click();
+                });
+                require(session.nameFor(dora) == doraName,
+                        "saving keeps the offered name as the contact's name");
+                session.removeContact(dora);
+                QCoreApplication::processEvents();
+                QApplication::clipboard()->setText(erin);
+                addDialog([&](QDialog *dialog) {
+                    auto name = dialog->findChild<QLineEdit *>("contactNameField");
+                    require(dialog->findChild<QLineEdit *>("contactAddressField")->text() == erin &&
+                                name->text() == erinName && name->selectedText() == erinName,
+                            "an address on the clipboard arrives with its name offered, selected");
+                    dialog->findChild<QPushButton *>("contactCancelButton")->click();
+                });
+                QApplication::clipboard()->clear();
+            }
             // The Contacts page.
             folders->setCurrentRow(9);
             QCoreApplication::processEvents();
@@ -2313,8 +2403,9 @@ int main(int argc, char **argv) {
                 auto addressField = dialog->findChild<QLineEdit *>("contactAddressField");
                 require(addressField->isReadOnly() && addressField->text() == bob,
                         "renaming keeps the address");
-                require(dialog->findChild<QLineEdit *>("contactNameField")->text() == "Bob",
-                        "the dialog starts with the selected contact's name");
+                require(dialog->findChild<QLineEdit *>("contactNameField")->text() == "Bob" &&
+                            !dialog->findChild<QLabel *>("contactNameHint")->isVisible(),
+                        "the dialog starts with the selected contact's name, and no suggestion");
                 dialog->findChild<QLineEdit *>("contactNameField")->setText("Bobby");
                 dialog->findChild<QPushButton *>("contactSaveButton")->click();
             });

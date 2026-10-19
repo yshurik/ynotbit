@@ -155,14 +155,30 @@ int main(int argc, char **argv) {
                 "the rest of an address is case-sensitive, as base58 is");
         require(bm::addressName("").isEmpty() && bm::addressName("  BM-  ").isEmpty(),
                 "an empty address has no name");
+        require(bm::addressTitle(digest) == "Mysterious Poised Shellfish" &&
+                    bm::addressTitle("  bm-5oSrHVwbsQYPKmePHfqQJZr6eibiqj9\n") ==
+                        "Imperial Conscious Grebe" &&
+                    bm::addressTitle("BM-%1%2") == "Noble Llama of Discourse",
+                "an address's title is its name, a capital on each word but of, from and the");
+        require(bm::addressTitle("").isEmpty() && bm::addressTitle("  BM-  ").isEmpty(),
+                "an empty address has no title");
         int withOf = 0, withFrom = 0;
         for (int i = 0; i < 10000; ++i) {
-            const auto name = bm::addressName(QString("BM-sample-%1").arg(i));
+            const auto address = QString("BM-sample-%1").arg(i);
+            const auto name = bm::addressName(address);
             require(names.acceptable(name), "every address's name keeps coolname's rules");
             for (const auto &word : name)
                 require(!excluded.contains(word), "no address's name has an excluded word");
             withOf += name.contains("of");
             withFrom += name.contains("from");
+            const auto title = bm::addressTitle(address).split(' ');
+            bool titled = title.size() == name.size();
+            for (int w = 0; titled && w < name.size(); ++w) {
+                const bool small =
+                    w > 0 && (name[w] == "of" || name[w] == "from" || name[w] == "the");
+                titled = title[w] == (small ? name[w] : name[w].left(1).toUpper() + name[w].mid(1));
+            }
+            require(titled, "every address's title has a capital on each word but of, from and the");
         }
         require(withOf == 3249 && withFrom == 262,
                 "10,000 addresses fall into the patterns exactly as in the reference");

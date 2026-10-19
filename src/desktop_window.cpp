@@ -1,6 +1,7 @@
 #include "desktop_window.h"
 #include "settings_pane.h"
 #include "new_vault_dialog.h"
+#include "coolname.h"
 #include "session.h"
 #include "i18n.h"
 #include "quoting.h"
@@ -1460,6 +1461,13 @@ class ContactDialog : public QDialog {
         name_->setObjectName("contactNameField");
         name_->setPlaceholderText(DesktopWindow::tr("How this person appears in ynotbit"));
         layout->addWidget(name_);
+        // Shown while the name in the field is the one offered from the address.
+        hint_ = new QLabel(DesktopWindow::tr("Suggested from the address. Type to use your own name."));
+        hint_->setObjectName("contactNameHint");
+        hint_->setWordWrap(true);
+        hint_->setStyleSheet("color:palette(mid);font-size:12px;");
+        hint_->hide();
+        layout->addWidget(hint_);
         layout->addWidget(new QLabel(DesktopWindow::tr("Address")));
         address_ = new QLineEdit(address);
         address_->setObjectName("contactAddressField");
@@ -1495,7 +1503,10 @@ class ContactDialog : public QDialog {
         buttons->addWidget(save_);
         layout->addLayout(buttons);
         connect(address_, &QLineEdit::textChanged, this, [this] { validate(); });
+        connect(name_, &QLineEdit::textChanged, this, [this] { showHint(); });
         validate();
+        if (!offered_.isEmpty())
+            name_->selectAll(); // Enter keeps the offered name; typing replaces it
         (address.isEmpty() ? address_ : name_)->setFocus();
     }
 
@@ -1503,16 +1514,31 @@ class ContactDialog : public QDialog {
     void validate() {
         const auto address = address_->text().trimmed();
         const auto problem = address.isEmpty() ? QString() : session_.contactProblem(address);
+        const bool known =
+            problem.isEmpty() && !address_->isReadOnly() && session_.isContact(address);
         auto note = problem;
-        if (problem.isEmpty() && !address_->isReadOnly() && session_.isContact(address))
+        if (known)
             note = DesktopWindow::tr("Already a contact, as “%1”. Saving renames it.")
                        .arg(session_.nameFor(address));
         note_->setText(note);
         save_->setEnabled(!address.isEmpty() && problem.isEmpty());
+        // A new address brings the name made from it, until a name of your own is typed. An
+        // address already in the book gets none: saving it would rename the contact.
+        const auto previous = offered_;
+        offered_ = address.isEmpty() || !problem.isEmpty() || known || address_->isReadOnly()
+                       ? QString()
+                       : addressTitle(address);
+        if (name_->text().isEmpty() || name_->text() == previous)
+            name_->setText(offered_);
+        showHint();
+    }
+    void showHint() {
+        hint_->setVisible(!offered_.isEmpty() && name_->text() == offered_);
     }
     Session &session_;
     QLineEdit *name_, *address_;
-    QLabel *note_;
+    QLabel *note_, *hint_;
+    QString offered_; // the name made from the address, while it is a valid new one
     QPushButton *save_;
 };
 // The reader's body: the letter's rendering, as tall as its text, in the reader

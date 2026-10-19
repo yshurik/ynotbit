@@ -939,6 +939,10 @@ Date: %1
         <source>Local name</source>
         <translation>로컬 이름</translation>
     </message>
+    <message>
+        <source>Suggested from the address. Type to use your own name.</source>
+        <translation>주소로 만든 추천 이름입니다. 직접 이름을 입력하면 바뀝니다.</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
