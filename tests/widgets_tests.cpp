@@ -190,6 +190,9 @@ int main(int argc, char **argv) {
         // The built-in subscriptions get a test of their own below; elsewhere
         // the rail holds only what each test adds.
         bm::updates::setDefaultSubscriptionsForTesting({});
+        // Likewise the built-in contacts: the address book starts empty, but for their own test.
+        const auto builtInContacts = bm::updates::defaultContacts();
+        bm::updates::setDefaultContactsForTesting({});
         bm::Session session(temp.filePath("node"), true);
         QElapsedTimer clock;
         clock.start();
@@ -2347,6 +2350,24 @@ int main(int argc, char **argv) {
             filter->setText("aLICE");
             require(contactRows() == 1, "the filter matches names, ignoring case");
             filter->clear();
+            // A nickname (nickbot's name for an address) is in the second column, and found by
+            // the filter.
+            session.setNickname(alice, "@alice");
+            QCoreApplication::processEvents();
+            require(contactText(0, 0) == alice && contactText(0, 1) == "@alice",
+                    "a contact's nickname is in the Nickname column");
+            filter->setText("@ALI");
+            require(contactRows() == 1, "the filter matches nicknames, ignoring case");
+            filter->setText("@nobody");
+            require(contactRows() == 0, "and only what matches");
+            filter->clear();
+            session.setNickname(alice, "");
+            QCoreApplication::processEvents();
+            require(contactText(0, 1).isEmpty(), "an empty nickname takes the nickname away");
+            session.setNickname("BM-not-an-address", "@x");
+            require(!session.error().isEmpty() && session.nickname("BM-not-an-address").isEmpty(),
+                    "a nickname is only for a valid address");
+            session.clearError();
             // Write opens the composer to the contact, with the address book wired in: from its
             // button, and from a double-click on the row.
             const auto composerToAlice = [&] {
@@ -4291,6 +4312,75 @@ int main(int argc, char **argv) {
             legacy.openMailboxAt(madeNow);
             require(legacy.mailboxOpen() && legacy.contacts().isEmpty(),
                     "a mailbox made now is not migrated when it is next opened");
+        }
+        {
+            // The echo bot is every mailbox's first contact, once: /echobot by nickname and by
+            // name.
+            const QString echo = "BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8";
+            require(builtInContacts.size() == 1 && builtInContacts[0].address == echo &&
+                        builtInContacts[0].nickname == "/echobot" &&
+                        builtInContacts[0].label == "/echobot",
+                    "the built-in contact is the echo bot, /echobot by nickname and by name");
+            const auto vaultFile = temp.filePath("echo-vault.bmvault");
+            const auto first = temp.filePath("echo-first.bmmail");
+            const auto second = temp.filePath("echo-second.bmmail");
+            bm::Vault made;
+            made.create(vaultFile, "test password");
+            const auto mine = made.addIdentity("Mine");
+            for (const auto &path : {first, second}) {
+                const auto key = made.addMailboxKey();
+                bm::Mailbox box;
+                box.create(path, key, made.mailboxKey(key));
+                // A letter went to the bot: the migration of Sent must not name it first.
+                box.store("s1", mine, echo, "Hello bot", "hi", 1, "Sent");
+                if (path == second)
+                    box.saveContact(echo, "Echo"); // already a contact, under a name of its own
+            }
+            made.lock();
+            QDir().mkpath(temp.filePath("echo-node"));
+            {
+                QSettings config(temp.filePath("echo-node/desktop.ini"), QSettings::IniFormat);
+                config.setValue("vault", vaultFile);
+                config.setValue("mailbox", first);
+            }
+            bm::updates::setDefaultContactsForTesting(builtInContacts);
+            bm::Session starter(temp.filePath("echo-node"), true);
+            starter.beginVaultUnlock();
+            starter.submitVaultPassword("test password");
+            const auto bot = [&] { // the echo bot's name and nickname, or nothing
+                for (const auto &c : starter.contacts())
+                    if (c.toMap()["address"].toString() == echo)
+                        return QStringList{c.toMap()["label"].toString(),
+                                           c.toMap()["nickname"].toString()};
+                return QStringList();
+            };
+            require(starter.mailboxOpen() && starter.contacts().size() == 1 &&
+                        bot() == QStringList({"/echobot", "/echobot"}),
+                    "an old mailbox opens with the echo bot as a contact, /echobot by nickname "
+                    "and by name, though a letter went to it");
+            starter.removeContact(echo);
+            starter.openMailboxAt(first);
+            require(starter.mailboxOpen() && !starter.isContact(echo),
+                    "a deleted echo bot is not added again: the migration runs once");
+            starter.openMailboxAt(second);
+            require(bot() == QStringList({"Echo", "/echobot"}),
+                    "a contact that was there keeps its name, and gets the nickname");
+            // A mailbox made now starts with it too.
+            const auto madeNow = temp.filePath("echo-made-now.bmmail");
+            auto answer = new QTimer(&window);
+            QObject::connect(answer, &QTimer::timeout, &window, [&, answer] {
+                if (auto d = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
+                    answer->stop();
+                    chooseFile(d, madeNow);
+                }
+            });
+            answer->start(10);
+            starter.createMailbox();
+            answer->deleteLater();
+            require(starter.mailboxOpen() && starter.mailPath() == madeNow &&
+                        bot() == QStringList({"/echobot", "/echobot"}),
+                    "a mailbox made now has the echo bot from the start");
+            bm::updates::setDefaultContactsForTesting({});
         }
         {
             // The new vault dialog's look, under the window's style sheet: every

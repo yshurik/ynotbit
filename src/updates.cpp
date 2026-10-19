@@ -13,7 +13,21 @@ QList<DefaultSubscription> &defaults() {
     };
     return list;
 }
+QList<DefaultContact> &contactDefaults() {
+    static QList<DefaultContact> list{
+        // The chat responder run for ynotbit, a vanity address (BM-87echo...): it answers a chat
+        // with what it was sent.
+        {"BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8", "/echobot", "/echobot"},
+    };
+    return list;
+}
 } // namespace
+QList<DefaultContact> defaultContacts() {
+    return contactDefaults();
+}
+void setDefaultContactsForTesting(const QList<DefaultContact> &contacts) {
+    contactDefaults() = contacts;
+}
 QString digestAddress() {
     return bridge::fromStd(bmc::updates::digestAddress());
 }

@@ -276,6 +276,9 @@ class Session : public QObject {
     QVariantList broadcastSources() const;
     // The built-in subscriptions (updates.h), once per mailbox.
     void seedSubscriptions();
+    // The built-in contacts (updates.h), once per mailbox each: deleting one sticks. One that is
+    // already there keeps its name; the address gets its nickname either way.
+    void seedContacts();
     // Everyone a letter in Sent went to joins the address book, named from the address, once
     // per mailbox: for those made before the book was filled this way. A mailbox made now starts
     // marked, so whom it writes to later stays out until the user adds them.
@@ -303,8 +306,13 @@ class Session : public QObject {
     Q_INVOKABLE void dismissUpdate();
     bool updateNotices() const;
     Q_INVOKABLE void setUpdateNotices(bool on);
-    // The address book (kept in the open mailbox). Names are local and private.
+    // The address book (kept in the open mailbox). Names are local and private. Each contact:
+    // address, label (its name) and nickname (what it goes by, /bot, @person or #chan; often
+    // empty).
     QVariantList contacts() const;
+    // An address's nickname, empty when it has none. Setting an empty one takes it away.
+    QString nickname(QString address) const;
+    void setNickname(QString address, QString nickname);
     // Why the address cannot be added as a contact, or empty when it can.
     QString contactProblem(QString address) const;
     // Adds or renames a contact; an empty name falls back to the address.

@@ -395,6 +395,12 @@ void Session::createMailbox() {
             auto id = vault_.addMailboxKey();
             mailbox_.create(p, id, vault_.mailboxKey(id));
             mailbox_.setSetting(kSentRecipientsSetting, "1"); // nothing was sent yet to add
+            // A new mailbox starts with the built-in contacts, not at its next opening.
+            try {
+                seedContacts();
+            } catch (...) {
+                // Not added is no reason to refuse the mailbox.
+            }
             mailPath_ = p;
             mailKey_ = id;
             rememberMailbox(p);
@@ -427,10 +433,16 @@ void Session::openMailboxPath(const QString &p) {
             } catch (...) {
                 // A default subscription not added is no reason to refuse the mailbox.
             }
+            // The built-in contacts first, so a letter once sent to one does not name it.
+            try {
+                seedContacts();
+            } catch (...) {
+                // Nor is a built-in contact not added; the next opening tries again.
+            }
             try {
                 addSentRecipients();
             } catch (...) {
-                // Nor are contacts not added; the next opening tries again.
+                // Nor are the people written to; the next opening tries again.
             }
             // ynotbit opens on the first built-in subscription: the digest.
             if (const auto defaults = updates::defaultSubscriptions(); !defaults.isEmpty())
@@ -961,6 +973,21 @@ void Session::seedSubscriptions() {
         mailbox_.setSetting(key, "1");
     }
 }
+void Session::seedContacts() {
+    Mailbox::Batch batch(mailbox_); // one commit
+    for (const auto &d : updates::defaultContacts()) {
+        const auto key = updates::kSeededContactSetting + d.address;
+        // Not once more, nor for an address that cannot be a contact (one of the vault's own).
+        if (!contactProblem(d.address).isEmpty() || !mailbox_.setting(key).isEmpty())
+            continue;
+        if (!isContact(d.address))
+            mailbox_.saveContact(d.address, d.label.isEmpty() ? d.address : d.label);
+        if (!d.nickname.isEmpty())
+            mailbox_.setSetting(updates::kNicknameSetting + d.address, d.nickname);
+        mailbox_.setSetting(key, "1");
+    }
+    batch.commit();
+}
 void Session::addSentRecipients() {
     if (!mailbox_.setting(kSentRecipientsSetting).isEmpty())
         return;
@@ -1048,8 +1075,22 @@ QVariantList Session::contacts() const {
     QVariantList result;
     if (mailboxOpen())
         for (const auto &c : mailbox_.contacts())
-            result << QVariantMap{{"address", c.address}, {"label", c.label}};
+            result << QVariantMap{{"address", c.address},
+                                  {"label", c.label},
+                                  {"nickname", nickname(c.address)}};
     return result;
+}
+QString Session::nickname(QString address) const {
+    return mailboxOpen() ? mailbox_.setting(updates::kNicknameSetting + address.trimmed())
+                         : QString();
+}
+void Session::setNickname(QString address, QString nickname) {
+    attempt([&] {
+        check(mailboxOpen(), tr("Open a mailbox first"));
+        address = address.trimmed();
+        check(Wire::validAddress(address), tr("That is not a valid Bitmessage address"));
+        mailbox_.setSetting(updates::kNicknameSetting + address, nickname.trimmed());
+    });
 }
 QString Session::contactProblem(QString address) const {
     address = address.trimmed();

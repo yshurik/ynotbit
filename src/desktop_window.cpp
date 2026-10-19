@@ -3614,14 +3614,16 @@ void DesktopWindow::refreshContacts() {
         auto m = v.toMap();
         const auto address = m["address"].toString();
         const auto label = m["label"].toString();
+        const auto nickname = m["nickname"].toString();
         if (!filter.isEmpty() && !label.contains(filter, Qt::CaseInsensitive) &&
-            !address.contains(filter, Qt::CaseInsensitive))
+            !address.contains(filter, Qt::CaseInsensitive) &&
+            !nickname.contains(filter, Qt::CaseInsensitive))
             continue;
         auto identicon =
             identiconPixmap(address, qRound(contactsTree_->iconSize().width() * ratio));
         identicon.setDevicePixelRatio(ratio);
         auto addressItem = new QStandardItem(QIcon(identicon), address);
-        auto nicknameItem = new QStandardItem; // nickbot will name it
+        auto nicknameItem = new QStandardItem(nickname); // empty until something names it
         auto nameItem = new QStandardItem(label);
         for (auto item : {addressItem, nicknameItem, nameItem})
             item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
