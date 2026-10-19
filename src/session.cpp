@@ -1,6 +1,7 @@
 #include "session.h"
 #include "appearance.h"
 #include "chat_format.h"
+#include "coolname.h"
 #include "i18n.h"
 #include "message_model.h"
 #include "pow.h"
@@ -83,6 +84,8 @@ static QString documentsPath() {
     const auto path = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
     return path.isEmpty() ? QDir::homePath() : path;
 }
+// The mailbox setting that says the Sent folder is in the address book (addSentRecipients).
+static const QString kSentRecipientsSetting = "migrated:sent-recipients";
 Session::Session(QString root, bool offline, QObject *parent)
     : QObject(parent), root_(std::move(root)), offline_(offline) {
     messageModel_ = std::make_unique<MessageModel>(this, this);
@@ -391,6 +394,7 @@ void Session::createMailbox() {
         try {
             auto id = vault_.addMailboxKey();
             mailbox_.create(p, id, vault_.mailboxKey(id));
+            mailbox_.setSetting(kSentRecipientsSetting, "1"); // nothing was sent yet to add
             mailPath_ = p;
             mailKey_ = id;
             rememberMailbox(p);
@@ -422,6 +426,11 @@ void Session::openMailboxPath(const QString &p) {
                 seedSubscriptions();
             } catch (...) {
                 // A default subscription not added is no reason to refuse the mailbox.
+            }
+            try {
+                addSentRecipients();
+            } catch (...) {
+                // Nor are contacts not added; the next opening tries again.
             }
             // ynotbit opens on the first built-in subscription: the digest.
             if (const auto defaults = updates::defaultSubscriptions(); !defaults.isEmpty())
@@ -951,6 +960,34 @@ void Session::seedSubscriptions() {
             mailbox_.subscribe(d.address, tr(d.label));
         mailbox_.setSetting(key, "1");
     }
+}
+void Session::addSentRecipients() {
+    if (!mailbox_.setting(kSentRecipientsSetting).isEmpty())
+        return;
+    // Not for those already in the book, nor the vault's own identities and chans.
+    QSet<QString> known;
+    for (const auto &c : mailbox_.contacts())
+        known << c.address;
+    for (const auto &i : vault_.identities())
+        known << i.address;
+    Mailbox::Batch batch(mailbox_); // one commit, however many are added
+    // Sent, newest first, a page at a time: a long folder is not held whole.
+    constexpr int kPage = 500;
+    for (int offset = 0;; offset += kPage) {
+        const auto page = mailbox_.messageSummaries("Sent", {}, offset, kPage);
+        for (const auto &letter : page) {
+            const auto address = letter.to.trimmed();
+            if (known.contains(address) || !Wire::validAddress(address))
+                continue;
+            known << address;
+            const auto name = addressTitle(address);
+            mailbox_.saveContact(address, name.isEmpty() ? address : name);
+        }
+        if (page.size() < kPage)
+            break;
+    }
+    mailbox_.setSetting(kSentRecipientsSetting, "1");
+    batch.commit();
 }
 QVariantList Session::broadcastSources() const {
     QMap<QString, QVariantMap> sources;

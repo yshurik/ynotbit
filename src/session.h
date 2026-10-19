@@ -276,6 +276,10 @@ class Session : public QObject {
     QVariantList broadcastSources() const;
     // The built-in subscriptions (updates.h), once per mailbox.
     void seedSubscriptions();
+    // Everyone a letter in Sent went to joins the address book, named from the address, once
+    // per mailbox: for those made before the book was filled this way. A mailbox made now starts
+    // marked, so whom it writes to later stays out until the user adds them.
+    void addSentRecipients();
     // Where the window opens after a mailbox opens, once per opening: the
     // Subscriptions page on the Bitmessage digest.
     QString takeWelcomeSource() {

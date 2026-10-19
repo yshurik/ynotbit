@@ -4204,6 +4204,95 @@ int main(int argc, char **argv) {
                     "a vault left half made is removed, its lock too");
         }
         {
+            // A mailbox from before the address book was filled: its Sent folder is the only
+            // record of whom the user wrote to. Opening it adds them once, each named from its
+            // address.
+            const auto vaultFile = temp.filePath("sent-vault.bmvault");
+            const auto mailboxFile = temp.filePath("sent-mailbox.bmmail");
+            const auto dora = bm::Protocol::identity("Dora written to").address;
+            const auto erin = bm::Protocol::identity("Erin written to").address;
+            const auto frank = bm::Protocol::identity("Frank who wrote").address;
+            const auto gina = bm::Protocol::identity("Gina in the archive").address;
+            const auto hana = bm::Protocol::identity("Hana written to later").address;
+            bm::Vault made;
+            made.create(vaultFile, "test password");
+            const auto mine = made.addIdentity("Mine");
+            const auto chan = made.addChannel("sent recipients chan", "Sent chan");
+            {
+                const auto key = made.addMailboxKey();
+                bm::Mailbox box;
+                box.create(mailboxFile, key, made.mailboxKey(key));
+                box.store("s1", mine, dora, "Hello Dora", "hi", 1, "Sent");
+                box.store("s2", mine, dora, "Dora again", "hi", 2, "Sent");
+                box.store("s3", mine, erin, "Hello Erin", "hi", 3, "Sent");
+                box.store("s4", mine, mine, "A note to self", "hi", 4, "Sent");
+                box.store("s5", mine, chan, "To my chan", "hi", 5, "Sent");
+                box.store("s6", mine, "BM-not-an-address", "Lost", "hi", 6, "Sent");
+                box.store("a1", mine, gina, "Archived", "hi", 7, "Archive");
+                box.store("i1", frank, mine, "From Frank", "hi", 8, "Inbox");
+                box.saveContact(erin, "Erin E.");
+            }
+            made.lock();
+            QDir().mkpath(temp.filePath("sent-node"));
+            {
+                QSettings config(temp.filePath("sent-node/desktop.ini"), QSettings::IniFormat);
+                config.setValue("vault", vaultFile);
+                config.setValue("mailbox", mailboxFile);
+            }
+            bm::Session legacy(temp.filePath("sent-node"), true);
+            legacy.beginVaultUnlock();
+            legacy.submitVaultPassword("test password");
+            require(legacy.unlocked() && legacy.mailboxOpen(), "the mailbox from before opens");
+            const auto book = [&] {
+                QMap<QString, QString> names;
+                for (const auto &c : legacy.contacts())
+                    names[c.toMap()["address"].toString()] = c.toMap()["label"].toString();
+                return names;
+            };
+            require(book() == QMap<QString, QString>({{dora, bm::addressTitle(dora)},
+                                                      {erin, "Erin E."}}),
+                    "opening adds each address a letter was sent to, once, named from the "
+                    "address; no own address, chan, bad address or letter outside Sent, and "
+                    "a name already given stays");
+            legacy.removeContact(dora);
+            legacy.openMailboxAt(mailboxFile);
+            require(legacy.mailboxOpen() && !legacy.isContact(dora) && legacy.isContact(erin),
+                    "a contact deleted later is not added again: the migration runs once");
+            // A mailbox made now has nothing to catch up on: whom it writes to later stays
+            // out of the book until the user adds them.
+            const auto madeNow = temp.filePath("sent-made-now.bmmail");
+            auto answer = new QTimer(&window);
+            QObject::connect(answer, &QTimer::timeout, &window, [&, answer] {
+                if (auto d = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
+                    answer->stop();
+                    chooseFile(d, madeNow);
+                }
+            });
+            answer->start(10);
+            legacy.createMailbox();
+            answer->deleteLater();
+            require(legacy.mailboxOpen() && legacy.mailPath() == madeNow,
+                    "a new mailbox is made, and open");
+            legacy.closeMailbox();
+            {
+                bm::Vault peek;
+                peek.unlock(vaultFile, "test password");
+                bm::Mailbox box;
+                for (const auto &id : peek.mailboxIds()) {
+                    try {
+                        box.open(madeNow, peek.mailboxKey(id));
+                        break;
+                    } catch (...) {
+                    }
+                }
+                require(box.isOpen(), "the new mailbox opens with one of the vault's keys");
+                box.store("n1", mine, hana, "Hello Hana", "hi", 9, "Sent");
+            }
+            legacy.openMailboxAt(madeNow);
+            require(legacy.mailboxOpen() && legacy.contacts().isEmpty(),
+                    "a mailbox made now is not migrated when it is next opened");
+        }
+        {
             // The new vault dialog's look, under the window's style sheet: every
             // field reaches the right edge, also where forms keep fields at their
             // size hint (macOS); nothing is squeezed or cut as rows appear, in

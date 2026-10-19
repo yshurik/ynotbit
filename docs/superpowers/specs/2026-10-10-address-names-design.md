@@ -112,9 +112,12 @@ Reference values come from running upstream at the pinned commit.
 - The Add contact dialog offers `addressTitle(address)` (`coolname.h`, the name in title
   case) as the contact's name, marked as a suggestion; the user can type another. It offers
   none for an address already in the book.
-- It saves the derived name as the contact's local name, on the user's say (the dialog's
-  Save). Decision 5 would have kept it a hint; the name can be renamed at any time, and a
-  name shown without being saved is still only a hint.
+- Opening a mailbox from before the address book was filled adds a contact for each
+  address in its Sent folder, named so, once (`Session::addSentRecipients`; a mailbox made
+  later starts marked, so it is never migrated).
+- Both save the derived name as the contact's local name, on the user's say (the dialog's
+  Save; the migration they asked for). Decision 5 would have kept it a hint; the name can be
+  renamed at any time, and a name shown without being saved is still only a hint.
 
 ## Later
 
