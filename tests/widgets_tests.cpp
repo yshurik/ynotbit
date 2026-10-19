@@ -2089,33 +2089,129 @@ int main(int argc, char **argv) {
                         !window.findChild<QWidget *>("listColumn")->isVisible() &&
                         !window.findChild<QWidget *>("identitiesPane")->isVisible(),
                     "Contacts is a whole-pane page");
-            auto cards = [&] { return window.findChildren<QFrame *>("contactCard"); };
-            require(cards().size() == 1 &&
-                        cards()[0]->findChild<QLabel *>("contactName")->text() == "Alice" &&
-                        cards()[0]->findChild<QLabel *>("contactAddress")->text() == alice,
-                    "the contact is listed with its name and address");
-            require(copyStyled(cards()[0]->findChild<QToolButton *>("copyContactAddressButton")),
-                    "a contact card's copy-address button is drawn like the other tool buttons");
-            {
-                auto rename = cards()[0]->findChild<QToolButton *>("renameContactButton");
-                auto remove = cards()[0]->findChild<QToolButton *>("deleteContactButton");
-                require(inOnePill({rename, remove}),
-                        "a contact card's Rename and Delete sit in one pill");
-                require(rename->toolTip() == "Rename contact" &&
-                            remove->toolTip() == "Delete contact",
-                        "a contact card's buttons say what they act on");
-                require(ink(rename->icon()).second >= 32,
-                        "a contact's Rename shows a pencil over a line of text");
+            auto contactTree = window.findChild<QTreeView *>("contactsTree");
+            require(contactTree, "the address book is a tree view");
+            const auto contactRows = [&] { return contactTree->model()->rowCount(); };
+            const auto contactCell = [&](int row, int column) {
+                return contactTree->model()->index(row, column);
+            };
+            const auto contactText = [&](int row, int column) {
+                return contactCell(row, column).data().toString();
+            };
+            const auto rowOf = [&](const QString &contact) {
+                for (int row = 0; row < contactRows(); ++row)
+                    if (contactText(row, 0) == contact)
+                        return row;
+                return -1;
+            };
+            // The local names (third column), top to bottom.
+            const auto contactNames = [&] {
+                QStringList names;
+                for (int row = 0; row < contactRows(); ++row)
+                    names << contactText(row, 2);
+                return names;
+            };
+            const auto clickContact = [&](int row, int column) {
+                QTest::mouseClick(contactTree->viewport(), Qt::LeftButton, {},
+                                  contactTree->visualRect(contactCell(row, column)).center());
+            };
+            QStringList columns;
+            for (int column = 0; column < contactTree->model()->columnCount(); ++column)
+                columns << contactTree->model()->headerData(column, Qt::Horizontal).toString();
+            require(columns == QStringList({"Address", "Nickname", "Local name"}),
+                    "the address book has Address, Nickname and Local name columns");
+            require(contactRows() == 1 && contactText(0, 0) == alice &&
+                        contactText(0, 1).isEmpty() && contactText(0, 2) == "Alice",
+                    "a contact is listed by address, with its local name and no nickname yet");
+            // The buttons for the selected contact sit in the toolbar, where Add contact is.
+            auto addButton = window.findChild<QPushButton *>("addContactButton");
+            auto write = window.findChild<QPushButton *>("writeToContactButton");
+            auto copy = window.findChild<QToolButton *>("copyContactAddressButton");
+            auto rename = window.findChild<QToolButton *>("renameContactButton");
+            auto remove = window.findChild<QToolButton *>("deleteContactButton");
+            require(addButton && write && copy && rename && remove,
+                    "the toolbar has Write, Copy address, Rename, Delete and Add contact");
+            const QList<QWidget *> rowButtons{write, copy, rename, remove};
+            const auto topOf = [&](QWidget *w) { return w->mapTo(&window, QPoint()).y(); };
+            for (auto button : rowButtons)
+                require(topOf(button) < topOf(contactTree) &&
+                            topOf(button) < topOf(addButton) + addButton->height() &&
+                            topOf(button) + button->height() > topOf(addButton),
+                        "a contact's buttons sit in Add contact's toolbar, above the tree");
+            require(addButton->isEnabled(), "Add contact is on with nothing selected");
+            for (auto button : rowButtons)
+                require(!button->isEnabled(), "with no row selected a contact's buttons are off");
+            require(inOnePill({copy, rename, remove}),
+                    "Copy address, Rename and Delete sit in one pill");
+            require(copy->toolTip() == "Copy address" && rename->toolTip() == "Rename contact" &&
+                        remove->toolTip() == "Delete contact",
+                    "the pill's buttons say what they act on");
+            require(ink(rename->icon()).second >= 32,
+                    "a contact's Rename shows a pencil over a line of text");
+            // Three contacts: identicons, the address book's order, and sorting by name.
+            const auto bob = bm::Protocol::identity("Bob for the address book").address;
+            const auto carol = bm::Protocol::identity("Carol for the address book").address;
+            require(session.addContact(bob, "bob") && session.addContact(carol, "Carol"),
+                    "add two more contacts");
+            QCoreApplication::processEvents();
+            require(contactRows() == 3, "new contacts are listed at once");
+            const auto ratio = contactTree->devicePixelRatioF();
+            const auto side = contactTree->iconSize().width();
+            for (int row = 0; row < contactRows(); ++row) {
+                const auto icon = contactCell(row, 0).data(Qt::DecorationRole).value<QIcon>();
+                require(icon.pixmap(contactTree->iconSize(), ratio).toImage() ==
+                            bm::identiconPixmap(contactText(row, 0), qRound(side * ratio)).toImage(),
+                        "each address is shown with its own identicon");
             }
+            QStringList book, shown;
+            for (const auto &c : session.contacts())
+                book << c.toMap()["address"].toString();
+            for (int row = 0; row < contactRows(); ++row)
+                shown << contactText(row, 0);
+            require(shown == book,
+                    "the rows keep the address book's order until a header is clicked");
+            const auto header = contactTree->header();
+            const auto clickHeader = [&](int column) {
+                QTest::mouseClick(header->viewport(), Qt::LeftButton, {},
+                                  QPoint(header->sectionViewportPosition(column) + 8,
+                                         header->height() / 2));
+            };
+            clickHeader(2);
+            require(contactNames() == QStringList({"Alice", "bob", "Carol"}),
+                    "a click on Local name sorts the rows by name, ignoring case");
+            clickHeader(2);
+            require(contactNames() == QStringList({"Carol", "bob", "Alice"}),
+                    "a second click reverses the order");
+            session.removeContact(bob);
+            session.removeContact(carol);
+            QCoreApplication::processEvents();
+            require(contactRows() == 1 && contactText(0, 0) == alice,
+                    "the extra contacts are gone again");
+            // Selecting a row, by any of its cells, turns the buttons on; Copy address copies.
+            clickContact(0, 2);
+            for (auto button : rowButtons)
+                require(button->isEnabled(), "selecting a row turns a contact's buttons on");
+            QApplication::clipboard()->clear();
+            copy->click();
+            require(QApplication::clipboard()->text() == alice,
+                    "Copy address copies the selected contact's address");
             auto filter = window.findChild<QLineEdit *>("contactsFilter");
+            auto empty = window.findChild<QLabel *>("contactsEmpty");
+            require(empty && !empty->isVisible() && contactTree->isVisible(),
+                    "with contacts listed there is no empty note");
             filter->setText("nobody-matches");
-            require(cards().isEmpty() && window.findChild<QLabel *>("contactsEmpty"),
+            require(contactRows() == 0 && empty->isVisible() && !contactTree->isVisible(),
                     "a filter with no match says so");
+            for (auto button : rowButtons)
+                require(!button->isEnabled(), "a selection the filter hides turns the buttons off");
             filter->setText(alice.mid(5, 6));
-            require(cards().size() == 1, "the filter matches addresses too");
+            require(contactRows() == 1, "the filter matches addresses too");
+            filter->setText("aLICE");
+            require(contactRows() == 1, "the filter matches names, ignoring case");
             filter->clear();
-            // Write opens the composer to the contact, with the address book wired in.
-            QTimer::singleShot(30, &window, [&] {
+            // Write opens the composer to the contact, with the address book wired in: from its
+            // button, and from a double-click on the row.
+            const auto composerToAlice = [&] {
                 auto dialog = window.findChild<QDialog *>("composer");
                 auto to = dialog->findChild<QLineEdit *>("recipientField");
                 require(to->text() == alice, "Write addresses the letter to the contact");
@@ -2129,34 +2225,87 @@ int main(int argc, char **argv) {
                 dialog->findChild<QMenu *>("contactsPickerMenu")->actions().first()->trigger();
                 require(to->text() == alice, "picking a contact fills in the address");
                 dialog->reject();
-            });
-            cards()[0]->findChild<QPushButton *>("writeToContactButton")->click();
-            // Rename, then delete (confirmed).
+            };
+            clickContact(0, 2);
+            QTimer::singleShot(30, &window, composerToAlice);
+            write->click();
+            QTimer::singleShot(30, &window, composerToAlice);
+            QTest::mouseDClick(contactTree->viewport(), Qt::LeftButton, {},
+                               contactTree->visualRect(contactCell(0, 2)).center());
+            // A theme switch recolours the toolbar's icons, and the page keeps its selection.
+            {
+                const auto themeCombo = [&] {
+                    window.findChild<QAction *>("settingsAction")->trigger();
+                    return window.findChild<QWidget *>("settingsPane")
+                        ->findChild<QComboBox *>("themeCombo");
+                };
+                const auto before = themeCombo()->currentData().toString();
+                const auto themeTo = [&](const QString &mode) {
+                    auto combo = themeCombo();
+                    combo->setCurrentIndex(combo->findData(mode));
+                    folders->setCurrentRow(9);
+                    QCoreApplication::processEvents();
+                };
+                themeTo("light");
+                const auto light = rename->icon().pixmap(18, 18).toImage();
+                themeTo("dark");
+                require(rename->icon().pixmap(18, 18).toImage() != light,
+                        "a theme switch recolours the toolbar's icons");
+                themeTo(before);
+            }
+            require(write->isEnabled(), "the selected row stays selected when the page refreshes");
+            // Rename and Delete act on the selected row, so a second contact goes below the first.
+            require(session.addContact(bob, "Bob"), "add a second contact");
+            QCoreApplication::processEvents();
+            contactTree->sortByColumn(2, Qt::AscendingOrder);
+            require(contactNames() == QStringList({"Alice", "Bob"}), "Bob is the second row");
+            clickContact(rowOf(bob), 2);
             QTimer::singleShot(30, &window, [&] {
                 auto dialog = window.findChild<QDialog *>("contactDialog");
-                require(dialog->findChild<QLineEdit *>("contactAddressField")->isReadOnly(),
+                auto addressField = dialog->findChild<QLineEdit *>("contactAddressField");
+                require(addressField->isReadOnly() && addressField->text() == bob,
                         "renaming keeps the address");
-                dialog->findChild<QLineEdit *>("contactNameField")->setText("Alice Liddell");
+                require(dialog->findChild<QLineEdit *>("contactNameField")->text() == "Bob",
+                        "the dialog starts with the selected contact's name");
+                dialog->findChild<QLineEdit *>("contactNameField")->setText("Bobby");
                 dialog->findChild<QPushButton *>("contactSaveButton")->click();
             });
-            cards()[0]->findChild<QToolButton *>("renameContactButton")->click();
+            rename->click();
             QTest::qWait(20);
-            require(session.nameFor(alice) == "Alice Liddell" &&
-                        cards()[0]->findChild<QLabel *>("contactName")->text() == "Alice Liddell",
-                    "rename updates the book and the card");
-            // The confirmation is a message box on the window; answer Yes once it shows.
-            QTimer confirm;
-            QObject::connect(&confirm, &QTimer::timeout, &window, [&] {
-                for (auto box : window.findChildren<QMessageBox *>())
-                    if (box->isVisible())
-                        box->button(QMessageBox::Yes)->click();
-            });
-            confirm.start(10);
-            cards()[0]->findChild<QToolButton *>("deleteContactButton")->click();
-            confirm.stop();
-            QTest::qWait(20);
-            require(cards().isEmpty() && session.contacts().isEmpty() && session.nameFor(alice).isEmpty(),
+            require(session.nameFor(bob) == "Bobby" && session.nameFor(alice) == "Alice" &&
+                        contactText(rowOf(bob), 2) == "Bobby",
+                    "rename updates the selected contact in the book and in the row");
+            require(contactTree->selectionModel()->isRowSelected(rowOf(bob), QModelIndex()) &&
+                        rename->isEnabled(),
+                    "a renamed contact stays selected");
+            // The confirmation is a message box on the window; answer it once it shows.
+            const auto answer = [&](QMessageBox::StandardButton choice) {
+                QTimer timer;
+                QObject::connect(&timer, &QTimer::timeout, &window, [&] {
+                    for (auto box : window.findChildren<QMessageBox *>())
+                        if (box->isVisible())
+                            box->button(choice)->click();
+                });
+                timer.start(10);
+                remove->click();
+                timer.stop();
+                QTest::qWait(20);
+            };
+            answer(QMessageBox::No);
+            require(contactRows() == 2 && session.isContact(bob), "declining keeps the contact");
+            answer(QMessageBox::Yes);
+            require(contactRows() == 1 && contactText(0, 0) == alice && !session.isContact(bob),
+                    "delete removes the selected contact and no other");
+            clickContact(0, 2);
+            answer(QMessageBox::Yes);
+            require(contactRows() == 0 && session.contacts().isEmpty() &&
+                        session.nameFor(alice).isEmpty(),
                     "delete removes the contact");
+            for (auto button : rowButtons)
+                require(!button->isEnabled(),
+                        "with the contact gone nothing is selected, and the buttons are off");
+            require(empty->isVisible() && !contactTree->isVisible(),
+                    "an empty address book says so");
             folders->setCurrentRow(0);
             session.moveLetter(toAlice, "Trash");
             QCoreApplication::processEvents();
@@ -3254,14 +3403,11 @@ int main(int argc, char **argv) {
                 require(likeFeed(window.findChild<QToolButton *>("renameIdentityButton"),
                                  window.findChild<QToolButton *>("deleteIdentityButton")),
                         "an identity card's pill is drawn as the feed's action group");
-                const auto bob = bm::Protocol::identity("Bob for the card pill").address;
-                require(session.addContact(bob, "Bob"), "add a contact for its card");
                 folders->setCurrentRow(9);
                 QCoreApplication::processEvents();
-                require(likeFeed(window.findChild<QToolButton *>("renameContactButton"),
+                require(likeFeed(window.findChild<QToolButton *>("copyContactAddressButton"),
                                  window.findChild<QToolButton *>("deleteContactButton")),
-                        "a contact card's pill is drawn as the feed's action group");
-                session.removeContact(bob);
+                        "the contacts toolbar's pill is drawn as the feed's action group");
                 folders->setCurrentRow(5);
                 QTest::qWait(30);
             }

@@ -18,6 +18,10 @@ class QLineEdit;
 class QPushButton;
 class QStackedWidget;
 class QAbstractItemDelegate;
+class QSortFilterProxyModel;
+class QStandardItemModel;
+class QToolButton;
+class QTreeView;
 namespace bm {
 class Session;
 class FeedView;
@@ -70,8 +74,15 @@ class DesktopWindow : public QMainWindow {
     QWidget *reader_, *identities_, *contacts_;
     ChatsPane *chats_ = nullptr;
     FeedView *feed_ = nullptr; // the Subscriptions page: one sender's posts as a feed
-    QVBoxLayout *contactLayout_;
     QLineEdit *contactsFilter_;
+    QTreeView *contactsTree_;
+    QStandardItemModel *contactsModel_;     // the address book's rows: Address, Nickname, Local name
+    QSortFilterProxyModel *contactsSorted_; // the same rows, sorted by a click on a header
+    QLabel *contactsEmpty_;                 // stands in for the tree when no row is listed
+    // The buttons for the selected contact, in the toolbar beside Add contact.
+    QPushButton *contactWrite_;
+    QToolButton *contactCopy_, *contactRename_, *contactDelete_;
+    QWidget *contactActions_; // the pill of the last three
     QWidget *listColumn_;
     QStackedWidget *welcomeStack_;
     QWidget *lockedPage_, *noMailboxPage_;
@@ -87,6 +98,10 @@ class DesktopWindow : public QMainWindow {
     bool editContact(QString address, QString label = {});
     void refreshIdentities();
     void refreshContacts();
+    // The selected contact's address (column 0) or local name (column 2); empty with no row
+    // selected.
+    QString selectedContact(int column) const;
+    void updateContactActions(); // the toolbar's buttons are on while a row is selected
     void refreshChannels();
     // The open chat's messages: a window of its newest ones; *older says more are kept.
     QVariantList chatThread(bool *older);

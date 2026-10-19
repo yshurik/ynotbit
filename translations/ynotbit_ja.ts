@@ -931,6 +931,14 @@ Date: %1
         <source>Collapse the chat list</source>
         <translation>チャット一覧を折りたたむ</translation>
     </message>
+    <message>
+        <source>Nickname</source>
+        <translation>ニックネーム</translation>
+    </message>
+    <message>
+        <source>Local name</source>
+        <translation>ローカル名</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

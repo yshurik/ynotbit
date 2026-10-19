@@ -931,6 +931,14 @@ Date: %1
         <source>Collapse the chat list</source>
         <translation>收合聊天清單</translation>
     </message>
+    <message>
+        <source>Nickname</source>
+        <translation>暱稱</translation>
+    </message>
+    <message>
+        <source>Local name</source>
+        <translation>本機名稱</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

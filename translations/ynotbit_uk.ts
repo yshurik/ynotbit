@@ -931,6 +931,14 @@ Date: %1
         <source>Collapse the chat list</source>
         <translation>Згорнути список чатів</translation>
     </message>
+    <message>
+        <source>Nickname</source>
+        <translation>Псевдонім</translation>
+    </message>
+    <message>
+        <source>Local name</source>
+        <translation>Локальне ім&apos;я</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
