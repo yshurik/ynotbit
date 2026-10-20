@@ -40,6 +40,9 @@ class DesktopWindow : public QMainWindow {
     // empty until the first message, which makes it a chat of the mailbox.
     void startChat(const QString &local, const QString &peer);
 
+  protected:
+    void closeEvent(QCloseEvent *event) override;
+
   private:
     Session &session_;
     Appearance appearance_;

@@ -765,6 +765,14 @@ class QrCodeView : public QWidget {
   private:
     qrcodegen::QrCode code_;
 };
+// Letters and composers rank with the main window: they don't block it, and aren't
+// kept above it as its transient children. They still belong to it as QObjects.
+void makePeerWindow(QDialog *window) {
+    window->setModal(false);
+    window->winId();
+    if (auto handle = window->windowHandle())
+        handle->setTransientParent(nullptr);
+}
 class Composer : public QDialog {
     Session &session_;
     QString id_, original_;
@@ -868,7 +876,8 @@ class Composer : public QDialog {
         setWindowIcon(windowLogo());
         setWindowTitle(forward ? DesktopWindow::tr("Forward") : (reply ? DesktopWindow::tr("Reply") : DesktopWindow::tr("Write a letter")));
         resize(740, 650);
-        setModal(true);
+        setAttribute(Qt::WA_DeleteOnClose);
+        makePeerWindow(this);
         // The letter's envelope: the same striped border as the reader, for
         // the kind of letter this will be once sent.
         auto outer = new QVBoxLayout(this);
@@ -1991,14 +2000,15 @@ class MessageWindow : public QDialog {
         setObjectName("messageWindow");
         setWindowIcon(windowLogo());
         setAttribute(Qt::WA_DeleteOnClose);
+        makePeerWindow(this);
         setWindowTitle(singleLine(letter["subject"].toString()).left(80));
         resize(720, 680);
         auto layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
         pane_ = new LetterPane(session_, dark, false);
         pane_->compose = [this](QVariantMap letter, bool reply, bool forward) {
-            Composer dialog(session_, letter, reply, forward, dark_, this);
-            dialog.exec();
+            // Owned by the main window, so closing this letter doesn't take the reply with it.
+            (new Composer(session_, letter, reply, forward, dark_, this->parentWidget()))->show();
         };
         pane_->addContact = [this](QString address) {
             ContactDialog dialog(session_, address, {}, this);
@@ -3425,8 +3435,22 @@ void DesktopWindow::compose(QVariantMap letter, bool reply, bool forward) {
         return;
     if (letter.contains("hash"))
         letter = session_.message(letter["hash"].toString());
-    Composer dialog(session_, letter, reply, forward, appearance_.dark(), this);
-    dialog.exec();
+    (new Composer(session_, letter, reply, forward, appearance_.dark(), this))->show();
+}
+void DesktopWindow::closeEvent(QCloseEvent *event) {
+    // Letters and composers are windows of their own; closing the main window closes them
+    // too, and a draft that refuses to close keeps the app open.
+    for (auto window : findChildren<QDialog *>()) {
+        if (window->objectName() == "composer" || window->objectName() == "messageWindow")
+            window->close();
+    }
+    for (auto window : findChildren<QDialog *>("composer")) {
+        if (window->isVisible()) {
+            event->ignore();
+            return;
+        }
+    }
+    QMainWindow::closeEvent(event);
 }
 void DesktopWindow::showVaultPasswordFor(QString path) {
     targetVaultPath_ = path;

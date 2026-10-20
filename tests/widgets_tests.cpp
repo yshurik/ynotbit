@@ -67,6 +67,17 @@ class UrlRecorder : public QObject {
 };
 // Whether a default button shows all of its text: bold by its own font, and as
 // wide as that text with the window's style sheet's 9 px padding a side.
+// compose() no longer blocks, so a test that scripts the composer from a timer waits for
+// the window to go before looking at what it did.
+static void waitComposerGone(bm::DesktopWindow &window) {
+    while (window.findChild<QDialog *>("composer"))
+        QTest::qWait(10);
+}
+static void composeAndWait(bm::DesktopWindow &window, QVariantMap letter = {}, bool reply = false,
+                           bool forward = false) {
+    window.compose(std::move(letter), reply, forward);
+    waitComposerGone(window);
+}
 static bool boldAndWhole(QPushButton *button) {
     return button->font().weight() >= QFont::DemiBold &&
            QFontMetrics(button->font()).horizontalAdvance(button->text()) + 18 <= button->width();
@@ -1554,6 +1565,7 @@ int main(int argc, char **argv) {
             dialog->reject();
         });
         window.findChild<QPushButton *>("writeButton")->click();
+        waitComposerGone(window);
         selectChannel("recipient");
         clock.restart();
         for (int i = 0; i < 50; ++i) {
@@ -2388,9 +2400,11 @@ int main(int argc, char **argv) {
             clickContact(0, 2);
             QTimer::singleShot(30, &window, composerToAlice);
             write->click();
+            waitComposerGone(window);
             QTimer::singleShot(30, &window, composerToAlice);
             QTest::mouseDClick(contactTree->viewport(), Qt::LeftButton, {},
                                contactTree->visualRect(contactCell(0, 2)).center());
+            waitComposerGone(window);
             // A theme switch recolours the toolbar's icons, and the page keeps its selection.
             {
                 const auto themeCombo = [&] {
@@ -2496,7 +2510,7 @@ int main(int argc, char **argv) {
                 body->setPlainText(QString(270000, 'x'));
                 dialog->findChild<QPushButton *>("saveDraftButton")->click();
             });
-            window.compose();
+            composeAndWait(window);
             QCoreApplication::processEvents();
             for (auto m : session.messagePage("Drafts", {}, 0, 100))
                 if (m.toMap()["subject"].toString() == "Too big")
@@ -2550,7 +2564,7 @@ int main(int argc, char **argv) {
                 require(shown, "the inserted picture shows in the composer");
                 dialog->findChild<QPushButton *>("saveDraftButton")->click();
             });
-            window.compose();
+            composeAndWait(window);
             QCoreApplication::processEvents();
             for (auto m : session.messagePage("Drafts", {}, 0, 100))
                 if (m.toMap()["subject"].toString() == "With a picture")
@@ -2590,7 +2604,7 @@ int main(int argc, char **argv) {
                 });
                 dialog->reject();
             });
-            window.compose({{"hash", bigDraft}});
+            composeAndWait(window, {{"hash", bigDraft}});
             QCoreApplication::processEvents();
             require(asked && !window.findChild<QDialog *>("composer"),
                     "closing a draft that can't be saved asks, and then closes");
@@ -2707,7 +2721,7 @@ int main(int argc, char **argv) {
                 QTest::keyClicks(body, "Agreed.");
                 dialog->findChild<QPushButton *>("saveDraftButton")->click();
             });
-            window.compose(session.message(threaded), true);
+            composeAndWait(window, session.message(threaded), true);
             QCoreApplication::processEvents();
             QString replyBody;
             for (auto m : session.messagePage("Drafts", {}, 0, 100))
@@ -2734,7 +2748,7 @@ int main(int argc, char **argv) {
                 QTest::keyClicks(dialog->findChild<QTextEdit *>("bodyField"), "Thanks, noted.");
                 dialog->findChild<QPushButton *>("saveDraftButton")->click();
             });
-            window.compose(session.message(notes), true);
+            composeAndWait(window, session.message(notes), true);
             QCoreApplication::processEvents();
             QString replyId;
             for (auto m : session.messagePage("Drafts", {}, 0, 100))
@@ -2799,7 +2813,7 @@ int main(int argc, char **argv) {
                         "a reopened reply draft shows the quoted heading in the editor");
                 dialog->findChild<QPushButton *>("saveDraftButton")->click();
             });
-            window.compose({{"hash", replyId}});
+            composeAndWait(window, {{"hash", replyId}});
             QCoreApplication::processEvents();
             require(session.message(replyId)["body"].toString() == replyBody,
                     "saving the reopened draft keeps the body byte for byte");
@@ -2862,6 +2876,7 @@ int main(int argc, char **argv) {
             dialog->reject();
         });
         window.findChild<QPushButton *>("writeButton")->click();
+        waitComposerGone(window);
         const auto existingDraft = session.saveLetter({}, address, address, "Existing draft",
                                                        "Already written", "direct");
         QTimer::singleShot(30, &window, [&] {
@@ -2870,7 +2885,7 @@ int main(int argc, char **argv) {
                     "reopening an existing draft does not re-inject the signature");
             dialog->reject();
         });
-        window.compose({{"hash", existingDraft}});
+        composeAndWait(window, {{"hash", existingDraft}});
         folders->setCurrentRow(1);
         QCoreApplication::processEvents();
         const auto draftToOpen =
@@ -3092,7 +3107,7 @@ int main(int argc, char **argv) {
             to->setText(session.identities().first().toMap()["address"].toString());
             dialog->findChild<QPushButton *>("sendButton")->click();
         });
-        window.compose();
+        composeAndWait(window);
         require(session.messageCount("Outbox", "") == 1,
                 "composer sends through persistent outbox");
         {
@@ -3118,7 +3133,7 @@ int main(int argc, char **argv) {
                 ->findChild<QPushButton *>("discardButton")
                 ->click();
         });
-        window.compose();
+        composeAndWait(window);
         require(session.messageCount("Drafts", "") == draftsBeforeNeverSaved,
                 "discarding a never-saved draft creates nothing");
         const auto toDiscard =
@@ -3130,7 +3145,7 @@ int main(int argc, char **argv) {
                 ->findChild<QPushButton *>("discardButton")
                 ->click();
         });
-        window.compose({{"hash", toDiscard}});
+        composeAndWait(window, {{"hash", toDiscard}});
         require(session.messageCount("Drafts", "") == draftsBeforeExisting - 1,
                 "discarding an existing draft removes it from Drafts");
         require(session.messageCount("Trash", "") == trashBeforeExisting + 1,
@@ -3616,8 +3631,9 @@ int main(int argc, char **argv) {
             require(!chipNamed(other)->font().bold(), "...and its sender's bold in the rail clears");
             // Reply privately: a personal letter to the sender, quoting the post.
             bool replied = false;
-            onDialog((QDialog *)nullptr, [&](QDialog *d) {
-                if (d->objectName() != "composer")
+            QTimer::singleShot(30, &window, [&] {
+                auto d = window.findChild<QDialog *>("composer");
+                if (!d)
                     return;
                 replied = d->findChild<QLineEdit *>("recipientField")->text() == other &&
                           d->findChild<QPushButton *>("modePrivateButton")->isChecked();
@@ -3832,7 +3848,7 @@ int main(int argc, char **argv) {
             dialog->findChild<QTextEdit *>("bodyField")->setPlainText("Saved immediately on lock");
             session.lock();
         });
-        window.compose({{"hash", formatted}});
+        composeAndWait(window, {{"hash", formatted}});
         require(!session.mailboxOpen(), "locking closes composer and mailbox");
         require(!chatsIcon->isEnabled() && !chatsPane->isVisible(),
                 "Locking hides Chats and disables its navigation");
