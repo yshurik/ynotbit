@@ -71,6 +71,12 @@ mailboxes already follow the Bitmessage digest, and ynotbit's own update notices
 To add a picture to a letter, use the **+** button in the composer, the
 right-click menu, or drop image files on the letter.
 
+Closing the window does not end ynotbit. It goes on in the notification area (the menu bar on
+macOS), still receiving, and the icon's menu has **Show ynotbit** or **Hide ynotbit**, **New letter**,
+**New chat**, **Settings…** and **Quit**. Choose **Quit** to end the app (on Windows and Linux it is
+also in **File**). Where a desktop has no notification area (GNOME without its extension), closing
+the window quits, as before. Starting ynotbit again shows the window of the one already running.
+
 **File → Back up mailbox and vault** saves both documents. Keep both: a mailbox
 alone cannot recover its encryption key. Changing a password does not invalidate
 old vault copies or backups. Import preserves the original plaintext `keys.dat`.

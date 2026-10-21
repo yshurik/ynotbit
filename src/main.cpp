@@ -2,6 +2,8 @@
 #include "appearance.h"
 #include "desktop_window.h"
 #include "i18n.h"
+#include "mac_integration.h"
+#include "single_instance.h"
 #include <QApplication>
 #include <QDir>
 #include <QStandardPaths>
@@ -33,9 +35,21 @@ int main(int argc, char **argv) {
         int index = args.indexOf("--data-dir");
         if (index >= 0 && index + 1 < args.size())
             root = QDir(args[index + 1]).absolutePath();
+        // Another ynotbit may hold this node folder, living in the notification area with no window
+        // up: it is asked to show one, and this launch has nothing more to do.
+        const auto instanceKey = bm::SingleInstance::keyFor(root);
+        if (bm::SingleInstance::wake(instanceKey))
+            return 0;
         bm::Session session(root, args.contains("--offline"));
         bm::DesktopWindow window(session);
+        bm::SingleInstance instance(instanceKey);
+        QObject::connect(&instance, &bm::SingleInstance::woken, &window,
+                         &bm::DesktopWindow::bringToFront);
         window.show();
+        // A click on the Dock icon brings back a window that was closed into the notification area.
+        QTimer::singleShot(0, &window, [&window] {
+            bm::mac::onReopen([&window] { window.bringToFront(); });
+        });
         index = args.indexOf("--screenshot");
         if (index >= 0 && index + 1 < args.size()) {
             auto path = args[index + 1];

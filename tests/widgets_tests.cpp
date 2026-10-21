@@ -14,6 +14,7 @@
 #include "join_channel_dialog.h"
 #include "new_vault_dialog.h"
 #include "sound_theme.h"
+#include "tray_icon.h"
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
@@ -216,6 +217,121 @@ int main(int argc, char **argv) {
         auto brand = window.findChild<QLabel *>("brand");
         require(brand && brand->text().contains("ynotbit-9.8.7"),
                 "the top bar names ynotbit with its version");
+        {
+            // The notification area: the icon's menu, and the window that hides into it.
+            auto tray = window.trayIcon();
+            require(tray, "the window has an icon for the notification area");
+            const auto trayAction = [&](const char *name) {
+                auto action = tray->menu()->findChild<QAction *>(name);
+                require(action, "the tray menu has the item");
+                return action;
+            };
+            auto folders = window.findChild<QListWidget *>("folders");
+            const int folderBefore = folders->currentRow();
+            int quits = 0;
+            bm::DesktopWindow::setQuitHandlerForTesting([&] { ++quits; });
+            // Show or Hide follows the window, and does what it says.
+            require(window.isVisible() && trayAction("trayShowHideAction")->text() == "Hide ynotbit",
+                    "a shown window is offered Hide");
+            trayAction("trayShowHideAction")->trigger();
+            require(!window.isVisible() && trayAction("trayShowHideAction")->text() == "Show ynotbit",
+                    "Hide hides the window, and the item then offers Show");
+            trayAction("trayShowHideAction")->trigger();
+            require(window.isVisible() && trayAction("trayShowHideAction")->text() == "Hide ynotbit",
+                    "Show brings it back");
+            window.hide();
+            require(trayAction("trayShowHideAction")->text() == "Show ynotbit",
+                    "a window hidden by anything else is offered Show too");
+            window.bringToFront();
+            require(window.isVisible() && trayAction("trayShowHideAction")->text() == "Hide ynotbit",
+                    "bringing the window forward shows a hidden one");
+            window.showMinimized();
+            require(window.isMinimized() && trayAction("trayShowHideAction")->text() == "Show ynotbit",
+                    "a minimized window is offered Show");
+            trayAction("trayShowHideAction")->trigger();
+            require(window.isVisible() && !window.isMinimized(),
+                    "Show brings a minimized window back");
+            // Writing is on while a mailbox is open.
+            require(trayAction("trayNewLetterAction")->isEnabled() &&
+                        trayAction("trayNewChatAction")->isEnabled(),
+                    "with a mailbox open, New letter and New chat are on");
+            // New letter opens a composer, and not the window: the inbox stays out of the way.
+            window.hide();
+            trayAction("trayNewLetterAction")->trigger();
+            auto composer = window.findChild<QDialog *>("composer");
+            require(composer && composer->isVisible() && !window.isVisible(),
+                    "New letter opens a composer without bringing the window up");
+            composer->close();
+            waitComposerGone(window);
+            // New chat brings the window up, and asks who to write to.
+            window.hide();
+            bool asked = false, windowUp = false;
+            QTimer answer;
+            QObject::connect(&answer, &QTimer::timeout, [&] {
+                for (auto dialog : window.findChildren<bm::NewChatDialog *>()) {
+                    asked = true;
+                    windowUp = window.isVisible();
+                    dialog->reject();
+                }
+            });
+            answer.start(20);
+            trayAction("trayNewChatAction")->trigger();
+            answer.stop();
+            require(asked && windowUp, "New chat brings the window up and asks who to write to");
+            // Settings brings the window up on its page.
+            window.hide();
+            trayAction("traySettingsAction")->trigger();
+            auto settingsPane = window.findChild<QWidget *>("settingsPane");
+            require(window.isVisible() && settingsPane && settingsPane->isVisible(),
+                    "Settings brings the window up on the Settings page");
+            folders->setCurrentRow(folderBefore);
+            // Quit asks the app to end, from the icon and, where there is no application menu, the
+            // window's own File menu.
+            require(quits == 0, "nothing has quit yet");
+            trayAction("trayQuitAction")->trigger();
+            require(quits == 1, "Quit in the icon's menu quits");
+#ifndef Q_OS_MACOS
+            auto fileQuit = window.findChild<QAction *>("quitAction");
+            require(fileQuit, "File has a Quit, where the application menu has none");
+            fileQuit->trigger();
+            require(quits == 2, "and it quits");
+#endif
+            // With the icon there, the app goes on without its window however the window went: a
+            // letter closed last, with the window hidden, would end it otherwise.
+            bm::TrayIcon::setAvailableForTesting(true);
+            window.hide();
+            require(!QApplication::quitOnLastWindowClosed(),
+                    "with the icon there, hiding the window does not end the app with its last window");
+            window.show();
+            // Closing it hides it, and the app lives on.
+            window.compose();
+            composer = window.findChild<QDialog *>("composer");
+            require(composer && composer->isVisible(), "(a letter is being written)");
+            require(window.close(), "a window may be closed into the icon: the close is allowed");
+            require(!window.isVisible() && !QApplication::quitOnLastWindowClosed(),
+                    "closing hides the window, and the app does not end with it");
+            require(composer->isVisible(), "a letter being written stays: it is a window of its own");
+            require(trayAction("trayShowHideAction")->text() == "Show ynotbit",
+                    "the icon then offers the window back");
+            window.show();
+            composer->close();
+            waitComposerGone(window);
+            // With none, there is no way back in, so closing is as it was: the letters close, the app ends.
+            bm::TrayIcon::setAvailableForTesting(false);
+            QWidget keepAlive; // lets the last-window rule be seen to hold, without ending this run
+            keepAlive.show();
+            window.compose();
+            composer = window.findChild<QDialog *>("composer");
+            require(composer && window.close() && !window.isVisible(),
+                    "with no icon, the window closes");
+            require(QApplication::quitOnLastWindowClosed(), "and with its last window the app ends");
+            waitComposerGone(window);
+            require(!window.findChild<QDialog *>("composer"), "taking a letter being written with it");
+            keepAlive.close();
+            bm::TrayIcon::setAvailableForTesting(std::nullopt);
+            bm::DesktopWindow::setQuitHandlerForTesting({});
+            window.show();
+        }
         auto folders = window.findChild<QListWidget *>("folders");
         require(folders, "folders exist");
         // Chats owns its panel and must not leave mail controls visible behind it.

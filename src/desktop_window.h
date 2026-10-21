@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QMainWindow>
 #include <QVariantMap>
+#include <functional>
 class QListView;
 class QListWidget;
 class QLabel;
@@ -28,6 +29,7 @@ class FeedView;
 class ChatsPane;
 class SettingsPane;
 class LetterPane;
+class TrayIcon;
 class DesktopWindow : public QMainWindow {
     Q_OBJECT
   public:
@@ -39,12 +41,23 @@ class DesktopWindow : public QMainWindow {
     // Opens a chat between one of the vault's identities and a peer: listed first and
     // empty until the first message, which makes it a chat of the mailbox.
     void startChat(const QString &local, const QString &peer);
+    // Brings the window forward from wherever it is: hidden in the notification area, minimized,
+    // behind others.
+    void bringToFront();
+    // The icon in the notification area, where the window goes when it is closed.
+    TrayIcon *trayIcon() const { return tray_; }
+    // For tests: what Quit does, in place of ending the app. Empty is the real thing.
+    static void setQuitHandlerForTesting(std::function<void()> handler);
 
   protected:
     void closeEvent(QCloseEvent *event) override;
+    void showEvent(QShowEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
+    void changeEvent(QEvent *event) override;
 
   private:
     Session &session_;
+    TrayIcon *tray_ = nullptr;
     Appearance appearance_;
     SoundNotifier sounds_;
     QListView *letters_;
@@ -96,6 +109,8 @@ class DesktopWindow : public QMainWindow {
     QVBoxLayout *identityLayout_;
     QString targetVaultPath_;
     void updateState();
+    void updateTray(); // the icon's menu follows the window and the mailbox
+    void quitApp();
     void updateTheme();
     // Add (or, with a label, rename) an address-book entry; true when saved.
     bool editContact(QString address, QString label = {});

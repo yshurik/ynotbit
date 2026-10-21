@@ -943,6 +943,22 @@ Date: %1
         <source>Suggested from the address. Type to use your own name.</source>
         <translation>주소로 만든 추천 이름입니다. 직접 이름을 입력하면 바뀝니다.</translation>
     </message>
+    <message>
+        <source>Show ynotbit</source>
+        <translation>ynotbit 보이기</translation>
+    </message>
+    <message>
+        <source>Hide ynotbit</source>
+        <translation>ynotbit 숨기기</translation>
+    </message>
+    <message>
+        <source>New letter</source>
+        <translation>새 편지</translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation>종료</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

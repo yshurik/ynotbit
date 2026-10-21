@@ -943,6 +943,22 @@ Date: %1
         <source>Suggested from the address. Type to use your own name.</source>
         <translation>Ім&apos;я запропоновано за адресою. Введіть власне, щоб замінити його.</translation>
     </message>
+    <message>
+        <source>Show ynotbit</source>
+        <translation>Показати ynotbit</translation>
+    </message>
+    <message>
+        <source>Hide ynotbit</source>
+        <translation>Сховати ynotbit</translation>
+    </message>
+    <message>
+        <source>New letter</source>
+        <translation>Новий лист</translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation>Вийти</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>

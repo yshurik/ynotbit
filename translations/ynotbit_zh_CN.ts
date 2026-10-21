@@ -943,6 +943,22 @@ Date: %1
         <source>Suggested from the address. Type to use your own name.</source>
         <translation>根据地址生成的建议名称。输入自己的名称即可替换。</translation>
     </message>
+    <message>
+        <source>Show ynotbit</source>
+        <translation>显示 ynotbit</translation>
+    </message>
+    <message>
+        <source>Hide ynotbit</source>
+        <translation>隐藏 ynotbit</translation>
+    </message>
+    <message>
+        <source>New letter</source>
+        <translation>新建信件</translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation>退出</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
