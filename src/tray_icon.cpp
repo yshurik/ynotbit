@@ -7,8 +7,14 @@
 #include <QSettings>
 #include <QStyleHints>
 #include <QSystemTrayIcon>
+#include <QByteArray>
+#include <cstring>
 #include <algorithm>
 #include <cmath>
+#ifdef YNOTBIT_HAVE_XCB
+#include <QtGui/qguiapplication_platform.h>
+#include <xcb/xcb.h>
+#endif
 
 namespace bm {
 namespace {
@@ -103,6 +109,59 @@ QIcon trayGlyph(const QColor &color) {
         icon.addPixmap(QPixmap::fromImage(trayGlyphImage(size, color)));
     return icon;
 }
+QList<QByteArray> startupRemoveMessage(const QByteArray &id) {
+    QByteArray quoted;
+    for (char ch : id) {
+        if (ch == '"' || ch == '\\')
+            quoted += '\\';
+        quoted += ch;
+    }
+    const QByteArray text = "remove: ID=\"" + quoted + "\"" + '\0';
+    QList<QByteArray> pieces;
+    for (qsizetype at = 0; at < text.size(); at += 20)
+        pieces.append(text.mid(at, 20).leftJustified(20, '\0', true));
+    return pieces;
+}
+void finishStartupSequence() {
+#ifdef YNOTBIT_HAVE_XCB
+    // Wayland takes the token itself, for the window it shows: leave it there.
+    auto x11 = qGuiApp->nativeInterface<QNativeInterface::QX11Application>();
+    if (!x11 || !x11->connection())
+        return;
+    const QByteArray token = qgetenv("XDG_ACTIVATION_TOKEN");
+    if (token.isEmpty())
+        return;
+    qunsetenv("XDG_ACTIVATION_TOKEN");
+    auto connection = x11->connection();
+    const auto atom = [&](const char *name) {
+        const auto reply = xcb_intern_atom_reply(
+            connection, xcb_intern_atom(connection, 0, uint16_t(strlen(name)), name), nullptr);
+        const xcb_atom_t value = reply ? reply->atom : XCB_ATOM_NONE;
+        free(reply);
+        return value;
+    };
+    const auto begin = atom("_NET_STARTUP_INFO_BEGIN"), more = atom("_NET_STARTUP_INFO");
+    const auto root = xcb_setup_roots_iterator(xcb_get_setup(connection)).data->root;
+    // The message names a window of the sender's: one that is never mapped does.
+    const auto sender = xcb_generate_id(connection);
+    xcb_create_window(connection, XCB_COPY_FROM_PARENT, sender, root, 0, 0, 1, 1, 0,
+                      XCB_WINDOW_CLASS_INPUT_ONLY, XCB_COPY_FROM_PARENT, 0, nullptr);
+    bool first = true;
+    for (const auto &piece : startupRemoveMessage(token)) {
+        xcb_client_message_event_t event = {};
+        event.response_type = XCB_CLIENT_MESSAGE;
+        event.format = 8;
+        event.window = sender;
+        event.type = first ? begin : more;
+        memcpy(event.data.data8, piece.constData(), 20);
+        xcb_send_event(connection, 0, root, XCB_EVENT_MASK_PROPERTY_CHANGE,
+                       reinterpret_cast<const char *>(&event));
+        first = false;
+    }
+    xcb_destroy_window(connection, sender);
+    xcb_flush(connection);
+#endif
+}
 TrayTone trayTone(TrayPlatform platform, const TrayEnvironment &environment) {
     switch (platform) {
     case TrayPlatform::Mac: return {QColor(Qt::black), true};
@@ -156,6 +215,7 @@ TrayIcon::TrayIcon(Labels labels, QObject *parent)
         action->setObjectName(name);
         // macOS takes an item to the application menu by its words (Quit, Settings): not these.
         action->setMenuRole(QAction::NoRole);
+        connect(action, &QAction::triggered, this, [] { finishStartupSequence(); });
         connect(action, &QAction::triggered, this, signal);
         return action;
     };
@@ -171,6 +231,7 @@ TrayIcon::TrayIcon(Labels labels, QObject *parent)
     icon_->setContextMenu(menu_);
     connect(icon_, &QSystemTrayIcon::activated, this,
             [this](QSystemTrayIcon::ActivationReason reason) {
+                finishStartupSequence();
                 if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick)
                     emit showRequested();
             });

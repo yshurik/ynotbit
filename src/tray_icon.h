@@ -15,6 +15,15 @@ namespace bm {
 // The sizes the icon offers: 16 to 24 for a bar at 100%, up to 96 for a Retina menu bar, which
 // asks for twice its height and scales it down.
 inline constexpr int kTraySizes[] = {16, 18, 20, 22, 24, 28, 32, 36, 40, 44, 48, 56, 64, 72, 96};
+// GNOME's AppIndicator extension starts a "launching" sequence (a busy cursor over the panel and
+// dock) with each click in the icon's menu, and hands the app its id as an activation token. Qt
+// keeps the token in XDG_ACTIVATION_TOKEN for a window to use, and only Wayland windows do: on
+// X11 the sequence is never ended and the busy cursor stays until it times out. This ends it, as a
+// launcher's app does when it is up: the startup-notification "remove" message for `id`, in the
+// 20-byte pieces that go in a client message (the first piece is the one that begins the message).
+QList<QByteArray> startupRemoveMessage(const QByteArray &id);
+// Ends the sequence the last click began, if there is one and this is X11; else does nothing.
+void finishStartupSequence();
 QImage trayGlyphImage(int pixels, const QColor &color); // pixels x pixels, clear around the mark
 QIcon trayGlyph(const QColor &color);                   // one picture for each of kTraySizes
 

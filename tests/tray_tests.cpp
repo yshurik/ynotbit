@@ -214,6 +214,22 @@ static void testActive() {
     require(tray.active() == QSystemTrayIcon::isSystemTrayAvailable(),
             "the platform's own answer is used when none is forced");
 }
+static void testStartupRemove() {
+    const auto pieces = bm::startupRemoveMessage("gnome-shell/x/1-2-host_TIME3");
+    require(!pieces.isEmpty() && pieces.first().startsWith("remove: ID=\""),
+            "the message says remove, for the id");
+    QByteArray all;
+    for (const auto &piece : pieces) {
+        require(piece.size() == 20, "each piece fills a client message's 20 bytes");
+        all += piece;
+    }
+    require(all.startsWith("remove: ID=\"gnome-shell/x/1-2-host_TIME3\"") &&
+                all.indexOf('\0') == all.indexOf('"', 12) + 1,
+            "the id is in quotes and the message ends with a NUL");
+    require(QByteArray(bm::startupRemoveMessage("a\"b\\c").first()).contains("a\\\"b\\\\c"),
+            "a quote or backslash in the id is escaped");
+    bm::finishStartupSequence(); // nothing to end, and no X11 here: it must do nothing
+}
 static void testSingleInstance() {
     using bm::SingleInstance;
     const auto key = SingleInstance::keyFor("/tmp/some/node/folder");
@@ -263,6 +279,7 @@ int main(int argc, char **argv) {
         testTone();
         testMenu();
         testActive();
+        testStartupRemove();
         testSingleInstance();
         std::cout << "PASS: glyph, tone, menu, tray availability, second launch\n";
         return 0;
