@@ -183,8 +183,8 @@ scripts/package-windows.ps1 -BuildDir C:\absolute\build -OutputZip C:\absolute\y
 
 ## 文档、网络数据与可移植性
 
-保险库和邮箱文档可以放在任何你喜欢的位置。节点和缓存目录使用 Qt 的应用数据位置。为了兼容早期
-alpha 版本的缓存，内部应用标识仍为 `NotbitDesktop/Notbit Desktop`。`--data-dir /absolute/path`
+保险库和邮箱文档可以放在任何你喜欢的位置。节点和缓存目录是 Qt 应用数据位置下的 `ynotbit`（Linux 上为
+`~/.local/share/ynotbit`）。0.7.2 之前为 `NotbitDesktop/Notbit Desktop`；新版本首次启动时会把该目录和设置迁移到新名称。`--data-dir /absolute/path`
 可以指定节点目录。`--portable` 使用相对于启动目录的 `./notbit-data/node`。`--offline` 启动时
 不连接网络。应用退出时中继也会停止。中继在 8444 端口接受传入连接（设置了代理时不接受），并请求
 路由器用 UPnP 开放这个端口；两者都可以在 **设置 → 网络** 中关闭。

@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QStandardPaths>
+#include "data_migration.h"
 #include "desktop_entry.h"
 #include <QWindow>
 #include <QTimer>
@@ -18,8 +19,22 @@ int main(int argc, char **argv) {
     if (argc > 1 && std::string(argv[1]) == "--node")
         return ntb_daemon(argc - 1, argv + 1);
     QApplication app(argc, argv);
-    app.setOrganizationName("NotbitDesktop");
-    app.setApplicationName("Notbit Desktop");
+    // An earlier version's identifier was NotbitDesktop/Notbit Desktop; what it left is moved to
+    // the new one before anything reads it.
+    constexpr auto kLegacyOrganization = "NotbitDesktop", kLegacyApplication = "Notbit Desktop";
+    app.setOrganizationName(kLegacyOrganization);
+    app.setApplicationName(kLegacyApplication);
+    const auto legacyDataDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    // No organization, which Qt would put in the data folder's path (<data>/<org>/<app>); the
+    // domain stands in for it where settings are filed, as an empty one is "Unknown Organization".
+    app.setOrganizationName(QString());
+    app.setOrganizationDomain("ynotbit");
+    app.setApplicationName("ynotbit");
+    auto dataDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    // Not for a run that keeps its data elsewhere: --portable and --data-dir leave the old alone.
+    if (!app.arguments().contains("--portable") && !app.arguments().contains("--data-dir"))
+        dataDir = bm::adoptLegacyFolder(legacyDataDir, dataDir);
+    bm::adoptLegacySettings(kLegacyOrganization, kLegacyApplication);
     app.setApplicationDisplayName("ynotbit");
     app.setApplicationVersion(YNOTBIT_VERSION);
     app.setDesktopFileName("ynotbit");
@@ -30,7 +45,7 @@ int main(int argc, char **argv) {
     {
         app.setApplicationName(QString("ynotbit-") + YNOTBIT_VERSION);
         QWindow().create();
-        app.setApplicationName("Notbit Desktop");
+        app.setApplicationName("ynotbit");
     }
 #endif
 #ifdef Q_OS_LINUX
@@ -51,8 +66,7 @@ int main(int argc, char **argv) {
     // macOS uses the bundled ICNS, including its separate Retina optical masters.
     try {
         auto args = app.arguments();
-        QString root =
-            QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/node";
+        QString root = dataDir + "/node";
         if (args.contains("--portable"))
             root = QDir::currentPath() + "/notbit-data/node";
         int index = args.indexOf("--data-dir");

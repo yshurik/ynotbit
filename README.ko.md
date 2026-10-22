@@ -218,8 +218,8 @@ scripts/package-windows.ps1 -BuildDir C:\absolute\build -OutputZip C:\absolute\y
 ## 문서, 네트워크 데이터, 이식성
 
 보관함과 메일함 문서는 원하는 곳에 둘 수 있습니다. 노드와 캐시 폴더는 Qt의 애플리케이션 데이터
-위치를 사용합니다. 내부 애플리케이션 식별자는 예전 알파 버전 캐시와의 호환을 위해
-`NotbitDesktop/Notbit Desktop` 그대로입니다. `--data-dir /absolute/path`로 노드 폴더를 바꿀 수
+위치에 있는 `ynotbit`입니다(Linux에서는 `~/.local/share/ynotbit`). 0.7.2 이전에는
+`NotbitDesktop/Notbit Desktop`이었으며, 새 버전을 처음 실행하면 그 폴더와 설정이 새 이름으로 옮겨집니다. `--data-dir /absolute/path`로 노드 폴더를 바꿀 수
 있습니다. `--portable`은 실행한 디렉터리를 기준으로 `./notbit-data/node`를 사용합니다.
 `--offline`은 네트워크에 연결하지 않고 시작합니다. 릴레이는 앱이 끝날 때 함께 멈춥니다.
 릴레이는 8444번 포트로 들어오는 연결을 받고(프록시를 설정했을 때는 받지 않습니다) 라우터에

@@ -225,8 +225,9 @@ scripts/package-windows.ps1 -BuildDir C:\absolute\build -OutputZip C:\absolute\y
 ## ドキュメント、ネットワークデータ、移植性
 
 保管庫とメールボックスのドキュメントは好きな場所に置けます。ノードとキャッシュのフォルダーは
-Qt のアプリケーションデータの場所を使います。内部のアプリケーション識別子は、以前のアルファ版の
-キャッシュとの互換性のため `NotbitDesktop/Notbit Desktop` のままです。`--data-dir /absolute/path`
+Qt のアプリケーションデータの場所にある `ynotbit` です（Linux では `~/.local/share/ynotbit`）。
+0.7.2 より前は `NotbitDesktop/Notbit Desktop` でした。新しいバージョンの初回起動時に、そのフォルダーと
+設定が新しい名前へ移されます。`--data-dir /absolute/path`
 でノードのフォルダーを変更できます。`--portable` は起動したディレクトリからの相対パス
 `./notbit-data/node` を使います。`--offline` はネットワークに接続せずに起動します。リレーは
 アプリの終了とともに停止します。リレーはポート 8444 で着信接続を受け付け (プロキシを設定して

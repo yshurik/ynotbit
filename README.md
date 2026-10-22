@@ -231,8 +231,9 @@ scripts/package-windows.ps1 -BuildDir C:\absolute\build -OutputZip C:\absolute\y
 ## Documents, network data, and portability
 
 Vault and mailbox documents live wherever you choose. The node/cache directory
-uses Qt's application-data location. Its internal application identifier remains
-`NotbitDesktop/Notbit Desktop` for compatibility with the earlier alpha's cache.
+is `ynotbit` in Qt's application-data location (`~/.local/share/ynotbit` on Linux). Versions
+before 0.7.2 kept it as `NotbitDesktop/Notbit Desktop`; the first start of a newer version moves
+that folder, and the settings, to the new names.
 `--data-dir /absolute/path` overrides the node folder. `--portable` uses
 `./notbit-data/node` relative to the launch directory. `--offline` starts without
 network connections. The relay stops when the application exits. The relay accepts

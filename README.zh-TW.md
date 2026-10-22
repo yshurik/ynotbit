@@ -184,8 +184,8 @@ scripts/package-windows.ps1 -BuildDir C:\absolute\build -OutputZip C:\absolute\y
 
 ## 文件、網路資料與可攜性
 
-保險庫和信箱文件可以放在任何你喜歡的位置。節點和快取目錄使用 Qt 的應用程式資料位置。為了相容
-早期 alpha 版本的快取，內部應用程式識別碼仍為 `NotbitDesktop/Notbit Desktop`。
+保險庫和信箱文件可以放在任何你喜歡的位置。節點和快取目錄是 Qt 應用程式資料位置下的 `ynotbit`（Linux 上為
+`~/.local/share/ynotbit`）。0.7.2 之前為 `NotbitDesktop/Notbit Desktop`；新版本首次啟動時會把該目錄和設定移轉到新名稱。
 `--data-dir /absolute/path` 可以指定節點目錄。`--portable` 使用相對於啟動目錄的
 `./notbit-data/node`。`--offline` 啟動時不連線網路。應用程式結束時中繼也會停止。中繼在 8444
 連接埠接受傳入連線（設定了代理伺服器時不接受），並請求路由器用 UPnP 開放這個連接埠；兩者都可以
