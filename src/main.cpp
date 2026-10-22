@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QStandardPaths>
+#include "desktop_entry.h"
 #include <QWindow>
 #include <QTimer>
 #include <iostream>
@@ -30,6 +31,17 @@ int main(int argc, char **argv) {
         app.setApplicationName(QString("ynotbit-") + YNOTBIT_VERSION);
         QWindow().create();
         app.setApplicationName("Notbit Desktop");
+    }
+#endif
+#ifdef Q_OS_LINUX
+    // Before the first window, which the shell names and draws from the entry when it appears.
+    if (!app.arguments().contains("--portable") && !app.arguments().contains("--screenshot") &&
+        qEnvironmentVariableIsEmpty("YNOTBIT_NO_DESKTOP_ENTRY")) {
+        const auto appImage = qEnvironmentVariable("APPIMAGE"); // the file, not its mount
+        bm::ensureDesktopEntry(
+            QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation),
+            QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation),
+            appImage.isEmpty() ? app.applicationFilePath() : appImage);
     }
 #endif
     bm::installTranslations(bm::savedLanguage());

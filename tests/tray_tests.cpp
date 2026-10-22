@@ -1,11 +1,13 @@
 // The notification-area icon: its glyph, the colour each platform gets, its menu, and the second
 // launch that wakes the running window. (The window's side of it, closing into the tray, is in
 // widgets_tests.)
+#include "desktop_entry.h"
 #include "single_instance.h"
 #include "tray_icon.h"
 #include <QAction>
 #include <QApplication>
 #include <QDir>
+#include <QTemporaryDir>
 #include <QFile>
 #include <QLocalSocket>
 #include <QMenu>
@@ -214,6 +216,44 @@ static void testActive() {
     require(tray.active() == QSystemTrayIcon::isSystemTrayAvailable(),
             "the platform's own answer is used when none is forced");
 }
+static QByteArray slurp(const QString &path) {
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+}
+static void testDesktopEntry() {
+    QTemporaryDir home, system;
+    require(home.isValid() && system.isValid(), "temporary folders");
+    const auto entry = home.path() + "/applications/ynotbit.desktop";
+    require(bm::ensureDesktopEntry(home.path(), {system.path()}, "/opt/my apps/ynotbit"),
+            "with no entry anywhere, one is written");
+    const auto text = slurp(entry);
+    require(text.contains("Exec=\"/opt/my apps/ynotbit\"\n") && text.contains("Icon=ynotbit") &&
+                text.contains("X-Ynotbit-Generated=true"),
+            "it launches the program, quoted for the space, with the app's icon");
+    require(!bm::ensureDesktopEntry(home.path(), {system.path()}, "/opt/my apps/ynotbit"),
+            "run again, there is nothing to write");
+    require(bm::ensureDesktopEntry(home.path(), {system.path()}, "/home/me/ynotbit") &&
+                slurp(entry).contains("Exec=/home/me/ynotbit\n"),
+            "the program having moved, the entry follows it");
+    QFile(entry).remove();
+    QFile mine(entry);
+    require(mine.open(QIODevice::WriteOnly) && mine.write("[Desktop Entry]\nName=mine\n") > 0,
+            "a file of the user's");
+    mine.close();
+    require(!bm::ensureDesktopEntry(home.path(), {system.path()}, "/x/ynotbit") &&
+                slurp(entry) == "[Desktop Entry]\nName=mine\n",
+            "an entry that is not ours is left as it is");
+    QFile(entry).remove();
+    QDir().mkpath(system.path() + "/applications");
+    QFile installed(system.path() + "/applications/ynotbit.desktop");
+    require(installed.open(QIODevice::WriteOnly) && installed.write("x") > 0, "an installed entry");
+    installed.close();
+    require(!bm::ensureDesktopEntry(home.path(), {system.path()}, "/x/ynotbit") &&
+                !QFile::exists(entry),
+            "with one installed for the system, none is written");
+    require(bm::desktopEntryText("/a/b%c").contains("Exec=/a/b%%c\n"),
+            "a percent sign in the path is not taken for a field code");
+}
 static void testStartupRemove() {
     const auto pieces = bm::startupRemoveMessage("gnome-shell/x/1-2-host_TIME3");
     require(!pieces.isEmpty() && pieces.first().startsWith("remove: ID=\""),
@@ -279,6 +319,7 @@ int main(int argc, char **argv) {
         testTone();
         testMenu();
         testActive();
+        testDesktopEntry();
         testStartupRemove();
         testSingleInstance();
         std::cout << "PASS: glyph, tone, menu, tray availability, second launch\n";

@@ -148,7 +148,7 @@ target_include_directories(chat_scroll_bench PRIVATE src)
 target_link_libraries(chat_scroll_bench PRIVATE Qt6::Widgets)
 foreach(desktop_target ynotbit desktop_tests readme_screenshots feed_scroll_bench)
  target_sources(${desktop_target} PRIVATE src/chats_pane.cpp src/chats_pane.h src/new_chat_dialog.cpp src/new_chat_dialog.h
-  src/join_channel_dialog.cpp src/join_channel_dialog.h src/tray_icon.cpp src/tray_icon.h
+  src/join_channel_dialog.cpp src/join_channel_dialog.h src/tray_icon.cpp src/tray_icon.h src/desktop_entry.cpp src/desktop_entry.h
   src/sound_notifier.cpp src/sound_notifier.h assets/sounds.qrc)
  target_link_libraries(${desktop_target} PRIVATE Qt6::Multimedia)
  if(APPLE)
@@ -250,7 +250,7 @@ target_link_libraries(coolname_tests PRIVATE Qt6::Core)
 add_coolname(coolname_tests)
 add_test(NAME coolname COMMAND coolname_tests ${CMAKE_CURRENT_SOURCE_DIR})
 # The notification-area icon and the second launch, without the window; the window's side is in desktop_tests.
-qt_add_executable(tray_tests tests/tray_tests.cpp src/tray_icon.cpp src/tray_icon.h src/single_instance.cpp src/single_instance.h)
+qt_add_executable(tray_tests tests/tray_tests.cpp src/desktop_entry.cpp src/desktop_entry.h src/tray_icon.cpp src/tray_icon.h src/single_instance.cpp src/single_instance.h)
 target_include_directories(tray_tests PRIVATE src)
 target_link_libraries(tray_tests PRIVATE Qt6::Widgets Qt6::Network Qt6::Test)
 if(APPLE)
