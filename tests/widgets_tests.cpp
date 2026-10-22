@@ -3751,20 +3751,18 @@ int main(int argc, char **argv) {
                     "...and its dot goes away");
             QTest::qWait(30);
             require(!chipNamed(other)->font().bold(), "...and its sender's bold in the rail clears");
-            // Reply privately: a personal letter to the sender, quoting the post.
-            bool replied = false;
-            QTimer::singleShot(30, &window, [&] {
-                auto d = window.findChild<QDialog *>("composer");
-                if (!d)
-                    return;
-                replied = d->findChild<QLineEdit *>("recipientField")->text() == other &&
-                          d->findChild<QPushButton *>("modePrivateButton")->isChecked();
-                d->reject();
-            });
+            // Reply privately: a personal letter to the sender, quoting the post. compose() does
+            // not block: the composer the click opens is there once the click returns, so it is
+            // looked at and closed here, not from a timer that a busy thread may not run in time.
             feedCard("bc-2")->findChild<QToolButton *>("feedReply")->click();
-            QTest::qWait(50);
-            if (auto box = window.findChild<QMessageBox *>("unsavedDraftBox"))
-                box->findChild<QPushButton *>("closeWithoutSavingButton")->click();
+            auto replyComposer = window.findChild<QDialog *>("composer");
+            const bool replied =
+                replyComposer &&
+                replyComposer->findChild<QLineEdit *>("recipientField")->text() == other &&
+                replyComposer->findChild<QPushButton *>("modePrivateButton")->isChecked();
+            if (replyComposer)
+                replyComposer->reject();
+            waitComposerGone(window);
             require(replied, "Reply privately writes a personal letter to the sender");
             require(window.findChild<QPushButton *>("writeButton")->toolTip() == "Write a broadcast",
                     "Write on the Subscriptions page writes a broadcast");
