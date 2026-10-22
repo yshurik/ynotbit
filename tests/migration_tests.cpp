@@ -46,9 +46,22 @@ static void testFolder() {
                 get(now + "/sound-themes/new.txt") == "new" && !QFileInfo(old + "/node").exists(),
             "a new folder with no node, only a theme, still gets the old node");
 }
+// The test's own two stores. QSettings keeps them in the user's real preferences on macOS and in
+// the registry on Windows, whatever XDG_CONFIG_HOME says, so a run must start from nothing and
+// leave nothing: one that found the last run's values (or was killed before it cleaned up) said
+// the new settings were already in use, and could not be run twice.
+static void clearSettings() {
+    QSettings().clear();
+    QSettings("OldOrg", "Old App").clear();
+}
+struct SettingsCleared {
+    SettingsCleared() { clearSettings(); }
+    ~SettingsCleared() { clearSettings(); }
+};
 static void testSettings() {
     QCoreApplication::setOrganizationDomain("ynotbit-test");
     QCoreApplication::setApplicationName("ynotbit-test");
+    SettingsCleared cleared;
     {
         QSettings old("OldOrg", "Old App");
         old.setValue("listDensity", "compact");
