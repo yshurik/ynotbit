@@ -18,6 +18,8 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
+#include <QAudioDevice>
+#include <QMediaDevices>
 #include <QSignalSpy>
 #include <QSoundEffect>
 #include <QTest>
@@ -1450,9 +1452,11 @@ int main(int argc, char **argv) {
                         "the preview button builds exactly one sound effect");
                 require(effects.first()->source().toLocalFile().endsWith("/new-chat.wav"),
                         "the preview button hands the event's own file to the effect");
-                require(QTest::qWaitFor(
-                            [&] { return effects.first()->status() == QSoundEffect::Ready; }, 5000),
-                        "the preview's sound loads ready to play");
+                // A machine with no sound output (a CI runner) can't take a sound to Ready.
+                if (!QMediaDevices::audioOutputs().isEmpty())
+                    require(QTest::qWaitFor(
+                                [&] { return effects.first()->status() == QSoundEffect::Ready; }, 5000),
+                            "the preview's sound loads ready to play");
                 settings->findChild<QPushButton *>("soundPreview_new-mail")->click();
                 require(sounds.findChildren<QSoundEffect *>().size() == 2,
                         "the other event loads its own sound effect");
