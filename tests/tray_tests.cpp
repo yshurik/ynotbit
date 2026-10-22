@@ -220,6 +220,10 @@ static void testSingleInstance() {
     require(key.startsWith("ynotbit-") && key.size() <= 40 && !key.contains('/') &&
                 !key.contains('\\'),
             "the socket's name is short and is not a path: macOS allows 104 bytes in all");
+    for (const char *folder : {"/tmp/some/node/folder", "/tmp/some/other/../node/folder/",
+                               "/tmp/some/node/other"})
+        std::cerr << folder << " -> " << QDir(folder).absolutePath().toStdString() << " -> "
+                  << SingleInstance::keyFor(folder).toStdString() << "\n";
     require(key == SingleInstance::keyFor("/tmp/some/node/folder") &&
                 key == SingleInstance::keyFor("/tmp/some/other/../node/folder/") &&
                 key != SingleInstance::keyFor("/tmp/some/node/other"),
