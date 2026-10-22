@@ -3,12 +3,23 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSettings>
+#include <QStringList>
 namespace bm {
 namespace {
 // Removes `dir` if nothing is in it.
 void dropIfEmpty(const QString &dir) {
     if (QDir(dir).isEmpty())
         QDir().rmdir(dir);
+}
+// The keys a QSettings holds of its own. On macOS it also lists the system-wide
+// defaults, so those are taken off: they are never the app's to move or to count.
+QStringList ownKeys(const QSettings &settings) {
+    static const QStringList shared =
+        QSettings("ynotbit-no-such-organization", "no-such-application").allKeys();
+    auto keys = settings.allKeys();
+    for (const auto &key : shared)
+        keys.removeAll(key);
+    return keys;
 }
 } // namespace
 QString adoptLegacyFolder(const QString &oldDir, const QString &newDir) {
@@ -38,12 +49,13 @@ QString adoptLegacyFolder(const QString &oldDir, const QString &newDir) {
 }
 bool adoptLegacySettings(const QString &oldOrganization, const QString &oldApplication) {
     QSettings old(oldOrganization, oldApplication);
-    if (old.allKeys().isEmpty())
+    const auto oldKeys = ownKeys(old);
+    if (oldKeys.isEmpty())
         return false;
     QSettings now;
-    if (!now.allKeys().isEmpty())
+    if (!ownKeys(now).isEmpty())
         return false;
-    for (const auto &key : old.allKeys())
+    for (const auto &key : oldKeys)
         now.setValue(key, old.value(key));
     now.sync();
     if (now.status() != QSettings::NoError)

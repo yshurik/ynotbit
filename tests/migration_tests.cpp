@@ -59,7 +59,7 @@ static void testSettings() {
     require(now.value("listDensity").toString() == "compact" &&
                 now.value("railCollapsed/chats").toBool(),
             "the new settings hold the old values");
-    require(QSettings("OldOrg", "Old App").allKeys().isEmpty(), "the old settings are cleared");
+    require(!QSettings("OldOrg", "Old App").contains("listDensity"), "the old settings are cleared");
     {
         QSettings old("OldOrg", "Old App");
         old.setValue("listDensity", "cozy");

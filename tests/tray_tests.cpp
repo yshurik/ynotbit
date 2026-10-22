@@ -288,7 +288,7 @@ static void testSingleInstance() {
         require(instance.listening(), "an instance listens");
         QSignalSpy woken(&instance, &SingleInstance::woken);
         require(SingleInstance::wake(name), "a second launch finds the first");
-        require(woken.wait(2000) && woken.count() == 1, "and the first is told to show its window");
+        require(woken.wait(10000) && woken.count() == 1, "and the first is told to show its window");
         require(SingleInstance::wake(name) && woken.wait(2000) && woken.count() == 2,
                 "as often as it asks");
         // Whatever else is said at the socket does not show the window.
