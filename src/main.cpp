@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QStandardPaths>
+#include <QWindow>
 #include <QTimer>
 #include <iostream>
 extern "C" {
@@ -21,6 +22,16 @@ int main(int argc, char **argv) {
     app.setApplicationDisplayName("ynotbit");
     app.setApplicationVersion(YNOTBIT_VERSION);
     app.setDesktopFileName("ynotbit");
+#ifdef Q_OS_LINUX
+    // A panel without a desktop entry for the app names it by its windows' class, which Qt takes
+    // from the application name when the first window is made, and keeps. The name stays what
+    // the data folder and the settings know it by; for that one moment it is the app and its version.
+    {
+        app.setApplicationName(QString("ynotbit-") + YNOTBIT_VERSION);
+        QWindow().create();
+        app.setApplicationName("Notbit Desktop");
+    }
+#endif
     bm::installTranslations(bm::savedLanguage());
 #ifndef Q_OS_MACOS
     app.setWindowIcon(bm::appLogo());
