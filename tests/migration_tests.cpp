@@ -38,6 +38,13 @@ static void testFolder() {
     QDir().mkpath(now);
     require(bm::adoptLegacyFolder(old, now) == now && get(now + "/node/keys.dat") == "other",
             "an empty new folder is taken over");
+    QDir(now).removeRecursively();
+    put(old + "/node/keys.dat", "kept");
+    put(old + "/sound-themes/old.txt", "old");
+    put(now + "/sound-themes/new.txt", "new");
+    require(bm::adoptLegacyFolder(old, now) == now && get(now + "/node/keys.dat") == "kept" &&
+                get(now + "/sound-themes/new.txt") == "new" && !QFileInfo(old + "/node").exists(),
+            "a new folder with no node, only a theme, still gets the old node");
 }
 static void testSettings() {
     QCoreApplication::setOrganizationDomain("ynotbit-test");

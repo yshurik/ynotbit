@@ -15,8 +15,20 @@ QString adoptLegacyFolder(const QString &oldDir, const QString &newDir) {
     if (QDir::cleanPath(oldDir) == QDir::cleanPath(newDir) || !QFileInfo(oldDir).isDir())
         return newDir;
     if (QFileInfo(newDir).exists()) {
-        if (!QDir(newDir).isEmpty())
-            return newDir; // already in use: the old one is not ours to merge in
+        if (!QDir(newDir).isEmpty()) {
+            // Something small made the new folder first (a sound theme, say). Only a new
+            // folder with no node of its own gets the old entries, one by one, never over one.
+            if (QFileInfo(newDir + "/node").exists() || !QFileInfo(oldDir + "/node").isDir())
+                return newDir;
+            for (const auto &name : QDir(oldDir).entryList(QDir::AllEntries | QDir::NoDotAndDotDot))
+                if (!QFileInfo::exists(newDir + "/" + name))
+                    QDir().rename(oldDir + "/" + name, newDir + "/" + name);
+            if (QFileInfo(oldDir + "/node").exists())
+                return oldDir;
+            dropIfEmpty(oldDir);
+            dropIfEmpty(QFileInfo(oldDir).absolutePath());
+            return newDir;
+        }
         QDir().rmdir(newDir);
     }
     if (!QDir().mkpath(QFileInfo(newDir).absolutePath()) || !QDir().rename(oldDir, newDir))
