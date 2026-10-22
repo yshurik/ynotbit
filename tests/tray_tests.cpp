@@ -7,6 +7,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QTemporaryDir>
 #include <QFile>
 #include <QLocalSocket>
@@ -14,7 +15,9 @@
 #include <QSignalSpy>
 #include <QSystemTrayIcon>
 #include <QTest>
+#include <QThread>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 
 static void require(bool ok, const char *message) {
@@ -287,16 +290,49 @@ static void testSingleInstance() {
         SingleInstance instance(name);
         require(instance.listening(), "an instance listens");
         QSignalSpy woken(&instance, &SingleInstance::woken);
-        require(SingleInstance::wake(name), "a second launch finds the first");
-        require(woken.wait(10000) && woken.count() == 1, "and the first is told to show its window");
-        require(SingleInstance::wake(name) && woken.wait(2000) && woken.count() == 2,
-                "as often as it asks");
+        // A second launch is another process, so here it is another thread. The first instance
+        // reads a request from its event loop, and a Windows named pipe holds nothing: what a
+        // client writes is not done until it is read. A client that blocks the very thread of that
+        // loop (wake() does, until the write is done or half a second is gone) is closed with its
+        // request cancelled before the first instance has read a byte of it.
+        struct Launch {
+            bool found = false;
+            bool told = false;
+        };
+        const auto secondLaunch = [&] {
+            Launch launch;
+            qint64 wakeMillis = 0;
+            QElapsedTimer clock;
+            std::unique_ptr<QThread> second(QThread::create([&] {
+                QElapsedTimer began;
+                began.start();
+                launch.found = SingleInstance::wake(name);
+                wakeMillis = began.elapsed();
+            }));
+            clock.start();
+            second->start();
+            launch.told = woken.wait(10000);
+            second->wait();
+            if (!launch.found || !launch.told)
+                std::cerr << "second launch: found " << launch.found << ", told " << launch.told
+                          << " after " << clock.elapsed() << " ms, its wake() took " << wakeMillis
+                          << " ms\n";
+            return launch;
+        };
+        auto launch = secondLaunch();
+        require(launch.found, "a second launch finds the first");
+        require(launch.told && woken.count() == 1, "and the first is told to show its window");
+        launch = secondLaunch();
+        require(launch.found && launch.told && woken.count() == 2, "as often as it asks");
         // Whatever else is said at the socket does not show the window.
         QLocalSocket other;
         other.connectToServer(name);
         require(other.waitForConnected(1000), "the socket takes a connection");
         other.write("hello\n");
-        other.waitForBytesWritten(1000);
+        // The first instance reads it from its event loop, which is this thread's: on Windows the
+        // text is not written until then.
+        require(QTest::qWaitFor([&] { return other.bytesToWrite() == 0; }, 5000),
+                "the first instance reads what is said at the socket");
         QTest::qWait(200);
         require(woken.count() == 2, "only a request to show does");
     }
