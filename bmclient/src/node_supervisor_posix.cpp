@@ -3,6 +3,7 @@
 #ifndef _WIN32
 #include <bmc/node_supervisor.h>
 #include <cerrno>
+#include <chrono>
 #include <csignal>
 #include <cstring>
 #include <fcntl.h>
@@ -219,10 +220,16 @@ void NodeSupervisor::stop() {
     impl_->reap();
     if (child > 0)
         ::kill(-child, SIGTERM);
-    for (int waited = 0; waited < 3000; waited += 50) {
+    // The three seconds are the clock's, not sixty sleeps of 50 ms: a process the system throttles
+    // gets its timers late (a sleep of 50 ms came back after 135), and sixty of those took eight
+    // seconds and more.
+    const auto leaveBy = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (true) {
         impl_->readWhatItSaid(); // it may be logging its way out, and an unread pipe stops it
         impl_->reap();
         if (impl_->pid <= 0 && (child <= 0 || groupIsGone(child)))
+            break;
+        if (std::chrono::steady_clock::now() >= leaveBy)
             break;
         sleepMillis(50);
     }
@@ -230,7 +237,8 @@ void NodeSupervisor::stop() {
     // makes this a failed call and nothing else.
     if (child > 0 && !groupIsGone(child))
         ::kill(-child, SIGKILL);
-    for (int waited = 0; waited < 1000 && impl_->pid > 0 && !impl_->reap(); waited += 50) {
+    const auto reapBy = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (impl_->pid > 0 && !impl_->reap() && std::chrono::steady_clock::now() < reapBy) {
         impl_->readWhatItSaid();
         sleepMillis(50);
     }

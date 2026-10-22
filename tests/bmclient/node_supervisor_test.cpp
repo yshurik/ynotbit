@@ -10,6 +10,7 @@
 #include <fstream>
 #include <functional>
 #include <string>
+#include <sys/resource.h>
 #include <thread>
 #include <unistd.h>
 
@@ -55,6 +56,17 @@ bool untilSaid(bmc::NodeSupervisor &node, const std::string &text) {
 
 std::string fileText(const std::string &path) {
     return bmc::stringOf(bmc::test::readFile(path));
+}
+
+// macOS gives a process it throttles its timers late: with this on, a sleep of 50 ms comes back
+// after about 135 (measured), which is how `taskpolicy -b` runs a program. Other systems have no
+// such thing here, and a test that calls this runs there without the throttle.
+void throttled(bool on) {
+#ifdef __APPLE__
+    setpriority(PRIO_DARWIN_PROCESS, 0, on ? PRIO_DARWIN_BG : 0);
+#else
+    (void)on;
+#endif
 }
 } // namespace
 
@@ -176,6 +188,9 @@ TEST(a_child_that_logs_its_way_out_is_not_killed_for_it) {
     CHECK_EQ(node.exitCode(), 0);
 }
 
+// The three seconds are the clock's, not sixty sleeps of 50 ms: with its timers late, a stop that
+// counted its sleeps took eight seconds and more. The macOS runners of CI failed this check with
+// spent over 6000, so the stop is made here while the process is throttled.
 TEST(a_child_that_ignores_sigterm_is_killed_after_three_seconds) {
     Child child("trap '' TERM; echo ready >&2; exec sleep 30");
     bmc::NodeSupervisor node(child.config);
@@ -183,13 +198,16 @@ TEST(a_child_that_ignores_sigterm_is_killed_after_three_seconds) {
     CHECK(untilSaid(node, "ready")); // the trap is installed
     const int64_t pid = node.pid();
     CHECK(pid > 0);
+    throttled(true);
     const auto began = std::chrono::steady_clock::now();
     node.stop();
     const auto spent = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - began)
                            .count();
+    throttled(false);
     CHECK(!node.running());
-    CHECK(spent < 6000); // its three seconds, then the kill
+    CHECK(spent >= 3000); // it was given its three seconds
+    CHECK(spent < 6000);  // and then the kill
     errno = 0;
     CHECK(::kill(pid_t(pid), 0) == -1 && errno == ESRCH); // gone, and not a zombie left behind
 }

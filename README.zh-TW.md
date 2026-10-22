@@ -63,6 +63,11 @@ sudo xattr -cr /Applications/ynotbit.app
 
 要在信中加入圖片，可以使用寫信視窗中的 **+** 按鈕或右鍵選單，也可以把圖片檔案拖放到信件上。
 
+關閉視窗不會結束 ynotbit：它會繼續在通知區域（macOS 上是選單列）中執行並接收信件。圖示選單包含
+**顯示 ynotbit** 或 **隱藏 ynotbit**、**新增信件**、**新增聊天**、**設定…** 和 **結束**。要結束應用程式，請選擇
+**結束**（在 Windows 和 Linux 上，**檔案** 選單中也有）。如果桌面沒有通知區域（例如未安裝擴充套件的 GNOME），
+關閉視窗仍會結束應用程式。再次啟動 ynotbit 會顯示已在執行的那個視窗。
+
 **檔案 → 備份信箱和保險庫…** 會同時儲存這兩個文件。請務必兩個都保留：只有信箱無法復原它的
 加密金鑰。變更密碼不會使舊的保險庫副本或備份失效。匯入時原本的明文 `keys.dat` 會原封不動地保留。
 
@@ -179,8 +184,8 @@ scripts/package-windows.ps1 -BuildDir C:\absolute\build -OutputZip C:\absolute\y
 
 ## 文件、網路資料與可攜性
 
-保險庫和信箱文件可以放在任何你喜歡的位置。節點和快取目錄使用 Qt 的應用程式資料位置。為了相容
-早期 alpha 版本的快取，內部應用程式識別碼仍為 `NotbitDesktop/Notbit Desktop`。
+保險庫和信箱文件可以放在任何你喜歡的位置。節點和快取目錄是 Qt 應用程式資料位置下的 `ynotbit`（Linux 上為
+`~/.local/share/ynotbit`）。0.7.2 之前為 `NotbitDesktop/Notbit Desktop`；新版本首次啟動時會把該目錄和設定移轉到新名稱。
 `--data-dir /absolute/path` 可以指定節點目錄。`--portable` 使用相對於啟動目錄的
 `./notbit-data/node`。`--offline` 啟動時不連線網路。應用程式結束時中繼也會停止。中繼在 8444
 連接埠接受傳入連線（設定了代理伺服器時不接受），並請求路由器用 UPnP 開放這個連接埠；兩者都可以

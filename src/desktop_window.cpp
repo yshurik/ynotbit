@@ -11,6 +11,8 @@
 #include "chats_pane.h"
 #include "new_chat_dialog.h"
 #include "join_channel_dialog.h"
+#include "tray_icon.h"
+#include "mac_integration.h"
 #include "updates.h"
 #include "qrcodegen.hpp"
 #include <QCryptographicHash>
@@ -23,6 +25,12 @@
 
 namespace bm {
 namespace {
+// What Quit does: ends the app, which asks every window to close first, so a draft that can't be
+// saved keeps it going. Tests put their own here.
+std::function<void()> &quitHandler() {
+    static std::function<void()> handler = [] { QCoreApplication::quit(); };
+    return handler;
+}
 // A letter's trust class, the way a postal border once told you how a piece
 // of mail got to you before you read a word of it: plain domestic mail had
 // no border; airmail carried a red/blue diagonal stripe; special/urgent
@@ -2675,6 +2683,13 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
                                           this, &DesktopWindow::openSettings);
     settingsAction->setObjectName("settingsAction");
     settingsAction->setMenuRole(QAction::PreferencesRole); // the app menu on macOS
+#ifndef Q_OS_MACOS
+    // The window's close hides it into the notification area, so Quit is in its menu too. (On macOS
+    // the application menu has it.)
+    file->addSeparator();
+    file->addAction(tr("Quit"), QKeySequence::Quit, this, &DesktopWindow::quitApp)
+        ->setObjectName("quitAction");
+#endif
     auto network = menuBar()->addMenu(tr("Network"));
     networkEnabledAction_ = network->addAction(tr("Network enabled"));
     networkEnabledAction_->setCheckable(true);
@@ -2782,6 +2797,29 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
             lastFolder_ = folders_->currentRow();
         updateState();
     });
+    // The app lives in the notification area once its window is closed.
+    tray_ = new TrayIcon({tr("Show ynotbit"), tr("Hide ynotbit"), tr("New letter"), tr("New chat"),
+                          tr("Settings…"), tr("Quit")},
+                         this);
+    connect(tray_, &TrayIcon::showRequested, this, &DesktopWindow::bringToFront);
+    connect(tray_, &TrayIcon::showHideRequested, this, [this] {
+        if (isVisible() && !isMinimized())
+            hide();
+        else
+            bringToFront();
+    });
+    // A letter is a window of its own, and needs no inbox behind it; a chat is chosen and shown
+    // here, so the window comes first.
+    connect(tray_, &TrayIcon::newLetterRequested, this, [this] { compose(); });
+    connect(tray_, &TrayIcon::newChatRequested, this, [this] {
+        bringToFront();
+        newChat();
+    });
+    connect(tray_, &TrayIcon::settingsRequested, this, [this] {
+        bringToFront();
+        openSettings();
+    });
+    connect(tray_, &TrayIcon::quitRequested, this, &DesktopWindow::quitApp);
     folders_->setCurrentRow(0);
     updateTheme();
     updateState();
@@ -2911,6 +2949,7 @@ void DesktopWindow::updateState() {
             return;
         }
     setWindowTitle(session_.document() + " — ynotbit");
+    updateTray();
     error_->setText(session_.error());
     error_->setVisible(!session_.error().isEmpty());
     const auto update = session_.availableUpdate();
@@ -3435,9 +3474,60 @@ void DesktopWindow::compose(QVariantMap letter, bool reply, bool forward) {
         return;
     if (letter.contains("hash"))
         letter = session_.message(letter["hash"].toString());
-    (new Composer(session_, letter, reply, forward, appearance_.dark(), this))->show();
+    // In front, though the app may be asleep in the notification area behind other windows.
+    auto composer = new Composer(session_, letter, reply, forward, appearance_.dark(), this);
+    composer->show();
+    composer->activateWindow();
+    mac::activateApp();
+}
+void DesktopWindow::bringToFront() {
+    const bool shown = isVisible() && !isMinimized();
+    setWindowState((windowState() & ~Qt::WindowMinimized) | Qt::WindowActive);
+    show();
+    if (shown)
+        raise(); // one that was shown may be behind others; one just shown is in front
+    activateWindow();
+    mac::activateApp();
+}
+void DesktopWindow::setQuitHandlerForTesting(std::function<void()> handler) {
+    quitHandler() = handler ? std::move(handler) : [] { QCoreApplication::quit(); };
+}
+void DesktopWindow::quitApp() {
+    quitHandler()();
+}
+void DesktopWindow::updateTray() {
+    if (!tray_)
+        return;
+    tray_->setWindowShown(isVisible() && !isMinimized());
+    tray_->setMailboxOpen(session_.mailboxOpen());
+    // With the icon there, the app does not end with its last window, however that went: a letter
+    // closed last, the window being hidden, would end it. (A letter's parent is the window.)
+    QApplication::setQuitOnLastWindowClosed(!tray_->active());
+}
+void DesktopWindow::showEvent(QShowEvent *event) {
+    QMainWindow::showEvent(event);
+    updateTray();
+}
+void DesktopWindow::hideEvent(QHideEvent *event) {
+    QMainWindow::hideEvent(event);
+    updateTray();
+}
+void DesktopWindow::changeEvent(QEvent *event) {
+    QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange)
+        updateTray();
 }
 void DesktopWindow::closeEvent(QCloseEvent *event) {
+    // With the icon in the notification area, closing the window only hides it: the app lives
+    // there, and Quit is in its menu. The close is allowed all the same, so Cmd+Q and a log out,
+    // which close every window before they end the app, are not held up. Letters and composers
+    // stay as they are: they are windows of their own.
+    const bool resident = tray_ && tray_->active();
+    QApplication::setQuitOnLastWindowClosed(!resident);
+    if (resident) {
+        QMainWindow::closeEvent(event);
+        return;
+    }
     // Letters and composers are windows of their own; closing the main window closes them
     // too, and a draft that refuses to close keeps the app open.
     for (auto window : findChildren<QDialog *>()) {
