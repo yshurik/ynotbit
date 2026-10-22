@@ -25,7 +25,11 @@ SingleInstance::SingleInstance(const QString &key, QObject *parent) : QObject(pa
     });
 }
 QString SingleInstance::keyFor(const QString &nodeFolder) {
-    const auto folder = QDir::cleanPath(QDir(nodeFolder).absolutePath());
+    // Clean first: on Windows QDir only puts the drive on a path that needed cleaning, so
+    // "/x/y" and "/x/z/../y/" would otherwise come out as different folders.
+    auto folder = QDir::cleanPath(nodeFolder);
+    if (QDir::isRelativePath(folder))
+        folder = QDir::cleanPath(QDir(folder).absolutePath());
     const auto hash = QCryptographicHash::hash(folder.toUtf8(), QCryptographicHash::Sha256);
     return "ynotbit-" + QString::fromLatin1(hash.toHex().left(16));
 }
