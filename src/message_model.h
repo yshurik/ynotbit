@@ -25,6 +25,11 @@ class MessageModel final : public QAbstractListModel {
     }
     Q_INVOKABLE void reload();
     Q_INVOKABLE void markRead(const QString &id);
+    // The unread letters the list shows, read; how many there were. With a search, those it found;
+    // otherwise the folder's (the channel's, as the Anonymous filter has it), on every page.
+    Q_INVOKABLE int markAllRead();
+    // Whether the list has an unread letter to mark (with a search: whether it found any letter).
+    bool hasUnread() const;
     Q_INVOKABLE int rowForHash(const QString &hash) const;
     int cachedPages() const {
         return pages_.size();

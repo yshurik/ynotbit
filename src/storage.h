@@ -239,6 +239,8 @@ class Mailbox {
     void restoreMessage(const QString &id);
     void deleteMessage(const QString &id);
     void markRead(const QString &id);
+    // The given letters read, in one write; how many of them were unread.
+    int markRead(const QStringList &ids);
     bool unread(const QString &id) const;
     QString setting(const QString &name, const QString &fallback = {}) const;
     void setSetting(const QString &name, const QString &value);

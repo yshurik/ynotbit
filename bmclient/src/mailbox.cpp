@@ -923,6 +923,24 @@ void Mailbox::markRead(const std::string &id) {
     s.row();
 }
 
+int Mailbox::markRead(const std::vector<std::string> &ids) {
+    if (ids.empty())
+        return 0;
+    Transaction t(db_);
+    int changed = 0;
+    {
+        Statement s(db_, "UPDATE messages SET unread=0 WHERE hash=? AND unread<>0");
+        for (const auto &id : ids) {
+            s.reset();
+            s.text(1, id);
+            s.row();
+            changed += sqlite3_changes(db_);
+        }
+    }
+    t.commit();
+    return changed;
+}
+
 bool Mailbox::unread(const std::string &id) const {
     Statement s(db_, "SELECT unread FROM messages WHERE hash=?");
     s.text(1, id);

@@ -2345,6 +2345,18 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     letters_->setUniformItemSizes(true);
     letters_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     letters_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    // Right-click: what applies to the whole list. Mark all as read is grey while the list has
+    // nothing unread.
+    letters_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(letters_, &QWidget::customContextMenuRequested, this, [this](const QPoint &at) {
+        QMenu menu(this);
+        menu.setObjectName("lettersMenu");
+        auto markAll = menu.addAction(tr("Mark all as read"));
+        markAll->setObjectName("markAllReadAction");
+        markAll->setEnabled(session_.messageModel()->hasUnread());
+        if (menu.exec(letters_->viewport()->mapToGlobal(at)) == markAll)
+            session_.messageModel()->markAllRead();
+    });
     mid->addWidget(letters_, 1);
     split->addWidget(middle);
     reader_ = new QWidget;
