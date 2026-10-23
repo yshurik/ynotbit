@@ -85,6 +85,182 @@ static bool boldAndWhole(QPushButton *button) {
     return button->font().weight() >= QFont::DemiBold &&
            QFontMetrics(button->font()).horizontalAdvance(button->text()) + 18 <= button->width();
 }
+static void require(bool ok, const char *message) {
+    if (!ok) {
+        // Also printed here: a failure inside a dialog callback is thrown
+        // through Qt's event loop, which aborts before main() reports it.
+        std::cerr << "FAIL: " << message << "\n";
+        throw std::runtime_error(message);
+    }
+}
+// The File menu: the vault's items, the mailbox's, then the copy and the app's own. What has
+// nothing to work on is grey, and the two recent lists are submenus that follow the session's.
+static void testFileMenu(const QTemporaryDir &temp) {
+    const auto vaultOne = temp.filePath("menu-one.bmvault");
+    const auto vaultTwo = temp.filePath("menu-two.bmvault");
+    const auto boxOne = temp.filePath("menu-one.bmmail");
+    const auto boxTwo = temp.filePath("menu-two.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultOne, "test password");
+        made.addIdentity("Mine");
+        for (const auto &file : {boxOne, boxTwo}) {
+            const auto key = made.addMailboxKey();
+            bm::Mailbox box;
+            box.create(file, key, made.mailboxKey(key));
+        }
+        made.lock();
+        bm::Vault other;
+        other.create(vaultTwo, "test password");
+        other.addIdentity("Other");
+        other.lock();
+    }
+    QDir().mkpath(temp.filePath("menu-node"));
+    {
+        // The session starts as an earlier run left it: locked, with the lists it kept.
+        QSettings config(temp.filePath("menu-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultOne);
+        config.setValue("recentVaults", QStringList{vaultOne, vaultTwo});
+        config.setValue("recentMailboxes", QStringList{boxTwo, boxOne});
+    }
+    bm::Session own(temp.filePath("menu-node"), true);
+    bm::DesktopWindow window(own, temp.filePath("sounds-menu"));
+    window.show();
+    auto file = window.menuBar()->actions().first()->menu();
+    require(file && file->title() == "File", "the menu bar starts with File");
+    const auto texts = [](QMenu *menu) {
+        QStringList result;
+        for (auto action : menu->actions())
+            result << (action->isSeparator() ? QString("-") : action->text());
+        return result;
+    };
+    // The object names of the items that are grey, in menu order.
+    const auto grey = [&] {
+        QStringList names;
+        for (auto action : file->actions())
+            if (!action->isSeparator() && !action->isEnabled())
+                names << (action->menu() ? action->menu()->objectName() : action->objectName());
+        return names;
+    };
+    // A recent list's entries: each one's name and the path it carries.
+    const auto recent = [&](const char *menu) {
+        QStringList entries;
+        for (auto action : window.findChild<QMenu *>(menu)->actions())
+            entries << action->text() + "|" + action->toolTip();
+        return entries;
+    };
+    // Chooses an entry of a recent list; the lock screen's prompt for a vault is queued.
+    const auto pick = [&](const char *menu, const QString &name) {
+        for (auto action : window.findChild<QMenu *>(menu)->actions())
+            if (action->text() == name && action->isEnabled()) {
+                action->trigger();
+                QCoreApplication::processEvents();
+                return true;
+            }
+        return false;
+    };
+    const auto trigger = [&](const char *name) {
+        window.findChild<QAction *>(name)->trigger();
+        QCoreApplication::processEvents();
+    };
+    // Runs an action that asks for a file and answers the dialog: with path, or Cancel.
+    const auto chooseIn = [&](const char *action, const QString &path) {
+        auto answer = new QTimer(&window);
+        QObject::connect(answer, &QTimer::timeout, &window, [&, answer] {
+            if (auto d = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
+                answer->stop();
+                if (path.isEmpty())
+                    d->reject();
+                else
+                    chooseFile(d, path);
+            }
+        });
+        answer->start(10);
+        trigger(action);
+        answer->deleteLater();
+    };
+    const auto lockedName = [&] { return window.findChild<QLabel *>("lockedVaultName")->text(); };
+    // The items by their words, "-" a separator.
+    QStringList layout = QString("New vault…|Open vault…|Open recent vault|Close vault|-|"
+                                 "New mailbox…|Open mailbox…|Open recent mailbox|Close mailbox|-|"
+                                 "Back up mailbox and vault…|Settings…")
+                             .split('|');
+#ifndef Q_OS_MACOS
+    layout << "Quit"; // on macOS the application menu has it
+#endif
+    require(texts(file) == layout,
+            "File lists the vault's items, the mailbox's, then the copy, Settings and Quit");
+    require(window.findChild<QAction *>("closeVaultAction")->shortcut() == QKeySequence("Ctrl+L") &&
+                window.findChild<QAction *>("settingsAction")->menuRole() ==
+                    QAction::PreferencesRole,
+            "Close vault keeps Ctrl+L, and Settings is the application menu's Preferences");
+    // Locked: what opens or makes a vault is on, the rest waits.
+    require(!own.unlocked(), "test sanity: the session starts locked");
+    require(grey() == QStringList({"closeVaultAction", "createMailboxAction", "openMailboxAction",
+                                   "recentMailboxesMenu", "closeMailboxAction", "backupAction"}),
+            "locked, only the vault items, Settings and Quit are on");
+    require(recent("recentVaultsMenu") ==
+                QStringList({"menu-one.bmvault|" + vaultOne, "menu-two.bmvault|" + vaultTwo}),
+            "Open recent vault lists the vaults last used, newest first, each with its path");
+    require(pick("recentVaultsMenu", "menu-two.bmvault") && !own.unlocked() &&
+                lockedName() == "menu-two.bmvault",
+            "a recent vault chosen from the menu asks for its password on the lock screen");
+    own.submitVaultPassword("test password");
+    require(own.unlocked() && own.vaultPath() == vaultTwo, "and opens with it");
+    require(recent("recentVaultsMenu") ==
+                QStringList({"menu-two.bmvault|" + vaultTwo, "menu-one.bmvault|" + vaultOne}),
+            "the list follows: the vault just opened comes first");
+    // A vault open: choosing another closes it first, as a new vault or a mailbox takes the open
+    // one's place. Choosing the open one changes nothing.
+    require(pick("recentVaultsMenu", "menu-two.bmvault") && own.unlocked(),
+            "choosing the open vault changes nothing");
+    require(pick("recentVaultsMenu", "menu-one.bmvault") && !own.unlocked() &&
+                lockedName() == "menu-one.bmvault",
+            "with a vault open, choosing another closes it and asks for the other's password");
+    own.submitVaultPassword("test password");
+    require(own.unlocked() && own.vaultPath() == vaultOne, "and opens with it");
+    require(grey() == QStringList({"closeMailboxAction", "backupAction"}),
+            "with a vault open, Close mailbox and Back up wait for a mailbox");
+    require(recent("recentMailboxesMenu") ==
+                QStringList({"menu-two.bmmail|" + boxTwo, "menu-one.bmmail|" + boxOne}),
+            "Open recent mailbox lists the mailboxes last used, newest first, each with its path");
+    require(pick("recentMailboxesMenu", "menu-one.bmmail") && own.mailboxOpen() &&
+                own.mailPath() == boxOne,
+            "a recent mailbox chosen from the menu opens");
+    require(grey().isEmpty(), "with a mailbox open, nothing in File is grey");
+    require(recent("recentMailboxesMenu") ==
+                QStringList({"menu-one.bmmail|" + boxOne, "menu-two.bmmail|" + boxTwo}),
+            "the list follows: the mailbox just opened comes first");
+    trigger("closeMailboxAction");
+    require(!own.mailboxOpen() && own.unlocked() &&
+                grey() == QStringList({"closeMailboxAction", "backupAction"}),
+            "Close mailbox closes the mailbox and keeps the vault");
+    require(pick("recentMailboxesMenu", "menu-two.bmmail") && own.mailPath() == boxTwo,
+            "the mailbox is opened again from the list");
+    // Open vault… asks for a file. Cancel keeps what is open; a file closes the open vault first.
+    chooseIn("openVaultAction", {});
+    require(own.unlocked() && own.mailboxOpen() && own.mailPath() == boxTwo,
+            "Cancel in Open vault… keeps the open vault and its mailbox");
+    chooseIn("openVaultAction", vaultTwo);
+    require(!own.unlocked() && lockedName() == "menu-two.bmvault",
+            "Open vault… with a vault open closes it and asks for the chosen vault's password");
+    own.submitVaultPassword("test password");
+    require(own.unlocked() && own.vaultPath() == vaultTwo && !own.mailboxOpen(),
+            "and opens it, with no mailbox of the other vault's");
+    trigger("closeVaultAction");
+    require(!own.unlocked() && grey().size() == 6 && grey().first() == "closeVaultAction",
+            "Close vault locks it, and the mailbox items wait again");
+    // Nothing used yet: each list says so, in grey.
+    bm::Session fresh(temp.filePath("menu-fresh-node"), true);
+    bm::DesktopWindow bare(fresh, temp.filePath("sounds-menu-fresh"));
+    for (const auto &[menu, none] :
+         {std::pair<const char *, QString>{"recentVaultsMenu", "No recent vaults"},
+          {"recentMailboxesMenu", "No recent mailboxes"}}) {
+        const auto entries = bare.findChild<QMenu *>(menu)->actions();
+        require(entries.size() == 1 && entries[0]->text() == none && !entries[0]->isEnabled(),
+                "a recent list with nothing in it says so, in grey");
+    }
+}
 int main(int argc, char **argv) {
     // Unbuffered: a run that hangs and is killed by ctest still shows how far it got.
     std::cout << std::unitbuf;
@@ -114,14 +290,6 @@ int main(int argc, char **argv) {
     const QString vaultFile =
         temp.filePath("var/folders/xz/q1w2e3r4t5y6u7i8o9p0asdfghjk/T/vaults-of-the-test/vault");
     QDir().mkpath(QFileInfo(vaultFile).absolutePath());
-    auto require = [](bool ok, const char *message) {
-        if (!ok) {
-            // Also printed here: a failure inside a dialog callback is thrown
-            // through Qt's event loop, which aborts before main() reports it.
-            std::cerr << "FAIL: " << message << "\n";
-            throw std::runtime_error(message);
-        }
-    };
     try {
         for (const auto &icon : {bm::appLogo(), bm::windowLogo()}) {
             for (int size : {16, 20, 24, 32, 40, 48, 64, 96, 128, 256, 512, 1024}) {
@@ -3845,7 +4013,7 @@ int main(int argc, char **argv) {
                     }
                 });
                 open();
-                require(opened, "Create a new vault… and File > Create vault… open the new vault "
+                require(opened, "Create a new vault… and File > New vault… open the new vault "
                                 "dialog");
             }
             require(!window.findChild<QAction *>("createIdentityAction")->isEnabled(),
@@ -4887,7 +5055,7 @@ int main(int argc, char **argv) {
                     "the address is the edited phrase's");
         }
         {
-            // Create vault… with a vault open asks nothing; Cancel keeps it open.
+            // New vault… with a vault open asks nothing; Cancel keeps it open.
             bool asked = false, opened = false;
             QTimer::singleShot(30, &window, [&] {
                 if (auto box = window.findChild<QMessageBox *>(); box && box->isVisible()) {
@@ -4901,7 +5069,7 @@ int main(int argc, char **argv) {
             });
             window.findChild<QAction *>("createVaultAction")->trigger();
             require(!asked && opened && session.unlocked(),
-                    "Create vault… with a vault open asks nothing; Cancel keeps the vault open");
+                    "New vault… with a vault open asks nothing; Cancel keeps the vault open");
         }
         {
             // A vault made from a window's lock screen is the one it offers next,
@@ -4960,8 +5128,9 @@ int main(int argc, char **argv) {
             const auto third = temp.filePath("third-in-window.bmvault");
             require(makeVault(third, "createVaultAction") && !asked &&
                         lockedName() == "third-in-window.bmvault",
-                    "Create vault… with a vault open asks nothing; the new vault takes its place");
+                    "New vault… with a vault open asks nothing; the new vault takes its place");
         }
+        testFileMenu(temp);
         require(session.portMapper().state() == bm::PortMapper::State::Off,
                 "an offline session never talks to the router");
         {

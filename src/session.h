@@ -77,6 +77,7 @@ class Session : public QObject {
     void acquireVault(const QString &);
     std::unique_ptr<QLockFile> lockVaultFile(const QString &); // or throws why there is none
     void openMailboxPath(const QString &);
+    void askForVault(const QString &path);
     void rememberVault(const QString &path);
     void rememberMailbox(const QString &path);
 
@@ -169,6 +170,10 @@ class Session : public QObject {
     Q_INVOKABLE void openVault();
     Q_INVOKABLE void unlockVault();
     Q_INVOKABLE void beginVaultOpen();
+    // Asks for the password of the vault at path, as Open vault… does once a file is chosen. An
+    // open vault is closed first, as a new vault or a mailbox takes the open one's place; asking
+    // for the open vault itself changes nothing.
+    Q_INVOKABLE void beginVaultOpenAt(QString path);
     Q_INVOKABLE void beginVaultUnlock();
     Q_INVOKABLE void submitVaultPassword(QString password);
     Q_INVOKABLE void choosePendingVault(QString path) {

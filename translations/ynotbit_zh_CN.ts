@@ -313,6 +313,26 @@
         <translation>关闭邮箱</translation>
     </message>
     <message>
+        <source>Close vault</source>
+        <translation>关闭保险库</translation>
+    </message>
+    <message>
+        <source>Open recent vault</source>
+        <translation>打开最近的保险库</translation>
+    </message>
+    <message>
+        <source>Open recent mailbox</source>
+        <translation>打开最近的邮箱</translation>
+    </message>
+    <message>
+        <source>No recent vaults</source>
+        <translation>没有最近的保险库</translation>
+    </message>
+    <message>
+        <source>No recent mailboxes</source>
+        <translation>没有最近的邮箱</translation>
+    </message>
+    <message>
         <source>Lock vault</source>
         <translation>锁定保险库</translation>
     </message>
@@ -445,7 +465,7 @@
         <translation>文件</translation>
     </message>
     <message>
-        <source>Create vault…</source>
+        <source>New vault…</source>
         <translation>新建保险库…</translation>
     </message>
     <message>
@@ -453,7 +473,7 @@
         <translation>打开保险库…</translation>
     </message>
     <message>
-        <source>Create mailbox…</source>
+        <source>New mailbox…</source>
         <translation>新建邮箱…</translation>
     </message>
     <message>

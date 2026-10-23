@@ -313,6 +313,26 @@
         <translation>Закрити поштову скриньку</translation>
     </message>
     <message>
+        <source>Close vault</source>
+        <translation>Закрити сховище</translation>
+    </message>
+    <message>
+        <source>Open recent vault</source>
+        <translation>Відкрити нещодавнє сховище</translation>
+    </message>
+    <message>
+        <source>Open recent mailbox</source>
+        <translation>Відкрити нещодавню поштову скриньку</translation>
+    </message>
+    <message>
+        <source>No recent vaults</source>
+        <translation>Немає нещодавніх сховищ</translation>
+    </message>
+    <message>
+        <source>No recent mailboxes</source>
+        <translation>Немає нещодавніх поштових скриньок</translation>
+    </message>
+    <message>
         <source>Lock vault</source>
         <translation>Заблокувати сховище</translation>
     </message>
@@ -445,7 +465,7 @@
         <translation>Файл</translation>
     </message>
     <message>
-        <source>Create vault…</source>
+        <source>New vault…</source>
         <translation>Створити сховище…</translation>
     </message>
     <message>
@@ -453,7 +473,7 @@
         <translation>Відкрити сховище…</translation>
     </message>
     <message>
-        <source>Create mailbox…</source>
+        <source>New mailbox…</source>
         <translation>Створити поштову скриньку…</translation>
     </message>
     <message>

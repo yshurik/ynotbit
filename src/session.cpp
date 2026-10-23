@@ -322,16 +322,26 @@ void Session::unlockVault() {
             openMailboxPath(mailPath_);
     });
 }
+void Session::askForVault(const QString &path) {
+    if (unlocked()) {
+        if (path == vaultPath_)
+            return; // it is the open one
+        lock();
+    }
+    pendingVaultPath_ = path;
+    emit vaultPasswordRequired(path);
+}
 void Session::beginVaultOpen() {
     attempt([&] {
-        check(!unlocked(), tr("Lock the current vault first"));
+        // Locking, if there is a vault to lock, is after the file is chosen: Cancel keeps it.
         auto p = QFileDialog::getOpenFileName(nullptr, tr("Open vault"), documentsPath(),
                                               tr("Bitmessage vault (*.bmvault)"));
-        if (p.isEmpty())
-            return;
-        pendingVaultPath_ = p;
-        emit vaultPasswordRequired(p);
+        if (!p.isEmpty())
+            askForVault(p);
     });
+}
+void Session::beginVaultOpenAt(QString path) {
+    attempt([&] { askForVault(path); });
 }
 void Session::beginVaultUnlock() {
     if (vaultPath_.isEmpty()) {

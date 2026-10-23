@@ -313,6 +313,26 @@
         <translation>Закрыть почтовый ящик</translation>
     </message>
     <message>
+        <source>Close vault</source>
+        <translation>Закрыть хранилище</translation>
+    </message>
+    <message>
+        <source>Open recent vault</source>
+        <translation>Открыть недавнее хранилище</translation>
+    </message>
+    <message>
+        <source>Open recent mailbox</source>
+        <translation>Открыть недавний почтовый ящик</translation>
+    </message>
+    <message>
+        <source>No recent vaults</source>
+        <translation>Нет недавних хранилищ</translation>
+    </message>
+    <message>
+        <source>No recent mailboxes</source>
+        <translation>Нет недавних почтовых ящиков</translation>
+    </message>
+    <message>
         <source>Lock vault</source>
         <translation>Заблокировать хранилище</translation>
     </message>
@@ -445,7 +465,7 @@
         <translation>Файл</translation>
     </message>
     <message>
-        <source>Create vault…</source>
+        <source>New vault…</source>
         <translation>Создать хранилище…</translation>
     </message>
     <message>
@@ -453,7 +473,7 @@
         <translation>Открыть хранилище…</translation>
     </message>
     <message>
-        <source>Create mailbox…</source>
+        <source>New mailbox…</source>
         <translation>Создать почтовый ящик…</translation>
     </message>
     <message>
