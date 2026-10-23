@@ -1995,6 +1995,18 @@ Date: %1
         <translation>열려 있는 메일함에 저장됩니다.</translation>
     </message>
     <message>
+        <source>App icon</source>
+        <translation>앱 아이콘</translation>
+    </message>
+    <message>
+        <source>Show the number of unread letters and chats on the app icon</source>
+        <translation>읽지 않은 편지와 채팅의 수를 앱 아이콘에 표시</translation>
+    </message>
+    <message>
+        <source>In the Dock, the taskbar or the launcher, where the system shows one.</source>
+        <translation>시스템이 지원하는 Dock, 작업 표시줄 또는 런처에 표시됩니다.</translation>
+    </message>
+    <message>
         <source>Change vault password…</source>
         <translation>보관함 암호 변경…</translation>
     </message>

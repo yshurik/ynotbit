@@ -1995,6 +1995,18 @@ Date: %1
         <translation>Хранится в открытом почтовом ящике.</translation>
     </message>
     <message>
+        <source>App icon</source>
+        <translation>Значок приложения</translation>
+    </message>
+    <message>
+        <source>Show the number of unread letters and chats on the app icon</source>
+        <translation>Показывать на значке приложения число непрочитанных писем и чатов</translation>
+    </message>
+    <message>
+        <source>In the Dock, the taskbar or the launcher, where the system shows one.</source>
+        <translation>В Dock, на панели задач или в лаунчере, где это поддерживает система.</translation>
+    </message>
+    <message>
         <source>Change vault password…</source>
         <translation>Сменить пароль хранилища…</translation>
     </message>

@@ -1,3 +1,4 @@
+#include "app_badge.h"
 #include "desktop_window.h"
 #include "chats_pane.h"
 #include "coolname.h"
@@ -6,6 +7,7 @@
 #include "updates.h"
 #include "feed_view.h"
 #include "protocol.h"
+#include "rail_badge.h"
 #include "letter_document.h"
 #include "pow.h"
 #include "i18n.h"
@@ -472,6 +474,253 @@ static void testLettersContextMenu(const QTemporaryDir &temp) {
             "in a channel, Mark all as read marks that channel's letters, and its chip stops "
             "being bold");
 }
+// A vault with two mailboxes. The first has unread letters in Inbox (3), Channels (2) and
+// Broadcasts (4), five in the Archive and one in Sent (which are not for mail), and three unread
+// chat messages from two peers; the second has five unread letters of its own.
+struct UnreadFixture {
+    QString vault, box, other, me, peerA, peerB;
+};
+static UnreadFixture makeUnreadFixture(const QTemporaryDir &temp, const QString &name) {
+    UnreadFixture f;
+    f.vault = temp.filePath(name + ".bmvault");
+    f.box = temp.filePath(name + ".bmmail");
+    f.other = temp.filePath(name + "-other.bmmail");
+    const auto sender = bm::Protocol::identity(name + " sender").address;
+    const auto chan = bm::Protocol::identity(name + " chan").address;
+    f.peerA = bm::Protocol::identity(name + " peer a").address;
+    f.peerB = bm::Protocol::identity(name + " peer b").address;
+    bm::Vault made;
+    made.create(f.vault, "test password");
+    f.me = made.addIdentity("Mine");
+    const auto key = made.addMailboxKey();
+    bm::Mailbox box;
+    box.create(f.box, key, made.mailboxKey(key));
+    const auto number = [](int n) { return QString::number(n); };
+    for (int n = 1; n <= 3; ++n)
+        box.store("inbox-" + number(n), sender, f.me, "Letter " + number(n), "body", -1);
+    for (int n = 1; n <= 2; ++n)
+        box.store("chan-" + number(n), sender, chan, "Chan " + number(n), "body", -1, "Channels");
+    for (int n = 1; n <= 4; ++n)
+        box.store("bc-" + number(n), sender, sender, "Post " + number(n), "body", -1, "Broadcasts");
+    for (int n = 1; n <= 5; ++n) // stored unread like the rest, but not in a folder for mail
+        box.store("kept-" + number(n), sender, f.me, "Kept " + number(n), "body", -1, "Archive");
+    box.store("sent-1", f.me, sender, "Sent", "body", -1, "Sent");
+    const qint64 expiry = QDateTime::currentSecsSinceEpoch() + 86400;
+    box.storeChat("chat-a1", f.peerA, f.me, 1, "hi", expiry, false);
+    box.storeChat("chat-a2", f.peerA, f.me, 2, "hi again", expiry, false);
+    box.storeChat("chat-b1", f.peerB, f.me, 1, "hello", expiry, false);
+    const auto otherKey = made.addMailboxKey();
+    bm::Mailbox other;
+    other.create(f.other, otherKey, made.mailboxKey(otherKey));
+    for (int n = 1; n <= 5; ++n)
+        other.store("other-" + number(n), sender, f.me, "Other " + number(n), "body", -1);
+    made.lock();
+    // A session on a node folder of its own starts with this vault and its first mailbox.
+    QDir().mkpath(temp.filePath(name + "-node"));
+    QSettings config(temp.filePath(name + "-node/desktop.ini"), QSettings::IniFormat);
+    config.setValue("vault", f.vault);
+    config.setValue("mailbox", f.box);
+    return f;
+}
+// The number on the app's icon: the unread letters of the folders that receive mail, and the unread
+// chat messages, together.
+static void testUnreadTotal(const QTemporaryDir &temp) {
+    const auto f = makeUnreadFixture(temp, "unread-total");
+    const auto boxFile = f.box, otherBox = f.other, me = f.me, peerA = f.peerA, peerB = f.peerB;
+    bm::Session own(temp.filePath("unread-total-node"), true);
+    // Inbox, Channels, Subscriptions and chats, in the order of the rail's pages.
+    const auto counts = [&] {
+        const auto c = own.unreadCounts();
+        return QList<int>{c.inbox, c.channels, c.broadcasts, c.chats};
+    };
+    require(own.unreadTotal() == 0 && counts() == QList<int>({0, 0, 0, 0}),
+            "with no vault open, there is nothing unread to show");
+    own.beginVaultUnlock();
+    own.submitVaultPassword("test password");
+    require(own.mailboxOpen(), "test sanity: the mailbox is open");
+    require(counts() == QList<int>({3, 2, 4, 3}),
+            "the counts are the unread letters of Inbox, Channels and Subscriptions, and chats");
+    require(
+        own.unreadTotal() == 3 + 2 + 4 + 3,
+        "the total is the unread letters of Inbox, Channels and Broadcasts, and the unread chats");
+    own.readLetter("inbox-1");
+    require(own.unreadTotal() == 11 && counts() == QList<int>({2, 2, 4, 3}),
+            "reading a letter takes one off its page");
+    own.markLettersRead({"chan-1", "chan-2"});
+    require(own.unreadTotal() == 9 && counts() == QList<int>({2, 0, 4, 3}),
+            "marking letters read takes them off");
+    require(own.markChatRead(me, peerA) == 2 && own.unreadTotal() == 7 &&
+                counts() == QList<int>({2, 0, 4, 1}),
+            "reading a conversation takes its messages off");
+    require(own.markChatMessageRead("chat-b1") && own.unreadTotal() == 6 &&
+                counts() == QList<int>({2, 0, 4, 0}),
+            "so does reading one chat message");
+    require(own.messageCount("Archive", {}, {}, true) == 5,
+            "test sanity: the Archive's letters are still unread");
+    // Another mailbox is its own count, though nothing in this one changed in between.
+    own.openMailboxAt(otherBox);
+    require(own.unreadTotal() == 5 && counts() == QList<int>({5, 0, 0, 0}),
+            "another mailbox has its own count");
+    own.openMailboxAt(boxFile);
+    require(own.unreadTotal() == 6 && counts() == QList<int>({2, 0, 4, 0}),
+            "and this one is back as it was");
+    // A letter written through another connection to the file, which the session's own change
+    // counter knows nothing of, is counted all the same.
+    {
+        bm::Vault peek;
+        peek.unlock(f.vault, "test password");
+        bm::Mailbox elsewhere;
+        for (const auto &id : peek.mailboxIds()) {
+            try {
+                elsewhere.open(boxFile, peek.mailboxKey(id));
+                break;
+            } catch (...) {
+            }
+        }
+        require(elsewhere.isOpen(), "test sanity: another connection opens the mailbox");
+        elsewhere.store("elsewhere-1", peerA, me, "Written elsewhere", "body", -1);
+        elsewhere.close();
+    }
+    require(own.unreadTotal() == 7 && counts() == QList<int>({3, 0, 4, 0}),
+            "a letter written through another connection is counted");
+    own.closeMailbox();
+    require(own.unlocked() && own.unreadTotal() == 0 && counts() == QList<int>({0, 0, 0, 0}),
+            "with no mailbox open there is nothing to show");
+    own.openMailboxAt(boxFile);
+    own.lock();
+    require(own.unreadTotal() == 0 && counts() == QList<int>({0, 0, 0, 0}),
+            "locked, there is nothing to show");
+}
+// The number on the app's icon follows the window: the unread letters and chats as the mailbox
+// opens and is read, nothing while it is locked, and the switch in Settings.
+static void testBadgeInWindow(const QTemporaryDir &temp) {
+    const auto f = makeUnreadFixture(temp, "badge-window");
+    bm::AppBadge::setEnabled(true); // a run that died with it off must not start this one off
+    std::vector<qint64> given;
+    bm::AppBadge::setSinkForTesting([&](qint64 number) { given.push_back(number); });
+    {
+        bm::Session own(temp.filePath("badge-window-node"), true);
+        bm::DesktopWindow window(own, temp.filePath("sounds-badge"));
+        window.show();
+        QCoreApplication::processEvents();
+        require(given.empty(), "locked, with nothing unread to show, nothing is given");
+        own.beginVaultUnlock();
+        own.submitVaultPassword("test password");
+        require(own.mailboxOpen() && !given.empty() && given.back() == 12,
+                "the mailbox opening gives the badge its unread letters and chats");
+        own.readLetter("inbox-1");
+        require(given.back() == 11, "reading a letter takes one off the badge");
+        own.markChatRead(f.me, f.peerA);
+        own.markLettersRead({"bc-1", "bc-2"});
+        require(QTest::qWaitFor([&] { return given.back() == 7; }, 5000),
+                "so do reading a conversation and marking letters read");
+        // The switch in Settings.
+        window.findChild<QAction *>("settingsAction")->trigger();
+        QCoreApplication::processEvents();
+        auto check = window.findChild<QCheckBox *>("badgeEnabledCheck");
+        require(check && check->isChecked(), "Settings has the switch, on by default");
+        check->click();
+        require(!bm::AppBadge::enabled() && given.back() == 0,
+                "switching it off takes the badge off");
+        own.readLetter("inbox-2");
+        require(given.back() == 0, "and it stays off as letters are read");
+        check->click();
+        require(bm::AppBadge::enabled() && given.back() == 6,
+                "switching it on shows the number as it is now");
+        own.lock();
+        require(given.back() == 0, "locking the vault takes the badge off");
+    }
+    bm::AppBadge::setSinkForTesting({});
+    bm::AppBadge::setEnabled(true);
+}
+// The round count on a rail icon.
+static void testRailBadgeWidget() {
+    QWidget rail;
+    rail.setFixedSize(38, 38);
+    bm::RailBadge badge(&rail);
+    rail.show();
+    require(!badge.isVisible(), "with no count it is not there");
+    badge.setCount(5);
+    require(badge.isVisible() && badge.text() == "5", "a count shows its number");
+    const int single = badge.width();
+    require(single > 10 && badge.height() > 10, "test sanity: it has a size");
+    badge.setCount(42);
+    require(badge.text() == "42" && badge.width() > single, "two digits make it wider");
+    badge.setCount(99);
+    require(badge.text() == "99", "99 is shown as it is");
+    badge.setCount(100);
+    require(badge.text() == "99+" && badge.isVisible(), "past 99 it says 99+");
+    badge.setCount(123456);
+    require(badge.text() == "99+", "however far past");
+    badge.setCount(0);
+    require(!badge.isVisible(), "no count takes it away");
+    badge.setCount(-4);
+    require(!badge.isVisible(), "and so does one below zero");
+    // In the corner of the icon, inside it.
+    badge.setCount(88);
+    require(rail.rect().contains(badge.geometry()) && badge.geometry().right() >= 34 &&
+                badge.geometry().top() <= 3,
+            "it sits inside the icon's top right corner");
+    // Drawn in the theme's accent, away from the digits.
+    const auto sample = [&](bool dark) {
+        badge.setDark(dark);
+        return badge.grab().toImage().pixelColor(4, badge.height() / 2);
+    };
+    require(sample(false) == QColor("#126d65"), "in the light theme the badge is the light accent");
+    require(sample(true) == QColor("#73d8c7"), "in the dark theme it is the dark one");
+}
+// The rail's badges: where the unread letters and chats are, page by page.
+static void testRailBadges(const QTemporaryDir &temp) {
+    const auto f = makeUnreadFixture(temp, "rail-badges");
+    bm::Session own(temp.filePath("rail-badges-node"), true);
+    bm::DesktopWindow window(own, temp.filePath("sounds-rail"));
+    window.show();
+    QCoreApplication::processEvents();
+    const auto badgeOf = [&](const QString &page) {
+        auto button = window.findChild<QToolButton *>("folderIcon_" + page);
+        return button ? button->findChild<bm::RailBadge *>() : nullptr;
+    };
+    // What a page's icon shows: its badge's text, empty when there is no badge on show.
+    const auto shown = [&](const QString &page) {
+        auto badge = badgeOf(page);
+        return badge && badge->isVisible() ? badge->text() : QString();
+    };
+    const auto all = [&] {
+        return QStringList{shown("Chats"), shown("Inbox"), shown("Channels"), shown("Broadcasts")};
+    };
+    require(all() == QStringList({"", "", "", ""}), "locked, no icon has a badge");
+    own.beginVaultUnlock();
+    own.submitVaultPassword("test password");
+    require(all() == QStringList({"3", "3", "2", "4"}),
+            "an open mailbox's icons show their unread: Chats, Inbox, Channels, Subscriptions");
+    for (const QString page :
+         {"Drafts", "Outbox", "Sent", "Archive", "Trash", "Identities", "Contacts", "Settings"})
+        require(window.findChild<QToolButton *>("folderIcon_" + page) && !badgeOf(page),
+                "an icon that holds nothing new has no badge");
+    own.readLetter("inbox-1");
+    require(all() == QStringList({"3", "2", "2", "4"}), "reading a letter takes one off its icon");
+    own.markLettersRead({"chan-1", "chan-2"});
+    require(all() == QStringList({"3", "2", "", "4"}),
+            "an icon with nothing unread loses its badge");
+    own.markChatRead(f.me, f.peerA); // the window hears of it with its next tick
+    require(QTest::qWaitFor([&] { return shown("Chats") == "1"; }, 5000),
+            "reading a conversation takes its messages off the Chats icon");
+    require(window.findChild<QToolButton *>("folderIcon_Chats")->property("unread").toInt() == 1,
+            "and the Chats button keeps the number where it was kept");
+    // The theme: the badges follow it.
+    window.findChild<QAction *>("settingsAction")->trigger();
+    QCoreApplication::processEvents();
+    auto theme = window.findChild<QComboBox *>("themeCombo");
+    require(theme, "test sanity: Settings has the theme switch");
+    theme->setCurrentIndex(theme->findData("dark"));
+    require(badgeOf("Inbox")->dark() && badgeOf("Broadcasts")->dark(),
+            "the dark theme darkens the badges");
+    theme->setCurrentIndex(theme->findData("light"));
+    require(!badgeOf("Inbox")->dark() && !badgeOf("Broadcasts")->dark(),
+            "and the light theme lightens them");
+    own.lock();
+    require(all() == QStringList({"", "", "", ""}), "locking takes every badge off");
+}
 int main(int argc, char **argv) {
     // Unbuffered: a run that hangs and is killed by ctest still shows how far it got.
     std::cout << std::unitbuf;
@@ -502,6 +751,9 @@ int main(int argc, char **argv) {
         temp.filePath("var/folders/xz/q1w2e3r4t5y6u7i8o9p0asdfghjk/T/vaults-of-the-test/vault");
     QDir().mkpath(QFileInfo(vaultFile).absolutePath());
     try {
+        // First: every window of a process gives the badge its own number, and this test has to
+        // hear only the one it makes, so no other window is open yet.
+        testBadgeInWindow(temp);
         for (const auto &icon : {bm::appLogo(), bm::windowLogo()}) {
             for (int size : {16, 20, 24, 32, 40, 48, 64, 96, 128, 256, 512, 1024}) {
                 require(icon.availableSizes().contains(QSize(size, size)),
@@ -5344,6 +5596,9 @@ int main(int argc, char **argv) {
         testFileMenu(temp);
         testMarkAllRead(temp);
         testLettersContextMenu(temp);
+        testUnreadTotal(temp);
+        testRailBadgeWidget();
+        testRailBadges(temp);
         require(session.portMapper().state() == bm::PortMapper::State::Off,
                 "an offline session never talks to the router");
         {

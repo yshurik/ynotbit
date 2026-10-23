@@ -1995,6 +1995,18 @@ Date: %1
         <translation>Зберігається у відкритій поштовій скриньці.</translation>
     </message>
     <message>
+        <source>App icon</source>
+        <translation>Значок застосунку</translation>
+    </message>
+    <message>
+        <source>Show the number of unread letters and chats on the app icon</source>
+        <translation>Показувати на значку застосунку кількість непрочитаних листів і чатів</translation>
+    </message>
+    <message>
+        <source>In the Dock, the taskbar or the launcher, where the system shows one.</source>
+        <translation>У Dock, на панелі завдань або в лаунчері, де це підтримує система.</translation>
+    </message>
+    <message>
         <source>Change vault password…</source>
         <translation>Змінити пароль сховища…</translation>
     </message>

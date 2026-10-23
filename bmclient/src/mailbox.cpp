@@ -427,6 +427,8 @@ void Mailbox::migrate() {
         sql("ALTER TABLE messages ADD COLUMN unread INTEGER NOT NULL DEFAULT 1");
         sql("UPDATE messages SET unread=0 WHERE folder NOT IN ('Inbox','Channels','Broadcasts')");
     }
+    // Only the unread rows, so that counting them (unreadLetters) reads no letter.
+    sql("CREATE INDEX IF NOT EXISTS messages_unread ON messages(folder) WHERE unread<>0");
     if (!column(db_, "messages", "previous_folder"))
         sql("ALTER TABLE messages ADD COLUMN previous_folder TEXT NOT NULL DEFAULT 'Inbox'");
     sql("CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY REFERENCES messages(hash) ON DELETE "
@@ -939,6 +941,27 @@ int Mailbox::markRead(const std::vector<std::string> &ids) {
     }
     t.commit();
     return changed;
+}
+
+std::map<std::string, int> Mailbox::unreadByFolder() const {
+    std::map<std::string, int> counts;
+    Statement s(db_, "SELECT folder, COUNT(*) FROM messages WHERE unread<>0 AND "
+                     "folder IN ('Inbox','Channels','Broadcasts') GROUP BY folder");
+    while (s.row())
+        counts[s.text(0)] = int(s.number(1));
+    return counts;
+}
+
+int64_t Mailbox::dataVersion() const {
+    Statement s(db_, "PRAGMA data_version");
+    return s.row() ? s.number(0) : 0;
+}
+
+int Mailbox::unreadLetters() const {
+    int total = 0;
+    for (const auto &[folder, count] : unreadByFolder())
+        total += count;
+    return total;
 }
 
 bool Mailbox::unread(const std::string &id) const {

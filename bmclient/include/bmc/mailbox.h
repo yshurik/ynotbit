@@ -5,6 +5,7 @@
 #include <bmc/records.h>
 #include <bmc/secret.h>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -166,6 +167,14 @@ class Mailbox {
     // letter is passed over.
     int markRead(const std::vector<std::string> &ids);
     bool unread(const std::string &id) const;
+    // The letters not yet read in each of the folders that receive mail (Inbox, Channels,
+    // Broadcasts); a folder with none is not listed.
+    std::map<std::string, int> unreadByFolder() const;
+    // Those together: one of the two numbers on the app's icon, the other being chatUnread().
+    int unreadLetters() const;
+    // A number that changes when another connection to the file has written to it: the update
+    // hook behind messageRevision() tells of this connection's own changes only.
+    int64_t dataVersion() const;
     std::string setting(const std::string &name, const std::string &fallback = {}) const;
     void setSetting(const std::string &name, const std::string &value);
 };

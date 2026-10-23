@@ -32,6 +32,25 @@ void editMailbox(const std::string &path, const bmc::Secret &key, const char *sq
     if (!ran)
         bmc::test::fail(__FILE__, __LINE__, why);
 }
+// What SQLite says it will do for a statement, one line of detail per step.
+std::string queryPlan(const std::string &path, const bmc::Secret &key, const char *sql) {
+    sqlite3 *db = nullptr;
+    if (sqlite3_open_v2(path.c_str(), &db, SQLITE_OPEN_READWRITE, nullptr) != SQLITE_OK)
+        bmc::test::fail(__FILE__, __LINE__, "cannot open the mailbox file");
+    std::string plan;
+    if (sqlite3_key(db, key.data(), 32) == SQLITE_OK) {
+        sqlite3_exec(
+            db, sql,
+            [](void *out, int columns, char **values, char **) {
+                if (columns >= 4 && values[3])
+                    *static_cast<std::string *>(out) += std::string(values[3]) + "\n";
+                return 0;
+            },
+            &plan, nullptr);
+    }
+    sqlite3_close(db);
+    return plan;
+}
 } // namespace
 
 TEST(a_new_mailbox_has_the_schema_and_a_key_id) {
@@ -96,6 +115,99 @@ TEST(a_list_of_letters_is_marked_read_in_one_go) {
     CHECK_EQ(m.markRead(std::vector<std::string>{}), 0);
     CHECK_EQ(m.messageRevision(), settled);
     m.close();
+}
+
+TEST(the_unread_letters_are_those_of_the_folders_that_receive_mail) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    CHECK_EQ(m.unreadLetters(), 0);
+    m.store("in-1", "BM-2cA", "BM-2cB", "One", "body", -1);
+    m.store("in-2", "BM-2cA", "BM-2cB", "Two", "body", -1);
+    m.store("chan-1", "BM-2cA", "BM-2cChan", "Chan", "body", -1, "Channels");
+    m.store("bc-1", "BM-2cA", "BM-2cA", "Broadcast", "body", -1, "Broadcasts");
+    // Stored unread, as every letter is, but not in a folder that receives mail.
+    m.store("kept-1", "BM-2cA", "BM-2cB", "Kept", "body", -1, "Archive");
+    m.store("sent-1", "BM-2cB", "BM-2cA", "Sent", "body", -1, "Sent");
+    CHECK(m.unread("kept-1") && m.unread("sent-1"));
+    CHECK_EQ(m.unreadLetters(), 4);
+    m.markRead("in-1");
+    CHECK_EQ(m.unreadLetters(), 3);
+    m.moveMessage("in-2", "Trash"); // an unread letter thrown away is not counted
+    CHECK_EQ(m.unreadLetters(), 2);
+    m.restoreMessage("in-2"); // and is again when it comes back
+    CHECK_EQ(m.unreadLetters(), 3);
+    m.markRead(std::vector<std::string>{"in-2", "chan-1", "bc-1"});
+    CHECK_EQ(m.unreadLetters(), 0);
+    m.close();
+}
+
+TEST(the_unread_letters_are_counted_for_each_folder_that_receives_mail) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    CHECK(m.unreadByFolder().empty());
+    m.store("in-1", "BM-2cA", "BM-2cB", "One", "body", -1);
+    m.store("in-2", "BM-2cA", "BM-2cB", "Two", "body", -1);
+    m.store("chan-1", "BM-2cA", "BM-2cChan", "Chan", "body", -1, "Channels");
+    for (const auto *hash : {"bc-1", "bc-2", "bc-3"})
+        m.store(hash, "BM-2cA", "BM-2cA", hash, "body", -1, "Broadcasts");
+    m.store("kept-1", "BM-2cA", "BM-2cB", "Kept", "body", -1, "Archive"); // not a folder for mail
+    auto counts = m.unreadByFolder();
+    CHECK_EQ(counts.size(), size_t(3));
+    CHECK_EQ(counts["Inbox"], 2);
+    CHECK_EQ(counts["Channels"], 1);
+    CHECK_EQ(counts["Broadcasts"], 3);
+    m.markRead(std::vector<std::string>{"in-1", "in-2", "bc-1"});
+    counts = m.unreadByFolder();
+    CHECK_EQ(counts.count("Inbox"), size_t(0)); // a folder with nothing unread is not listed
+    CHECK_EQ(counts["Channels"], 1);
+    CHECK_EQ(counts["Broadcasts"], 2);
+    int sum = 0;
+    for (const auto &[folder, count] : counts)
+        sum += count;
+    CHECK_EQ(sum, m.unreadLetters()); // the total is the folders' together
+    m.close();
+}
+
+TEST(the_data_version_tells_of_what_another_connection_wrote) {
+    // The update hook (messageRevision) tells of this connection's own changes only; a count kept
+    // for as long as nothing changed needs this too.
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox first;
+    first.create(path, "key-1", key);
+    Mailbox second;
+    second.open(path, key);
+    const auto before = first.dataVersion();
+    second.store("elsewhere-1", "BM-2cA", "BM-2cB", "Elsewhere", "body", -1);
+    CHECK(first.dataVersion() != before);
+    CHECK_EQ(first.unreadLetters(), 1); // and what it wrote is there to count
+    const auto settled = first.dataVersion();
+    first.store("here-1", "BM-2cA", "BM-2cB", "Here", "body", -1);
+    CHECK_EQ(first.dataVersion(), settled); // its own changes do not move it
+    first.close();
+    second.close();
+}
+
+TEST(the_unread_count_is_served_by_an_index_not_by_reading_the_letters) {
+    // The window asks after every change of the mailbox, and a big mailbox must not be read
+    // through for it.
+    const auto path = aNewMailbox();
+    auto key = key32();
+    {
+        Mailbox m;
+        m.create(path, "key-1", key);
+        m.store("in-1", "BM-2cA", "BM-2cB", "One", "body", -1);
+        m.close();
+    }
+    const auto plan =
+        queryPlan(path, key,
+                  "EXPLAIN QUERY PLAN SELECT folder, COUNT(*) FROM messages WHERE unread<>0 AND "
+                  "folder IN ('Inbox','Channels','Broadcasts') GROUP BY folder");
+    CHECK(plan.find("messages_unread") != std::string::npos);
 }
 
 TEST(arrivals_are_counted_once_each_from_the_last_open) {

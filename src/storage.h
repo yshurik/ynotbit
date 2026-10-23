@@ -242,6 +242,13 @@ class Mailbox {
     // The given letters read, in one write; how many of them were unread.
     int markRead(const QStringList &ids);
     bool unread(const QString &id) const;
+    // The letters not yet read in each folder that receives mail (Inbox, Channels, Broadcasts);
+    // a folder with none is not listed. And those together.
+    QMap<QString, int> unreadByFolder() const;
+    int unreadLetters() const;
+    // Changes when another connection to the file has written to it, which messageRevision(), the
+    // count of this connection's own changes, does not tell of.
+    qint64 dataVersion() const;
     QString setting(const QString &name, const QString &fallback = {}) const;
     void setSetting(const QString &name, const QString &value);
 };

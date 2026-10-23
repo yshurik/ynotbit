@@ -31,7 +31,7 @@ class SettingsPane : public QWidget {
     SoundNotifier &sounds_;
     QListWidget *sections_;
     QStackedWidget *pages_;
-    QCheckBox *networkEnabled_, *updateNotices_, *listen_, *upnp_, *soundEnabled_;
+    QCheckBox *networkEnabled_, *updateNotices_, *listen_, *upnp_, *soundEnabled_, *badgeEnabled_;
     QLabel *proxyNote_, *incoming_, *upnpStatus_;
     QComboBox *density_;
     QLabel *usage_;

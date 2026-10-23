@@ -1,4 +1,6 @@
 #include "desktop_window.h"
+#include "app_badge.h"
+#include "rail_badge.h"
 #include "settings_pane.h"
 #include "new_vault_dialog.h"
 #include "coolname.h"
@@ -2178,6 +2180,9 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
         icon->setIcon(materialIcon(iconName, iconColor(appearance_.dark())));
         icon->setToolTip(folderTitle(label));
         icon->setCursor(Qt::PointingHandCursor);
+        // Where there can be something new, the icon says how much (updateRailBadges).
+        if (label == "Chats" || label == "Inbox" || label == "Channels" || label == "Broadcasts")
+            new RailBadge(icon);
         folderGroup->addButton(icon);
         connect(icon, &QToolButton::clicked, this, [this, i] {
             // Without a mailbox the gear is the rail's one working button: a
@@ -2953,7 +2958,7 @@ void DesktopWindow::updateTheme() {
         findChild<QToolButton *>(id)->setIcon(materialIcon(icon, color));
     for (const auto &[label, iconName] : kFolderIcons)
         findChild<QToolButton *>("folderIcon_" + label)->setIcon(materialIcon(iconName, color));
-    updateChatsIcon(true);
+    updateRailBadges(true);
     // The contacts toolbar is made once: its icons and its pill follow the theme.
     contactWrite_->setIcon(materialIcon("compose", color));
     contactCopy_->setIcon(materialIcon("copy", color));
@@ -2978,6 +2983,7 @@ void DesktopWindow::updateState() {
     setWindowTitle(session_.document() + " — ynotbit");
     updateTray();
     updateFileMenu();
+    AppBadge::set(session_.unreadTotal()); // on the Dock, taskbar or launcher icon
     error_->setText(session_.error());
     error_->setVisible(!session_.error().isEmpty());
     const auto update = session_.availableUpdate();
@@ -3073,7 +3079,7 @@ void DesktopWindow::updateState() {
         if (QVariantList{session_.chatConversations(), thread} != shownChats_)
             refreshChannels();
     }
-    updateChatsIcon();
+    updateRailBadges();
     // Identities, Contacts and Settings are whole-pane pages: no letter list, no
     // reader. Settings needs no mailbox.
     const bool settingsPage = folders_->currentRow() == 10;
@@ -3388,27 +3394,25 @@ void DesktopWindow::refreshChannels() {
     if (folders_->currentRow() == 4)
         heading_->setText(tr("Channels"));
 }
-// The Chats button counts what is unread with a dot on its corner, wherever the reader
-// is: a chat that comes while another page is open would go unseen otherwise.
-void DesktopWindow::updateChatsIcon(bool force) {
-    auto button = findChild<QToolButton *>("folderIcon_Chats");
-    const int unread = session_.chatUnread();
-    if (!button || (!force && button->property("unread").toInt() == unread))
-        return;
-    button->setProperty("unread", unread);
+// A page of the rail that has anything new says how much on its icon, wherever the reader is: a
+// letter or chat that comes while another page is open would go unseen otherwise. (The number
+// is also kept on the button, as "unread".)
+void DesktopWindow::updateRailBadges(bool force) {
+    const auto counts = session_.unreadCounts();
     const bool dark = appearance_.dark();
-    auto pixmap =
-        materialIcon("chats", iconColor(dark)).pixmap(button->iconSize(), devicePixelRatioF());
-    if (unread > 0) {
-        // The theme's accent on a ring of the rail's own colour (the palette's Link and
-        // Window), by the theme and not the palette: this runs while the theme changes.
-        QPainter p(&pixmap);
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setPen(QPen(QColor(dark ? "#141b23" : "#f5f7fa"), 1.5));
-        p.setBrush(QColor(dark ? "#73d8c7" : "#126d65"));
-        p.drawEllipse(QRectF(15.5, 0.5, 8, 8));
+    for (const auto &[page, count] : {std::pair<QString, int>{"Chats", counts.chats},
+                                      {"Inbox", counts.inbox},
+                                      {"Channels", counts.channels},
+                                      {"Broadcasts", counts.broadcasts}}) {
+        auto button = findChild<QToolButton *>("folderIcon_" + page);
+        auto badge = button ? button->findChild<RailBadge *>() : nullptr;
+        if (!badge ||
+            (!force && button->property("unread").toInt() == count && badge->dark() == dark))
+            continue;
+        button->setProperty("unread", count);
+        badge->setDark(dark); // by the theme and not the palette: this runs while the theme changes
+        badge->setCount(count);
     }
-    button->setIcon(QIcon(pixmap));
 }
 QString DesktopWindow::railPage() const {
     const int folder = folders_->currentRow();
