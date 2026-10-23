@@ -1995,6 +1995,18 @@ Date: %1
         <translation>開いているメールボックスに保存されます。</translation>
     </message>
     <message>
+        <source>App icon</source>
+        <translation>アプリのアイコン</translation>
+    </message>
+    <message>
+        <source>Show the number of unread letters and chats on the app icon</source>
+        <translation>未読のメールとチャットの数をアプリのアイコンに表示する</translation>
+    </message>
+    <message>
+        <source>In the Dock, the taskbar or the launcher, where the system shows one.</source>
+        <translation>Dock、タスクバー、ランチャーのうち、システムが対応している場所に表示されます。</translation>
+    </message>
+    <message>
         <source>Change vault password…</source>
         <translation>保管庫のパスワードを変更…</translation>
     </message>

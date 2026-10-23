@@ -1,4 +1,5 @@
 #include "desktop_window.h"
+#include "app_badge.h"
 #include "settings_pane.h"
 #include "new_vault_dialog.h"
 #include "coolname.h"
@@ -2978,6 +2979,7 @@ void DesktopWindow::updateState() {
     setWindowTitle(session_.document() + " — ynotbit");
     updateTray();
     updateFileMenu();
+    AppBadge::set(session_.unreadTotal()); // on the Dock, taskbar or launcher icon
     error_->setText(session_.error());
     error_->setVisible(!session_.error().isEmpty());
     const auto update = session_.availableUpdate();

@@ -1995,6 +1995,18 @@ Date: %1
         <translation>保存在当前打开的邮箱中。</translation>
     </message>
     <message>
+        <source>App icon</source>
+        <translation>应用图标</translation>
+    </message>
+    <message>
+        <source>Show the number of unread letters and chats on the app icon</source>
+        <translation>在应用图标上显示未读信件和聊天的数量</translation>
+    </message>
+    <message>
+        <source>In the Dock, the taskbar or the launcher, where the system shows one.</source>
+        <translation>显示在系统支持的 Dock、任务栏或启动器上。</translation>
+    </message>
+    <message>
         <source>Change vault password…</source>
         <translation>更改保险库密码…</translation>
     </message>

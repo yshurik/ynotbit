@@ -697,6 +697,7 @@ void Session::checkArrivals() {
 }
 void Session::clearMessages() {
     displayedRevision_.reset();
+    unreadAt_.reset(); // another mailbox, or none, has its own count
     if (messageModel_)
         messageModel_->reload();
     emit messagesChanged();
@@ -947,6 +948,20 @@ void Session::readLetter(QString id) {
             emit messageRead(id);
         }
     });
+}
+int Session::unreadTotal() const {
+    if (!mailboxOpen())
+        return 0;
+    const auto revision = mailbox_.messageRevision();
+    if (unreadAt_ != revision) {
+        try {
+            unreadCount_ = mailbox_.unreadLetters() + mailbox_.chatUnread();
+            unreadAt_ = revision;
+        } catch (const std::exception &) {
+            // the last count stands
+        }
+    }
+    return unreadCount_;
 }
 int Session::markLettersRead(QStringList ids) {
     int changed = 0;

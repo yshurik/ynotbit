@@ -166,6 +166,9 @@ class Mailbox {
     // letter is passed over.
     int markRead(const std::vector<std::string> &ids);
     bool unread(const std::string &id) const;
+    // The letters not yet read in the folders that receive mail (Inbox, Channels, Broadcasts): one
+    // of the two numbers on the app's icon, the other being chatUnread().
+    int unreadLetters() const;
     std::string setting(const std::string &name, const std::string &fallback = {}) const;
     void setSetting(const std::string &name, const std::string &value);
 };

@@ -120,6 +120,9 @@ int Mailbox::markRead(const QStringList &ids) {
 bool Mailbox::unread(const QString &id) const {
     return core_->unread(bridge::toStd(id));
 }
+int Mailbox::unreadLetters() const {
+    return core_->unreadLetters();
+}
 QString Mailbox::setting(const QString &name, const QString &fallback) const {
     return bridge::fromStd(core_->setting(bridge::toStd(name), bridge::toStd(fallback)));
 }

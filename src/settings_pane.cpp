@@ -1,4 +1,5 @@
 #include "settings_pane.h"
+#include "app_badge.h"
 #include "appearance.h"
 #include "gpu_pow.h"
 #include "i18n.h"
@@ -260,6 +261,15 @@ QWidget *SettingsPane::notificationsPage() {
     connect(updateNotices_, &QCheckBox::toggled, &session_, &Session::setUpdateNotices);
     column->addWidget(updateNotices_);
     column->addWidget(note(tr("Kept in the open mailbox.")));
+    column->addWidget(heading(tr("App icon")));
+    badgeEnabled_ =
+        new QCheckBox(tr("Show the number of unread letters and chats on the app icon"));
+    badgeEnabled_->setObjectName("badgeEnabledCheck");
+    badgeEnabled_->setChecked(AppBadge::enabled());
+    connect(badgeEnabled_, &QCheckBox::toggled, this, [](bool on) { AppBadge::setEnabled(on); });
+    column->addWidget(badgeEnabled_);
+    column->addWidget(
+        note(tr("In the Dock, the taskbar or the launcher, where the system shows one.")));
     column->addWidget(heading(tr("Sounds")));
     soundEnabled_ = new QCheckBox(tr("Play a sound for new messages"));
     soundEnabled_->setObjectName("soundEnabledCheck");
@@ -365,6 +375,10 @@ void SettingsPane::refresh() {
     {
         QSignalBlocker block(soundEnabled_);
         soundEnabled_->setChecked(sounds_.enabled());
+    }
+    {
+        QSignalBlocker block(badgeEnabled_);
+        badgeEnabled_->setChecked(AppBadge::enabled());
     }
     updateNotices_->setEnabled(session_.mailboxOpen() && !updates::publisherAddress().isEmpty());
     changePassword_->setEnabled(session_.unlocked());

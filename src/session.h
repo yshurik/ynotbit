@@ -39,6 +39,8 @@ class Session : public QObject {
     QString root_, vaultPath_, mailPath_, mailKey_, pendingVaultPath_, error_, activity_;
     QStringList recentVaultPaths_, recentMailboxPaths_;
     std::optional<quint64> displayedRevision_;
+    mutable std::optional<quint64> unreadAt_; // the mailbox revision unreadCount_ is of
+    mutable int unreadCount_ = 0;
     // The node process, and what it last said: the core owns how to start and stop it, this class
     // owns when (the timers below) and what the window shows.
     std::unique_ptr<bmc::NodeSupervisor> node_;
@@ -241,6 +243,10 @@ class Session : public QObject {
     int chatUnread() const {
         return mailboxOpen() ? mailbox_.chatUnread() : 0;
     }
+    // The unread letters (of the folders that receive mail) and chat messages together: the
+    // number on the app's icon. Zero with no mailbox open. It is worked out again only when the
+    // mailbox has changed, so asking after every change of the window costs nothing.
+    int unreadTotal() const;
     // What has come in this conversation is looked at. How many messages were not.
     int markChatRead(QString local, QString peer);
     // The chats still to be answered, oldest first across every conversation, at most limit:
