@@ -36,7 +36,7 @@ sudo xattr -cr /Applications/ynotbit.app
 
 ## Using the app
 
-1. Create or open a `.bmvault` file. **File → Create vault…** (or **Create vault** on the
+1. Create or open a `.bmvault` file. **File → New vault…** (or **Create vault** on the
    lock screen) opens one dialog that makes the vault and its first identity, from random
    keys or a secret phrase, with an optional search for a shorter address.
    **Identity → Create identity…** uses the same dialog; you can also import `keys.dat`

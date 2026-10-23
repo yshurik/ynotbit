@@ -2670,15 +2670,30 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     status_->setObjectName("statusBar");
     status_->setContentsMargins(24, 12, 24, 12);
     outer->addWidget(status_);
+    // The vault's items, the mailbox's, then the copy and the app's own. What has nothing to work
+    // on is grey, and each Open recent is a list of the session's (updateFileMenu).
     auto file = menuBar()->addMenu(tr("File"));
-    file->addAction(tr("Create vault…"), this, &DesktopWindow::newVault)
+    file->addAction(tr("New vault…"), this, &DesktopWindow::newVault)
         ->setObjectName("createVaultAction");
-    file->addAction(tr("Open vault…"), &session_, &Session::beginVaultOpen);
-    file->addAction(tr("Create mailbox…"), &session_, &Session::createMailbox);
-    file->addAction(tr("Open mailbox…"), &session_, &Session::openMailbox);
-    file->addAction(tr("Close mailbox"), &session_, &Session::closeMailbox);
-    file->addAction(tr("Back up mailbox and vault…"), &session_, &Session::backup);
-    file->addAction(tr("Lock vault"), QKeySequence("Ctrl+L"), &session_, &Session::lock);
+    file->addAction(tr("Open vault…"), &session_, &Session::beginVaultOpen)
+        ->setObjectName("openVaultAction");
+    recentVaultsMenu_ = file->addMenu(tr("Open recent vault"));
+    recentVaultsMenu_->setObjectName("recentVaultsMenu");
+    closeVaultAction_ =
+        file->addAction(tr("Close vault"), QKeySequence("Ctrl+L"), &session_, &Session::lock);
+    closeVaultAction_->setObjectName("closeVaultAction");
+    file->addSeparator();
+    newMailboxAction_ = file->addAction(tr("New mailbox…"), &session_, &Session::createMailbox);
+    newMailboxAction_->setObjectName("createMailboxAction");
+    openMailboxAction_ = file->addAction(tr("Open mailbox…"), &session_, &Session::openMailbox);
+    openMailboxAction_->setObjectName("openMailboxAction");
+    recentMailboxesMenu_ = file->addMenu(tr("Open recent mailbox"));
+    recentMailboxesMenu_->setObjectName("recentMailboxesMenu");
+    closeMailboxAction_ = file->addAction(tr("Close mailbox"), &session_, &Session::closeMailbox);
+    closeMailboxAction_->setObjectName("closeMailboxAction");
+    file->addSeparator();
+    backupAction_ = file->addAction(tr("Back up mailbox and vault…"), &session_, &Session::backup);
+    backupAction_->setObjectName("backupAction");
     auto settingsAction = file->addAction(tr("Settings…"), QKeySequence(Qt::CTRL | Qt::Key_Comma),
                                           this, &DesktopWindow::openSettings);
     settingsAction->setObjectName("settingsAction");
@@ -2686,10 +2701,10 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
 #ifndef Q_OS_MACOS
     // The window's close hides it into the notification area, so Quit is in its menu too. (On macOS
     // the application menu has it.)
-    file->addSeparator();
     file->addAction(tr("Quit"), QKeySequence::Quit, this, &DesktopWindow::quitApp)
         ->setObjectName("quitAction");
 #endif
+    updateFileMenu();
     auto network = menuBar()->addMenu(tr("Network"));
     networkEnabledAction_ = network->addAction(tr("Network enabled"));
     networkEnabledAction_->setCheckable(true);
@@ -2950,6 +2965,7 @@ void DesktopWindow::updateState() {
         }
     setWindowTitle(session_.document() + " — ynotbit");
     updateTray();
+    updateFileMenu();
     error_->setText(session_.error());
     error_->setVisible(!session_.error().isEmpty());
     const auto update = session_.availableUpdate();
@@ -3585,6 +3601,41 @@ void DesktopWindow::refreshRecentMailboxes() {
         row->setObjectName("recentMailboxRow");
         row->setToolTip(path);
     }
+}
+void DesktopWindow::updateFileMenu() {
+    const bool vault = session_.unlocked(), mailbox = session_.mailboxOpen();
+    closeVaultAction_->setEnabled(vault);
+    newMailboxAction_->setEnabled(vault);
+    openMailboxAction_->setEnabled(vault);
+    recentMailboxesMenu_->menuAction()->setEnabled(vault);
+    closeMailboxAction_->setEnabled(mailbox);
+    backupAction_->setEnabled(mailbox);
+    // A list is filled again only when the session's has changed.
+    if (const auto recent = session_.recentVaults();
+        recent != shownRecentVaults_ || recentVaultsMenu_->isEmpty()) {
+        shownRecentVaults_ = recent;
+        fillRecentMenu(recentVaultsMenu_, recent, tr("No recent vaults"),
+                       [this](const QString &path) { session_.beginVaultOpenAt(path); });
+    }
+    if (const auto recent = session_.recentMailboxes();
+        recent != shownRecentMailboxes_ || recentMailboxesMenu_->isEmpty()) {
+        shownRecentMailboxes_ = recent;
+        fillRecentMenu(recentMailboxesMenu_, recent, tr("No recent mailboxes"),
+                       [this](const QString &path) { session_.openMailboxAt(path); });
+    }
+}
+void DesktopWindow::fillRecentMenu(QMenu *menu, const QVariantList &recent, const QString &none,
+                                   const std::function<void(const QString &)> &open) {
+    menu->clear();
+    menu->setToolTipsVisible(true);
+    for (const auto &entry : recent) {
+        const auto path = entry.toMap()["path"].toString();
+        auto action =
+            menu->addAction(entry.toMap()["name"].toString(), this, [open, path] { open(path); });
+        action->setToolTip(path); // the name alone does not say which of two files it is
+    }
+    if (recent.isEmpty())
+        menu->addAction(none)->setEnabled(false);
 }
 void DesktopWindow::refreshIdentities() {
     while (auto item = identityLayout_->takeAt(0)) {

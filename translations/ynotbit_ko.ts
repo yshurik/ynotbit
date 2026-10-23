@@ -313,6 +313,26 @@
         <translation>메일함 닫기</translation>
     </message>
     <message>
+        <source>Close vault</source>
+        <translation>보관함 닫기</translation>
+    </message>
+    <message>
+        <source>Open recent vault</source>
+        <translation>최근 보관함 열기</translation>
+    </message>
+    <message>
+        <source>Open recent mailbox</source>
+        <translation>최근 메일함 열기</translation>
+    </message>
+    <message>
+        <source>No recent vaults</source>
+        <translation>최근 보관함 없음</translation>
+    </message>
+    <message>
+        <source>No recent mailboxes</source>
+        <translation>최근 메일함 없음</translation>
+    </message>
+    <message>
         <source>Lock vault</source>
         <translation>보관함 잠그기</translation>
     </message>
@@ -445,7 +465,7 @@
         <translation>파일</translation>
     </message>
     <message>
-        <source>Create vault…</source>
+        <source>New vault…</source>
         <translation>보관함 만들기…</translation>
     </message>
     <message>
@@ -453,7 +473,7 @@
         <translation>보관함 열기…</translation>
     </message>
     <message>
-        <source>Create mailbox…</source>
+        <source>New mailbox…</source>
         <translation>메일함 만들기…</translation>
     </message>
     <message>

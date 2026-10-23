@@ -313,6 +313,26 @@
         <translation>メールボックスを閉じる</translation>
     </message>
     <message>
+        <source>Close vault</source>
+        <translation>保管庫を閉じる</translation>
+    </message>
+    <message>
+        <source>Open recent vault</source>
+        <translation>最近使った保管庫を開く</translation>
+    </message>
+    <message>
+        <source>Open recent mailbox</source>
+        <translation>最近使ったメールボックスを開く</translation>
+    </message>
+    <message>
+        <source>No recent vaults</source>
+        <translation>最近使った保管庫はありません</translation>
+    </message>
+    <message>
+        <source>No recent mailboxes</source>
+        <translation>最近使ったメールボックスはありません</translation>
+    </message>
+    <message>
         <source>Lock vault</source>
         <translation>保管庫をロック</translation>
     </message>
@@ -445,7 +465,7 @@
         <translation>ファイル</translation>
     </message>
     <message>
-        <source>Create vault…</source>
+        <source>New vault…</source>
         <translation>保管庫を作成…</translation>
     </message>
     <message>
@@ -453,7 +473,7 @@
         <translation>保管庫を開く…</translation>
     </message>
     <message>
-        <source>Create mailbox…</source>
+        <source>New mailbox…</source>
         <translation>メールボックスを作成…</translation>
     </message>
     <message>
