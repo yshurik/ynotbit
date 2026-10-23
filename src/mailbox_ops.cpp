@@ -120,8 +120,17 @@ int Mailbox::markRead(const QStringList &ids) {
 bool Mailbox::unread(const QString &id) const {
     return core_->unread(bridge::toStd(id));
 }
+QMap<QString, int> Mailbox::unreadByFolder() const {
+    QMap<QString, int> counts;
+    for (const auto &[folder, count] : core_->unreadByFolder())
+        counts[bridge::fromStd(folder)] = count;
+    return counts;
+}
 int Mailbox::unreadLetters() const {
     return core_->unreadLetters();
+}
+qint64 Mailbox::dataVersion() const {
+    return core_->dataVersion();
 }
 QString Mailbox::setting(const QString &name, const QString &fallback) const {
     return bridge::fromStd(core_->setting(bridge::toStd(name), bridge::toStd(fallback)));

@@ -943,10 +943,25 @@ int Mailbox::markRead(const std::vector<std::string> &ids) {
     return changed;
 }
 
+std::map<std::string, int> Mailbox::unreadByFolder() const {
+    std::map<std::string, int> counts;
+    Statement s(db_, "SELECT folder, COUNT(*) FROM messages WHERE unread<>0 AND "
+                     "folder IN ('Inbox','Channels','Broadcasts') GROUP BY folder");
+    while (s.row())
+        counts[s.text(0)] = int(s.number(1));
+    return counts;
+}
+
+int64_t Mailbox::dataVersion() const {
+    Statement s(db_, "PRAGMA data_version");
+    return s.row() ? s.number(0) : 0;
+}
+
 int Mailbox::unreadLetters() const {
-    Statement s(db_, "SELECT COUNT(*) FROM messages WHERE unread<>0 AND "
-                     "folder IN ('Inbox','Channels','Broadcasts')");
-    return s.row() ? int(s.number(0)) : 0;
+    int total = 0;
+    for (const auto &[folder, count] : unreadByFolder())
+        total += count;
+    return total;
 }
 
 bool Mailbox::unread(const std::string &id) const {

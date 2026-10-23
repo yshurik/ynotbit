@@ -120,13 +120,17 @@ old vault copies or backups. Import preserves the original plaintext `keys.dat`.
   background, read state, archive, trash/restore, and explicit permanent deletion.
 - **Chats**: one-to-one conversations on a page of the main window. The list shows each
   peer's picture and name, the newest message and its time, a delivery tick for yours and
-  an unread count, with a dot on the Chats button; the conversation shows Markdown
+  an unread count, with the total as a badge on the Chats icon; the conversation shows Markdown
   messages in bubbles with their time and tick. A chat is between one of your identities
   and one peer and keeps that identity. Enter sends, Shift+Enter starts a line; links ask
   first and open only `https`. A chat message is an ordinary Bitmessage message with an
   empty subject and a small JSON body, which the network keeps 24 hours; it uses a
   letter's proof of work, publishing and acknowledgment, stays out of the Inbox, and
   stays in your mailbox and its backups after the network has dropped it.
+- **Unread counts**: the Inbox, Channels, Subscriptions and Chats icons in the left column carry
+  badges with their unread numbers, and the total is on the app's icon in the Dock, the taskbar or
+  the launcher, where the system shows one (**Settings → Notifications → App icon** switches it
+  off).
 - Update notices: signed broadcasts from ynotbit's release address
   (`BM-2666hf5eAbjCJMaPwC7eG3Um55QJGM`) show a banner when a newer version is out,
   without subscribing; **Settings → Notifications** turns them off.

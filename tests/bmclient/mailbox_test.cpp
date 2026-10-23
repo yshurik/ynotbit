@@ -143,6 +143,55 @@ TEST(the_unread_letters_are_those_of_the_folders_that_receive_mail) {
     m.close();
 }
 
+TEST(the_unread_letters_are_counted_for_each_folder_that_receives_mail) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    CHECK(m.unreadByFolder().empty());
+    m.store("in-1", "BM-2cA", "BM-2cB", "One", "body", -1);
+    m.store("in-2", "BM-2cA", "BM-2cB", "Two", "body", -1);
+    m.store("chan-1", "BM-2cA", "BM-2cChan", "Chan", "body", -1, "Channels");
+    for (const auto *hash : {"bc-1", "bc-2", "bc-3"})
+        m.store(hash, "BM-2cA", "BM-2cA", hash, "body", -1, "Broadcasts");
+    m.store("kept-1", "BM-2cA", "BM-2cB", "Kept", "body", -1, "Archive"); // not a folder for mail
+    auto counts = m.unreadByFolder();
+    CHECK_EQ(counts.size(), size_t(3));
+    CHECK_EQ(counts["Inbox"], 2);
+    CHECK_EQ(counts["Channels"], 1);
+    CHECK_EQ(counts["Broadcasts"], 3);
+    m.markRead(std::vector<std::string>{"in-1", "in-2", "bc-1"});
+    counts = m.unreadByFolder();
+    CHECK_EQ(counts.count("Inbox"), size_t(0)); // a folder with nothing unread is not listed
+    CHECK_EQ(counts["Channels"], 1);
+    CHECK_EQ(counts["Broadcasts"], 2);
+    int sum = 0;
+    for (const auto &[folder, count] : counts)
+        sum += count;
+    CHECK_EQ(sum, m.unreadLetters()); // the total is the folders' together
+    m.close();
+}
+
+TEST(the_data_version_tells_of_what_another_connection_wrote) {
+    // The update hook (messageRevision) tells of this connection's own changes only; a count kept
+    // for as long as nothing changed needs this too.
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox first;
+    first.create(path, "key-1", key);
+    Mailbox second;
+    second.open(path, key);
+    const auto before = first.dataVersion();
+    second.store("elsewhere-1", "BM-2cA", "BM-2cB", "Elsewhere", "body", -1);
+    CHECK(first.dataVersion() != before);
+    CHECK_EQ(first.unreadLetters(), 1); // and what it wrote is there to count
+    const auto settled = first.dataVersion();
+    first.store("here-1", "BM-2cA", "BM-2cB", "Here", "body", -1);
+    CHECK_EQ(first.dataVersion(), settled); // its own changes do not move it
+    first.close();
+    second.close();
+}
+
 TEST(the_unread_count_is_served_by_an_index_not_by_reading_the_letters) {
     // The window asks after every change of the mailbox, and a big mailbox must not be read
     // through for it.
@@ -156,8 +205,8 @@ TEST(the_unread_count_is_served_by_an_index_not_by_reading_the_letters) {
     }
     const auto plan =
         queryPlan(path, key,
-                  "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM messages WHERE unread<>0 AND "
-                  "folder IN ('Inbox','Channels','Broadcasts')");
+                  "EXPLAIN QUERY PLAN SELECT folder, COUNT(*) FROM messages WHERE unread<>0 AND "
+                  "folder IN ('Inbox','Channels','Broadcasts') GROUP BY folder");
     CHECK(plan.find("messages_unread") != std::string::npos);
 }
 

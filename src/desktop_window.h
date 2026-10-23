@@ -135,7 +135,7 @@ class DesktopWindow : public QMainWindow {
     QString railPage() const;
     // Whether the rail is collapsed on the page now shown.
     bool railCollapsed() const;
-    void updateChatsIcon(bool force = false); // the Chats button's dot for unread chats
+    void updateRailBadges(bool force = false); // the unread counts on the rail's icons
     void setListDensity(QString density);
     void openSettings();
     void setChannelRailCollapsed(bool collapsed); // for the page now shown; the others keep theirs

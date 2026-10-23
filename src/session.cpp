@@ -949,19 +949,24 @@ void Session::readLetter(QString id) {
         }
     });
 }
-int Session::unreadTotal() const {
+UnreadCounts Session::unreadCounts() const {
     if (!mailboxOpen())
-        return 0;
-    const auto revision = mailbox_.messageRevision();
-    if (unreadAt_ != revision) {
-        try {
-            unreadCount_ = mailbox_.unreadLetters() + mailbox_.chatUnread();
-            unreadAt_ = revision;
-        } catch (const std::exception &) {
-            // the last count stands
+        return {};
+    try {
+        const std::pair<quint64, qint64> stamp{mailbox_.messageRevision(), mailbox_.dataVersion()};
+        if (unreadAt_ != stamp) {
+            const auto letters = mailbox_.unreadByFolder();
+            unreadCounts_ = {letters.value("Inbox"), letters.value("Channels"),
+                             letters.value("Broadcasts"), mailbox_.chatUnread()};
+            unreadAt_ = stamp;
         }
+    } catch (const std::exception &) {
+        // the last counts stand
     }
-    return unreadCount_;
+    return unreadCounts_;
+}
+int Session::unreadTotal() const {
+    return unreadCounts().total();
 }
 int Session::markLettersRead(QStringList ids) {
     int changed = 0;

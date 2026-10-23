@@ -13,6 +13,14 @@
 #include <bmc/node_watch.h>
 #include <utility>
 namespace bm {
+// What is unread, by the rail's pages: the letters of Inbox, Channels and Subscriptions (the
+// Broadcasts folder), and the chat messages.
+struct UnreadCounts {
+    int inbox = 0, channels = 0, broadcasts = 0, chats = 0;
+    int total() const {
+        return inbox + channels + broadcasts + chats;
+    }
+};
 class Session : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool networkEnabled READ networkEnabled NOTIFY changed)
@@ -39,8 +47,9 @@ class Session : public QObject {
     QString root_, vaultPath_, mailPath_, mailKey_, pendingVaultPath_, error_, activity_;
     QStringList recentVaultPaths_, recentMailboxPaths_;
     std::optional<quint64> displayedRevision_;
-    mutable std::optional<quint64> unreadAt_; // the mailbox revision unreadCount_ is of
-    mutable int unreadCount_ = 0;
+    // The mailbox's revision and data version that unreadCounts_ is of.
+    mutable std::optional<std::pair<quint64, qint64>> unreadAt_;
+    mutable UnreadCounts unreadCounts_;
     // The node process, and what it last said: the core owns how to start and stop it, this class
     // owns when (the timers below) and what the window shows.
     std::unique_ptr<bmc::NodeSupervisor> node_;
@@ -243,9 +252,12 @@ class Session : public QObject {
     int chatUnread() const {
         return mailboxOpen() ? mailbox_.chatUnread() : 0;
     }
+    // What is unread on each page of the rail, all zero with no mailbox open. Worked out again
+    // only when the mailbox has changed (by this program or by another connection to the file), so
+    // asking after every change of the window costs nothing.
+    UnreadCounts unreadCounts() const;
     // The unread letters (of the folders that receive mail) and chat messages together: the
-    // number on the app's icon. Zero with no mailbox open. It is worked out again only when the
-    // mailbox has changed, so asking after every change of the window costs nothing.
+    // number on the app's icon.
     int unreadTotal() const;
     // What has come in this conversation is looked at. How many messages were not.
     int markChatRead(QString local, QString peer);
