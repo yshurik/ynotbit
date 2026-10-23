@@ -262,6 +262,29 @@ int MessageModel::rowForHash(const QString &hash) const {
         return -1;
     }
 }
+int MessageModel::markAllRead() {
+    QStringList ids;
+    if (showingSearch_) {
+        ids = shown_;
+    } else if (!(perSource() && channel_.isEmpty())) {
+        try {
+            ids = session_->messageHashes(folder_, source(), true, anonymousOnly_);
+        } catch (...) {
+            return 0;
+        }
+    }
+    return session_->markLettersRead(ids);
+}
+bool MessageModel::hasUnread() const {
+    if (showingSearch_)
+        return !shown_.isEmpty();
+    try {
+        return !(perSource() && channel_.isEmpty()) &&
+               session_->messageCount(folder_, {}, source(), true, anonymousOnly_) > 0;
+    } catch (...) {
+        return false;
+    }
+}
 void MessageModel::markRead(const QString &id) {
     if (showingSearch_) {
         const auto row = rows_.find(id);

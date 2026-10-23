@@ -162,6 +162,9 @@ class Mailbox {
     void restoreMessage(const std::string &id);
     void deleteMessage(const std::string &id);
     void markRead(const std::string &id);
+    // The given letters read, in one transaction; how many of them were unread. A hash that is no
+    // letter is passed over.
+    int markRead(const std::vector<std::string> &ids);
     bool unread(const std::string &id) const;
     std::string setting(const std::string &name, const std::string &fallback = {}) const;
     void setSetting(const std::string &name, const std::string &value);

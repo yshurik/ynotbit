@@ -353,6 +353,10 @@
         <translation>읽지 않은 편지만</translation>
     </message>
     <message>
+        <source>Mark all as read</source>
+        <translation>모두 읽음으로 표시</translation>
+    </message>
+    <message>
         <source>Anonymous only</source>
         <translation>익명만</translation>
     </message>

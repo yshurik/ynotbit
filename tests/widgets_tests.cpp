@@ -261,6 +261,217 @@ static void testFileMenu(const QTemporaryDir &temp) {
                 "a recent list with nothing in it says so, in grey");
     }
 }
+// "Mark all as read" in the list of letters: the unread letters the list shows, on every page of
+// it, and nothing else.
+static void testMarkAllRead(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("mark-all.bmvault");
+    const auto boxFile = temp.filePath("mark-all.bmmail");
+    const auto sender = bm::Protocol::identity("mark-all sender").address;
+    const auto other = bm::Protocol::identity("mark-all other").address;
+    const auto anonymous = bm::Protocol::identity("mark-all anonymous").address;
+    const auto chanA = bm::Protocol::identity("mark-all chan a").address;
+    const auto chanB = bm::Protocol::identity("mark-all chan b").address;
+    QString me;
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        me = made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        bm::Mailbox::Batch batch(box);
+        for (int n = 1; n <= 230; ++n)
+            box.store("inbox-" + QString::number(n), sender, me, "Letter " + QString::number(n),
+                      "body", -1);
+        for (int n = 1; n <= 10; ++n) // from an address to itself: the Anonymous filter's
+            box.store("anon-" + QString::number(n), anonymous, anonymous,
+                      "Anonymous " + QString::number(n), "body", -1);
+        for (int n = 1; n <= 6; ++n)
+            box.store("needle-" + QString::number(n), other, me, "Needle " + QString::number(n),
+                      "body", -1);
+        for (int n = 1; n <= 3; ++n)
+            box.store("archive-" + QString::number(n), sender, me, "Kept " + QString::number(n),
+                      "body", -1, "Archive");
+        for (int n = 1; n <= 4; ++n)
+            box.store("chan-a-" + QString::number(n), sender, chanA, "A " + QString::number(n),
+                      "body", -1, "Channels");
+        for (int n = 1; n <= 3; ++n)
+            box.store("chan-b-" + QString::number(n), sender, chanB, "B " + QString::number(n),
+                      "body", -1, "Channels");
+        batch.commit();
+        for (int n = 1; n <= 5; ++n) // five are read already
+            box.markRead("inbox-" + QString::number(n));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("mark-all-node"));
+    {
+        QSettings config(temp.filePath("mark-all-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    bm::Session own(temp.filePath("mark-all-node"), true);
+    own.beginVaultUnlock();
+    own.submitVaultPassword("test password");
+    auto model = own.messageModel();
+    require(own.mailboxOpen() && model->folder() == "Inbox", "test sanity: the Inbox is listed");
+    const auto unreadInbox = [&] { return own.messageCount("Inbox", {}, {}, true); };
+    require(unreadInbox() == 225 + 10 + 6, "test sanity: the Inbox has its unread letters");
+    require(model->hasUnread(), "a list with unread letters knows it");
+    // A filter narrows it: Anonymous only marks the anonymous letters.
+    model->setAnonymousOnly(true);
+    require(model->rowCount() == 10, "test sanity: the Anonymous filter lists ten letters");
+    require(model->markAllRead() == 10 && unreadInbox() == 225 + 6,
+            "with the Anonymous filter on, Mark all as read marks what it lists and no others");
+    model->setAnonymousOnly(false);
+    // A search narrows it: the letters it found.
+    model->setSearch("Needle");
+    require(searched(model) && model->rowCount() == 6 && model->hasUnread(),
+            "test sanity: the search finds six letters");
+    require(model->markAllRead() == 6 && unreadInbox() == 225,
+            "with a search, Mark all as read marks the letters it found and no others");
+    model->setSearch({});
+    // The folder, on every page of it.
+    require(model->rowCount() == 230 + 10 + 6, "test sanity: three pages of letters");
+    // Newest first, so the read ones (the needles, the anonymous, the first five) are at the ends.
+    const auto unreadRow = [&](int row) {
+        return model->data(model->index(row), Qt::UserRole + 9).toBool();
+    };
+    require(unreadRow(16) && unreadRow(150) && unreadRow(230),
+            "test sanity: rows on three pages are drawn as unread");
+    require(model->markAllRead() == 225 && unreadInbox() == 0 && !model->hasUnread(),
+            "Mark all as read marks every unread letter of the folder, on every page");
+    require(!unreadRow(16) && !unreadRow(150) && !unreadRow(230), "and the rows are drawn as read");
+    require(model->markAllRead() == 0, "with nothing unread, it marks nothing");
+    require(own.messageCount("Archive", {}, {}, true) == 3,
+            "the letters of another folder are not touched");
+    // A channel's letters: that channel's.
+    model->setFolder("Channels");
+    require(model->markAllRead() == 0 && !model->hasUnread(),
+            "with no channel chosen, the list is empty and there is nothing to mark");
+    model->setChannel(chanA);
+    require(model->rowCount() == 4 && model->hasUnread(), "test sanity: a channel lists its four");
+    require(model->markAllRead() == 4 && !own.channelUnread(chanA) && own.channelUnread(chanB),
+            "in a channel, Mark all as read marks that channel's letters and no other's");
+    // Unread only: the list empties as they are read.
+    model->setFolder("Archive");
+    model->setUnreadOnly(true);
+    require(model->rowCount() == 3, "test sanity: Unread only lists the three");
+    require(model->markAllRead() == 3 && model->rowCount() == 0,
+            "with Unread only on, the letters leave the list as they are marked");
+}
+// Right-click in the list of letters: Mark all as read, on while the list has something unread.
+static void testLettersContextMenu(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("letters-menu.bmvault");
+    const auto boxFile = temp.filePath("letters-menu.bmmail");
+    const auto sender = bm::Protocol::identity("letters menu sender").address;
+    const auto chanA = bm::Protocol::identity("letters menu chan a").address;
+    const auto chanB = bm::Protocol::identity("letters menu chan b").address;
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        const auto me = made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        for (int n = 1; n <= 3; ++n)
+            box.store("inbox-" + QString::number(n), sender, me, "Letter " + QString::number(n),
+                      "body", -1);
+        for (int n = 1; n <= 2; ++n)
+            box.store("archive-" + QString::number(n), sender, me, "Kept " + QString::number(n),
+                      "body", -1, "Archive");
+        for (int n = 1; n <= 2; ++n)
+            box.store("chan-a-" + QString::number(n), sender, chanA, "A " + QString::number(n),
+                      "body", -1, "Channels");
+        box.store("chan-b-1", sender, chanB, "B 1", "body", -1, "Channels");
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("letters-menu-node"));
+    {
+        QSettings config(temp.filePath("letters-menu-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    bm::Session own(temp.filePath("letters-menu-node"), true);
+    own.beginVaultUnlock();
+    own.submitVaultPassword("test password");
+    bm::DesktopWindow window(own, temp.filePath("sounds-letters-menu"));
+    window.show();
+    auto letters = window.findChild<QListView *>("letters");
+    require(letters && letters->contextMenuPolicy() == Qt::CustomContextMenu,
+            "the list of letters has a context menu of its own");
+    const auto openFolder = [&](const char *name) {
+        window.findChild<QToolButton *>(name)->click();
+        QCoreApplication::processEvents();
+    };
+    struct Offer {
+        bool shown = false, exists = false, enabled = false;
+        QString text;
+    };
+    // Right-clicks the list and says what the menu offered; with pick, chooses the item.
+    const auto rightClick = [&](bool pick) {
+        Offer offer;
+        auto popup = new QTimer(&window);
+        QObject::connect(popup, &QTimer::timeout, &window, [&, popup] {
+            auto menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu)
+                return;
+            popup->stop();
+            popup->deleteLater();
+            offer.shown = true;
+            for (auto action : menu->actions())
+                if (action->objectName() == "markAllReadAction") {
+                    offer.exists = true;
+                    offer.enabled = action->isEnabled();
+                    offer.text = action->text();
+                    if (pick && action->isEnabled()) {
+                        menu->setActiveAction(action);
+                        QTest::keyClick(menu, Qt::Key_Return);
+                    }
+                }
+            if (menu->isVisible())
+                menu->close();
+        });
+        popup->start(10);
+        emit letters->customContextMenuRequested(QPoint(5, 5));
+        QCoreApplication::processEvents();
+        return offer;
+    };
+    openFolder("folderIcon_Inbox");
+    auto offer = rightClick(false);
+    require(offer.shown && offer.exists && offer.text == "Mark all as read" && offer.enabled,
+            "right-clicking the list offers Mark all as read, on while it has unread letters");
+    offer = rightClick(true);
+    require(own.messageCount("Inbox", {}, {}, true) == 0 &&
+                own.messageCount("Archive", {}, {}, true) == 2,
+            "choosing it marks the letters of the list as read, and no other folder's");
+    offer = rightClick(false);
+    require(offer.shown && offer.exists && !offer.enabled,
+            "with nothing unread in the list, the item is grey");
+    openFolder("folderIcon_Archive");
+    offer = rightClick(true);
+    require(offer.enabled && own.messageCount("Archive", {}, {}, true) == 0,
+            "in another folder it marks that folder's letters");
+    openFolder("folderIcon_Drafts");
+    offer = rightClick(false);
+    require(offer.shown && offer.exists && !offer.enabled, "an empty list has nothing to mark");
+    // In a channel it is that channel's letters, and the rail follows: its chip stops being bold.
+    openFolder("folderIcon_Channels");
+    const auto chip = [&](const QString &address) -> QPushButton * {
+        for (auto candidate : window.findChildren<QPushButton *>("channelChip"))
+            if (candidate->text() == address || candidate->toolTip().contains(address))
+                return candidate;
+        return nullptr;
+    };
+    require(chip(chanA) && chip(chanB) && chip(chanA)->font().bold() && chip(chanB)->font().bold(),
+            "test sanity: the chips of two channels with unread letters are bold");
+    chip(chanA)->click();
+    QCoreApplication::processEvents();
+    offer = rightClick(true);
+    require(offer.enabled && !own.channelUnread(chanA) && own.channelUnread(chanB) &&
+                !chip(chanA)->font().bold() && chip(chanB)->font().bold(),
+            "in a channel, Mark all as read marks that channel's letters, and its chip stops "
+            "being bold");
+}
 int main(int argc, char **argv) {
     // Unbuffered: a run that hangs and is killed by ctest still shows how far it got.
     std::cout << std::unitbuf;
@@ -5131,6 +5342,8 @@ int main(int argc, char **argv) {
                     "New vault… with a vault open asks nothing; the new vault takes its place");
         }
         testFileMenu(temp);
+        testMarkAllRead(temp);
+        testLettersContextMenu(temp);
         require(session.portMapper().state() == bm::PortMapper::State::Off,
                 "an offline session never talks to the router");
         {

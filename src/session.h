@@ -210,6 +210,9 @@ class Session : public QObject {
     Q_INVOKABLE void restoreLetter(QString id);
     Q_INVOKABLE void deleteLetter(QString id);
     Q_INVOKABLE void readLetter(QString id);
+    // The given letters read at once, in one write (the list's "Mark all as read"); how many of
+    // them were unread.
+    Q_INVOKABLE int markLettersRead(QStringList ids);
     Q_INVOKABLE QVariantMap message(QString id) const;
     QHash<QString, QString> names() const;
     static QString errorText(const std::exception &e);

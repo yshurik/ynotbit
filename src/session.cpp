@@ -948,6 +948,16 @@ void Session::readLetter(QString id) {
         }
     });
 }
+int Session::markLettersRead(QStringList ids) {
+    int changed = 0;
+    attempt([&] {
+        if (!mailboxOpen())
+            return;
+        changed = mailbox_.markRead(ids);
+        refresh(); // the revision moved: the list and the channel rail follow
+    });
+    return changed;
+}
 QVariantList Session::deliveryHistory(QString id) {
     QVariantList result;
     if (!mailboxOpen())

@@ -110,6 +110,13 @@ void Mailbox::deleteMessage(const QString &id) {
 void Mailbox::markRead(const QString &id) {
     core_->markRead(bridge::toStd(id));
 }
+int Mailbox::markRead(const QStringList &ids) {
+    std::vector<std::string> hashes;
+    hashes.reserve(size_t(ids.size()));
+    for (const auto &id : ids)
+        hashes.push_back(bridge::toStd(id));
+    return core_->markRead(hashes);
+}
 bool Mailbox::unread(const QString &id) const {
     return core_->unread(bridge::toStd(id));
 }

@@ -353,6 +353,10 @@
         <translation>Лише непрочитані</translation>
     </message>
     <message>
+        <source>Mark all as read</source>
+        <translation>Позначити всі як прочитані</translation>
+    </message>
+    <message>
         <source>Anonymous only</source>
         <translation>Лише анонімні</translation>
     </message>

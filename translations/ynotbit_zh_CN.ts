@@ -353,6 +353,10 @@
         <translation>仅未读</translation>
     </message>
     <message>
+        <source>Mark all as read</source>
+        <translation>全部标记为已读</translation>
+    </message>
+    <message>
         <source>Anonymous only</source>
         <translation>仅匿名</translation>
     </message>

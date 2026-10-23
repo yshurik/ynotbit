@@ -75,6 +75,29 @@ TEST(a_letter_round_trips_and_unread_is_tracked) {
     m.close();
 }
 
+TEST(a_list_of_letters_is_marked_read_in_one_go) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    for (const auto *hash : {"hash-a", "hash-b", "hash-c", "hash-d"})
+        m.store(hash, "BM-2cA", "BM-2cB", hash, "body", -1);
+    m.store("hash-e", "BM-2cB", "BM-2cA", "In Archive", "body", -1, "Archive");
+    m.markRead("hash-b"); // one is read already
+    // Only the unread ones are counted, and a hash that is no letter is passed over.
+    const auto before = m.messageRevision();
+    CHECK_EQ(m.markRead(std::vector<std::string>{"hash-a", "hash-b", "hash-c", "nope"}), 2);
+    CHECK(!m.unread("hash-a") && !m.unread("hash-b") && !m.unread("hash-c"));
+    CHECK(m.unread("hash-d") && m.unread("hash-e")); // not asked for
+    CHECK(m.messageRevision() > before);             // the list is told to reload
+    // Nothing unread among them: nothing changes, and nobody is told.
+    const auto settled = m.messageRevision();
+    CHECK_EQ(m.markRead(std::vector<std::string>{"hash-a", "hash-c"}), 0);
+    CHECK_EQ(m.markRead(std::vector<std::string>{}), 0);
+    CHECK_EQ(m.messageRevision(), settled);
+    m.close();
+}
+
 TEST(arrivals_are_counted_once_each_from_the_last_open) {
     // What the desktop watches to play a sound: a new incoming row, once. A replay, a broadcast and
     // our own outgoing chat are not arrivals.
