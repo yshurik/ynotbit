@@ -7,8 +7,11 @@
 #include <bmc/random.h>
 #include <bmc/test.h>
 #include <bmc/vault.h>
+#include <cstdio>
+#include <cstring>
 #include <deque>
 #include <filesystem>
+#include <utility>
 extern "C" {
 #include <ntb-address.h>
 }

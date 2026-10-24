@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <map>
 #include <openssl/crypto.h>

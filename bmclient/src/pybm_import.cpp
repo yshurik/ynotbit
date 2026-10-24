@@ -6,8 +6,10 @@
 #include <bmc/path.h>
 #include <bmc/pybm_import.h>
 #include <bmc/text.h>
+#include <exception>
 #include <filesystem>
 #include <map>
+#include <utility>
 
 namespace bmc::pybm {
 namespace {

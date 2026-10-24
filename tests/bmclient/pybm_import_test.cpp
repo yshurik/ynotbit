@@ -3,6 +3,7 @@
 // and waits for a PyBitmessage that has its data locked.
 #include "fake_node.h"
 #include "pybm_fixtures.h"
+#include <algorithm>
 #include <bmc/cache.h>
 #include <bmc/chat_format.h>
 #include <bmc/clock.h>
@@ -22,6 +23,7 @@
 #include <filesystem>
 #include <set>
 #include <sqlcipher/sqlite3.h>
+#include <utility>
 
 namespace pybm = bmc::pybm;
 using bmc::IdentityImport;
