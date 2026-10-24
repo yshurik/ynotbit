@@ -26,8 +26,6 @@ class PyBitmessageImportDialog : public QDialog {
     PyBitmessageImportDialog(Session &session, const QStringList &folders,
                              QWidget *parent = nullptr);
     ~PyBitmessageImportDialog() override;
-    // Where PyBitmessage keeps its data on this system, those folders that hold some.
-    static QStringList defaultFolders();
     // "about 3 min left"; while the answer is not known (seconds < 0) it says so.
     static QString timeLeftText(double seconds);
     // Rows per chunk, and a pause between two turns of the event loop (a test makes it slow enough
@@ -57,7 +55,7 @@ class PyBitmessageImportDialog : public QDialog {
     QCheckBox *identities_, *contacts_, *subscriptions_, *inbox_, *sent_, *trash_;
     QLabel *identitiesCount_, *contactsCount_, *subscriptionsCount_, *inboxCount_, *sentCount_,
         *trashCount_, *trashHint_, *notes_, *trouble_, *phase_, *detail_, *resultTitle_,
-        *resultText_;
+        *resultText_, *warning_;
     QPushButton *import_, *checkAgain_, *stop_, *copy_, *close_;
     QProgressBar *bar_;
     QTimer *timer_;

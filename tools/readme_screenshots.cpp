@@ -15,6 +15,9 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     app.setOrganizationName("YnotbitScreenshots");
     app.setApplicationName("Readme");
+    // The pictures show the demo mailbox, not an offer to import a PyBitmessage that happens to be
+    // on this machine.
+    bm::Session::setPyBitmessageFoldersForTesting([] { return QStringList(); });
     if (argc < 2) {
         std::cerr << "usage: readme_screenshots <output-dir> [language]\n";
         return 2;

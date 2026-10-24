@@ -2975,6 +2975,11 @@ void DesktopWindow::updateTheme() {
 void DesktopWindow::updateState() {
     updateFileMenu(); // first: a mailbox that opens must not leave its items grey until the next
                       // tick
+    // A mailbox that has not dealt with PyBitmessage's data is offered the import as it opens. Not
+    // from here: this runs inside the session's signal, and the box is a window of its own.
+    if (session_.mailboxOpen())
+        if (const auto folder = session_.takePyBitmessageOffer(); !folder.isEmpty())
+            QTimer::singleShot(0, this, [this, folder] { offerPyBitmessageImport(folder); });
     // A mailbox opens on Subscriptions with the digest selected (the first
     // sender instead, if the digest was unsubscribed).
     if (session_.mailboxOpen())
@@ -3648,9 +3653,44 @@ void DesktopWindow::updateFileMenu() {
     }
 }
 void DesktopWindow::importPyBitmessage() {
-    PyBitmessageImportDialog dialog(session_, PyBitmessageImportDialog::defaultFolders(), this);
+    PyBitmessageImportDialog dialog(session_, session_.pyBitmessageFolders(), this);
     dialog.setWindowModality(Qt::WindowModal); // a sheet on macOS
     dialog.exec();
+}
+// The offer: a box of its own, a sheet on macOS, that the window does not wait for. Import… goes on
+// to the dialog of the File menu once the box is gone; Not now leaves the mailbox as it was, so the
+// offer comes again when it opens next; Don't ask again marks the mailbox.
+void DesktopWindow::offerPyBitmessageImport(const QString &folder) {
+    if (!session_.mailboxOpen()) // closed again before the box had its turn
+        return;
+    auto box = new QMessageBox(QMessageBox::Question, tr("PyBitmessage data found"),
+                               tr("Import your PyBitmessage data into this mailbox?"),
+                               QMessageBox::NoButton, this);
+    box->setObjectName("pybmOfferBox");
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setInformativeText(
+        tr("ynotbit found PyBitmessage's data in %1. Your identities, chans, address book, "
+           "subscriptions and letters can come over. PyBitmessage's own files are only read, "
+           "never changed.")
+            .arg(QDir::toNativeSeparators(folder)) +
+        "\n\n" + tr("You can also do this later with Import PyBitmessage data… in the File menu."));
+    auto import = box->addButton(tr("Import…"), QMessageBox::AcceptRole);
+    import->setObjectName("pybmOfferImportButton");
+    auto later = box->addButton(tr("Not now"), QMessageBox::RejectRole);
+    later->setObjectName("pybmOfferLaterButton");
+    auto never = box->addButton(tr("Don't ask again"), QMessageBox::DestructiveRole);
+    never->setObjectName("pybmOfferNeverButton");
+    box->setDefaultButton(import);
+    box->setEscapeButton(later);
+    // The mailbox it is about is going: the offer goes with it, as a Not now.
+    connect(&session_, &Session::aboutToCloseMailbox, box, &QDialog::reject);
+    connect(box, &QDialog::finished, this, [this, box, import, never] {
+        if (box->clickedButton() == never)
+            session_.settlePyBitmessageImport();
+        else if (box->clickedButton() == import)
+            QTimer::singleShot(0, this, &DesktopWindow::importPyBitmessage); // once the box is gone
+    });
+    box->open();
 }
 void DesktopWindow::fillRecentMenu(QMenu *menu, const QVariantList &recent, const QString &none,
                                    const std::function<void(const QString &)> &open) {

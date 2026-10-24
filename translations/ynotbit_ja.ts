@@ -987,6 +987,34 @@ Date: %1
         <source>Import PyBitmessage data…</source>
         <translation>PyBitmessage のデータをインポート…</translation>
     </message>
+    <message>
+        <source>PyBitmessage data found</source>
+        <translation>PyBitmessage のデータが見つかりました</translation>
+    </message>
+    <message>
+        <source>Import your PyBitmessage data into this mailbox?</source>
+        <translation>PyBitmessage のデータをこのメールボックスにインポートしますか？</translation>
+    </message>
+    <message>
+        <source>ynotbit found PyBitmessage's data in %1. Your identities, chans, address book, subscriptions and letters can come over. PyBitmessage's own files are only read, never changed.</source>
+        <translation>ynotbit が %1 に PyBitmessage のデータを見つけました。ID、チャンネル、アドレス帳、購読、メールを取り込めます。PyBitmessage 自身のファイルは読み取るだけで、変更されません。</translation>
+    </message>
+    <message>
+        <source>You can also do this later with Import PyBitmessage data… in the File menu.</source>
+        <translation>あとで、「ファイル」メニューの「PyBitmessage のデータをインポート…」からも行えます。</translation>
+    </message>
+    <message>
+        <source>Import…</source>
+        <translation>インポート…</translation>
+    </message>
+    <message>
+        <source>Not now</source>
+        <translation>今はしない</translation>
+    </message>
+    <message>
+        <source>Don't ask again</source>
+        <translation>今後は確認しない</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1674,6 +1702,10 @@ Date: %1
     <message>
         <source>Not imported: network data, saved public keys, blacklist and whitelist.</source>
         <translation>インポートされないもの: ネットワークデータ、保存済みの公開鍵、ブラックリストとホワイトリスト。</translation>
+    </message>
+    <message>
+        <source>PyBitmessage keeps its data without encryption, your private keys included. If you have fully moved to ynotbit, consider deleting the folder %1. ynotbit never deletes it for you.</source>
+        <translation>PyBitmessage はデータ（秘密鍵を含む）を暗号化せずに保存しています。ynotbit に完全に移行した場合は、フォルダー %1 の削除を検討してください。ynotbit が自動で削除することはありません。</translation>
     </message>
     <message>
         <source>Opening PyBitmessage's data…</source>

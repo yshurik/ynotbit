@@ -987,6 +987,34 @@ Date: %1
         <source>Import PyBitmessage data…</source>
         <translation>PyBitmessage 데이터 가져오기…</translation>
     </message>
+    <message>
+        <source>PyBitmessage data found</source>
+        <translation>PyBitmessage 데이터를 찾았습니다</translation>
+    </message>
+    <message>
+        <source>Import your PyBitmessage data into this mailbox?</source>
+        <translation>PyBitmessage 데이터를 이 메일함으로 가져올까요?</translation>
+    </message>
+    <message>
+        <source>ynotbit found PyBitmessage's data in %1. Your identities, chans, address book, subscriptions and letters can come over. PyBitmessage's own files are only read, never changed.</source>
+        <translation>ynotbit이 %1에서 PyBitmessage 데이터를 찾았습니다. 신원, 채널, 주소록, 구독, 편지를 가져올 수 있습니다. PyBitmessage의 파일은 읽기만 하며 변경되지 않습니다.</translation>
+    </message>
+    <message>
+        <source>You can also do this later with Import PyBitmessage data… in the File menu.</source>
+        <translation>나중에 파일 메뉴의 PyBitmessage 데이터 가져오기…에서도 할 수 있습니다.</translation>
+    </message>
+    <message>
+        <source>Import…</source>
+        <translation>가져오기…</translation>
+    </message>
+    <message>
+        <source>Not now</source>
+        <translation>나중에</translation>
+    </message>
+    <message>
+        <source>Don't ask again</source>
+        <translation>다시 묻지 않기</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1674,6 +1702,10 @@ Date: %1
     <message>
         <source>Not imported: network data, saved public keys, blacklist and whitelist.</source>
         <translation>가져오지 않는 항목: 네트워크 데이터, 저장된 공개 키, 차단 목록과 허용 목록.</translation>
+    </message>
+    <message>
+        <source>PyBitmessage keeps its data without encryption, your private keys included. If you have fully moved to ynotbit, consider deleting the folder %1. ynotbit never deletes it for you.</source>
+        <translation>PyBitmessage는 개인 키를 포함한 데이터를 암호화하지 않고 저장합니다. ynotbit으로 완전히 옮기셨다면 %1 폴더를 삭제하는 것을 고려해 보세요. ynotbit은 이 폴더를 직접 삭제하지 않습니다.</translation>
     </message>
     <message>
         <source>Opening PyBitmessage's data…</source>

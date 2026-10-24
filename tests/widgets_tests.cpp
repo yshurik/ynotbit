@@ -1087,6 +1087,269 @@ static void testPyBitmessageImport(const QTemporaryDir &temp) {
                 "and goes on when it is over");
     }
 }
+// The offer of the import: each time a mailbox that has not dealt with it opens or is made, and
+// PyBitmessage's data is on the computer, a box offers it. Not now asks again next time; Don't ask
+// again and an import that finishes settle the mailbox, and the import that finishes warns that
+// PyBitmessage's folder is not encrypted.
+static void testPyBitmessageOffer(const QTemporaryDir &temp) {
+    using Dialog = bm::PyBitmessageImportDialog;
+    // One vault, three mailboxes that have not dealt with PyBitmessage, and a folder of its.
+    const auto vaultFile = temp.filePath("offer.bmvault");
+    const QStringList mailboxes = {temp.filePath("offer-a.bmmail"), temp.filePath("offer-b.bmmail"),
+                                   temp.filePath("offer-c.bmmail")};
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        for (const auto &path : mailboxes) {
+            const auto key = made.addMailboxKey();
+            bm::Mailbox box;
+            box.create(path, key, made.mailboxKey(key));
+        }
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("offer-node"));
+    {
+        QSettings config(temp.filePath("offer-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", mailboxes[0]);
+    }
+    pybmfix::Folder source;
+    const auto me = bmc::Protocol::identity("me");
+    source.keys(pybmfix::kSettings + pybmfix::section(me, "Me"));
+    source.inbox(pybmfix::rawHash(1), me.address, "BM-aaa", "d1", "1700000100", "body", "inbox",
+                 false);
+    const auto sourceDir = QString::fromStdString(source.dir);
+    QStringList found; // what the computer holds of PyBitmessage
+    bm::Session::setPyBitmessageFoldersForTesting([&found] { return found; });
+    struct Restore { // the other tests find nothing, whatever way this one ends
+        ~Restore() {
+            bm::Session::setPyBitmessageFoldersForTesting([] { return QStringList(); });
+        }
+    } restore;
+    bm::Session own(temp.filePath("offer-node"), true);
+    bm::DesktopWindow window(own, temp.filePath("sounds-offer"));
+    window.show();
+    // The offer box, if one is up; the window is given its turn first.
+    const auto offer = [&]() -> QMessageBox * {
+        QCoreApplication::processEvents();
+        for (auto box : window.findChildren<QMessageBox *>("pybmOfferBox"))
+            if (box->isVisible())
+                return box;
+        return nullptr;
+    };
+    const auto answer = [&](const char *name) {
+        auto box = offer();
+        require(box != nullptr, "test sanity: there is an offer to answer");
+        auto button = box->findChild<QPushButton *>(name);
+        require(button != nullptr, name);
+        button->click();
+        QCoreApplication::processEvents();
+    };
+
+    // With no PyBitmessage data on the computer there is nothing to offer, and nothing is marked.
+    own.beginVaultUnlock();
+    own.submitVaultPassword("test password");
+    require(own.mailboxOpen() && !offer(),
+            "with no PyBitmessage data on the computer nothing is offered");
+    require(!own.pyBitmessageImportSettled(),
+            "and the mailbox is not marked: the data may turn up");
+
+    // With some, the box: what it is about, where the data is, three answers.
+    found = {sourceDir};
+    own.openMailboxAt(mailboxes[0]);
+    auto box = offer();
+    require(box != nullptr,
+            "a mailbox that opens while PyBitmessage's data is about is offered the import");
+    require(box->text() ==
+                bm::DesktopWindow::tr("Import your PyBitmessage data into this mailbox?"),
+            "the offer says what it is about");
+    require(box->informativeText().contains(QDir::toNativeSeparators(sourceDir)) &&
+                box->informativeText().contains(bm::DesktopWindow::tr(
+                    "You can also do this later with Import PyBitmessage data… in the File menu.")),
+            "and where the data was found, and how to do it later");
+    const auto text = [&](const char *name) {
+        auto button = box->findChild<QPushButton *>(name);
+        return button ? button->text() : QString("(missing)");
+    };
+    require(text("pybmOfferImportButton") == bm::DesktopWindow::tr("Import…") &&
+                text("pybmOfferLaterButton") == bm::DesktopWindow::tr("Not now") &&
+                text("pybmOfferNeverButton") == bm::DesktopWindow::tr("Don't ask again"),
+            "there are three answers: import, not now, and don't ask again");
+    require(box->defaultButton() == box->findChild<QPushButton *>("pybmOfferImportButton"),
+            "and Enter imports");
+    require(box->windowModality() == Qt::WindowModal,
+            "it is a sheet of the window, not an app-wide box");
+
+    // Not now leaves the mailbox as it was: it is offered the import again when it opens next.
+    answer("pybmOfferLaterButton");
+    require(!offer() && !own.pyBitmessageImportSettled(),
+            "Not now closes the offer and leaves the mailbox unmarked");
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(window.findChildren<QMessageBox *>("pybmOfferBox").isEmpty(),
+            "and a closed offer is gone, not kept hidden");
+    own.rescan(); // the window hears of changes all the time; the offer is made once per opening
+    require(!offer(), "and it does not come back while the mailbox stays open");
+    own.openMailboxAt(mailboxes[0]);
+    require(offer() != nullptr, "and the mailbox is offered the import again when it opens next");
+    // Escape is Not now.
+    QTest::keyClick(offer(), Qt::Key_Escape);
+    require(QTest::qWaitFor([&] { return !offer(); }, 3000) && !own.pyBitmessageImportSettled(),
+            "Escape does what Not now does");
+    own.openMailboxAt(mailboxes[0]);
+    require(offer() != nullptr, "test sanity: Escape left the mailbox to be offered the import");
+
+    // Don't ask again marks it, in the mailbox's own file: it holds when the file is opened again.
+    answer("pybmOfferNeverButton");
+    require(!offer() && own.pyBitmessageImportSettled(), "Don't ask again marks the mailbox");
+    own.openMailboxAt(mailboxes[0]);
+    require(own.mailboxOpen() && own.pyBitmessageImportSettled() && !offer(),
+            "and it is not offered the import again, whenever it is opened");
+
+    // The flag is the mailbox's: another one has not dealt with it.
+    own.openMailboxAt(mailboxes[1]);
+    require(offer() != nullptr && !own.pyBitmessageImportSettled(),
+            "another mailbox is offered the import: the flag belongs to the mailbox");
+
+    // Import… opens the import dialog on the data that was found. The dialog is waited for where
+    // Import… is pressed, so a timer works it: it starts the import and reads the result page, or,
+    // with run false, cancels at the first page.
+    struct Seen {
+        bool opened = false, warningShown = false, plain = false;
+        QString folder, warning;
+    };
+    const auto importFromOffer = [&](bool run) {
+        Seen seen;
+        auto driver = new QTimer(&window);
+        QObject::connect(driver, &QTimer::timeout, &window, [&, driver, run] {
+            auto d = window.findChild<QDialog *>("pybmImportDialog");
+            if (!d || !d->isVisible())
+                return;
+            auto title = d->findChild<QLabel *>("pybmResultTitle");
+            if (title && title->isVisible()) {
+                auto warning = d->findChild<QLabel *>("pybmWarning");
+                seen.warningShown = warning && warning->isVisible();
+                seen.plain = warning && warning->textFormat() == Qt::PlainText;
+                seen.warning = warning ? warning->text() : QString();
+                driver->stop();
+                d->findChild<QPushButton *>("pybmCloseButton")->click();
+                return;
+            }
+            auto start = d->findChild<QPushButton *>("pybmImportButton");
+            if (!seen.opened && start && start->isVisible()) {
+                seen.opened = true;
+                seen.folder = d->findChild<QComboBox *>("pybmFolderCombo")->itemData(0).toString();
+                if (run) {
+                    start->click();
+                } else {
+                    driver->stop();
+                    d->findChild<QPushButton *>("pybmCancelButton")->click();
+                }
+            }
+        });
+        driver->start(20);
+        answer("pybmOfferImportButton"); // the dialog runs inside this, until the driver ends it
+        driver->deleteLater();
+        return seen;
+    };
+    const auto cancelled = importFromOffer(false);
+    require(cancelled.opened && cancelled.folder == sourceDir,
+            "Import… opens the import dialog on the folder that was found");
+    require(!own.pyBitmessageImportSettled(),
+            "and Cancel there deals with nothing: Import… marks no mailbox by itself");
+    own.openMailboxAt(mailboxes[1]);
+    require(offer() != nullptr, "so the mailbox is offered the import again");
+    const auto seen = importFromOffer(true);
+    require(seen.opened && seen.folder == sourceDir, "Import… opens the dialog once more");
+    require(own.pyBitmessageImportSettled(), "an import that finishes marks the mailbox");
+    require(seen.warningShown &&
+                seen.warning ==
+                    Dialog::tr("PyBitmessage keeps its data without encryption, your private keys "
+                               "included. If you have fully moved to ynotbit, consider deleting "
+                               "the folder %1. ynotbit never deletes it for you.")
+                        .arg(QDir::toNativeSeparators(sourceDir)),
+            "and its result warns that PyBitmessage's folder is not encrypted, and names it");
+    require(seen.plain, "the folder's name in the warning is text, never markup");
+    own.openMailboxAt(mailboxes[1]);
+    require(own.mailboxOpen() && !offer(),
+            "a mailbox that took the import is not offered it again");
+
+    // A mailbox made now is offered the import too.
+    const auto madeNow = temp.filePath("offer-made-now.bmmail");
+    {
+        auto reply = new QTimer(&window);
+        QObject::connect(reply, &QTimer::timeout, &window, [&, reply] {
+            if (auto d = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
+                reply->stop();
+                chooseFile(d, madeNow);
+            }
+        });
+        reply->start(10);
+        own.createMailbox();
+        reply->deleteLater();
+    }
+    require(own.mailboxOpen() && own.mailPath() == madeNow && offer() != nullptr,
+            "a mailbox made now is offered the import too");
+    answer("pybmOfferLaterButton");
+    // So is one that opens because the vault is unlocked.
+    own.lock();
+    own.beginVaultUnlock();
+    own.submitVaultPassword("test password");
+    require(own.mailboxOpen() && own.mailPath() == madeNow && offer() != nullptr,
+            "and one that opens when the vault is unlocked");
+    answer("pybmOfferLaterButton");
+
+    // Closing the mailbox takes an offer away with it, shown or not; the next one gets its own.
+    own.openMailboxAt(mailboxes[2]);
+    require(offer() != nullptr, "test sanity: the third mailbox is offered the import");
+    own.closeMailbox();
+    require(!offer(), "an offer does not outlive the mailbox it was made for");
+    own.openMailboxAt(mailboxes[2]);
+    own.closeMailbox(); // before the window has had its turn
+    require(!offer(), "and an offer for a mailbox that is closed before it shows is not made");
+    own.openMailboxAt(mailboxes[2]);
+    answer("pybmOfferLaterButton");
+
+    // An import that was stopped has not dealt with it: no mark, no warning.
+    {
+        pybmfix::Folder many;
+        many.keys(pybmfix::kSettings);
+        for (int i = 0; i < 100; ++i)
+            many.inbox(pybmfix::rawHash(300 + i), me.address, "BM-zzz", "many " + std::to_string(i),
+                       std::to_string(1700001000 + i), "body", "inbox", true);
+        Dialog slow(own, {QString::fromStdString(many.dir)});
+        slow.setPaceForTesting(2, 30);
+        slow.show();
+        QCoreApplication::processEvents();
+        slow.findChild<QPushButton *>("pybmImportButton")->click();
+        auto bar = slow.findChild<QProgressBar *>("pybmProgressBar");
+        require(bar &&
+                    QTest::qWaitFor([&] { return bar->value() > 0 && bar->maximum() > 0; }, 10000),
+                "test sanity: the slow import goes");
+        slow.findChild<QPushButton *>("pybmStopButton")->click();
+        auto title = slow.findChild<QLabel *>("pybmResultTitle");
+        require(QTest::qWaitFor([&] { return title->isVisible(); }, 10000) &&
+                    title->text() == Dialog::tr("Import stopped"),
+                "test sanity: it is stopped");
+        require(!own.pyBitmessageImportSettled(),
+                "an import that was stopped does not mark the mailbox");
+        auto warning = slow.findChild<QLabel *>("pybmWarning");
+        require(warning != nullptr && warning->isHidden(),
+                "and gives no warning: the data is not all in");
+    }
+    // The same dialog, from the File menu, to its end: it marks the mailbox all the same.
+    {
+        Dialog complete(own, {sourceDir});
+        complete.show();
+        QCoreApplication::processEvents();
+        complete.findChild<QPushButton *>("pybmImportButton")->click();
+        auto title = complete.findChild<QLabel *>("pybmResultTitle");
+        require(QTest::qWaitFor([&] { return title->isVisible(); }, 15000) &&
+                    title->text() == Dialog::tr("Import finished"),
+                "test sanity: the import finishes");
+        require(own.pyBitmessageImportSettled(), "an import that finishes marks the mailbox");
+    }
+}
 int main(int argc, char **argv) {
     // Unbuffered: a run that hangs and is killed by ctest still shows how far it got.
     std::cout << std::unitbuf;
@@ -1110,6 +1373,8 @@ int main(int argc, char **argv) {
     watchdog.start(450000);
     app.setOrganizationName("YnotbitTests");
     app.setApplicationName("Widgets");
+    // No window of these tests finds a PyBitmessage that is on the machine they run on.
+    bm::Session::setPyBitmessageFoldersForTesting([] { return QStringList(); });
     QTemporaryDir temp;
     // A long vault path, like a macOS runner's /var/folders/.../T/...: the
     // locked screen must show it whole-height there too.
@@ -5990,6 +6255,7 @@ int main(int argc, char **argv) {
         testRailBadgeWidget();
         testRailBadges(temp);
         testPyBitmessageImport(temp);
+        testPyBitmessageOffer(temp);
         require(session.portMapper().state() == bm::PortMapper::State::Off,
                 "an offline session never talks to the router");
         {

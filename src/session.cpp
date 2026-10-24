@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <bmc/clock.h>
 #include <bmc/path.h>
+#include <bmc/pybitmessage.h>
 #include <stdexcept>
 namespace bm {
 static QString addressInput(const QString &title, const QString &label, bool *accepted) {
@@ -86,6 +87,10 @@ static QString documentsPath() {
 }
 // The mailbox setting that says the Sent folder is in the address book (addSentRecipients).
 static const QString kSentRecipientsSetting = "migrated:sent-recipients";
+// The mailbox setting that says the import of PyBitmessage's data has been dealt with: an import
+// finished, or the user asked not to be offered it again. While it is not there, the import is
+// offered each time the mailbox opens.
+static const QString kPyBitmessageSettledSetting = "pybitmessage:import-settled";
 Session::Session(QString root, bool offline, QObject *parent)
     : QObject(parent), root_(std::move(root)), offline_(offline) {
     messageModel_ = std::make_unique<MessageModel>(this, this);
@@ -421,6 +426,7 @@ void Session::createMailbox() {
             mailKey_ = id;
             rememberMailbox(p);
             bindMailboxToCache();
+            considerPyBitmessageOffer();
             refresh();
         } catch (...) {
             mailLock_.reset();
@@ -466,6 +472,7 @@ void Session::openMailboxPath(const QString &p) {
             mailPath_ = p;
             mailKey_ = id;
             rememberMailbox(p);
+            considerPyBitmessageOffer();
             refresh();
             return;
         } catch (...) {
@@ -1016,6 +1023,44 @@ QVariantList Session::subscriptions() const {
         for (const auto &s : mailbox_.subscriptions())
             result << QVariantMap{{"address", s.address}, {"label", s.label}};
     return result;
+}
+static std::function<QStringList()> &pyBitmessageSearch() {
+    static std::function<QStringList()> search;
+    return search;
+}
+QStringList Session::pyBitmessageFolders() const {
+    if (const auto &search = pyBitmessageSearch(); search)
+        return search();
+    QStringList folders;
+    for (const auto &folder : bmc::pybm::findFolders(bmc::pybm::Environment::current()))
+        folders << bridge::fromStd(folder);
+    return folders;
+}
+void Session::setPyBitmessageFoldersForTesting(std::function<QStringList()> search) {
+    pyBitmessageSearch() = std::move(search);
+}
+bool Session::pyBitmessageImportSettled() const {
+    return mailboxOpen() && !mailbox_.setting(kPyBitmessageSettledSetting).isEmpty();
+}
+void Session::settlePyBitmessageImport() {
+    if (!mailboxOpen())
+        return;
+    try {
+        mailbox_.setSetting(kPyBitmessageSettledSetting, "1");
+    } catch (...) {
+        // Not remembered is no harm: the mailbox is offered the import once more.
+    }
+}
+// A mailbox that opens or is made without having dealt with PyBitmessage's data is to be offered
+// the import, if that data is on this computer: the offer is the folder it is in.
+void Session::considerPyBitmessageOffer() {
+    pyBitmessageOffer_.clear();
+    try {
+        if (mailbox_.setting(kPyBitmessageSettledSetting).isEmpty())
+            pyBitmessageOffer_ = pyBitmessageFolders().value(0);
+    } catch (...) {
+        // No offer is better than no mailbox.
+    }
 }
 void Session::seedSubscriptions() {
     for (const auto &d : updates::defaultSubscriptions()) {

@@ -43,6 +43,7 @@ class Session : public QObject {
     Vault vault_{vaultCore_};
     Mailbox mailbox_{mailboxCore_};
     QString welcomeSource_;
+    QString pyBitmessageOffer_; // see takePyBitmessageOffer()
     std::unique_ptr<MessageModel> messageModel_;
     QString root_, vaultPath_, mailPath_, mailKey_, pendingVaultPath_, error_, activity_;
     QStringList recentVaultPaths_, recentMailboxPaths_;
@@ -317,6 +318,8 @@ class Session : public QObject {
     QVariantList broadcastSources() const;
     // The built-in subscriptions (updates.h), once per mailbox.
     void seedSubscriptions();
+    // Sets pyBitmessageOffer_ for the mailbox that has just opened or been made.
+    void considerPyBitmessageOffer();
     // The built-in contacts (updates.h), once per mailbox each: deleting one sticks. One that is
     // already there keeps its name; the address gets its nickname either way.
     void seedContacts();
@@ -328,6 +331,22 @@ class Session : public QObject {
     // Subscriptions page on the Bitmessage digest.
     QString takeWelcomeSource() {
         return std::exchange(welcomeSource_, {});
+    }
+    // Where PyBitmessage's data is on this computer: its folders that hold some.
+    QStringList pyBitmessageFolders() const;
+    // Tests name the folders themselves, so that a PyBitmessage on the machine they run on is not
+    // found. An empty function brings the real search back.
+    static void setPyBitmessageFoldersForTesting(std::function<QStringList()> search);
+    // The mailbox's flag for the import of PyBitmessage's data. A mailbox starts with it not set;
+    // it is set when an import finishes, or when the user asks not to be offered the import
+    // again. Until then the import is offered each time the mailbox opens or is made, if
+    // PyBitmessage's data is on this computer.
+    bool pyBitmessageImportSettled() const;
+    void settlePyBitmessageImport();
+    // Once per opening, like takeWelcomeSource(): the folder of PyBitmessage's data that the window
+    // should offer to import now, or empty when it has nothing to offer.
+    QString takePyBitmessageOffer() {
+        return std::exchange(pyBitmessageOffer_, {});
     }
     bool broadcastUnread(QString address) const {
         return mailboxOpen() && mailbox_.channelUnread(address, "Broadcasts");

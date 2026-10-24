@@ -153,6 +153,7 @@ class DesktopWindow : public QMainWindow {
     // and the recent lists are the session's.
     void updateFileMenu();
     void importPyBitmessage();
+    void offerPyBitmessageImport(const QString &folder);
     void fillRecentMenu(QMenu *menu, const QVariantList &recent, const QString &none,
                         const std::function<void(const QString &)> &open);
 };

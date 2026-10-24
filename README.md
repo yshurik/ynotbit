@@ -90,6 +90,11 @@ their dates and whether they were read; letters PyBitmessage had not sent yet be
 and nothing is sent. PyBitmessage's files are only read, so it can keep running, and running
 the import again adds only what is missing. Network data, saved public keys, the blacklist and
 the whitelist are not imported.
+If PyBitmessage's data is on the computer, a mailbox that has not been through the import is
+offered it whenever the mailbox is opened or made, until the import is done or you choose
+Don't ask again. When the import is done, ynotbit reminds you that PyBitmessage keeps its data,
+your private keys among it, without encryption, so that once you have fully moved you can consider
+deleting its folder; ynotbit never deletes it.
 
 ## Features
 

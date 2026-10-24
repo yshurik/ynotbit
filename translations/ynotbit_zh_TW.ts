@@ -987,6 +987,34 @@ Date: %1
         <source>Import PyBitmessage data…</source>
         <translation>匯入 PyBitmessage 資料…</translation>
     </message>
+    <message>
+        <source>PyBitmessage data found</source>
+        <translation>找到了 PyBitmessage 資料</translation>
+    </message>
+    <message>
+        <source>Import your PyBitmessage data into this mailbox?</source>
+        <translation>要將 PyBitmessage 資料匯入此信箱嗎？</translation>
+    </message>
+    <message>
+        <source>ynotbit found PyBitmessage's data in %1. Your identities, chans, address book, subscriptions and letters can come over. PyBitmessage's own files are only read, never changed.</source>
+        <translation>ynotbit 在 %1 中找到了 PyBitmessage 的資料。你的身分、頻道、通訊錄、訂閱和信件都可以匯入。PyBitmessage 自己的檔案只會被讀取，不會被修改。</translation>
+    </message>
+    <message>
+        <source>You can also do this later with Import PyBitmessage data… in the File menu.</source>
+        <translation>你也可以稍後透過「檔案」選單中的「匯入 PyBitmessage 資料…」來完成。</translation>
+    </message>
+    <message>
+        <source>Import…</source>
+        <translation>匯入…</translation>
+    </message>
+    <message>
+        <source>Not now</source>
+        <translation>暫不</translation>
+    </message>
+    <message>
+        <source>Don't ask again</source>
+        <translation>不再詢問</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1674,6 +1702,10 @@ Date: %1
     <message>
         <source>Not imported: network data, saved public keys, blacklist and whitelist.</source>
         <translation>不會匯入：網路資料、已儲存的公鑰、黑名單和白名單。</translation>
+    </message>
+    <message>
+        <source>PyBitmessage keeps its data without encryption, your private keys included. If you have fully moved to ynotbit, consider deleting the folder %1. ynotbit never deletes it for you.</source>
+        <translation>PyBitmessage 不加密保存其資料，包括你的私鑰。如果你已完全遷移到 ynotbit，可以考慮刪除資料夾 %1。ynotbit 絕不會替你刪除它。</translation>
     </message>
     <message>
         <source>Opening PyBitmessage's data…</source>

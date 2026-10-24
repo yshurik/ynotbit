@@ -207,6 +207,16 @@ PyBitmessageImportDialog::PyBitmessageImportDialog(Session &session, const QStri
     resultText_->setWordWrap(true);
     resultText_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     resultColumn->addWidget(resultText_);
+    warning_ = new QLabel;
+    warning_->setObjectName("pybmWarning");
+    warning_->setWordWrap(true);
+    warning_->setTextFormat(Qt::PlainText); // a folder's name is not markup
+    warning_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    // An amber tint, light enough for either theme, with the text in the theme's own colour.
+    warning_->setStyleSheet("padding:8px 10px;border:1px solid rgba(217,142,4,150);"
+                            "border-radius:6px;background:rgba(217,142,4,36);");
+    warning_->hide();
+    resultColumn->addWidget(warning_);
     resultColumn->addStretch(1);
     auto resultButtons = new QHBoxLayout;
     copy_ = new QPushButton(tr("Copy details"));
@@ -255,13 +265,6 @@ PyBitmessageImportDialog::~PyBitmessageImportDialog() {
         importer_->cancel(); // what is stored stays, whole chunks of it
         session_.setImporting(false);
     }
-}
-
-QStringList PyBitmessageImportDialog::defaultFolders() {
-    QStringList folders;
-    for (const auto &folder : bmc::pybm::findFolders(bmc::pybm::Environment::current()))
-        folders << bridge::fromStd(folder);
-    return folders;
 }
 
 QString PyBitmessageImportDialog::timeLeftText(double seconds) {
@@ -555,6 +558,16 @@ void PyBitmessageImportDialog::finish() {
                     "objects it holds; they may take a moment to appear.");
     }
     resultText_->setText(lines.join("\n"));
+    // All of it came over: the mailbox has dealt with PyBitmessage's data, and what is left of
+    // PyBitmessage, its folder with everything in it unencrypted, is for the user to deal with.
+    warning_->setVisible(r.finished);
+    if (r.finished) {
+        warning_->setText(tr("PyBitmessage keeps its data without encryption, your private keys "
+                             "included. If you have fully moved to ynotbit, consider deleting the "
+                             "folder %1. ynotbit never deletes it for you.")
+                              .arg(QDir::toNativeSeparators(shownFolder_)));
+        session_.settlePyBitmessageImport();
+    }
     showPage(Result);
 }
 

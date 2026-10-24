@@ -987,6 +987,34 @@ Date: %1
         <source>Import PyBitmessage data…</source>
         <translation>Импортировать данные PyBitmessage…</translation>
     </message>
+    <message>
+        <source>PyBitmessage data found</source>
+        <translation>Найдены данные PyBitmessage</translation>
+    </message>
+    <message>
+        <source>Import your PyBitmessage data into this mailbox?</source>
+        <translation>Импортировать данные PyBitmessage в этот почтовый ящик?</translation>
+    </message>
+    <message>
+        <source>ynotbit found PyBitmessage's data in %1. Your identities, chans, address book, subscriptions and letters can come over. PyBitmessage's own files are only read, never changed.</source>
+        <translation>ynotbit нашёл данные PyBitmessage в %1. Ваши идентичности, каналы, адресную книгу, подписки и письма можно перенести. Файлы PyBitmessage только читаются и никогда не изменяются.</translation>
+    </message>
+    <message>
+        <source>You can also do this later with Import PyBitmessage data… in the File menu.</source>
+        <translation>Это можно сделать и позже: «Импортировать данные PyBitmessage…» в меню «Файл».</translation>
+    </message>
+    <message>
+        <source>Import…</source>
+        <translation>Импортировать…</translation>
+    </message>
+    <message>
+        <source>Not now</source>
+        <translation>Не сейчас</translation>
+    </message>
+    <message>
+        <source>Don't ask again</source>
+        <translation>Больше не спрашивать</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1674,6 +1702,10 @@ Date: %1
     <message>
         <source>Not imported: network data, saved public keys, blacklist and whitelist.</source>
         <translation>Не импортируются: сетевые данные, сохранённые открытые ключи, чёрный и белый списки.</translation>
+    </message>
+    <message>
+        <source>PyBitmessage keeps its data without encryption, your private keys included. If you have fully moved to ynotbit, consider deleting the folder %1. ynotbit never deletes it for you.</source>
+        <translation>PyBitmessage хранит свои данные без шифрования, в том числе закрытые ключи. Если вы полностью перешли на ynotbit, подумайте об удалении папки %1. ynotbit сам её никогда не удаляет.</translation>
     </message>
     <message>
         <source>Opening PyBitmessage's data…</source>

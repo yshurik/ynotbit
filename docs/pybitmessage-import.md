@@ -76,6 +76,24 @@ chunks, so PyBitmessage's own writes go through. A lock it holds for a while is 
 at most); a journal left by a killed PyBitmessage is not replayed (a read-only look does not repair
 it) and the dialog says to start and close PyBitmessage once.
 
+## The offer, and the warning
+
+A mailbox that has not dealt with PyBitmessage is offered the import. Each time a mailbox opens (also
+the one that opens when the vault is unlocked) or is made, and PyBitmessage's data is on the computer
+(`pybm::findFolders`: a look at which files exist, nothing is read), the window shows a box with
+three answers. *Import…* goes on to the dialog of the File menu, on the folders found. *Not now*
+(Escape too) leaves everything as it was, so the box comes again when the mailbox opens next.
+*Don't ask again* sets the mailbox's flag.
+
+The flag is the setting `pybitmessage:import-settled` in the mailbox file: not there means false, as
+it does in a mailbox made before the offer existed. An import that runs to its end sets it, from the
+offer or from the File menu; one the user stopped does not, since the data is not all in. With the
+flag set the offer is not made again, whatever the folders hold.
+
+The result page of an import that ran to its end closes with a warning: PyBitmessage keeps its data,
+the private keys among it, without encryption, so once the user has fully moved to ynotbit they may
+consider deleting its folder, which the warning names. ynotbit never deletes it.
+
 ## Tests
 
 `tests/bmclient/pybitmessage_test.cpp`, `mailbox_import_test.cpp`, `vault_import_test.cpp` and
