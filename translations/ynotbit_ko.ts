@@ -983,6 +983,10 @@ Date: %1
         <source>Quit</source>
         <translation>종료</translation>
     </message>
+    <message>
+        <source>Import PyBitmessage data…</source>
+        <translation>PyBitmessage 데이터 가져오기…</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1503,6 +1507,285 @@ Date: %1
     <message>
         <source>Create identity</source>
         <translation>신원 만들기</translation>
+    </message>
+</context>
+<context>
+    <name>bm::PyBitmessageImportDialog</name>
+    <message>
+        <source>a private key is missing</source>
+        <translation>개인 키가 없습니다</translation>
+    </message>
+    <message>
+        <source>a private key is damaged</source>
+        <translation>개인 키가 손상되었습니다</translation>
+    </message>
+    <message>
+        <source>the keys do not belong to that address</source>
+        <translation>키가 해당 주소의 것이 아닙니다</translation>
+    </message>
+    <message>
+        <source>the vault is full</source>
+        <translation>보관함이 가득 찼습니다</translation>
+    </message>
+    <message>
+        <source>an address this app cannot use</source>
+        <translation>이 앱에서 사용할 수 없는 주소</translation>
+    </message>
+    <message>
+        <source>There is no PyBitmessage data in this folder. Choose the folder that holds keys.dat and messages.dat.</source>
+        <translation>이 폴더에 PyBitmessage 데이터가 없습니다. keys.dat과 messages.dat이 있는 폴더를 선택하세요.</translation>
+    </message>
+    <message>
+        <source>PyBitmessage is using its data at this moment. Try again in a moment.</source>
+        <translation>PyBitmessage가 지금 데이터를 사용 중입니다. 잠시 후 다시 시도하세요.</translation>
+    </message>
+    <message>
+        <source>PyBitmessage did not close its data properly. Start it once, close it and try again.</source>
+        <translation>PyBitmessage가 데이터를 제대로 닫지 않았습니다. 한 번 실행했다가 종료한 뒤 다시 시도하세요.</translation>
+    </message>
+    <message>
+        <source>The data in this folder cannot be read.</source>
+        <translation>이 폴더의 데이터를 읽을 수 없습니다.</translation>
+    </message>
+    <message>
+        <source>Import PyBitmessage data</source>
+        <translation>PyBitmessage 데이터 가져오기</translation>
+    </message>
+    <message>
+        <source>Bring your identities, chans, address book, subscriptions and letters from PyBitmessage into the open vault and mailbox. PyBitmessage's own files are only read, never changed.</source>
+        <translation>PyBitmessage의 신원, 채널, 주소록, 구독, 편지를 열려 있는 보관함과 메일함으로 가져옵니다. PyBitmessage의 파일은 읽기만 하며 변경되지 않습니다.</translation>
+    </message>
+    <message>
+        <source>PyBitmessage data folder</source>
+        <translation>PyBitmessage 데이터 폴더</translation>
+    </message>
+    <message>
+        <source>Choose another folder…</source>
+        <translation>다른 폴더 선택…</translation>
+    </message>
+    <message>
+        <source>Check again</source>
+        <translation>다시 확인</translation>
+    </message>
+    <message>
+        <source>Identities and chans</source>
+        <translation>신원 및 채널</translation>
+    </message>
+    <message>
+        <source>Address book</source>
+        <translation>주소록</translation>
+    </message>
+    <message>
+        <source>Subscriptions</source>
+        <translation>구독</translation>
+    </message>
+    <message>
+        <source>Letters of the inbox, channels and subscriptions</source>
+        <translation>받은 편지함, 채널, 구독의 편지</translation>
+    </message>
+    <message>
+        <source>Sent letters and unsent drafts</source>
+        <translation>보낸 편지와 아직 보내지 않은 임시 보관 편지</translation>
+    </message>
+    <message>
+        <source>Deleted letters</source>
+        <translation>삭제한 편지</translation>
+    </message>
+    <message>
+        <source>Without them, deleted letters that your node still holds can come back into your inbox.</source>
+        <translation>이 항목을 빼면 노드가 아직 가지고 있는 삭제된 편지가 받은 편지함으로 돌아올 수 있습니다.</translation>
+    </message>
+    <message>
+        <source>Import</source>
+        <translation>가져오기</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>중지</translation>
+    </message>
+    <message>
+        <source>Copy details</source>
+        <translation>세부 정보 복사</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>닫기</translation>
+    </message>
+    <message>
+        <source>estimating the time left…</source>
+        <translation>남은 시간 계산 중…</translation>
+    </message>
+    <message>
+        <source>less than a minute left</source>
+        <translation>1분 미만 남음</translation>
+    </message>
+    <message>
+        <source>about %1 min left</source>
+        <translation>약 %1분 남음</translation>
+    </message>
+    <message>
+        <source>about %1 h %2 min left</source>
+        <translation>약 %1시간 %2분 남음</translation>
+    </message>
+    <message>
+        <source>Choose the PyBitmessage data folder</source>
+        <translation>PyBitmessage 데이터 폴더 선택</translation>
+    </message>
+    <message>
+        <source>No PyBitmessage data found on this computer. Choose its folder.</source>
+        <translation>이 컴퓨터에서 PyBitmessage 데이터를 찾지 못했습니다. 폴더를 선택하세요.</translation>
+    </message>
+    <message>
+        <source>Details: %1</source>
+        <translation>세부 정보: %1</translation>
+    </message>
+    <message>
+        <source>%1, chans: %2</source>
+        <translation>%1, 채널: %2</translation>
+    </message>
+    <message>
+        <source>%1, unread: %2</source>
+        <translation>%1, 읽지 않음: %2</translation>
+    </message>
+    <message>
+        <source>%1, not sent: %2</source>
+        <translation>%1, 미발송: %2</translation>
+    </message>
+    <message>
+        <source>PyBitmessage seems to be running. You can import now, but closing it first gives a complete copy.</source>
+        <translation>PyBitmessage가 실행 중인 것 같습니다. 지금 가져와도 되지만, 먼저 종료하면 완전한 사본을 얻을 수 있습니다.</translation>
+    </message>
+    <message>
+        <source>The keys in keys.dat are encrypted, so identities cannot be imported.</source>
+        <translation>keys.dat의 키가 암호화되어 있어 신원을 가져올 수 없습니다.</translation>
+    </message>
+    <message>
+        <source>keys.dat cannot be read, so identities cannot be imported.</source>
+        <translation>keys.dat을 읽을 수 없어 신원을 가져올 수 없습니다.</translation>
+    </message>
+    <message>
+        <source>Switched off in PyBitmessage, active here after the import: %1.</source>
+        <translation>PyBitmessage에서는 꺼져 있었지만 가져온 뒤 여기서는 활성화됩니다: %1.</translation>
+    </message>
+    <message>
+        <source>Letters keep their dates and whether they were read. Letters PyBitmessage has not sent yet become drafts here; nothing is sent.</source>
+        <translation>편지의 날짜와 읽음 상태는 그대로 유지됩니다. PyBitmessage가 아직 보내지 않은 편지는 여기서 임시 보관 편지가 되며, 아무것도 전송되지 않습니다.</translation>
+    </message>
+    <message>
+        <source>Not imported: network data, saved public keys, blacklist and whitelist.</source>
+        <translation>가져오지 않는 항목: 네트워크 데이터, 저장된 공개 키, 차단 목록과 허용 목록.</translation>
+    </message>
+    <message>
+        <source>Opening PyBitmessage's data…</source>
+        <translation>PyBitmessage 데이터를 여는 중…</translation>
+    </message>
+    <message>
+        <source>Stopping…</source>
+        <translation>중지하는 중…</translation>
+    </message>
+    <message>
+        <source>Waiting for PyBitmessage to release its data…</source>
+        <translation>PyBitmessage가 데이터를 놓아 주기를 기다리는 중…</translation>
+    </message>
+    <message>
+        <source>Importing the address book…</source>
+        <translation>주소록을 가져오는 중…</translation>
+    </message>
+    <message>
+        <source>Importing subscriptions…</source>
+        <translation>구독을 가져오는 중…</translation>
+    </message>
+    <message>
+        <source>Looking at your mailbox…</source>
+        <translation>메일함을 확인하는 중…</translation>
+    </message>
+    <message>
+        <source>Importing letters…</source>
+        <translation>편지를 가져오는 중…</translation>
+    </message>
+    <message>
+        <source>Importing sent letters…</source>
+        <translation>보낸 편지를 가져오는 중…</translation>
+    </message>
+    <message>
+        <source>Adding identities…</source>
+        <translation>신원을 추가하는 중…</translation>
+    </message>
+    <message>
+        <source>%1 of %2 letters · %3</source>
+        <translation>편지 %1 / %2 · %3</translation>
+    </message>
+    <message>
+        <source>Import finished</source>
+        <translation>가져오기 완료</translation>
+    </message>
+    <message>
+        <source>Import stopped</source>
+        <translation>가져오기 중지됨</translation>
+    </message>
+    <message>
+        <source>Import failed</source>
+        <translation>가져오기 실패</translation>
+    </message>
+    <message>
+        <source>Letters added: %1</source>
+        <translation>추가된 편지: %1</translation>
+    </message>
+    <message>
+        <source>Letters already here: %1</source>
+        <translation>이미 있던 편지: %1</translation>
+    </message>
+    <message>
+        <source>Chat messages added: %1</source>
+        <translation>추가된 채팅 메시지: %1</translation>
+    </message>
+    <message>
+        <source>Chat messages already here: %1</source>
+        <translation>이미 있던 채팅 메시지: %1</translation>
+    </message>
+    <message>
+        <source>Deleted chat messages left out: %1</source>
+        <translation>제외한 삭제된 채팅 메시지: %1</translation>
+    </message>
+    <message>
+        <source>Identities and chans added: %1</source>
+        <translation>추가된 신원 및 채널: %1</translation>
+    </message>
+    <message>
+        <source>Identities already in the vault: %1</source>
+        <translation>이미 보관함에 있던 신원: %1</translation>
+    </message>
+    <message>
+        <source>Contacts added: %1</source>
+        <translation>추가된 연락처: %1</translation>
+    </message>
+    <message>
+        <source>Subscriptions added: %1</source>
+        <translation>추가된 구독: %1</translation>
+    </message>
+    <message>
+        <source>Unsent letters kept as drafts: %1</source>
+        <translation>임시 보관으로 남긴 미발송 편지: %1</translation>
+    </message>
+    <message>
+        <source>Identities that could not be used: %1</source>
+        <translation>사용할 수 없었던 신원: %1</translation>
+    </message>
+    <message>
+        <source>You stopped the import. What was imported stays; run it again to carry on.</source>
+        <translation>가져오기를 중지했습니다. 이미 가져온 항목은 그대로 남으며, 이어서 하려면 다시 실행하세요.</translation>
+    </message>
+    <message>
+        <source>The import could not be finished.</source>
+        <translation>가져오기를 마치지 못했습니다.</translation>
+    </message>
+    <message>
+        <source>Your node now looks for letters to the new identities in the objects it holds; they may take a moment to appear.</source>
+        <translation>노드가 보관 중인 객체에서 새 신원 앞으로 온 편지를 찾고 있습니다. 나타나기까지 잠시 걸릴 수 있습니다.</translation>
+    </message>
+    <message>
+        <source>Your mailbox or vault could not be written to.</source>
+        <translation>메일함 또는 보관함에 쓸 수 없었습니다.</translation>
     </message>
 </context>
 <context>

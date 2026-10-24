@@ -983,6 +983,10 @@ Date: %1
         <source>Quit</source>
         <translation>退出</translation>
     </message>
+    <message>
+        <source>Import PyBitmessage data…</source>
+        <translation>导入 PyBitmessage 数据…</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1503,6 +1507,285 @@ Date: %1
     <message>
         <source>Create identity</source>
         <translation>新建身份</translation>
+    </message>
+</context>
+<context>
+    <name>bm::PyBitmessageImportDialog</name>
+    <message>
+        <source>a private key is missing</source>
+        <translation>缺少私钥</translation>
+    </message>
+    <message>
+        <source>a private key is damaged</source>
+        <translation>私钥已损坏</translation>
+    </message>
+    <message>
+        <source>the keys do not belong to that address</source>
+        <translation>密钥与该地址不匹配</translation>
+    </message>
+    <message>
+        <source>the vault is full</source>
+        <translation>保险库已满</translation>
+    </message>
+    <message>
+        <source>an address this app cannot use</source>
+        <translation>本应用无法使用的地址</translation>
+    </message>
+    <message>
+        <source>There is no PyBitmessage data in this folder. Choose the folder that holds keys.dat and messages.dat.</source>
+        <translation>此文件夹中没有 PyBitmessage 数据。请选择包含 keys.dat 和 messages.dat 的文件夹。</translation>
+    </message>
+    <message>
+        <source>PyBitmessage is using its data at this moment. Try again in a moment.</source>
+        <translation>PyBitmessage 此刻正在使用其数据。请稍后再试。</translation>
+    </message>
+    <message>
+        <source>PyBitmessage did not close its data properly. Start it once, close it and try again.</source>
+        <translation>PyBitmessage 没有正常关闭其数据。请先启动一次再关闭，然后重试。</translation>
+    </message>
+    <message>
+        <source>The data in this folder cannot be read.</source>
+        <translation>无法读取此文件夹中的数据。</translation>
+    </message>
+    <message>
+        <source>Import PyBitmessage data</source>
+        <translation>导入 PyBitmessage 数据</translation>
+    </message>
+    <message>
+        <source>Bring your identities, chans, address book, subscriptions and letters from PyBitmessage into the open vault and mailbox. PyBitmessage's own files are only read, never changed.</source>
+        <translation>将 PyBitmessage 中的身份、频道、通讯录、订阅和信件导入当前打开的保险库和邮箱。PyBitmessage 自己的文件只会被读取，不会被修改。</translation>
+    </message>
+    <message>
+        <source>PyBitmessage data folder</source>
+        <translation>PyBitmessage 数据文件夹</translation>
+    </message>
+    <message>
+        <source>Choose another folder…</source>
+        <translation>选择其他文件夹…</translation>
+    </message>
+    <message>
+        <source>Check again</source>
+        <translation>重新检查</translation>
+    </message>
+    <message>
+        <source>Identities and chans</source>
+        <translation>身份和频道</translation>
+    </message>
+    <message>
+        <source>Address book</source>
+        <translation>通讯录</translation>
+    </message>
+    <message>
+        <source>Subscriptions</source>
+        <translation>订阅</translation>
+    </message>
+    <message>
+        <source>Letters of the inbox, channels and subscriptions</source>
+        <translation>收件箱、频道和订阅中的信件</translation>
+    </message>
+    <message>
+        <source>Sent letters and unsent drafts</source>
+        <translation>已发送的信件和未发送的草稿</translation>
+    </message>
+    <message>
+        <source>Deleted letters</source>
+        <translation>已删除的信件</translation>
+    </message>
+    <message>
+        <source>Without them, deleted letters that your node still holds can come back into your inbox.</source>
+        <translation>不导入它们的话，您的节点仍保留的已删除信件可能会重新出现在收件箱中。</translation>
+    </message>
+    <message>
+        <source>Import</source>
+        <translation>导入</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>Copy details</source>
+        <translation>复制详情</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <source>estimating the time left…</source>
+        <translation>正在估算剩余时间…</translation>
+    </message>
+    <message>
+        <source>less than a minute left</source>
+        <translation>剩余不到一分钟</translation>
+    </message>
+    <message>
+        <source>about %1 min left</source>
+        <translation>剩余约 %1 分钟</translation>
+    </message>
+    <message>
+        <source>about %1 h %2 min left</source>
+        <translation>剩余约 %1 小时 %2 分钟</translation>
+    </message>
+    <message>
+        <source>Choose the PyBitmessage data folder</source>
+        <translation>选择 PyBitmessage 数据文件夹</translation>
+    </message>
+    <message>
+        <source>No PyBitmessage data found on this computer. Choose its folder.</source>
+        <translation>在此电脑上未找到 PyBitmessage 数据。请选择其文件夹。</translation>
+    </message>
+    <message>
+        <source>Details: %1</source>
+        <translation>详情：%1</translation>
+    </message>
+    <message>
+        <source>%1, chans: %2</source>
+        <translation>%1，频道：%2</translation>
+    </message>
+    <message>
+        <source>%1, unread: %2</source>
+        <translation>%1，未读：%2</translation>
+    </message>
+    <message>
+        <source>%1, not sent: %2</source>
+        <translation>%1，未发送：%2</translation>
+    </message>
+    <message>
+        <source>PyBitmessage seems to be running. You can import now, but closing it first gives a complete copy.</source>
+        <translation>PyBitmessage 似乎正在运行。现在也可以导入，但先关闭它能得到完整的副本。</translation>
+    </message>
+    <message>
+        <source>The keys in keys.dat are encrypted, so identities cannot be imported.</source>
+        <translation>keys.dat 中的密钥已加密，因此无法导入身份。</translation>
+    </message>
+    <message>
+        <source>keys.dat cannot be read, so identities cannot be imported.</source>
+        <translation>无法读取 keys.dat，因此无法导入身份。</translation>
+    </message>
+    <message>
+        <source>Switched off in PyBitmessage, active here after the import: %1.</source>
+        <translation>在 PyBitmessage 中已关闭，导入后在此处将处于启用状态：%1。</translation>
+    </message>
+    <message>
+        <source>Letters keep their dates and whether they were read. Letters PyBitmessage has not sent yet become drafts here; nothing is sent.</source>
+        <translation>信件会保留日期和已读状态。PyBitmessage 尚未发送的信件在此会成为草稿；不会发送任何内容。</translation>
+    </message>
+    <message>
+        <source>Not imported: network data, saved public keys, blacklist and whitelist.</source>
+        <translation>不会导入：网络数据、已保存的公钥、黑名单和白名单。</translation>
+    </message>
+    <message>
+        <source>Opening PyBitmessage's data…</source>
+        <translation>正在打开 PyBitmessage 的数据…</translation>
+    </message>
+    <message>
+        <source>Stopping…</source>
+        <translation>正在停止…</translation>
+    </message>
+    <message>
+        <source>Waiting for PyBitmessage to release its data…</source>
+        <translation>正在等待 PyBitmessage 释放其数据…</translation>
+    </message>
+    <message>
+        <source>Importing the address book…</source>
+        <translation>正在导入通讯录…</translation>
+    </message>
+    <message>
+        <source>Importing subscriptions…</source>
+        <translation>正在导入订阅…</translation>
+    </message>
+    <message>
+        <source>Looking at your mailbox…</source>
+        <translation>正在查看您的邮箱…</translation>
+    </message>
+    <message>
+        <source>Importing letters…</source>
+        <translation>正在导入信件…</translation>
+    </message>
+    <message>
+        <source>Importing sent letters…</source>
+        <translation>正在导入已发送的信件…</translation>
+    </message>
+    <message>
+        <source>Adding identities…</source>
+        <translation>正在添加身份…</translation>
+    </message>
+    <message>
+        <source>%1 of %2 letters · %3</source>
+        <translation>%1 / %2 封信件 · %3</translation>
+    </message>
+    <message>
+        <source>Import finished</source>
+        <translation>导入完成</translation>
+    </message>
+    <message>
+        <source>Import stopped</source>
+        <translation>导入已停止</translation>
+    </message>
+    <message>
+        <source>Import failed</source>
+        <translation>导入失败</translation>
+    </message>
+    <message>
+        <source>Letters added: %1</source>
+        <translation>已添加信件：%1</translation>
+    </message>
+    <message>
+        <source>Letters already here: %1</source>
+        <translation>已存在的信件：%1</translation>
+    </message>
+    <message>
+        <source>Chat messages added: %1</source>
+        <translation>已添加聊天消息：%1</translation>
+    </message>
+    <message>
+        <source>Chat messages already here: %1</source>
+        <translation>已存在的聊天消息：%1</translation>
+    </message>
+    <message>
+        <source>Deleted chat messages left out: %1</source>
+        <translation>已略过已删除的聊天消息：%1</translation>
+    </message>
+    <message>
+        <source>Identities and chans added: %1</source>
+        <translation>已添加身份和频道：%1</translation>
+    </message>
+    <message>
+        <source>Identities already in the vault: %1</source>
+        <translation>保险库中已有的身份：%1</translation>
+    </message>
+    <message>
+        <source>Contacts added: %1</source>
+        <translation>已添加联系人：%1</translation>
+    </message>
+    <message>
+        <source>Subscriptions added: %1</source>
+        <translation>已添加订阅：%1</translation>
+    </message>
+    <message>
+        <source>Unsent letters kept as drafts: %1</source>
+        <translation>作为草稿保留的未发送信件：%1</translation>
+    </message>
+    <message>
+        <source>Identities that could not be used: %1</source>
+        <translation>无法使用的身份：%1</translation>
+    </message>
+    <message>
+        <source>You stopped the import. What was imported stays; run it again to carry on.</source>
+        <translation>您已停止导入。已导入的内容会保留；再次运行即可继续。</translation>
+    </message>
+    <message>
+        <source>The import could not be finished.</source>
+        <translation>无法完成导入。</translation>
+    </message>
+    <message>
+        <source>Your node now looks for letters to the new identities in the objects it holds; they may take a moment to appear.</source>
+        <translation>您的节点正在其保留的对象中查找发给新身份的信件；它们可能需要一点时间才会出现。</translation>
+    </message>
+    <message>
+        <source>Your mailbox or vault could not be written to.</source>
+        <translation>无法写入您的邮箱或保险库。</translation>
     </message>
 </context>
 <context>

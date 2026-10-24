@@ -983,6 +983,10 @@ Date: %1
         <source>Quit</source>
         <translation>終了</translation>
     </message>
+    <message>
+        <source>Import PyBitmessage data…</source>
+        <translation>PyBitmessage のデータをインポート…</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1503,6 +1507,285 @@ Date: %1
     <message>
         <source>Create identity</source>
         <translation>ID を作成</translation>
+    </message>
+</context>
+<context>
+    <name>bm::PyBitmessageImportDialog</name>
+    <message>
+        <source>a private key is missing</source>
+        <translation>秘密鍵がありません</translation>
+    </message>
+    <message>
+        <source>a private key is damaged</source>
+        <translation>秘密鍵が壊れています</translation>
+    </message>
+    <message>
+        <source>the keys do not belong to that address</source>
+        <translation>鍵がそのアドレスのものではありません</translation>
+    </message>
+    <message>
+        <source>the vault is full</source>
+        <translation>保管庫がいっぱいです</translation>
+    </message>
+    <message>
+        <source>an address this app cannot use</source>
+        <translation>このアプリでは使えないアドレス</translation>
+    </message>
+    <message>
+        <source>There is no PyBitmessage data in this folder. Choose the folder that holds keys.dat and messages.dat.</source>
+        <translation>このフォルダーに PyBitmessage のデータはありません。keys.dat と messages.dat があるフォルダーを選んでください。</translation>
+    </message>
+    <message>
+        <source>PyBitmessage is using its data at this moment. Try again in a moment.</source>
+        <translation>PyBitmessage がいまデータを使用中です。少し待ってからもう一度お試しください。</translation>
+    </message>
+    <message>
+        <source>PyBitmessage did not close its data properly. Start it once, close it and try again.</source>
+        <translation>PyBitmessage がデータを正しく閉じませんでした。一度起動して終了してから、もう一度お試しください。</translation>
+    </message>
+    <message>
+        <source>The data in this folder cannot be read.</source>
+        <translation>このフォルダーのデータを読み取れません。</translation>
+    </message>
+    <message>
+        <source>Import PyBitmessage data</source>
+        <translation>PyBitmessage のデータをインポート</translation>
+    </message>
+    <message>
+        <source>Bring your identities, chans, address book, subscriptions and letters from PyBitmessage into the open vault and mailbox. PyBitmessage's own files are only read, never changed.</source>
+        <translation>PyBitmessage の ID、チャンネル、アドレス帳、購読、メールを、開いている保管庫とメールボックスに取り込みます。PyBitmessage 自身のファイルは読み取るだけで、変更されません。</translation>
+    </message>
+    <message>
+        <source>PyBitmessage data folder</source>
+        <translation>PyBitmessage のデータフォルダー</translation>
+    </message>
+    <message>
+        <source>Choose another folder…</source>
+        <translation>別のフォルダーを選択…</translation>
+    </message>
+    <message>
+        <source>Check again</source>
+        <translation>再確認</translation>
+    </message>
+    <message>
+        <source>Identities and chans</source>
+        <translation>ID とチャンネル</translation>
+    </message>
+    <message>
+        <source>Address book</source>
+        <translation>アドレス帳</translation>
+    </message>
+    <message>
+        <source>Subscriptions</source>
+        <translation>購読</translation>
+    </message>
+    <message>
+        <source>Letters of the inbox, channels and subscriptions</source>
+        <translation>受信トレイ・チャンネル・購読のメール</translation>
+    </message>
+    <message>
+        <source>Sent letters and unsent drafts</source>
+        <translation>送信済みのメールと未送信の下書き</translation>
+    </message>
+    <message>
+        <source>Deleted letters</source>
+        <translation>削除したメール</translation>
+    </message>
+    <message>
+        <source>Without them, deleted letters that your node still holds can come back into your inbox.</source>
+        <translation>これを外すと、ノードがまだ保持している削除済みのメールが受信トレイに戻ってくることがあります。</translation>
+    </message>
+    <message>
+        <source>Import</source>
+        <translation>インポート</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>Copy details</source>
+        <translation>詳細をコピー</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>閉じる</translation>
+    </message>
+    <message>
+        <source>estimating the time left…</source>
+        <translation>残り時間を見積もっています…</translation>
+    </message>
+    <message>
+        <source>less than a minute left</source>
+        <translation>残り 1 分未満</translation>
+    </message>
+    <message>
+        <source>about %1 min left</source>
+        <translation>残り約 %1 分</translation>
+    </message>
+    <message>
+        <source>about %1 h %2 min left</source>
+        <translation>残り約 %1 時間 %2 分</translation>
+    </message>
+    <message>
+        <source>Choose the PyBitmessage data folder</source>
+        <translation>PyBitmessage のデータフォルダーを選択</translation>
+    </message>
+    <message>
+        <source>No PyBitmessage data found on this computer. Choose its folder.</source>
+        <translation>このコンピューターに PyBitmessage のデータが見つかりません。フォルダーを選択してください。</translation>
+    </message>
+    <message>
+        <source>Details: %1</source>
+        <translation>詳細: %1</translation>
+    </message>
+    <message>
+        <source>%1, chans: %2</source>
+        <translation>%1、チャンネル: %2</translation>
+    </message>
+    <message>
+        <source>%1, unread: %2</source>
+        <translation>%1、未読: %2</translation>
+    </message>
+    <message>
+        <source>%1, not sent: %2</source>
+        <translation>%1、未送信: %2</translation>
+    </message>
+    <message>
+        <source>PyBitmessage seems to be running. You can import now, but closing it first gives a complete copy.</source>
+        <translation>PyBitmessage が実行中のようです。いまでもインポートできますが、先に終了しておくと完全なコピーになります。</translation>
+    </message>
+    <message>
+        <source>The keys in keys.dat are encrypted, so identities cannot be imported.</source>
+        <translation>keys.dat の鍵は暗号化されているため、ID をインポートできません。</translation>
+    </message>
+    <message>
+        <source>keys.dat cannot be read, so identities cannot be imported.</source>
+        <translation>keys.dat を読み取れないため、ID をインポートできません。</translation>
+    </message>
+    <message>
+        <source>Switched off in PyBitmessage, active here after the import: %1.</source>
+        <translation>PyBitmessage ではオフになっていましたが、インポート後はここで有効になります: %1。</translation>
+    </message>
+    <message>
+        <source>Letters keep their dates and whether they were read. Letters PyBitmessage has not sent yet become drafts here; nothing is sent.</source>
+        <translation>メールの日付と既読状態はそのまま引き継がれます。PyBitmessage がまだ送信していないメールはここで下書きになり、何も送信されません。</translation>
+    </message>
+    <message>
+        <source>Not imported: network data, saved public keys, blacklist and whitelist.</source>
+        <translation>インポートされないもの: ネットワークデータ、保存済みの公開鍵、ブラックリストとホワイトリスト。</translation>
+    </message>
+    <message>
+        <source>Opening PyBitmessage's data…</source>
+        <translation>PyBitmessage のデータを開いています…</translation>
+    </message>
+    <message>
+        <source>Stopping…</source>
+        <translation>停止しています…</translation>
+    </message>
+    <message>
+        <source>Waiting for PyBitmessage to release its data…</source>
+        <translation>PyBitmessage がデータを解放するのを待っています…</translation>
+    </message>
+    <message>
+        <source>Importing the address book…</source>
+        <translation>アドレス帳をインポートしています…</translation>
+    </message>
+    <message>
+        <source>Importing subscriptions…</source>
+        <translation>購読をインポートしています…</translation>
+    </message>
+    <message>
+        <source>Looking at your mailbox…</source>
+        <translation>メールボックスを確認しています…</translation>
+    </message>
+    <message>
+        <source>Importing letters…</source>
+        <translation>メールをインポートしています…</translation>
+    </message>
+    <message>
+        <source>Importing sent letters…</source>
+        <translation>送信済みメールをインポートしています…</translation>
+    </message>
+    <message>
+        <source>Adding identities…</source>
+        <translation>ID を追加しています…</translation>
+    </message>
+    <message>
+        <source>%1 of %2 letters · %3</source>
+        <translation>%1 / %2 通 · %3</translation>
+    </message>
+    <message>
+        <source>Import finished</source>
+        <translation>インポートが完了しました</translation>
+    </message>
+    <message>
+        <source>Import stopped</source>
+        <translation>インポートを停止しました</translation>
+    </message>
+    <message>
+        <source>Import failed</source>
+        <translation>インポートに失敗しました</translation>
+    </message>
+    <message>
+        <source>Letters added: %1</source>
+        <translation>追加したメール: %1</translation>
+    </message>
+    <message>
+        <source>Letters already here: %1</source>
+        <translation>すでにあったメール: %1</translation>
+    </message>
+    <message>
+        <source>Chat messages added: %1</source>
+        <translation>追加したチャットメッセージ: %1</translation>
+    </message>
+    <message>
+        <source>Chat messages already here: %1</source>
+        <translation>すでにあったチャットメッセージ: %1</translation>
+    </message>
+    <message>
+        <source>Deleted chat messages left out: %1</source>
+        <translation>除外した削除済みチャットメッセージ: %1</translation>
+    </message>
+    <message>
+        <source>Identities and chans added: %1</source>
+        <translation>追加した ID とチャンネル: %1</translation>
+    </message>
+    <message>
+        <source>Identities already in the vault: %1</source>
+        <translation>すでに保管庫にあった ID: %1</translation>
+    </message>
+    <message>
+        <source>Contacts added: %1</source>
+        <translation>追加した連絡先: %1</translation>
+    </message>
+    <message>
+        <source>Subscriptions added: %1</source>
+        <translation>追加した購読: %1</translation>
+    </message>
+    <message>
+        <source>Unsent letters kept as drafts: %1</source>
+        <translation>下書きとして残した未送信メール: %1</translation>
+    </message>
+    <message>
+        <source>Identities that could not be used: %1</source>
+        <translation>使用できなかった ID: %1</translation>
+    </message>
+    <message>
+        <source>You stopped the import. What was imported stays; run it again to carry on.</source>
+        <translation>インポートを停止しました。取り込み済みのものは残ります。続けるにはもう一度実行してください。</translation>
+    </message>
+    <message>
+        <source>The import could not be finished.</source>
+        <translation>インポートを完了できませんでした。</translation>
+    </message>
+    <message>
+        <source>Your node now looks for letters to the new identities in the objects it holds; they may take a moment to appear.</source>
+        <translation>ノードが、保持しているオブジェクトの中から新しい ID 宛てのメールを探しています。表示されるまで少し時間がかかることがあります。</translation>
+    </message>
+    <message>
+        <source>Your mailbox or vault could not be written to.</source>
+        <translation>メールボックスまたは保管庫に書き込めませんでした。</translation>
     </message>
 </context>
 <context>

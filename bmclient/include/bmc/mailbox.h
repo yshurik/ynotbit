@@ -10,11 +10,44 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 struct sqlite3;
 namespace bmc {
 class Transaction;
+
+// A letter brought in from another client's mailbox: with the date it was received then, whether it
+// was read, the folder it is in, and the network object it came from (if that is known).
+struct ImportedLetter {
+    std::string id;         // the letter's id here (messages.hash)
+    std::string objectHash; // the network object it came from, lower-case hex; empty if unknown
+    std::string sender, recipient, subject, body;
+    std::string folder;         // Inbox, Channels, Broadcasts, Sent, Drafts or Trash
+    std::string previousFolder; // where a letter in Trash goes back to
+    int64_t received = 0;
+    bool unread = false;
+    bool broadcast = false; // a sent letter or a draft that goes to subscribers
+};
+// A chat message brought in from another client: from the peer to one of our identities, with the
+// date it was received then and whether it was read.
+struct ImportedChat {
+    std::string id;          // its id here (chat_messages.id)
+    std::string local, peer; // our identity, and the one it came from
+    int64_t seqno = 0;       // the sender's number for it in this conversation
+    std::string body;
+    int64_t received = 0;
+    bool unread = false;
+};
+struct ImportCounts {
+    int added = 0;
+    int present = 0; // the id or the network object was here already
+};
+// What a letter says, as one value: the same text between the same two addresses gives the same
+// answer. For recognising a copy of a letter that carries no id of the network object.
+std::string letterFingerprint(std::string_view sender, std::string_view recipient,
+                              std::string_view subject, std::string_view body);
+
 class Mailbox {
     sqlite3 *db_ = nullptr;
     uint64_t messageRevision_ = 0;
@@ -60,14 +93,34 @@ class Mailbox {
         ~Batch();
         void commit();
     };
+    // objectHash: the network object the letter was read from. One object is stored once, whatever
+    // id it comes with (a letter with an acknowledgment is keyed by what it says, not by its hash).
     void store(const std::string &hash, const std::string &from, const std::string &to,
                const std::string &subject, const std::string &body, int64_t checkpoint,
-               const std::string &folder = "Inbox");
+               const std::string &folder = "Inbox", const std::string &objectHash = {});
     std::string queueChat(const std::string &local, const std::string &peer,
                           const std::string &body, int64_t expires);
     void storeRouted(const std::string &id, const std::string &sender, const std::string &recipient,
                      const std::string &subject, const std::string &body, int64_t checkpoint,
-                     const std::string &folder, int64_t expires);
+                     const std::string &folder, int64_t expires,
+                     const std::string &objectHash = {});
+    // Letters brought in from another client: each with its own date, read state and folder. They
+    // are no arrivals (no notification) and the scan checkpoint stays where it is. A letter whose
+    // id or network object is here already is passed over. One transaction, or the one it is part
+    // of.
+    ImportCounts importLetters(const std::vector<ImportedLetter> &letters);
+    // Chat messages brought in from another client, into their conversations, each with its own
+    // date and read state. No arrival: nothing is notified, nothing is queued. A message whose id
+    // is here, or whose number in its conversation is (a conversation holds one message per number,
+    // whatever id the scan gave it), is passed over. One transaction, or the one it is part of.
+    ImportCounts importChats(const std::vector<ImportedChat> &chats);
+    // Contacts and subscriptions not here yet, by address; the ones here keep their names. How many
+    // were added.
+    int importContacts(const std::vector<Contact> &contacts);
+    int importSubscriptions(const std::vector<Subscription> &subscriptions);
+    // The fingerprints (letterFingerprint) of the letters in these folders.
+    std::unordered_set<std::string>
+    letterFingerprints(const std::vector<std::string> &folders) const;
     void storeChat(const std::string &id, const std::string &sender, const std::string &recipient,
                    int64_t seqno, const std::string &body, int64_t expires, bool outgoing = false);
     // A thread, oldest first. With a limit, only its newest messages (a window of it), and

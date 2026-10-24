@@ -71,6 +71,13 @@ sudo xattr -cr /Applications/ynotbit.app
 **檔案 → 備份信箱和保險庫…** 會同時儲存這兩個文件。請務必兩個都保留：只有信箱無法復原它的
 加密金鑰。變更密碼不會使舊的保險庫副本或備份失效。匯入時原本的明文 `keys.dat` 會原封不動地保留。
 
+**檔案 → 匯入 PyBitmessage 資料…** 會把 PyBitmessage 的身分、頻道、通訊錄、訂閱和信件匯入目前開啟的
+保險庫和信箱。它會在 PyBitmessage 的常用資料夾（macOS 為 `~/Library/Application Support/PyBitmessage`，
+Windows 為 `%APPDATA%\PyBitmessage`，Linux 為 `~/.config/PyBitmessage`）中尋找，或由您自己選擇資料夾，
+先顯示其中的內容，再帶著進度列和剩餘時間進行匯入。信件保留日期和已讀狀態；PyBitmessage 尚未傳送的信件
+會成為草稿，不會傳送任何內容。PyBitmessage 的檔案只會被讀取，因此它可以繼續執行；再次匯入只會補上缺少
+的內容。網路資料、已儲存的公鑰、黑名單和白名單不會匯入。
+
 ## 功能
 
 - 可攜的保險庫：Argon2id（64 MiB，3 輪）和 XChaCha20-Poly1305；受保護的金鑰記憶體配置、變更密碼、

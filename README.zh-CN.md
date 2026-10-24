@@ -71,6 +71,13 @@ sudo xattr -cr /Applications/ynotbit.app
 **文件 → 备份邮箱和保险库…** 会同时保存这两个文档。请务必两个都保留：只有邮箱无法恢复它的
 加密密钥。修改密码不会使旧的保险库副本或备份失效。导入时原来的明文 `keys.dat` 会原样保留。
 
+**文件 → 导入 PyBitmessage 数据…** 会把 PyBitmessage 的身份、频道、通讯录、订阅和信件导入当前打开的
+保险库和邮箱。它会在 PyBitmessage 的常用文件夹（macOS 为 `~/Library/Application Support/PyBitmessage`，
+Windows 为 `%APPDATA%\PyBitmessage`，Linux 为 `~/.config/PyBitmessage`）中查找，或由您自己选择文件夹，
+先显示其中的内容，再带着进度条和剩余时间进行导入。信件保留日期和已读状态；PyBitmessage 尚未发送的信件
+会成为草稿，不会发送任何内容。PyBitmessage 的文件只会被读取，因此它可以继续运行；再次导入只会补上缺少
+的内容。网络数据、已保存的公钥、黑名单和白名单不会导入。
+
 ## 功能
 
 - 便携的保险库：Argon2id（64 MiB，3 轮）和 XChaCha20-Poly1305；受保护的密钥内存分配、修改密码、

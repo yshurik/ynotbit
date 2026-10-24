@@ -88,7 +88,8 @@ class DesktopWindow : public QMainWindow {
     QAction *networkEnabledAction_, *createIdentityAction_;
     // The File menu's items that follow the vault and the mailbox, and its two recent lists.
     QAction *closeVaultAction_ = nullptr, *newMailboxAction_ = nullptr,
-            *openMailboxAction_ = nullptr, *closeMailboxAction_ = nullptr, *backupAction_ = nullptr;
+            *openMailboxAction_ = nullptr, *closeMailboxAction_ = nullptr, *backupAction_ = nullptr,
+            *importPyBitmessageAction_ = nullptr;
     QMenu *recentVaultsMenu_ = nullptr, *recentMailboxesMenu_ = nullptr;
     QVariantList shownRecentVaults_, shownRecentMailboxes_; // what the two lists were filled with
     SettingsPane *settings_ = nullptr; // made when Settings is first opened
@@ -151,6 +152,7 @@ class DesktopWindow : public QMainWindow {
     // What the File menu offers follows the session: an item with nothing to work on is grey,
     // and the recent lists are the session's.
     void updateFileMenu();
+    void importPyBitmessage();
     void fillRecentMenu(QMenu *menu, const QVariantList &recent, const QString &none,
                         const std::function<void(const QString &)> &open);
 };

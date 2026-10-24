@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <bmc/chat_format.h>
 #include <bmc/clock.h>
+#include <bmc/hash.h>
 #include <bmc/mailbox.h>
 #include <bmc/path.h>
 #include <bmc/random.h>
@@ -188,14 +189,12 @@ void Mailbox::advance(int64_t c) {
 
 void Mailbox::store(const std::string &hash, const std::string &from, const std::string &to,
                     const std::string &subject, const std::string &body, int64_t c,
-                    const std::string &folder) {
+                    const std::string &folder, const std::string &objectHash) {
     Transaction t(db_);
     bool inserted = false;
     {
-        Statement s(
-            db_,
-            "INSERT OR IGNORE INTO messages(hash,sender,recipient,subject,body,folder,received) "
-            "VALUES(?,?,?,?,?,?,?)");
+        Statement s(db_, "INSERT OR IGNORE INTO messages(hash,sender,recipient,subject,body,folder,"
+                         "received,object_hash) VALUES(?,?,?,?,?,?,?,?)");
         s.text(1, hash);
         s.text(2, from);
         s.text(3, to);
@@ -203,6 +202,7 @@ void Mailbox::store(const std::string &hash, const std::string &from, const std:
         s.text(5, body);
         s.text(6, folder);
         s.number(7, now());
+        s.text(8, objectHash);
         s.row();
         // A row that was actually inserted is a letter this mailbox had not seen: an INSERT OR
         // IGNORE that matched an existing hash is not.
@@ -429,6 +429,14 @@ void Mailbox::migrate() {
     }
     // Only the unread rows, so that counting them (unreadLetters) reads no letter.
     sql("CREATE INDEX IF NOT EXISTS messages_unread ON messages(folder) WHERE unread<>0");
+    // The network object a letter was read from. One object makes one letter, whatever id it was
+    // stored under (a letter with an acknowledgment is keyed by what it says, not by its hash), so
+    // that a rescan and an import meeting the same object do not store it twice. Only the rows that
+    // name an object are held to it: the older ones, and the letters written here, name none.
+    if (!column(db_, "messages", "object_hash"))
+        sql("ALTER TABLE messages ADD COLUMN object_hash TEXT NOT NULL DEFAULT ''");
+    sql("CREATE UNIQUE INDEX IF NOT EXISTS messages_object_hash ON messages(object_hash) "
+        "WHERE object_hash<>''");
     if (!column(db_, "messages", "previous_folder"))
         sql("ALTER TABLE messages ADD COLUMN previous_folder TEXT NOT NULL DEFAULT 'Inbox'");
     sql("CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY REFERENCES messages(hash) ON DELETE "
@@ -985,4 +993,123 @@ void Mailbox::setSetting(const std::string &name, const std::string &value) {
     s.row();
 }
 
+std::string letterFingerprint(std::string_view sender, std::string_view recipient,
+                              std::string_view subject, std::string_view body) {
+    Hasher hasher(Digest::Sha256);
+    // Each field with its length in front: where one ends and the next begins is part of the
+    // answer.
+    for (const auto part : {sender, recipient, subject, body}) {
+        Bytes length;
+        putBE(length, part.size(), 4);
+        hasher.add(length);
+        hasher.add(view(part));
+    }
+    const auto digest = hasher.result();
+    return std::string(digest.begin(), digest.end());
+}
+
+ImportCounts Mailbox::importLetters(const std::vector<ImportedLetter> &letters) {
+    ImportCounts counts;
+    static const char *const folders[] = {"Inbox",  "Channels", "Broadcasts", "Sent",
+                                          "Drafts", "Trash",    "Archive"};
+    for (const auto &l : letters) {
+        bool known = false;
+        for (const char *folder : folders)
+            known = known || l.folder == folder;
+        if (l.id.empty() || !known)
+            throw Error(Code::Argument,
+                        "A letter to import needs an id and a folder of the mailbox");
+    }
+    if (letters.empty())
+        return counts;
+    Transaction t(db_);
+    {
+        Statement insert(db_, "INSERT OR IGNORE INTO messages(hash,sender,recipient,subject,body,"
+                              "folder,received,unread,previous_folder,object_hash) "
+                              "VALUES(?,?,?,?,?,?,?,?,?,?)");
+        Statement kind(db_, "INSERT OR IGNORE INTO settings(name,value) VALUES(?,'broadcast')");
+        for (const auto &l : letters) {
+            insert.reset();
+            insert.text(1, l.id);
+            insert.text(2, l.sender);
+            insert.text(3, l.recipient);
+            insert.text(4, l.subject);
+            insert.text(5, l.body);
+            insert.text(6, l.folder);
+            insert.number(7, l.received);
+            // What was sent or written here is never unread; a letter in Trash keeps its flag, as
+            // moving one there does.
+            insert.number(8, l.unread && l.folder != "Sent" && l.folder != "Drafts" ? 1 : 0);
+            insert.text(9, l.previousFolder.empty() ? std::string("Inbox") : l.previousFolder);
+            insert.text(10, l.objectHash);
+            insert.row();
+            if (sqlite3_changes(db_) == 0) {
+                ++counts.present;
+                continue;
+            }
+            ++counts.added;
+            if (l.broadcast) {
+                kind.reset();
+                kind.text(1, "draftkind:" + l.id);
+                kind.row();
+            }
+        }
+    }
+    t.commit();
+    return counts;
+}
+
+int Mailbox::importContacts(const std::vector<Contact> &contacts) {
+    int added = 0;
+    Transaction t(db_);
+    {
+        Statement s(db_, "INSERT OR IGNORE INTO contacts(address,label,added) VALUES(?,?,?)");
+        for (const auto &c : contacts) {
+            const auto name = text::trim(c.label);
+            if (c.address.empty() || name.empty()) // a contact needs an address and a name
+                continue;
+            s.reset();
+            s.text(1, c.address);
+            s.text(2, name);
+            s.number(3, c.added > 0 ? c.added : now());
+            s.row();
+            if (sqlite3_changes(db_) > 0)
+                ++added;
+        }
+    }
+    t.commit();
+    return added;
+}
+
+int Mailbox::importSubscriptions(const std::vector<Subscription> &subscriptions) {
+    int added = 0;
+    Transaction t(db_);
+    {
+        Statement s(db_, "INSERT OR IGNORE INTO subscriptions(address,label) VALUES(?,?)");
+        for (const auto &c : subscriptions) {
+            if (c.address.empty())
+                continue;
+            s.reset();
+            s.text(1, c.address);
+            s.text(2, c.label);
+            s.row();
+            if (sqlite3_changes(db_) > 0)
+                ++added;
+        }
+    }
+    t.commit();
+    return added;
+}
+
+std::unordered_set<std::string>
+Mailbox::letterFingerprints(const std::vector<std::string> &folders) const {
+    std::unordered_set<std::string> fingerprints;
+    for (const auto &folder : folders) {
+        Statement s(db_, "SELECT sender,recipient,subject,body FROM messages WHERE folder=?");
+        s.text(1, folder);
+        while (s.row())
+            fingerprints.insert(letterFingerprint(s.text(0), s.text(1), s.text(2), s.text(3)));
+    }
+    return fingerprints;
+}
 } // namespace bmc

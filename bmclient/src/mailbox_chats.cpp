@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <bmc/chat_format.h>
 #include <bmc/clock.h>
+#include <bmc/error.h>
 #include <bmc/mailbox.h>
 #include <bmc/random.h>
 #include <bmc/sqlite.h>
@@ -72,7 +73,7 @@ std::vector<std::string> Mailbox::chatAckIds(ByteView token) const {
 void Mailbox::storeRouted(const std::string &id, const std::string &sender,
                           const std::string &recipient, const std::string &subject,
                           const std::string &body, int64_t c, const std::string &folder,
-                          int64_t expires) {
+                          int64_t expires, const std::string &objectHash) {
     ChatPayload payload;
     const auto parsed =
         folder == "Inbox" ? parseChatMessage(subject, body, &payload) : ChatParseResult::Letter;
@@ -84,7 +85,7 @@ void Mailbox::storeRouted(const std::string &id, const std::string &sender,
         if (c >= 0)
             advance(c);
     } else {
-        store(id, sender, recipient, subject, body, c, folder);
+        store(id, sender, recipient, subject, body, c, folder, objectHash);
     }
 }
 
@@ -161,6 +162,43 @@ void Mailbox::storeChat(const std::string &id, const std::string &sender,
     s.row();
     if (!outgoing && sqlite3_changes(db_) > 0)
         ++incomingChats_;
+}
+
+ImportCounts Mailbox::importChats(const std::vector<ImportedChat> &chats) {
+    ImportCounts counts;
+    for (const auto &c : chats)
+        if (c.id.empty() || c.local.empty() || c.peer.empty() || c.seqno <= 0 ||
+            text::isBlank(c.body) || c.body.size() > size_t(kMaxChatBodyBytes))
+            throw Error(Code::Argument,
+                        "A chat message to import needs an id, both addresses, a number and text");
+    if (chats.empty())
+        return counts;
+    Transaction t(db_);
+    {
+        // The conversation holds one message per number (a unique key), so a message that the
+        // scan stored under another id is passed over as well.
+        Statement insert(db_, "INSERT OR IGNORE INTO "
+                              "chat_messages(id,local_address,peer_address,direction,seqno,body,"
+                              "received,expires,state,unread) "
+                              "VALUES(?,?,?,'in',?,?,?,?,'received',?)");
+        for (const auto &c : chats) {
+            insert.reset();
+            insert.text(1, c.id);
+            insert.text(2, c.local);
+            insert.text(3, c.peer);
+            insert.number(4, c.seqno);
+            insert.text(5, c.body);
+            insert.number(6, c.received);
+            // The network's copy lived for a day; this one is kept for good, so what its sender
+            // would have set is only a record.
+            insert.number(7, c.received + kChatTtlSeconds);
+            insert.number(8, c.unread ? 1 : 0);
+            insert.row();
+            ++(sqlite3_changes(db_) == 0 ? counts.present : counts.added);
+        }
+    }
+    t.commit();
+    return counts;
 }
 
 std::vector<ChatMessage> Mailbox::chatMessages(const std::string &local, const std::string &peer,

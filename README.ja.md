@@ -85,6 +85,15 @@ Linux では **ファイル** メニューにもあります）。通知領域�
 変更しても、古い保管庫のコピーやバックアップは無効になりません。インポートしても元の平文の
 `keys.dat` はそのまま残ります。
 
+**ファイル → PyBitmessage のデータをインポート…** は、PyBitmessage の ID、チャンネル、アドレス帳、
+購読、メールを、開いている保管庫とメールボックスに取り込みます。PyBitmessage の通常のフォルダー
+（macOS は `~/Library/Application Support/PyBitmessage`、Windows は `%APPDATA%\PyBitmessage`、
+Linux は `~/.config/PyBitmessage`）を探すか、フォルダーを選び、中身を表示してから、進行状況バーと
+残り時間を見ながらインポートします。メールの日付と既読状態は引き継がれ、PyBitmessage がまだ送信して
+いないメールは下書きになり、何も送信されません。PyBitmessage のファイルは読み取るだけなので、
+PyBitmessage は動かしたままで構いません。もう一度実行すると、足りないものだけが追加されます。
+ネットワークデータ、保存済みの公開鍵、ブラックリスト、ホワイトリストはインポートされません。
+
 ## 機能
 
 - 持ち運べる保管庫: Argon2id (64 MiB、3 パス) と XChaCha20-Poly1305。保護されたメモリでの

@@ -12,7 +12,10 @@ drive. The node is here too: `bmc::NodeConfig` (the settings and the argv they m
 `bmc::NodeStatus` (the status.json the relay writes), `bmc::NodeWatch` (the watchdog's judgement,
 pure) and `bmc::NodeSupervisor` (the process: spawn into a group of its own, poll, SIGTERM, then
 SIGKILL), with the relay bridge in `src/relay_bridge.cpp` — the ciphertext-only filesystem
-boundary, the status, the spool and the receipts. `bmnode/` builds them without Qt. The Qt app
+boundary, the status, the spool and the receipts. `bmnode/` builds them without Qt. `bmc::pybm`
+reads a PyBitmessage data folder (`keys.dat`, `messages.dat`) without writing to it, and its
+`Importer` brings that into a vault and a mailbox a slice of work at a time (see
+`docs/pybitmessage-import.md`). The Qt app
 reaches it through thin wrappers in `src/`; the bot library `bmbot` (a later
 slice) is built on it. Design:
 `docs/superpowers/specs/2026-10-15-qt-free-core-and-bot-platform-design.md`.

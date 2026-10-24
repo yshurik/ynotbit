@@ -149,7 +149,7 @@ target_link_libraries(chat_scroll_bench PRIVATE Qt6::Widgets)
 foreach(desktop_target ynotbit desktop_tests readme_screenshots feed_scroll_bench)
  target_sources(${desktop_target} PRIVATE src/chats_pane.cpp src/chats_pane.h src/new_chat_dialog.cpp src/new_chat_dialog.h
   src/join_channel_dialog.cpp src/join_channel_dialog.h src/tray_icon.cpp src/tray_icon.h src/desktop_entry.cpp src/desktop_entry.h src/data_migration.cpp src/data_migration.h
-  src/app_badge.cpp src/app_badge.h src/rail_badge.cpp src/rail_badge.h src/sound_notifier.cpp src/sound_notifier.h assets/sounds.qrc)
+  src/app_badge.cpp src/app_badge.h src/rail_badge.cpp src/rail_badge.h src/pybm_import_dialog.cpp src/pybm_import_dialog.h src/sound_notifier.cpp src/sound_notifier.h assets/sounds.qrc)
  target_link_libraries(${desktop_target} PRIVATE Qt6::Multimedia)
  if(APPLE)
   # The Dock icon and bringing the app forward (src/mac_integration.mm).
