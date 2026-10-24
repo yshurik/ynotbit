@@ -10,6 +10,19 @@
 #include <vector>
 
 namespace bmc {
+namespace pybm {
+struct KeyEntry;
+}
+// What became of one identity of another client's keys file.
+struct IdentityImport {
+    enum class Result { Added, AlreadyThere, Unusable };
+    enum class Why { None, MissingKey, BadKey, WrongKeys, Unsupported, Full };
+    std::string address, label; // the label as the vault keeps it (a chan is named as a chan)
+    bool chan = false, wasDisabled = false, mailingList = false;
+    Result result = Result::Unusable;
+    Why why = Why::None;
+};
+
 class Vault {
     std::string path_;
     Secret wrapping_;
@@ -43,6 +56,10 @@ class Vault {
     std::string addChannel(const std::string &phrase, const std::string &label,
                            const std::string &expectedAddress = {});
     void importKeys(const std::string &path);
+    // The identities and chans of another client's keys file (pybm::readKeys), saved once. One that
+    // cannot be used is reported and the rest go in; one the vault has is left as it is; one that
+    // was switched off over there comes in all the same. If the save fails nothing is added.
+    std::vector<IdentityImport> importEntries(const std::vector<pybm::KeyEntry> &entries);
     std::string addMailboxKey();
     void renameIdentity(const std::string &address, const std::string &label);
     void deleteIdentity(const std::string &address);

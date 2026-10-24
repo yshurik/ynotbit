@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <bmc/path.h>
 #include <bmc/protocol.h>
+#include <bmc/pybitmessage.h>
 #include <bmc/qtstream.h>
 #include <bmc/random.h>
 #include <bmc/text.h>
@@ -50,19 +51,6 @@ struct WipedText {
             sodium_memzero(value.data(), value.size());
     }
 };
-Secret wif(std::string_view text) {
-    require(text.size() <= 128, "Invalid private key encoding");
-    Secret decoded(128);
-    const auto n = ntb_base58_decode(text.data(), text.size(), decoded.data(), decoded.size());
-    require(n == 37 && decoded.data()[0] == 128, "Invalid private key encoding");
-    unsigned char first[32], second[32];
-    SHA256(decoded.data(), 33, first);
-    SHA256(first, 32, second);
-    require(CRYPTO_memcmp(decoded.data() + 33, second, 4) == 0, "Private key checksum mismatch");
-    Secret key(32);
-    std::memcpy(key.data(), decoded.data() + 1, 32);
-    return key;
-}
 } // namespace
 
 Vault::~Vault() {
@@ -340,9 +328,9 @@ void Vault::importKeys(const std::string &path) {
             const auto field = text::trim(line.substr(0, equal));
             const auto value = text::trim(line.substr(equal + 1));
             if (field == "privsigningkey")
-                signing = wif(value);
+                signing = pybm::decodeWif(value);
             else if (field == "privencryptionkey")
-                encryption = wif(value);
+                encryption = pybm::decodeWif(value);
             else if (field == "label")
                 label = std::string(value);
             else if (field == "chan")
@@ -450,5 +438,68 @@ void Vault::setDefaultIdentity(const std::string &address) {
             identities_[j].isDefault = previous[j];
         throw;
     }
+}
+
+std::vector<IdentityImport> Vault::importEntries(const std::vector<pybm::KeyEntry> &entries) {
+    require(unlocked_, "Vault is locked");
+    using Result = IdentityImport::Result;
+    using Why = IdentityImport::Why;
+    std::vector<IdentityImport> items;
+    const auto before = identities_.size();
+    for (const auto &e : entries) {
+        IdentityImport item;
+        item.address = e.address;
+        item.label = e.label;
+        item.chan = e.chan;
+        item.wasDisabled = !e.enabled;
+        item.mailingList = e.mailingList;
+        const auto refuse = [&](Why why) {
+            item.result = Result::Unusable;
+            item.why = why;
+            items.push_back(item);
+        };
+        if (e.problem == pybm::KeyProblem::MissingKey)
+            refuse(Why::MissingKey);
+        else if (e.problem == pybm::KeyProblem::BadKey)
+            refuse(Why::BadKey);
+        else if (ntb_address a; !ntb_address_decode(&a, e.address.c_str()))
+            refuse(Why::Unsupported);
+        else if (std::any_of(identities_.begin(), identities_.end(),
+                             [&](const Identity &i) { return i.address == e.address; })) {
+            item.result = Result::AlreadyThere;
+            items.push_back(item);
+        } else if (identities_.size() >= 1024)
+            refuse(Why::Full);
+        else {
+            try {
+                auto identity = Protocol::fromPrivate(
+                    e.label.empty() ? e.address : e.label, ByteView(e.signing.data(), 32),
+                    ByteView(e.encryption.data(), 32), a.version, a.stream, e.chan);
+                if (identity.address != e.address) {
+                    refuse(Why::WrongKeys);
+                    continue;
+                }
+                if (identity.chan)
+                    identity.label = channelName(identity.label);
+                item.label = identity.label;
+                identities_.push_back(std::move(identity));
+                item.result = Result::Added;
+                items.push_back(item);
+            } catch (const std::exception &) {
+                refuse(Why::Unsupported);
+            }
+        }
+    }
+    if (identities_.size() == before)
+        return items;
+    if (before == 0)
+        identities_.front().isDefault = true; // the first of an empty vault is its default
+    try {
+        save();
+    } catch (...) {
+        identities_.resize(before);
+        throw;
+    }
+    return items;
 }
 } // namespace bmc

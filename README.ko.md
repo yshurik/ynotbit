@@ -83,6 +83,15 @@ ynotbit을 다시 실행하면 이미 실행 중인 창이 나타납니다.
 메일함만으로는 그 암호화 키를 되살릴 수 없습니다. 비밀번호를 바꿔도 예전 보관함 사본이나
 백업이 무효가 되지는 않습니다. 가져오기를 해도 원래의 평문 `keys.dat`는 그대로 남습니다.
 
+**파일 → PyBitmessage 데이터 가져오기…**는 PyBitmessage의 신원, 채널, 주소록, 구독, 편지를
+열려 있는 보관함과 메일함으로 가져옵니다. PyBitmessage의 기본 폴더(macOS는
+`~/Library/Application Support/PyBitmessage`, Windows는 `%APPDATA%\PyBitmessage`, Linux는
+`~/.config/PyBitmessage`)를 찾거나 폴더를 직접 고르고, 들어 있는 내용을 보여 준 뒤 진행 막대와
+남은 시간을 표시하며 가져옵니다. 편지의 날짜와 읽음 상태는 유지되고, PyBitmessage가 아직 보내지
+않은 편지는 임시 보관 편지가 되며 아무것도 전송되지 않습니다. PyBitmessage의 파일은 읽기만 하므로
+PyBitmessage를 계속 실행해 두어도 되고, 다시 실행하면 없는 것만 추가됩니다. 네트워크 데이터, 저장된
+공개 키, 차단 목록, 허용 목록은 가져오지 않습니다.
+
 ## 기능
 
 - 들고 다닐 수 있는 보관함: Argon2id(64 MiB, 3회 반복)와 XChaCha20-Poly1305. 보호된 메모리의

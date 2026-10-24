@@ -524,7 +524,7 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int64_t time, int l
             m.storeRouted(
                 id, d.message.from, d.message.to, d.message.subject, d.message.body, o.sequence,
                 chanBroadcast ? "Channels" : (d.broadcast ? "Broadcasts" : d.message.folder),
-                h->expires);
+                h->expires, o.hash);
             ++count;
             passed = 0; // store() moved the checkpoint past this object
         } else

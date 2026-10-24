@@ -405,11 +405,17 @@ void Session::createMailbox() {
             auto id = vault_.addMailboxKey();
             mailbox_.create(p, id, vault_.mailboxKey(id));
             mailbox_.setSetting(kSentRecipientsSetting, "1"); // nothing was sent yet to add
-            // A new mailbox starts with the built-in contacts, not at its next opening.
+            // A new mailbox starts with the built-in subscriptions and contacts, not at its next
+            // opening.
+            try {
+                seedSubscriptions();
+            } catch (...) {
+                // Not added is no reason to refuse the mailbox.
+            }
             try {
                 seedContacts();
             } catch (...) {
-                // Not added is no reason to refuse the mailbox.
+                // Nor is this.
             }
             mailPath_ = p;
             mailKey_ = id;
@@ -536,6 +542,17 @@ void Session::importIdentities() {
         activity_ =
             tr("Identities imported into the encrypted vault. The source file was preserved.");
     });
+}
+void Session::setImporting(bool on) {
+    if (importing_ == on)
+        return;
+    importing_ = on;
+    if (on)
+        return;
+    // What the import stored is shown, and the counts on the icons are worked out again.
+    refresh();
+    unreadAt_.reset();
+    emit changed();
 }
 void Session::changePassword() {
     attempt([&] {
@@ -739,7 +756,7 @@ void Session::tick() {
                 restartNode();
             }
         }
-        if (mailboxOpen()) {
+        if (mailboxOpen() && !importing_) {
             const auto report = client_->step(bmc::now(), !offline_ && node_->running());
             if (report.open) {
                 refresh();

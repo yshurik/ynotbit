@@ -983,6 +983,10 @@ Date: %1
         <source>Quit</source>
         <translation>Вийти</translation>
     </message>
+    <message>
+        <source>Import PyBitmessage data…</source>
+        <translation>Імпортувати дані PyBitmessage…</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1503,6 +1507,285 @@ Date: %1
     <message>
         <source>Create identity</source>
         <translation>Створити ідентичність</translation>
+    </message>
+</context>
+<context>
+    <name>bm::PyBitmessageImportDialog</name>
+    <message>
+        <source>a private key is missing</source>
+        <translation>бракує закритого ключа</translation>
+    </message>
+    <message>
+        <source>a private key is damaged</source>
+        <translation>закритий ключ пошкоджено</translation>
+    </message>
+    <message>
+        <source>the keys do not belong to that address</source>
+        <translation>ключі не відповідають цій адресі</translation>
+    </message>
+    <message>
+        <source>the vault is full</source>
+        <translation>сховище заповнене</translation>
+    </message>
+    <message>
+        <source>an address this app cannot use</source>
+        <translation>адреса, яку цей застосунок не підтримує</translation>
+    </message>
+    <message>
+        <source>There is no PyBitmessage data in this folder. Choose the folder that holds keys.dat and messages.dat.</source>
+        <translation>У цій теці немає даних PyBitmessage. Виберіть теку, де лежать keys.dat і messages.dat.</translation>
+    </message>
+    <message>
+        <source>PyBitmessage is using its data at this moment. Try again in a moment.</source>
+        <translation>PyBitmessage зараз використовує свої дані. Спробуйте ще раз за хвилину.</translation>
+    </message>
+    <message>
+        <source>PyBitmessage did not close its data properly. Start it once, close it and try again.</source>
+        <translation>PyBitmessage некоректно закрив свої дані. Запустіть його один раз, закрийте і спробуйте ще раз.</translation>
+    </message>
+    <message>
+        <source>The data in this folder cannot be read.</source>
+        <translation>Дані в цій теці прочитати не вдалося.</translation>
+    </message>
+    <message>
+        <source>Import PyBitmessage data</source>
+        <translation>Імпорт даних PyBitmessage</translation>
+    </message>
+    <message>
+        <source>Bring your identities, chans, address book, subscriptions and letters from PyBitmessage into the open vault and mailbox. PyBitmessage's own files are only read, never changed.</source>
+        <translation>Перенесіть ідентичності, канали, адресну книгу, підписки та листи з PyBitmessage у відкриті сховище та поштову скриньку. Файли PyBitmessage лише читаються і ніколи не змінюються.</translation>
+    </message>
+    <message>
+        <source>PyBitmessage data folder</source>
+        <translation>Тека даних PyBitmessage</translation>
+    </message>
+    <message>
+        <source>Choose another folder…</source>
+        <translation>Вибрати іншу теку…</translation>
+    </message>
+    <message>
+        <source>Check again</source>
+        <translation>Перевірити знову</translation>
+    </message>
+    <message>
+        <source>Identities and chans</source>
+        <translation>Ідентичності та канали</translation>
+    </message>
+    <message>
+        <source>Address book</source>
+        <translation>Адресна книга</translation>
+    </message>
+    <message>
+        <source>Subscriptions</source>
+        <translation>Підписки</translation>
+    </message>
+    <message>
+        <source>Letters of the inbox, channels and subscriptions</source>
+        <translation>Листи зі «Вхідних», каналів і підписок</translation>
+    </message>
+    <message>
+        <source>Sent letters and unsent drafts</source>
+        <translation>Надіслані листи й ненадіслані чернетки</translation>
+    </message>
+    <message>
+        <source>Deleted letters</source>
+        <translation>Видалені листи</translation>
+    </message>
+    <message>
+        <source>Without them, deleted letters that your node still holds can come back into your inbox.</source>
+        <translation>Без них видалені листи, які ще зберігає ваш вузол, можуть повернутися до «Вхідних».</translation>
+    </message>
+    <message>
+        <source>Import</source>
+        <translation>Імпортувати</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>Зупинити</translation>
+    </message>
+    <message>
+        <source>Copy details</source>
+        <translation>Копіювати подробиці</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Закрити</translation>
+    </message>
+    <message>
+        <source>estimating the time left…</source>
+        <translation>оцінюємо час, що залишився…</translation>
+    </message>
+    <message>
+        <source>less than a minute left</source>
+        <translation>залишилося менше хвилини</translation>
+    </message>
+    <message>
+        <source>about %1 min left</source>
+        <translation>залишилося близько %1 хв</translation>
+    </message>
+    <message>
+        <source>about %1 h %2 min left</source>
+        <translation>залишилося близько %1 год %2 хв</translation>
+    </message>
+    <message>
+        <source>Choose the PyBitmessage data folder</source>
+        <translation>Виберіть теку даних PyBitmessage</translation>
+    </message>
+    <message>
+        <source>No PyBitmessage data found on this computer. Choose its folder.</source>
+        <translation>На цьому комп'ютері даних PyBitmessage не знайдено. Виберіть їхню теку.</translation>
+    </message>
+    <message>
+        <source>Details: %1</source>
+        <translation>Подробиці: %1</translation>
+    </message>
+    <message>
+        <source>%1, chans: %2</source>
+        <translation>%1, каналів: %2</translation>
+    </message>
+    <message>
+        <source>%1, unread: %2</source>
+        <translation>%1, непрочитаних: %2</translation>
+    </message>
+    <message>
+        <source>%1, not sent: %2</source>
+        <translation>%1, не надіслано: %2</translation>
+    </message>
+    <message>
+        <source>PyBitmessage seems to be running. You can import now, but closing it first gives a complete copy.</source>
+        <translation>Схоже, PyBitmessage запущено. Можна імпортувати й зараз, але якщо спершу його закрити, копія буде повною.</translation>
+    </message>
+    <message>
+        <source>The keys in keys.dat are encrypted, so identities cannot be imported.</source>
+        <translation>Ключі в keys.dat зашифровано, тому ідентичності імпортувати не можна.</translation>
+    </message>
+    <message>
+        <source>keys.dat cannot be read, so identities cannot be imported.</source>
+        <translation>keys.dat прочитати не вдалося, тому ідентичності імпортувати не можна.</translation>
+    </message>
+    <message>
+        <source>Switched off in PyBitmessage, active here after the import: %1.</source>
+        <translation>Вимкнені в PyBitmessage, але після імпорту тут будуть активні: %1.</translation>
+    </message>
+    <message>
+        <source>Letters keep their dates and whether they were read. Letters PyBitmessage has not sent yet become drafts here; nothing is sent.</source>
+        <translation>Листи зберігають дати й позначки про прочитання. Листи, яких PyBitmessage ще не надіслав, стають тут чернетками; нічого не надсилається.</translation>
+    </message>
+    <message>
+        <source>Not imported: network data, saved public keys, blacklist and whitelist.</source>
+        <translation>Не імпортуються: мережеві дані, збережені відкриті ключі, чорний і білий списки.</translation>
+    </message>
+    <message>
+        <source>Opening PyBitmessage's data…</source>
+        <translation>Відкриваються дані PyBitmessage…</translation>
+    </message>
+    <message>
+        <source>Stopping…</source>
+        <translation>Зупинка…</translation>
+    </message>
+    <message>
+        <source>Waiting for PyBitmessage to release its data…</source>
+        <translation>Очікування, поки PyBitmessage звільнить свої дані…</translation>
+    </message>
+    <message>
+        <source>Importing the address book…</source>
+        <translation>Імпорт адресної книги…</translation>
+    </message>
+    <message>
+        <source>Importing subscriptions…</source>
+        <translation>Імпорт підписок…</translation>
+    </message>
+    <message>
+        <source>Looking at your mailbox…</source>
+        <translation>Перегляд вашої поштової скриньки…</translation>
+    </message>
+    <message>
+        <source>Importing letters…</source>
+        <translation>Імпорт листів…</translation>
+    </message>
+    <message>
+        <source>Importing sent letters…</source>
+        <translation>Імпорт надісланих листів…</translation>
+    </message>
+    <message>
+        <source>Adding identities…</source>
+        <translation>Додавання ідентичностей…</translation>
+    </message>
+    <message>
+        <source>%1 of %2 letters · %3</source>
+        <translation>%1 з %2 листів · %3</translation>
+    </message>
+    <message>
+        <source>Import finished</source>
+        <translation>Імпорт завершено</translation>
+    </message>
+    <message>
+        <source>Import stopped</source>
+        <translation>Імпорт зупинено</translation>
+    </message>
+    <message>
+        <source>Import failed</source>
+        <translation>Імпорт не вдався</translation>
+    </message>
+    <message>
+        <source>Letters added: %1</source>
+        <translation>Додано листів: %1</translation>
+    </message>
+    <message>
+        <source>Letters already here: %1</source>
+        <translation>Листів уже було тут: %1</translation>
+    </message>
+    <message>
+        <source>Chat messages added: %1</source>
+        <translation>Додано повідомлень чату: %1</translation>
+    </message>
+    <message>
+        <source>Chat messages already here: %1</source>
+        <translation>Повідомлень чату вже було тут: %1</translation>
+    </message>
+    <message>
+        <source>Deleted chat messages left out: %1</source>
+        <translation>Видалених повідомлень чату пропущено: %1</translation>
+    </message>
+    <message>
+        <source>Identities and chans added: %1</source>
+        <translation>Додано ідентичностей і каналів: %1</translation>
+    </message>
+    <message>
+        <source>Identities already in the vault: %1</source>
+        <translation>Ідентичностей уже у сховищі: %1</translation>
+    </message>
+    <message>
+        <source>Contacts added: %1</source>
+        <translation>Додано контактів: %1</translation>
+    </message>
+    <message>
+        <source>Subscriptions added: %1</source>
+        <translation>Додано підписок: %1</translation>
+    </message>
+    <message>
+        <source>Unsent letters kept as drafts: %1</source>
+        <translation>Ненадісланих листів збережено як чернетки: %1</translation>
+    </message>
+    <message>
+        <source>Identities that could not be used: %1</source>
+        <translation>Ідентичностей, які не вдалося використати: %1</translation>
+    </message>
+    <message>
+        <source>You stopped the import. What was imported stays; run it again to carry on.</source>
+        <translation>Ви зупинили імпорт. Уже імпортоване залишається; запустіть імпорт знову, щоб продовжити.</translation>
+    </message>
+    <message>
+        <source>The import could not be finished.</source>
+        <translation>Імпорт не вдалося завершити.</translation>
+    </message>
+    <message>
+        <source>Your node now looks for letters to the new identities in the objects it holds; they may take a moment to appear.</source>
+        <translation>Ваш вузол тепер шукає листи для нових ідентичностей серед збережених об'єктів; вони можуть з'явитися не одразу.</translation>
+    </message>
+    <message>
+        <source>Your mailbox or vault could not be written to.</source>
+        <translation>Не вдалося записати дані у вашу поштову скриньку або сховище.</translation>
     </message>
 </context>
 <context>

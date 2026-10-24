@@ -7,6 +7,7 @@
 #include "updates.h"
 #include "feed_view.h"
 #include "protocol.h"
+#include "pybm_import_dialog.h"
 #include "rail_badge.h"
 #include "letter_document.h"
 #include "pow.h"
@@ -26,6 +27,9 @@
 #include <QSoundEffect>
 #include <QTest>
 #include <QtWidgets>
+#include "bmclient/pybm_fixtures.h"
+#include <bmc/chat_format.h>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #ifdef Q_OS_MACOS
@@ -185,13 +189,14 @@ static void testFileMenu(const QTemporaryDir &temp) {
     // The items by their words, "-" a separator.
     QStringList layout = QString("New vault…|Open vault…|Open recent vault|Close vault|-|"
                                  "New mailbox…|Open mailbox…|Open recent mailbox|Close mailbox|-|"
-                                 "Back up mailbox and vault…|Settings…")
+                                 "Import PyBitmessage data…|Back up mailbox and vault…|Settings…")
                              .split('|');
 #ifndef Q_OS_MACOS
     layout << "Quit"; // on macOS the application menu has it
 #endif
     require(texts(file) == layout,
-            "File lists the vault's items, the mailbox's, then the copy, Settings and Quit");
+            "File lists the vault's items, the mailbox's, then the import, the copy, Settings and "
+            "Quit");
     require(window.findChild<QAction *>("closeVaultAction")->shortcut() == QKeySequence("Ctrl+L") &&
                 window.findChild<QAction *>("settingsAction")->menuRole() ==
                     QAction::PreferencesRole,
@@ -199,7 +204,8 @@ static void testFileMenu(const QTemporaryDir &temp) {
     // Locked: what opens or makes a vault is on, the rest waits.
     require(!own.unlocked(), "test sanity: the session starts locked");
     require(grey() == QStringList({"closeVaultAction", "createMailboxAction", "openMailboxAction",
-                                   "recentMailboxesMenu", "closeMailboxAction", "backupAction"}),
+                                   "recentMailboxesMenu", "closeMailboxAction",
+                                   "importPyBitmessageAction", "backupAction"}),
             "locked, only the vault items, Settings and Quit are on");
     require(recent("recentVaultsMenu") ==
                 QStringList({"menu-one.bmvault|" + vaultOne, "menu-two.bmvault|" + vaultTwo}),
@@ -221,8 +227,9 @@ static void testFileMenu(const QTemporaryDir &temp) {
             "with a vault open, choosing another closes it and asks for the other's password");
     own.submitVaultPassword("test password");
     require(own.unlocked() && own.vaultPath() == vaultOne, "and opens with it");
-    require(grey() == QStringList({"closeMailboxAction", "backupAction"}),
-            "with a vault open, Close mailbox and Back up wait for a mailbox");
+    require(grey() ==
+                QStringList({"closeMailboxAction", "importPyBitmessageAction", "backupAction"}),
+            "with a vault open, Close mailbox, Import and Back up wait for a mailbox");
     require(recent("recentMailboxesMenu") ==
                 QStringList({"menu-two.bmmail|" + boxTwo, "menu-one.bmmail|" + boxOne}),
             "Open recent mailbox lists the mailboxes last used, newest first, each with its path");
@@ -235,7 +242,8 @@ static void testFileMenu(const QTemporaryDir &temp) {
             "the list follows: the mailbox just opened comes first");
     trigger("closeMailboxAction");
     require(!own.mailboxOpen() && own.unlocked() &&
-                grey() == QStringList({"closeMailboxAction", "backupAction"}),
+                grey() ==
+                    QStringList({"closeMailboxAction", "importPyBitmessageAction", "backupAction"}),
             "Close mailbox closes the mailbox and keeps the vault");
     require(pick("recentMailboxesMenu", "menu-two.bmmail") && own.mailPath() == boxTwo,
             "the mailbox is opened again from the list");
@@ -250,7 +258,7 @@ static void testFileMenu(const QTemporaryDir &temp) {
     require(own.unlocked() && own.vaultPath() == vaultTwo && !own.mailboxOpen(),
             "and opens it, with no mailbox of the other vault's");
     trigger("closeVaultAction");
-    require(!own.unlocked() && grey().size() == 6 && grey().first() == "closeVaultAction",
+    require(!own.unlocked() && grey().size() == 7 && grey().first() == "closeVaultAction",
             "Close vault locks it, and the mailbox items wait again");
     // Nothing used yet: each list says so, in grey.
     bm::Session fresh(temp.filePath("menu-fresh-node"), true);
@@ -720,6 +728,364 @@ static void testRailBadges(const QTemporaryDir &temp) {
             "and the light theme lightens them");
     own.lock();
     require(all() == QStringList({"", "", "", ""}), "locking takes every badge off");
+}
+// Importing the data of a PyBitmessage folder: the File menu item, what the dialog shows before
+// anything is brought in, the progress, the stop, the result, and what lands in the vault and the
+// mailbox.
+static void testPyBitmessageImport(const QTemporaryDir &temp) {
+    // The target: a vault with one identity of its own, and its mailbox.
+    const auto vaultFile = temp.filePath("pybm.bmvault"), boxFile = temp.filePath("pybm.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("pybm-node"));
+    {
+        QSettings config(temp.filePath("pybm-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    // PyBitmessage's folder: three identities (a chan, one switched off), and a bit of everything.
+    pybmfix::Folder source;
+    const auto me = bmc::Protocol::identity("me"), room = bmc::Protocol::identity("room"),
+               old = bmc::Protocol::identity("old");
+    source.keys(pybmfix::kSettings + pybmfix::section(me, "Me") +
+                pybmfix::section(room, "[chan] general", true) +
+                pybmfix::section(old, "Old one", false, false));
+    const std::string broadcast = bmc::pybm::kBroadcastAddress;
+    source.inbox(pybmfix::rawHash(1), me.address, "BM-aaa", "d1", "1700000100", "body", "inbox",
+                 false);
+    source.inbox(pybmfix::rawHash(2), me.address, "BM-aaa", "d2", "1700000200", "body", "inbox",
+                 true);
+    source.inbox(pybmfix::rawHash(3), room.address, "BM-ccc", "c1", "1700000300", "body", "inbox",
+                 false);
+    source.inbox(pybmfix::rawHash(4), broadcast, "BM-ddd", "b1", "1700000400", "body", "inbox",
+                 true);
+    source.inbox(pybmfix::rawHash(5), me.address, "BM-aaa", "t1", "1700000500", "body", "trash",
+                 true);
+    // Chat messages of this app, which PyBitmessage on the same identity holds as letters in its
+    // inbox: one unread, one read, one deleted over there.
+    source.inbox(pybmfix::rawHash(7), me.address, "BM-eee", "", "1700000800",
+                 bmc::chatMessageBody(1792000000001, "Hello **there**"), "inbox", false);
+    source.inbox(pybmfix::rawHash(8), me.address, "BM-eee", "", "1700000900",
+                 bmc::chatMessageBody(1792000000002, "And again"), "inbox", true);
+    source.inbox(pybmfix::rawHash(9), me.address, "BM-eee", "", "1700001000",
+                 bmc::chatMessageBody(1792000000003, "Deleted"), "trash", true);
+    source.sent(pybmfix::rawHash(6), "BM-aaa", me.address, "s1", "body", bmc::Bytes(38, 1),
+                1700000600, "msgsent");
+    source.sent(bmc::Bytes(16, 2), "BM-aaa", me.address, "u1", "body", bmc::Bytes(38, 2),
+                1700000700, "awaitingpubkey");
+    source.subscription("News", "BM-news", true);
+    source.contact("Ann", "BM-ann");
+
+    bm::Session own(temp.filePath("pybm-node"), true);
+    bm::DesktopWindow window(own, temp.filePath("sounds-pybm"));
+    window.show();
+    // The File menu item: there when a vault and a mailbox are, grey when one is not.
+    auto action = window.findChild<QAction *>("importPyBitmessageAction");
+    require(action != nullptr, "the File menu has an item to import PyBitmessage data");
+    require(action->text() == window.tr("Import PyBitmessage data…"), "its text");
+    require(!action->isEnabled(), "locked, there is nothing to import into");
+    own.beginVaultUnlock();
+    own.submitVaultPassword("test password");
+    require(own.mailboxOpen() && action->isEnabled(), "with a vault and a mailbox open it works");
+    own.closeMailbox();
+    require(!action->isEnabled(), "without a mailbox there is nowhere to put letters");
+    own.openMailboxAt(boxFile);
+    require(own.mailboxOpen(), "test sanity: the mailbox opens again");
+    QCoreApplication::processEvents();
+    require(action->isEnabled(), "and it works again");
+
+    // How long is left, said as a person would.
+    using Dialog = bm::PyBitmessageImportDialog;
+    require(Dialog::timeLeftText(-1) == Dialog::tr("estimating the time left…"),
+            "before there is something to go by it says so");
+    require(Dialog::timeLeftText(20) == Dialog::tr("less than a minute left"), "seconds");
+    require(Dialog::timeLeftText(44.4) == Dialog::tr("less than a minute left"), "under 45 s");
+    require(Dialog::timeLeftText(60) == Dialog::tr("about %1 min left").arg(1), "a minute");
+    require(Dialog::timeLeftText(200) == Dialog::tr("about %1 min left").arg(3), "minutes");
+    require(Dialog::timeLeftText(4000) == Dialog::tr("about %1 min left").arg(67),
+            "an hour or less");
+    require(Dialog::timeLeftText(5400) == Dialog::tr("about %1 h %2 min left").arg(1).arg(30),
+            "hours and minutes");
+    require(Dialog::timeLeftText(5500) == Dialog::tr("about %1 h %2 min left").arg(1).arg(30),
+            "an hour or more in steps of five minutes");
+    require(Dialog::timeLeftText(0) == Dialog::tr("less than a minute left"),
+            "done is not unknown");
+
+    // The first page: the folder, and what it holds, counted.
+    const auto sourceDir = QString::fromStdString(source.dir);
+    Dialog dialog(own, {sourceDir});
+    dialog.show();
+    QCoreApplication::processEvents();
+    const auto label = [&](const char *name) {
+        auto l = dialog.findChild<QLabel *>(name);
+        require(l != nullptr, name);
+        return l->text();
+    };
+    const auto check = [&](const char *name) {
+        auto c = dialog.findChild<QCheckBox *>(name);
+        require(c != nullptr, name);
+        return c;
+    };
+    const auto button = [&](const char *name) {
+        auto b = dialog.findChild<QPushButton *>(name);
+        require(b != nullptr, name);
+        return b;
+    };
+    auto folders = dialog.findChild<QComboBox *>("pybmFolderCombo");
+    require(folders && folders->itemData(0).toString() == sourceDir,
+            "the folder given is the one shown");
+    require(folders->itemText(folders->count() - 1) == Dialog::tr("Choose another folder…"),
+            "and another can be chosen");
+    require(label("pybmIdentitiesCount") == Dialog::tr("%1, chans: %2").arg(3).arg(1),
+            "the identities are counted, and the chans among them");
+    require(label("pybmContactsCount") == "1", "contacts");
+    require(label("pybmSubscriptionsCount") == "2", "subscriptions");
+    require(label("pybmInboxCount") == Dialog::tr("%1, unread: %2").arg(6).arg(3),
+            "the letters, and how many are unread");
+    require(label("pybmSentCount") == Dialog::tr("%1, not sent: %2").arg(2).arg(1),
+            "sent letters, and those never sent");
+    require(label("pybmTrashCount") == "2", "deleted letters");
+    for (const char *name : {"pybmIdentitiesCheck", "pybmContactsCheck", "pybmSubscriptionsCheck",
+                             "pybmInboxCheck", "pybmSentCheck", "pybmTrashCheck"})
+        require(check(name)->isChecked() && check(name)->isEnabled(), name);
+    require(button("pybmImportButton")->isEnabled(), "it can be started");
+    require(button("pybmImportButton")->isDefault(), "and Enter starts it");
+    require(label("pybmNotes")
+                .contains(Dialog::tr("Switched off in PyBitmessage, active here after "
+                                     "the import: %1.")
+                              .arg(1)),
+            "what comes in switched on, though it was off, is said");
+    require(dialog.findChild<QLabel *>("pybmTrouble")->isHidden(), "nothing is wrong");
+
+    // A lock file in the folder says that PyBitmessage looks to be running.
+    {
+        bmc::test::writeFile(source.dir + "/singleton.lock", bmc::view(std::string("4242")));
+        Dialog running(own, {sourceDir});
+        running.show();
+        QCoreApplication::processEvents();
+        require(running.findChild<QLabel *>("pybmNotes")
+                    ->text()
+                    .contains(Dialog::tr(
+                        "PyBitmessage seems to be running. You can import now, but closing "
+                        "it first gives a complete copy.")),
+                "a PyBitmessage that seems to be running is said so");
+        std::filesystem::remove(source.dir + "/singleton.lock");
+    }
+    // A folder with no data is said so, and cannot be imported from.
+    const auto empty = temp.filePath("pybm-empty");
+    QDir().mkpath(empty);
+    {
+        Dialog nothing(own, {empty});
+        nothing.show();
+        QCoreApplication::processEvents();
+        auto trouble = nothing.findChild<QLabel *>("pybmTrouble");
+        require(trouble && trouble->isVisible() &&
+                    trouble->text().contains(Dialog::tr("There is no PyBitmessage data in this "
+                                                        "folder. Choose the folder that holds "
+                                                        "keys.dat and messages.dat.")),
+                "an empty folder says why it cannot be imported from");
+        require(!nothing.findChild<QPushButton *>("pybmImportButton")->isEnabled(),
+                "and nothing can be started");
+    }
+    {
+        Dialog nowhere(own, {});
+        nowhere.show();
+        QCoreApplication::processEvents();
+        require(nowhere.findChild<QLabel *>("pybmTrouble")
+                    ->text()
+                    .contains(Dialog::tr(
+                        "No PyBitmessage data found on this computer. Choose its folder.")),
+                "with no folder to offer it asks for one");
+    }
+
+    // What the folder does not hold is not offered.
+    {
+        pybmfix::Folder little;
+        little.inbox(pybmfix::rawHash(50), me.address, "BM-aaa", "only", "1700000100", "body",
+                     "inbox", true);
+        Dialog partial(own, {QString::fromStdString(little.dir)});
+        partial.show();
+        QCoreApplication::processEvents();
+        for (const char *name :
+             {"pybmIdentitiesCheck", "pybmContactsCheck", "pybmSentCheck", "pybmTrashCheck"}) {
+            auto c = partial.findChild<QCheckBox *>(name);
+            require(c && !c->isEnabled() && !c->isChecked(), name);
+        }
+        require(partial.findChild<QCheckBox *>("pybmInboxCheck")->isChecked() &&
+                    partial.findChild<QPushButton *>("pybmImportButton")->isEnabled(),
+                "what it holds is offered");
+        require(partial.findChild<QLabel *>("pybmContactsCount")->text() == QString::fromUtf8("—"),
+                "and nothing is counted for the rest");
+        require(partial.findChild<QLabel *>("pybmTrashHint")->isHidden(),
+                "nothing is said of deleted letters it has none of");
+    }
+
+    // The import: leave the deleted letters out (and be told what that may do), start, and wait.
+    auto hint = dialog.findChild<QLabel *>("pybmTrashHint");
+    require(hint && hint->isHidden(), "nothing is said while the deleted letters come along");
+    check("pybmTrashCheck")->setChecked(false);
+    require(hint->isVisible() && hint->text() == Dialog::tr("Without them, deleted letters that "
+                                                            "your node still holds can come back "
+                                                            "into your inbox."),
+            "leaving them out says what may follow");
+    button("pybmImportButton")->click();
+    require(own.importing() || dialog.findChild<QLabel *>("pybmResultTitle")->isVisible(),
+            "the scan waits while it goes");
+    require(QTest::qWaitFor(
+                [&] { return dialog.findChild<QLabel *>("pybmResultTitle")->isVisible(); }, 15000),
+            "the import comes to its result page");
+    require(label("pybmResultTitle") == Dialog::tr("Import finished"), "it finished");
+    const auto result = label("pybmResultText");
+    for (const auto &line :
+         {Dialog::tr("Letters added: %1").arg(6),
+          Dialog::tr("Identities and chans added: %1").arg(3),
+          Dialog::tr("Chat messages added: %1").arg(2), Dialog::tr("Contacts added: %1").arg(1),
+          Dialog::tr("Subscriptions added: %1").arg(2),
+          Dialog::tr("Unsent letters kept as drafts: %1").arg(1)})
+        require(result.contains(line), qPrintable("the result says: " + line));
+    require(!own.importing(), "the scan goes on after it");
+    require(own.identities().size() == 4, "the identities are in the vault");
+    require(own.messageCount("Inbox", {}, {}, false) == 2 &&
+                own.messageCount("Channels", {}, {}, false) == 1 &&
+                own.messageCount("Broadcasts", {}, {}, false) == 1 &&
+                own.messageCount("Sent", {}, {}, false) == 1 &&
+                own.messageCount("Drafts", {}, {}, false) == 1 &&
+                own.messageCount("Trash", {}, {}, false) == 0,
+            "every letter is in its folder, and the deleted one was left out");
+    require(own.messageCount("Inbox", {}, {}, true) == 1, "read as they were");
+    // The chat messages are chats: a conversation with the one who sent them, in the order they
+    // were said, the unread one counted, and no letter among the inbox's.
+    {
+        const QString local = QString::fromStdString(me.address);
+        const auto chats = own.chatConversations();
+        require(chats.size() == 1 && chats[0].toMap()["address"] == "BM-eee" &&
+                    chats[0].toMap()["local"] == local && chats[0].toMap()["unread"] == 1,
+                "the chat messages of the inbox are a conversation, one of them unread");
+        const auto thread = own.chatMessages(local, "BM-eee");
+        require(thread.size() == 2 && thread[0].toMap()["body"] == "Hello **there**" &&
+                    thread[1].toMap()["body"] == "And again",
+                "with their text, not the document they were sent as, oldest first");
+    }
+    require(own.unreadTotal() == 3, "and the icons count the unread ones, chats among them");
+    require(!button("pybmCopyButton")->text().isEmpty() && button("pybmCloseButton")->isVisible(),
+            "the result can be copied and closed");
+    require(button("pybmCloseButton")->isDefault() && !button("pybmImportButton")->isDefault(),
+            "and Enter closes it");
+    button("pybmCloseButton")->click();
+    require(!dialog.isVisible(), "closing closes");
+
+    // Again: nothing is added twice; the deleted letters are asked for this time.
+    {
+        Dialog again(own, {sourceDir});
+        again.show();
+        QCoreApplication::processEvents();
+        again.findChild<QPushButton *>("pybmImportButton")->click();
+        auto title = again.findChild<QLabel *>("pybmResultTitle");
+        require(QTest::qWaitFor([&] { return title->isVisible(); }, 15000),
+                "the second import ends");
+        const auto text = again.findChild<QLabel *>("pybmResultText")->text();
+        require(text.contains(Dialog::tr("Letters added: %1").arg(1)) &&
+                    text.contains(Dialog::tr("Letters already here: %1").arg(6)),
+                "only the letter left out the first time is new");
+        require(text.contains(Dialog::tr("Chat messages already here: %1").arg(2)) &&
+                    !text.contains(Dialog::tr("Chat messages added: %1").arg(2)) &&
+                    text.contains(Dialog::tr("Deleted chat messages left out: %1").arg(1)),
+                "the chat messages are there already, and a deleted one has no folder to go to");
+        require(own.chatConversations().size() == 1 && own.chatUnread() == 1,
+                "no chat is added twice");
+        require(text.contains(Dialog::tr("Identities already in the vault: %1").arg(3)),
+                "the identities are there already");
+        require(own.messageCount("Trash", {}, {}, false) == 1 && own.identities().size() == 4,
+                "nothing is added twice");
+    }
+
+    // A slow import can be watched and stopped.
+    {
+        const auto before = own.messageCount("Inbox", {}, {}, false);
+        pybmfix::Folder many;
+        many.keys(pybmfix::kSettings);
+        for (int i = 0; i < 100; ++i)
+            many.inbox(pybmfix::rawHash(100 + i), me.address, "BM-zzz", "many " + std::to_string(i),
+                       std::to_string(1700001000 + i), "body", "inbox", true);
+        Dialog slow(own, {QString::fromStdString(many.dir)});
+        slow.setPaceForTesting(2, 30);
+        slow.show();
+        QCoreApplication::processEvents();
+        slow.findChild<QPushButton *>("pybmImportButton")->click();
+        auto bar = slow.findChild<QProgressBar *>("pybmProgressBar");
+        require(bar &&
+                    QTest::qWaitFor([&] { return bar->value() > 0 && bar->maximum() > 0; }, 10000),
+                "the bar moves");
+        require(own.importing() && slow.running(), "and the scan waits meanwhile");
+        require(slow.findChild<QLabel *>("pybmProgressDetail")->text().contains(" of 100 "),
+                "it says how many letters of how many");
+        slow.findChild<QPushButton *>("pybmStopButton")->click();
+        auto title = slow.findChild<QLabel *>("pybmResultTitle");
+        require(QTest::qWaitFor([&] { return title->isVisible(); }, 10000),
+                "a stopped import ends");
+        require(title->text() == Dialog::tr("Import stopped"), "and says it was stopped");
+        require(!own.importing() && !slow.running(), "the scan goes on");
+        const auto got = own.messageCount("Inbox", {}, {}, false) - before;
+        require(got > 0 && got < 100, "what was stored stays, and not all of it was");
+        // Escape does not close a window that is busy: it stops it, and the result is shown.
+        pybmfix::Folder more;
+        more.keys(pybmfix::kSettings);
+        for (int i = 0; i < 100; ++i)
+            more.inbox(pybmfix::rawHash(200 + i), me.address, "BM-yyy", "more " + std::to_string(i),
+                       std::to_string(1700002000 + i), "body", "inbox", true);
+        Dialog escaped(own, {QString::fromStdString(more.dir)});
+        escaped.setPaceForTesting(2, 30);
+        escaped.show();
+        QCoreApplication::processEvents();
+        escaped.findChild<QPushButton *>("pybmImportButton")->click();
+        auto bar2 = escaped.findChild<QProgressBar *>("pybmProgressBar");
+        require(QTest::qWaitFor([&] { return bar2->value() > 0 && bar2->maximum() > 0; }, 10000),
+                "the second slow import goes");
+        escaped.reject();
+        require(escaped.isVisible() && escaped.running(), "Escape does not close it at once");
+        auto title2 = escaped.findChild<QLabel *>("pybmResultTitle");
+        require(QTest::qWaitFor([&] { return title2->isVisible(); }, 10000) &&
+                    title2->text() == Dialog::tr("Import stopped") && escaped.isVisible(),
+                "it stops, and shows what it did");
+        escaped.reject();
+        require(!escaped.isVisible(), "and Escape then closes it");
+        // A dialog closed from outside (the app quits) lets the scan go on, with what was stored.
+        {
+            Dialog gone(own, {QString::fromStdString(more.dir)});
+            gone.setPaceForTesting(2, 30);
+            gone.show();
+            QCoreApplication::processEvents();
+            gone.findChild<QPushButton *>("pybmImportButton")->click();
+            require(own.importing(), "a third import goes");
+        }
+        require(!own.importing(), "a dialog that is gone leaves the scan free");
+    }
+
+    // The scan of the node's objects waits while an import goes, and goes on after it.
+    {
+        const auto node = temp.filePath("pybm-node");
+        auto db = ntb_object_db_open(node.toUtf8().constData());
+        require(db != nullptr, "test sanity: the node's store opens");
+        uint8_t hash[32] = {0x42};
+        const QByteArray object(100, 'z'); // nothing the scan can read, but something to pass over
+        require(ntb_object_db_save(db, hash, reinterpret_cast<const uint8_t *>(object.constData()),
+                                   size_t(object.size()), 1700000000),
+                "test sanity: an object is stored");
+        ntb_object_db_close(db);
+        own.setImporting(true);
+        QTest::qWait(1800); // two ticks of the session
+        require(own.coreMailbox().checkpoint() == 0, "the scan waits while an import goes");
+        own.setImporting(false);
+        require(QTest::qWaitFor([&] { return own.coreMailbox().checkpoint() > 0; }, 8000),
+                "and goes on when it is over");
+    }
 }
 int main(int argc, char **argv) {
     // Unbuffered: a run that hangs and is killed by ctest still shows how far it got.
@@ -5133,21 +5499,45 @@ int main(int argc, char **argv) {
             require(bot() == QStringList({"Echo", "/echobot"}),
                     "a contact that was there keeps its name, and gets the nickname");
             // A mailbox made now starts with it too.
+            const auto createAt = [&](const QString &path) {
+                auto answer = new QTimer(&window);
+                QObject::connect(answer, &QTimer::timeout, &window, [&, answer, path] {
+                    if (auto d = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
+                        answer->stop();
+                        chooseFile(d, path);
+                    }
+                });
+                answer->start(10);
+                starter.createMailbox();
+                answer->deleteLater();
+            };
             const auto madeNow = temp.filePath("echo-made-now.bmmail");
-            auto answer = new QTimer(&window);
-            QObject::connect(answer, &QTimer::timeout, &window, [&, answer] {
-                if (auto d = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
-                    answer->stop();
-                    chooseFile(d, madeNow);
-                }
-            });
-            answer->start(10);
-            starter.createMailbox();
-            answer->deleteLater();
+            createAt(madeNow);
             require(starter.mailboxOpen() && starter.mailPath() == madeNow &&
                         bot() == QStringList({"/echobot", "/echobot"}),
                     "a mailbox made now has the echo bot from the start");
             bm::updates::setDefaultContactsForTesting({});
+            // And the built-in subscriptions, the Bitmessage digest: from the start, not at its
+            // next opening; and a mailbox that was opened since does not get it back once it is
+            // gone.
+            const auto digest = bm::updates::digestAddress();
+            bm::updates::setDefaultSubscriptionsForTesting({{digest, "Bitmessage digest"}});
+            const auto subscribed = [&] {
+                QStringList addresses;
+                for (const auto &s : starter.subscriptions())
+                    addresses << s.toMap()["address"].toString();
+                return addresses;
+            };
+            const auto madeSubscribed = temp.filePath("digest-made-now.bmmail");
+            createAt(madeSubscribed);
+            require(starter.mailboxOpen() && starter.mailPath() == madeSubscribed &&
+                        subscribed() == QStringList({digest}),
+                    "a mailbox made now is subscribed to the Bitmessage digest from the start");
+            starter.unsubscribe(digest);
+            starter.openMailboxAt(madeSubscribed);
+            require(starter.mailboxOpen() && subscribed().isEmpty(),
+                    "unsubscribing sticks: opening the mailbox again does not add the digest back");
+            bm::updates::setDefaultSubscriptionsForTesting({});
         }
         {
             // The new vault dialog's look, under the window's style sheet: every
@@ -5599,6 +5989,7 @@ int main(int argc, char **argv) {
         testUnreadTotal(temp);
         testRailBadgeWidget();
         testRailBadges(temp);
+        testPyBitmessageImport(temp);
         require(session.portMapper().state() == bm::PortMapper::State::Off,
                 "an offline session never talks to the router");
         {

@@ -4,6 +4,11 @@ Build instructions are in README.md. Run `ctest --test-dir build --output-on-fai
 before submitting changes. Use temporary vaults and loopback peers in tests;
 never commit real vaults, mailboxes, keys.dat, passwords, or personal messages.
 
+Two tests read real data when asked to, and are skipped otherwise: set
+`YNOTBIT_PYBM_SAMPLE` to a folder holding a copy of a PyBitmessage `keys.dat` and
+`messages.dat` (keep it outside the repository, readable by you alone) to import it whole,
+and `YNOTBIT_PYBM_BIG_ROWS` to a number of letters to time an import of that size.
+
 The relay must remain keyless. Persist message bodies, identity associations,
 acknowledgment tokens and delivery state only inside the encrypted mailbox.
 Changes to document formats need migration and reopen tests that preserve old data.

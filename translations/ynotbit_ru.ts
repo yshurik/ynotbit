@@ -983,6 +983,10 @@ Date: %1
         <source>Quit</source>
         <translation>Выйти</translation>
     </message>
+    <message>
+        <source>Import PyBitmessage data…</source>
+        <translation>Импортировать данные PyBitmessage…</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1503,6 +1507,285 @@ Date: %1
     <message>
         <source>Create identity</source>
         <translation>Создать идентичность</translation>
+    </message>
+</context>
+<context>
+    <name>bm::PyBitmessageImportDialog</name>
+    <message>
+        <source>a private key is missing</source>
+        <translation>не хватает закрытого ключа</translation>
+    </message>
+    <message>
+        <source>a private key is damaged</source>
+        <translation>закрытый ключ повреждён</translation>
+    </message>
+    <message>
+        <source>the keys do not belong to that address</source>
+        <translation>ключи не соответствуют этому адресу</translation>
+    </message>
+    <message>
+        <source>the vault is full</source>
+        <translation>хранилище заполнено</translation>
+    </message>
+    <message>
+        <source>an address this app cannot use</source>
+        <translation>адрес, который это приложение не поддерживает</translation>
+    </message>
+    <message>
+        <source>There is no PyBitmessage data in this folder. Choose the folder that holds keys.dat and messages.dat.</source>
+        <translation>В этой папке нет данных PyBitmessage. Выберите папку, где лежат keys.dat и messages.dat.</translation>
+    </message>
+    <message>
+        <source>PyBitmessage is using its data at this moment. Try again in a moment.</source>
+        <translation>PyBitmessage сейчас использует свои данные. Повторите попытку через минуту.</translation>
+    </message>
+    <message>
+        <source>PyBitmessage did not close its data properly. Start it once, close it and try again.</source>
+        <translation>PyBitmessage некорректно закрыл свои данные. Запустите его один раз, закройте и повторите попытку.</translation>
+    </message>
+    <message>
+        <source>The data in this folder cannot be read.</source>
+        <translation>Данные в этой папке прочитать не удалось.</translation>
+    </message>
+    <message>
+        <source>Import PyBitmessage data</source>
+        <translation>Импорт данных PyBitmessage</translation>
+    </message>
+    <message>
+        <source>Bring your identities, chans, address book, subscriptions and letters from PyBitmessage into the open vault and mailbox. PyBitmessage's own files are only read, never changed.</source>
+        <translation>Перенесите идентичности, каналы, адресную книгу, подписки и письма из PyBitmessage в открытые хранилище и почтовый ящик. Файлы PyBitmessage только читаются и никогда не изменяются.</translation>
+    </message>
+    <message>
+        <source>PyBitmessage data folder</source>
+        <translation>Папка данных PyBitmessage</translation>
+    </message>
+    <message>
+        <source>Choose another folder…</source>
+        <translation>Выбрать другую папку…</translation>
+    </message>
+    <message>
+        <source>Check again</source>
+        <translation>Проверить снова</translation>
+    </message>
+    <message>
+        <source>Identities and chans</source>
+        <translation>Идентичности и каналы</translation>
+    </message>
+    <message>
+        <source>Address book</source>
+        <translation>Адресная книга</translation>
+    </message>
+    <message>
+        <source>Subscriptions</source>
+        <translation>Подписки</translation>
+    </message>
+    <message>
+        <source>Letters of the inbox, channels and subscriptions</source>
+        <translation>Письма из «Входящих», каналов и подписок</translation>
+    </message>
+    <message>
+        <source>Sent letters and unsent drafts</source>
+        <translation>Отправленные письма и неотправленные черновики</translation>
+    </message>
+    <message>
+        <source>Deleted letters</source>
+        <translation>Удалённые письма</translation>
+    </message>
+    <message>
+        <source>Without them, deleted letters that your node still holds can come back into your inbox.</source>
+        <translation>Без них удалённые письма, которые ещё хранит ваш узел, могут вернуться во «Входящие».</translation>
+    </message>
+    <message>
+        <source>Import</source>
+        <translation>Импортировать</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>Остановить</translation>
+    </message>
+    <message>
+        <source>Copy details</source>
+        <translation>Копировать подробности</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Закрыть</translation>
+    </message>
+    <message>
+        <source>estimating the time left…</source>
+        <translation>оценка оставшегося времени…</translation>
+    </message>
+    <message>
+        <source>less than a minute left</source>
+        <translation>осталось меньше минуты</translation>
+    </message>
+    <message>
+        <source>about %1 min left</source>
+        <translation>осталось около %1 мин</translation>
+    </message>
+    <message>
+        <source>about %1 h %2 min left</source>
+        <translation>осталось около %1 ч %2 мин</translation>
+    </message>
+    <message>
+        <source>Choose the PyBitmessage data folder</source>
+        <translation>Выберите папку данных PyBitmessage</translation>
+    </message>
+    <message>
+        <source>No PyBitmessage data found on this computer. Choose its folder.</source>
+        <translation>На этом компьютере данные PyBitmessage не найдены. Выберите их папку.</translation>
+    </message>
+    <message>
+        <source>Details: %1</source>
+        <translation>Подробности: %1</translation>
+    </message>
+    <message>
+        <source>%1, chans: %2</source>
+        <translation>%1, каналов: %2</translation>
+    </message>
+    <message>
+        <source>%1, unread: %2</source>
+        <translation>%1, непрочитанных: %2</translation>
+    </message>
+    <message>
+        <source>%1, not sent: %2</source>
+        <translation>%1, не отправлено: %2</translation>
+    </message>
+    <message>
+        <source>PyBitmessage seems to be running. You can import now, but closing it first gives a complete copy.</source>
+        <translation>Похоже, PyBitmessage запущен. Можно импортировать и сейчас, но если сначала закрыть его, копия получится полной.</translation>
+    </message>
+    <message>
+        <source>The keys in keys.dat are encrypted, so identities cannot be imported.</source>
+        <translation>Ключи в keys.dat зашифрованы, поэтому идентичности импортировать нельзя.</translation>
+    </message>
+    <message>
+        <source>keys.dat cannot be read, so identities cannot be imported.</source>
+        <translation>keys.dat прочитать не удалось, поэтому идентичности импортировать нельзя.</translation>
+    </message>
+    <message>
+        <source>Switched off in PyBitmessage, active here after the import: %1.</source>
+        <translation>Отключены в PyBitmessage, но после импорта здесь будут активны: %1.</translation>
+    </message>
+    <message>
+        <source>Letters keep their dates and whether they were read. Letters PyBitmessage has not sent yet become drafts here; nothing is sent.</source>
+        <translation>Письма сохраняют даты и отметки о прочтении. Письма, которые PyBitmessage ещё не отправил, становятся здесь черновиками; ничего не отправляется.</translation>
+    </message>
+    <message>
+        <source>Not imported: network data, saved public keys, blacklist and whitelist.</source>
+        <translation>Не импортируются: сетевые данные, сохранённые открытые ключи, чёрный и белый списки.</translation>
+    </message>
+    <message>
+        <source>Opening PyBitmessage's data…</source>
+        <translation>Открываются данные PyBitmessage…</translation>
+    </message>
+    <message>
+        <source>Stopping…</source>
+        <translation>Остановка…</translation>
+    </message>
+    <message>
+        <source>Waiting for PyBitmessage to release its data…</source>
+        <translation>Ожидание, пока PyBitmessage освободит свои данные…</translation>
+    </message>
+    <message>
+        <source>Importing the address book…</source>
+        <translation>Импорт адресной книги…</translation>
+    </message>
+    <message>
+        <source>Importing subscriptions…</source>
+        <translation>Импорт подписок…</translation>
+    </message>
+    <message>
+        <source>Looking at your mailbox…</source>
+        <translation>Просмотр вашего почтового ящика…</translation>
+    </message>
+    <message>
+        <source>Importing letters…</source>
+        <translation>Импорт писем…</translation>
+    </message>
+    <message>
+        <source>Importing sent letters…</source>
+        <translation>Импорт отправленных писем…</translation>
+    </message>
+    <message>
+        <source>Adding identities…</source>
+        <translation>Добавление идентичностей…</translation>
+    </message>
+    <message>
+        <source>%1 of %2 letters · %3</source>
+        <translation>%1 из %2 писем · %3</translation>
+    </message>
+    <message>
+        <source>Import finished</source>
+        <translation>Импорт завершён</translation>
+    </message>
+    <message>
+        <source>Import stopped</source>
+        <translation>Импорт остановлен</translation>
+    </message>
+    <message>
+        <source>Import failed</source>
+        <translation>Импорт не удался</translation>
+    </message>
+    <message>
+        <source>Letters added: %1</source>
+        <translation>Добавлено писем: %1</translation>
+    </message>
+    <message>
+        <source>Letters already here: %1</source>
+        <translation>Писем уже было здесь: %1</translation>
+    </message>
+    <message>
+        <source>Chat messages added: %1</source>
+        <translation>Добавлено сообщений чата: %1</translation>
+    </message>
+    <message>
+        <source>Chat messages already here: %1</source>
+        <translation>Сообщений чата уже было здесь: %1</translation>
+    </message>
+    <message>
+        <source>Deleted chat messages left out: %1</source>
+        <translation>Удалённых сообщений чата пропущено: %1</translation>
+    </message>
+    <message>
+        <source>Identities and chans added: %1</source>
+        <translation>Добавлено идентичностей и каналов: %1</translation>
+    </message>
+    <message>
+        <source>Identities already in the vault: %1</source>
+        <translation>Идентичностей уже в хранилище: %1</translation>
+    </message>
+    <message>
+        <source>Contacts added: %1</source>
+        <translation>Добавлено контактов: %1</translation>
+    </message>
+    <message>
+        <source>Subscriptions added: %1</source>
+        <translation>Добавлено подписок: %1</translation>
+    </message>
+    <message>
+        <source>Unsent letters kept as drafts: %1</source>
+        <translation>Неотправленных писем сохранено как черновики: %1</translation>
+    </message>
+    <message>
+        <source>Identities that could not be used: %1</source>
+        <translation>Идентичностей, которые не удалось использовать: %1</translation>
+    </message>
+    <message>
+        <source>You stopped the import. What was imported stays; run it again to carry on.</source>
+        <translation>Вы остановили импорт. Уже импортированное остаётся; запустите импорт снова, чтобы продолжить.</translation>
+    </message>
+    <message>
+        <source>The import could not be finished.</source>
+        <translation>Импорт не удалось завершить.</translation>
+    </message>
+    <message>
+        <source>Your node now looks for letters to the new identities in the objects it holds; they may take a moment to appear.</source>
+        <translation>Ваш узел теперь ищет письма для новых идентичностей среди хранимых объектов; они могут появиться не сразу.</translation>
+    </message>
+    <message>
+        <source>Your mailbox or vault could not be written to.</source>
+        <translation>Не удалось записать данные в ваш почтовый ящик или хранилище.</translation>
     </message>
 </context>
 <context>

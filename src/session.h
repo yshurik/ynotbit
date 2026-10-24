@@ -56,6 +56,7 @@ class Session : public QObject {
     QTimer timer_;
     std::unique_ptr<QLockFile> nodeLock_, vaultLock_, mailLock_;
     bool busy_ = false;
+    bool importing_ = false;
     bool offline_ = false;
     QString nodeError_;         // why the node last stopped, shown in status()
     quint16 listenPort_ = 8444; // the node's actual listen port, from status.json
@@ -208,6 +209,20 @@ class Session : public QObject {
     // must be the address the phrase makes.
     bool joinChannel(QString phrase, const QString &name, const QString &expected);
     Q_INVOKABLE void importIdentities();
+    // The vault and the mailbox as the core works on them, for the import of another client's data.
+    bmc::Vault &coreVault() {
+        return *vaultCore_;
+    }
+    bmc::Mailbox &coreMailbox() {
+        return *mailboxCore_;
+    }
+    // While an import runs the scan of the node's objects waits: the import stores letters with the
+    // date and read state they had, and then starts the scan over for the identities that came in,
+    // which must not get to the same letters first. Ending it shows what the import stored.
+    void setImporting(bool on);
+    bool importing() const {
+        return importing_;
+    }
     Q_INVOKABLE void changePassword();
     Q_INVOKABLE void backup();
     Q_INVOKABLE void saveDraft(QString recipient, QString subject, QString body);

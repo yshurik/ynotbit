@@ -1,5 +1,6 @@
 #include "desktop_window.h"
 #include "app_badge.h"
+#include "pybm_import_dialog.h"
 #include "rail_badge.h"
 #include "settings_pane.h"
 #include "new_vault_dialog.h"
@@ -2709,6 +2710,9 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     closeMailboxAction_ = file->addAction(tr("Close mailbox"), &session_, &Session::closeMailbox);
     closeMailboxAction_->setObjectName("closeMailboxAction");
     file->addSeparator();
+    importPyBitmessageAction_ =
+        file->addAction(tr("Import PyBitmessage data…"), this, &DesktopWindow::importPyBitmessage);
+    importPyBitmessageAction_->setObjectName("importPyBitmessageAction");
     backupAction_ = file->addAction(tr("Back up mailbox and vault…"), &session_, &Session::backup);
     backupAction_->setObjectName("backupAction");
     auto settingsAction = file->addAction(tr("Settings…"), QKeySequence(Qt::CTRL | Qt::Key_Comma),
@@ -2969,6 +2973,8 @@ void DesktopWindow::updateTheme() {
         refreshIdentities(); // the cards' icons and action groups
 }
 void DesktopWindow::updateState() {
+    updateFileMenu(); // first: a mailbox that opens must not leave its items grey until the next
+                      // tick
     // A mailbox opens on Subscriptions with the digest selected (the first
     // sender instead, if the digest was unsubscribed).
     if (session_.mailboxOpen())
@@ -2982,7 +2988,6 @@ void DesktopWindow::updateState() {
         }
     setWindowTitle(session_.document() + " — ynotbit");
     updateTray();
-    updateFileMenu();
     AppBadge::set(session_.unreadTotal()); // on the Dock, taskbar or launcher icon
     error_->setText(session_.error());
     error_->setVisible(!session_.error().isEmpty());
@@ -3625,6 +3630,8 @@ void DesktopWindow::updateFileMenu() {
     openMailboxAction_->setEnabled(vault);
     recentMailboxesMenu_->menuAction()->setEnabled(vault);
     closeMailboxAction_->setEnabled(mailbox);
+    importPyBitmessageAction_->setEnabled(
+        vault && mailbox); // identities go to the vault, letters to the mailbox
     backupAction_->setEnabled(mailbox);
     // A list is filled again only when the session's has changed.
     if (const auto recent = session_.recentVaults();
@@ -3639,6 +3646,11 @@ void DesktopWindow::updateFileMenu() {
         fillRecentMenu(recentMailboxesMenu_, recent, tr("No recent mailboxes"),
                        [this](const QString &path) { session_.openMailboxAt(path); });
     }
+}
+void DesktopWindow::importPyBitmessage() {
+    PyBitmessageImportDialog dialog(session_, PyBitmessageImportDialog::defaultFolders(), this);
+    dialog.setWindowModality(Qt::WindowModal); // a sheet on macOS
+    dialog.exec();
 }
 void DesktopWindow::fillRecentMenu(QMenu *menu, const QVariantList &recent, const QString &none,
                                    const std::function<void(const QString &)> &open) {

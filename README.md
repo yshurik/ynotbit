@@ -81,6 +81,16 @@ the window quits, as before. Starting ynotbit again shows the window of the one 
 alone cannot recover its encryption key. Changing a password does not invalidate
 old vault copies or backups. Import preserves the original plaintext `keys.dat`.
 
+**File → Import PyBitmessage data…** brings the identities, chans, address book,
+subscriptions and letters of a PyBitmessage installation into the open vault and mailbox. It
+looks in PyBitmessage's usual folder (`~/Library/Application Support/PyBitmessage` on macOS,
+`%APPDATA%\PyBitmessage` on Windows, `~/.config/PyBitmessage` on Linux) or you choose the
+folder, shows what it holds, and imports with a progress bar and the time left. Letters keep
+their dates and whether they were read; letters PyBitmessage had not sent yet become drafts,
+and nothing is sent. PyBitmessage's files are only read, so it can keep running, and running
+the import again adds only what is missing. Network data, saved public keys, the blacklist and
+the whitelist are not imported.
+
 ## Features
 
 - Portable vault: Argon2id (64 MiB, 3 passes) and XChaCha20-Poly1305; guarded key
