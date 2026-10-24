@@ -51,6 +51,18 @@ A chat has no folder to be deleted into, so one in PyBitmessage's trash is count
 A letter with no usable date is dated 1970 and counted. A row in a folder PyBitmessage itself never
 lists is not imported. Network data, cached public keys, blacklist and whitelist are not imported.
 
+## People in the letters
+
+The people the letters came from or went to are known to the user, so when an import ends they join
+the address book, the way the catch-up migrations of an older mailbox put them there (the Sent
+recipients and the Inbox senders): named from their address, one that is in the book already keeps
+its name, and the vault's own identities and chans are left out. What counts is what the import
+stored: who wrote the letters that went into the Inbox, and whom the letters that went into Sent
+were sent to (`Report::people`, from the letters `Mailbox::importLetters` says it stored). Posts,
+broadcasts, deleted letters, drafts, chats and letters that were here already add no one, so
+running the import again adds no one, and a contact the user deleted since does not come back; a
+run that was stopped adds the people of what it stored. The result page says how many joined.
+
 ## No duplicates
 
 Adding identities makes the scan read the node's retained objects again (90 days by default), so

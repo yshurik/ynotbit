@@ -193,6 +193,12 @@ QStringList Mailbox::channelAddresses(const QString &folder) const {
         addresses << bridge::fromStd(a);
     return addresses;
 }
+QStringList Mailbox::senders(const QString &folder) const {
+    QStringList addresses;
+    for (const auto &a : core_->senders(bridge::toStd(folder)))
+        addresses << bridge::fromStd(a);
+    return addresses;
+}
 bool Mailbox::channelUnread(const QString &recipient, const QString &folder) const {
     return core_->channelUnread(bridge::toStd(recipient), bridge::toStd(folder));
 }

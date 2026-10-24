@@ -293,15 +293,26 @@ struct Importer::State {
     void store(std::map<std::string, std::vector<ImportedLetter>> &byFolder,
                const std::vector<ImportedChat> &chats) {
         Mailbox::Batch batch(mailbox);
+        std::set<std::string> people;
         for (auto &[folder, letters] : byFolder) {
-            const auto counts = mailbox.importLetters(letters);
+            std::vector<size_t> stored;
+            const auto counts = mailbox.importLetters(letters, &stored);
             counter(folder).added += counts.added;
             counter(folder).present += counts.present;
+            // The people the user knows from the letters that came in: who wrote those of the
+            // Inbox, whom those of Sent went to.
+            if (folder == "Inbox" || folder == "Sent")
+                for (const auto at : stored)
+                    if (const auto &who =
+                            folder == "Inbox" ? letters[at].sender : letters[at].recipient;
+                        !who.empty())
+                        people.insert(who);
         }
         const auto counts = mailbox.importChats(chats);
         report.chats.added += counts.added;
         report.chats.present += counts.present;
         batch.commit();
+        report.people.insert(people.begin(), people.end()); // not before the letters are kept
     }
 
     void inbox() {

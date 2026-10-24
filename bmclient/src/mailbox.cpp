@@ -348,6 +348,16 @@ std::vector<std::string> Mailbox::channelAddresses(const std::string &folder) co
     return result;
 }
 
+std::vector<std::string> Mailbox::senders(const std::string &folder) const {
+    Statement s(db_, "SELECT DISTINCT sender FROM messages WHERE folder=? AND sender<>'' "
+                     "ORDER BY sender");
+    s.text(1, folder);
+    std::vector<std::string> result;
+    while (s.row())
+        result.push_back(s.text(0));
+    return result;
+}
+
 bool Mailbox::channelUnread(const std::string &recipient, const std::string &folder) const {
     Statement s(db_, "SELECT 1 FROM messages WHERE folder=? AND recipient=? AND unread<>0 LIMIT 1");
     s.text(1, folder);
@@ -1008,8 +1018,11 @@ std::string letterFingerprint(std::string_view sender, std::string_view recipien
     return std::string(digest.begin(), digest.end());
 }
 
-ImportCounts Mailbox::importLetters(const std::vector<ImportedLetter> &letters) {
+ImportCounts Mailbox::importLetters(const std::vector<ImportedLetter> &letters,
+                                    std::vector<size_t> *added) {
     ImportCounts counts;
+    if (added)
+        added->clear();
     static const char *const folders[] = {"Inbox",  "Channels", "Broadcasts", "Sent",
                                           "Drafts", "Trash",    "Archive"};
     for (const auto &l : letters) {
@@ -1028,7 +1041,8 @@ ImportCounts Mailbox::importLetters(const std::vector<ImportedLetter> &letters) 
                               "folder,received,unread,previous_folder,object_hash) "
                               "VALUES(?,?,?,?,?,?,?,?,?,?)");
         Statement kind(db_, "INSERT OR IGNORE INTO settings(name,value) VALUES(?,'broadcast')");
-        for (const auto &l : letters) {
+        for (size_t at = 0; at < letters.size(); ++at) {
+            const auto &l = letters[at];
             insert.reset();
             insert.text(1, l.id);
             insert.text(2, l.sender);
@@ -1048,6 +1062,8 @@ ImportCounts Mailbox::importLetters(const std::vector<ImportedLetter> &letters) 
                 continue;
             }
             ++counts.added;
+            if (added)
+                added->push_back(at);
             if (l.broadcast) {
                 kind.reset();
                 kind.text(1, "draftkind:" + l.id);

@@ -87,6 +87,8 @@ static QString documentsPath() {
 }
 // The mailbox setting that says the Sent folder is in the address book (addSentRecipients).
 static const QString kSentRecipientsSetting = "migrated:sent-recipients";
+// The same for the senders of the Inbox (addInboxSenders).
+static const QString kInboxSendersSetting = "migrated:inbox-senders";
 // The mailbox setting that says the import of PyBitmessage's data has been dealt with: an import
 // finished, or the user asked not to be offered it again. While it is not there, the import is
 // offered each time the mailbox opens.
@@ -410,6 +412,7 @@ void Session::createMailbox() {
             auto id = vault_.addMailboxKey();
             mailbox_.create(p, id, vault_.mailboxKey(id));
             mailbox_.setSetting(kSentRecipientsSetting, "1"); // nothing was sent yet to add
+            mailbox_.setSetting(kInboxSendersSetting, "1");   // nor received
             // A new mailbox starts with the built-in subscriptions and contacts, not at its next
             // opening.
             try {
@@ -465,6 +468,11 @@ void Session::openMailboxPath(const QString &p) {
                 addSentRecipients();
             } catch (...) {
                 // Nor are the people written to; the next opening tries again.
+            }
+            try {
+                addInboxSenders();
+            } catch (...) {
+                // Nor are the people who wrote; the next opening tries again.
             }
             // ynotbit opens on the first built-in subscription: the digest.
             if (const auto defaults = updates::defaultSubscriptions(); !defaults.isEmpty())
@@ -1090,33 +1098,68 @@ void Session::seedContacts() {
     }
     batch.commit();
 }
+// What the two catch-up migrations leave out of the address book: those in it already, and the
+// vault's own identities and chans.
+static QSet<QString> addressesNotToAdd(const Mailbox &mailbox, const Vault &vault) {
+    QSet<QString> known;
+    for (const auto &c : mailbox.contacts())
+        known << c.address;
+    for (const auto &i : vault.identities())
+        known << i.address;
+    return known;
+}
+// Adds an address to the book, named from itself, unless it is known already or is no address;
+// whether it was added.
+static bool addToBook(Mailbox &mailbox, QSet<QString> &known, const QString &written) {
+    const auto address = written.trimmed();
+    if (known.contains(address) || !Wire::validAddress(address))
+        return false;
+    known << address;
+    const auto name = addressTitle(address);
+    mailbox.saveContact(address, name.isEmpty() ? address : name);
+    return true;
+}
 void Session::addSentRecipients() {
     if (!mailbox_.setting(kSentRecipientsSetting).isEmpty())
         return;
-    // Not for those already in the book, nor the vault's own identities and chans.
-    QSet<QString> known;
-    for (const auto &c : mailbox_.contacts())
-        known << c.address;
-    for (const auto &i : vault_.identities())
-        known << i.address;
+    auto known = addressesNotToAdd(mailbox_, vault_);
     Mailbox::Batch batch(mailbox_); // one commit, however many are added
     // Sent, newest first, a page at a time: a long folder is not held whole.
     constexpr int kPage = 500;
     for (int offset = 0;; offset += kPage) {
         const auto page = mailbox_.messageSummaries("Sent", {}, offset, kPage);
-        for (const auto &letter : page) {
-            const auto address = letter.to.trimmed();
-            if (known.contains(address) || !Wire::validAddress(address))
-                continue;
-            known << address;
-            const auto name = addressTitle(address);
-            mailbox_.saveContact(address, name.isEmpty() ? address : name);
-        }
+        for (const auto &letter : page)
+            addToBook(mailbox_, known, letter.to);
         if (page.size() < kPage)
             break;
     }
     mailbox_.setSetting(kSentRecipientsSetting, "1");
     batch.commit();
+}
+void Session::addInboxSenders() {
+    if (!mailbox_.setting(kInboxSendersSetting).isEmpty())
+        return;
+    auto known = addressesNotToAdd(mailbox_, vault_);
+    Mailbox::Batch batch(mailbox_); // one commit, however many are added
+    for (const auto &sender : mailbox_.senders("Inbox"))
+        addToBook(mailbox_, known, sender);
+    mailbox_.setSetting(kInboxSendersSetting, "1");
+    batch.commit();
+}
+int Session::addToAddressBook(const QStringList &addresses) {
+    if (!mailboxOpen())
+        return 0;
+    int added = 0;
+    try {
+        auto known = addressesNotToAdd(mailbox_, vault_);
+        Mailbox::Batch batch(mailbox_); // one commit, however many are added
+        for (const auto &address : addresses)
+            added += addToBook(mailbox_, known, address);
+        batch.commit();
+    } catch (...) {
+        return 0; // nothing was kept, and the people can be added by hand
+    }
+    return added;
 }
 QVariantList Session::broadcastSources() const {
     QMap<QString, QVariantMap> sources;

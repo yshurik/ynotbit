@@ -76,6 +76,10 @@ struct Report {
     int64_t withoutDate = 0;           // letters that came with no usable date (dated 1970)
     int64_t left = 0;                  // rows not read because of the options
     std::vector<IdentityImport> identities;
+    // Who wrote the letters this run added to the Inbox and whom the letters it added to Sent went
+    // to, each once, in order of address: the people the user knows from them, for the address
+    // book. Letters that were here already do not count.
+    std::set<std::string> people;
     bool keysEncrypted = false;
     bool keysUnreadable = false; // keys.dat is there and could not be read: no identity came in
     bool cancelled = false;

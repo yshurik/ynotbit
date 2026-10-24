@@ -64,6 +64,7 @@ class PyBitmessageImportDialog : public QDialog {
     bmc::pybm::Estimator estimator_;
     QElapsedTimer clock_;
     int chunk_ = 0, budgetMs_ = 60, pauseMs_ = 0;
+    int peopleAdded_ = 0; // joined the address book from the letters
     bool finished_ = false, stopping_ = false;
     QString shownFolder_;
 };

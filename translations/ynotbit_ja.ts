@@ -1792,6 +1792,10 @@ Date: %1
         <translation>追加した連絡先: %1</translation>
     </message>
     <message>
+        <source>Contacts added from the letters: %1</source>
+        <translation>メールから追加した連絡先: %1</translation>
+    </message>
+    <message>
         <source>Subscriptions added: %1</source>
         <translation>追加した購読: %1</translation>
     </message>

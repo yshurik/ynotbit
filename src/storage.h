@@ -192,6 +192,8 @@ class Mailbox {
     // Broadcasts: the subscribed sender), and whether one has unread letters.
     QStringList channelAddresses(const QString &folder = "Channels") const;
     bool channelUnread(const QString &recipient, const QString &folder = "Channels") const;
+    // The addresses the letters of a folder came from, each once, in order of address.
+    QStringList senders(const QString &folder) const;
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     quint64 messageRevision() const {
         return core_->messageRevision();

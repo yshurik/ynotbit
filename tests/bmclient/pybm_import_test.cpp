@@ -326,6 +326,33 @@ TEST(running_an_import_again_adds_nothing) {
     CHECK_EQ(c.vault.identities().size(), size_t(4));
 }
 
+TEST(the_people_in_the_letters_an_import_added_are_reported) {
+    Case c;
+    // Everything BM-bbb wrote is here already.
+    c.mailbox.store(idOf(2), "BM-bbb", c.me.address, "d2", "body of d2", -1);
+    c.mailbox.store(idOf(3), "BM-bbb", c.me.address, "d3", "body of d3", -1);
+    // One who wrote only to the Inbox, one deleted over there, one written to who got the letter,
+    // one that never did.
+    c.source.inbox(rawHash(32), c.me.address, "BM-inboxonly", "i9", "1700001650", "body", "inbox",
+                   false);
+    c.source.inbox(rawHash(30), c.me.address, "BM-trashonly", "t3", "1700001600", "body", "trash",
+                   true);
+    c.source.sent(rawHash(31), "BM-sentonly", c.me.address, "s9", "body of s9", bmc::Bytes(38, 9),
+                  1700001700, "msgsent");
+    c.source.sent(bmc::Bytes(16, 10), "BM-draftonly", c.me.address, "u9", "body of u9",
+                  bmc::Bytes(38, 10), 1700001800, "awaitingpubkey");
+    const auto first = c.run();
+    // BM-aaa and BM-inboxonly wrote letters of the Inbox that came in, BM-sentonly was written to;
+    // not BM-bbb (here already), the chan's and the broadcaster's (posts), the deleted letter's
+    // sender, nor the one a draft was meant for.
+    CHECK_EQ(first.people.size(), size_t(3));
+    CHECK_EQ(first.people.count("BM-aaa"), size_t(1));
+    CHECK_EQ(first.people.count("BM-inboxonly"), size_t(1));
+    CHECK_EQ(first.people.count("BM-sentonly"), size_t(1));
+    // Nothing is new the second time, so no one is.
+    CHECK(c.run().people.empty());
+}
+
 TEST(a_letter_this_mailbox_has_already_is_not_brought_in_again) {
     Case c;
     // The scan stored d1 under an id of its own (a letter with an acknowledgment is keyed by what

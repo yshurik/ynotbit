@@ -254,6 +254,27 @@ TEST(importing_again_adds_only_what_is_missing) {
     CHECK_EQ(third.present, 1);
 }
 
+TEST(importing_letters_says_which_of_them_were_stored) {
+    Mailbox m;
+    m.create(newPath(), "key-1", key32());
+    CHECK_EQ(m.importLetters({letter("in-1", "Inbox", "BM-a", "BM-me", 100, true)}).added, 1);
+    // Of these three, one is here already.
+    const std::vector<ImportedLetter> batch = {
+        letter("in-0", "Inbox", "BM-b", "BM-me", 50, true),
+        letter("in-1", "Inbox", "BM-a", "BM-me", 100, true),
+        letter("out-2", "Sent", "BM-me", "BM-c", 200, false)};
+    std::vector<size_t> stored;
+    CHECK_EQ(m.importLetters(batch, &stored).added, 2);
+    CHECK_EQ(stored.size(), size_t(2)); // the positions in the batch, in its order
+    CHECK_EQ(stored.front(), size_t(0));
+    CHECK_EQ(stored.back(), size_t(2));
+    // Not asked, nothing is said; asked about letters that are all here, the answer is empty.
+    CHECK_EQ(m.importLetters(batch).present, 3);
+    std::vector<size_t> none = {7};
+    m.importLetters(batch, &none);
+    CHECK(none.empty());
+}
+
 TEST(a_bad_letter_in_a_batch_leaves_the_whole_batch_out) {
     Mailbox m;
     m.create(newPath(), "key-1", key32());

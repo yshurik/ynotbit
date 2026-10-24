@@ -1792,6 +1792,10 @@ Date: %1
         <translation>Додано контактів: %1</translation>
     </message>
     <message>
+        <source>Contacts added from the letters: %1</source>
+        <translation>Додано контактів із листів: %1</translation>
+    </message>
+    <message>
         <source>Subscriptions added: %1</source>
         <translation>Додано підписок: %1</translation>
     </message>

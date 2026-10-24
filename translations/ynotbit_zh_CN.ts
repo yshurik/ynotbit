@@ -1792,6 +1792,10 @@ Date: %1
         <translation>已添加联系人：%1</translation>
     </message>
     <message>
+        <source>Contacts added from the letters: %1</source>
+        <translation>已从信件中添加联系人：%1</translation>
+    </message>
+    <message>
         <source>Subscriptions added: %1</source>
         <translation>已添加订阅：%1</translation>
     </message>

@@ -107,8 +107,9 @@ class Mailbox {
     // Letters brought in from another client: each with its own date, read state and folder. They
     // are no arrivals (no notification) and the scan checkpoint stays where it is. A letter whose
     // id or network object is here already is passed over. One transaction, or the one it is part
-    // of.
-    ImportCounts importLetters(const std::vector<ImportedLetter> &letters);
+    // of. With `added`, it is given the position in `letters` of each letter that was stored.
+    ImportCounts importLetters(const std::vector<ImportedLetter> &letters,
+                               std::vector<size_t> *added = nullptr);
     // Chat messages brought in from another client, into their conversations, each with its own
     // date and read state. No arrival: nothing is notified, nothing is queued. A message whose id
     // is here, or whose number in its conversation is (a conversation holds one message per number,
@@ -168,6 +169,9 @@ class Mailbox {
     // subscribed sender), and whether one has unread letters.
     std::vector<std::string> channelAddresses(const std::string &folder = "Channels") const;
     bool channelUnread(const std::string &recipient, const std::string &folder = "Channels") const;
+    // The addresses the letters of a folder came from, each once, in order of address; a letter
+    // with no sender adds none.
+    std::vector<std::string> senders(const std::string &folder) const;
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     uint64_t messageRevision() const {
         return messageRevision_;

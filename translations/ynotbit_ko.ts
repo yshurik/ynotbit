@@ -1792,6 +1792,10 @@ Date: %1
         <translation>추가된 연락처: %1</translation>
     </message>
     <message>
+        <source>Contacts added from the letters: %1</source>
+        <translation>편지에서 추가된 연락처: %1</translation>
+    </message>
+    <message>
         <source>Subscriptions added: %1</source>
         <translation>추가된 구독: %1</translation>
     </message>

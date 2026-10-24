@@ -1350,6 +1350,127 @@ static void testPyBitmessageOffer(const QTemporaryDir &temp) {
         require(own.pyBitmessageImportSettled(), "an import that finishes marks the mailbox");
     }
 }
+// The people met in the letters an import brings in join the address book, as they do for a mailbox
+// from before the address book was filled: named from their address, a name already given stays,
+// the vault's own are left out. What is added is what the import stored, so a second import with
+// no new letters adds no one, and a contact deleted since stays deleted.
+static void testPyBitmessageImportAddsPeople(const QTemporaryDir &temp) {
+    using Dialog = bm::PyBitmessageImportDialog;
+    const auto vaultFile = temp.filePath("people.bmvault"),
+               boxFile = temp.filePath("people.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("people-node"));
+    {
+        QSettings config(temp.filePath("people-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    const auto me = bmc::Protocol::identity("me"); // comes in with the keys
+    const auto ann = bmc::Protocol::identity("Ann who wrote").address,
+               ben = bmc::Protocol::identity("Ben written to").address,
+               cy = bmc::Protocol::identity("Cy deleted over there").address,
+               dee = bmc::Protocol::identity("Dee in both books").address,
+               eve = bmc::Protocol::identity("Eve who writes later").address,
+               fay = bmc::Protocol::identity("Fay of the long import").address;
+    pybmfix::Folder source;
+    source.keys(pybmfix::kSettings + pybmfix::section(me, "Me"));
+    source.inbox(pybmfix::rawHash(1), me.address, ann, "From Ann", "1700000100", "body", "inbox",
+                 false);
+    source.inbox(pybmfix::rawHash(2), me.address, ann, "From Ann again", "1700000200", "body",
+                 "inbox", true);
+    source.inbox(pybmfix::rawHash(3), me.address, dee, "From Dee", "1700000300", "body", "inbox",
+                 true);
+    source.inbox(pybmfix::rawHash(4), me.address, me.address, "A note to self", "1700000350",
+                 "body", "inbox", true);
+    source.inbox(pybmfix::rawHash(5), me.address, cy, "Deleted", "1700000400", "body", "trash",
+                 true);
+    source.sent(pybmfix::rawHash(6), ben, me.address, "To Ben", "body", bmc::Bytes(38, 1),
+                1700000500, "msgsent");
+    source.contact("Dee from PyBitmessage", dee);
+    const auto sourceDir = QString::fromStdString(source.dir);
+
+    bm::Session own(temp.filePath("people-node"), true);
+    own.beginVaultUnlock();
+    own.submitVaultPassword("test password");
+    require(own.mailboxOpen(), "test sanity: the mailbox opens");
+    const auto book = [&] {
+        QMap<QString, QString> names;
+        for (const auto &c : own.contacts())
+            names[c.toMap()["address"].toString()] = c.toMap()["label"].toString();
+        return names;
+    };
+    // Runs an import to its end, and says what its result page said.
+    const auto importFrom = [&](const QString &dir) {
+        Dialog dialog(own, {dir});
+        dialog.show();
+        QCoreApplication::processEvents();
+        dialog.findChild<QPushButton *>("pybmImportButton")->click();
+        auto title = dialog.findChild<QLabel *>("pybmResultTitle");
+        require(QTest::qWaitFor([&] { return title->isVisible(); }, 15000),
+                "test sanity: the import ends");
+        return dialog.findChild<QLabel *>("pybmResultText")->text();
+    };
+    const auto q = [](const std::string &address) { return QString::fromStdString(address); };
+    const auto line = [](int n) {
+        return Dialog::tr("Contacts added from the letters: %1").arg(n);
+    };
+
+    auto expected = book(); // what a mailbox starts with
+    const auto first = importFrom(sourceDir);
+    expected[q(ann)] = bm::addressTitle(q(ann));
+    expected[q(ben)] = bm::addressTitle(q(ben));
+    expected[q(dee)] = "Dee from PyBitmessage";
+    require(book() == expected,
+            "the people the letters came from or went to join the address book, named from their "
+            "address: Ann wrote and Ben was written to; Dee keeps the name PyBitmessage gave her; "
+            "not the identity that came in, nor Cy, whose letter was deleted over there");
+    require(first.contains(line(2)), "and the result says how many joined");
+
+    // A second import has no new letters, so no new people: Ann, deleted since, stays out.
+    own.removeContact(q(ann));
+    const auto second = importFrom(sourceDir);
+    require(!own.isContact(q(ann)) &&
+                !second.contains(Dialog::tr("Contacts added from the letters")),
+            "a second import adds no one: a contact deleted since is not added again");
+
+    // A letter that comes in with a later import brings its sender, and only the new ones.
+    source.inbox(pybmfix::rawHash(7), me.address, eve, "From Eve", "1700000600", "body", "inbox",
+                 false);
+    const auto third = importFrom(sourceDir);
+    require(own.isContact(q(eve)) && !own.isContact(q(ann)) && third.contains(line(1)),
+            "a later import brings the sender of its new letters, and no one else");
+
+    // A stopped import has stored letters, and their people join the book all the same.
+    pybmfix::Folder many;
+    many.keys(pybmfix::kSettings);
+    for (int i = 0; i < 100; ++i)
+        many.inbox(pybmfix::rawHash(400 + i), me.address, fay, "many " + std::to_string(i),
+                   std::to_string(1700001000 + i), "body", "inbox", true);
+    Dialog slow(own, {QString::fromStdString(many.dir)});
+    slow.setPaceForTesting(2, 30);
+    slow.show();
+    QCoreApplication::processEvents();
+    slow.findChild<QPushButton *>("pybmImportButton")->click();
+    auto bar = slow.findChild<QProgressBar *>("pybmProgressBar");
+    require(bar && QTest::qWaitFor([&] { return bar->value() > 0 && bar->maximum() > 0; }, 10000),
+            "test sanity: the slow import goes");
+    slow.findChild<QPushButton *>("pybmStopButton")->click();
+    auto title = slow.findChild<QLabel *>("pybmResultTitle");
+    require(QTest::qWaitFor([&] { return title->isVisible(); }, 10000) &&
+                title->text() == Dialog::tr("Import stopped"),
+            "test sanity: it is stopped");
+    require(own.isContact(q(fay)) &&
+                slow.findChild<QLabel *>("pybmResultText")->text().contains(line(1)),
+            "what a stopped import stored brings its people, and the result says so");
+}
 int main(int argc, char **argv) {
     // Unbuffered: a run that hangs and is killed by ctest still shows how far it got.
     std::cout << std::unitbuf;
@@ -5624,15 +5745,24 @@ int main(int argc, char **argv) {
         }
         {
             // A mailbox from before the address book was filled: its Sent folder is the only
-            // record of whom the user wrote to. Opening it adds them once, each named from its
-            // address.
+            // record of whom the user wrote to, and its Inbox of who wrote to them. Opening it
+            // adds them once, each named from its address.
             const auto vaultFile = temp.filePath("sent-vault.bmvault");
             const auto mailboxFile = temp.filePath("sent-mailbox.bmmail");
+            const auto laterFile = temp.filePath("sent-later.bmmail");
             const auto dora = bm::Protocol::identity("Dora written to").address;
             const auto erin = bm::Protocol::identity("Erin written to").address;
             const auto frank = bm::Protocol::identity("Frank who wrote").address;
             const auto gina = bm::Protocol::identity("Gina in the archive").address;
             const auto hana = bm::Protocol::identity("Hana written to later").address;
+            const auto ivan = bm::Protocol::identity("Ivan who wrote twice").address;
+            const auto jack = bm::Protocol::identity("Jack on a channel").address;
+            const auto kim = bm::Protocol::identity("Kim broadcasting").address;
+            const auto lena = bm::Protocol::identity("Lena in the trash").address;
+            const auto mona = bm::Protocol::identity("Mona in the archive").address;
+            const auto nora = bm::Protocol::identity("Nora written to earlier").address;
+            const auto owen = bm::Protocol::identity("Owen who wrote later").address;
+            const auto pia = bm::Protocol::identity("Pia who wrote later still").address;
             bm::Vault made;
             made.create(vaultFile, "test password");
             const auto mine = made.addIdentity("Mine");
@@ -5649,7 +5779,27 @@ int main(int argc, char **argv) {
                 box.store("s6", mine, "BM-not-an-address", "Lost", "hi", 6, "Sent");
                 box.store("a1", mine, gina, "Archived", "hi", 7, "Archive");
                 box.store("i1", frank, mine, "From Frank", "hi", 8, "Inbox");
+                box.store("i2", ivan, mine, "From Ivan", "hi", 10, "Inbox");
+                box.store("i3", ivan, mine, "Ivan again", "hi", 11, "Inbox");
+                box.store("i4", mine, mine, "A note to self", "hi", 12, "Inbox");
+                box.store("i5", chan, mine, "From my chan", "hi", 13, "Inbox");
+                box.store("i6", "BM-not-an-address", mine, "Lost", "hi", 14, "Inbox");
+                box.store("i7", erin, mine, "From Erin", "hi", 15, "Inbox");
+                box.store("c1", jack, chan, "On a channel", "hi", 16, "Channels");
+                box.store("b1", kim, kim, "A broadcast", "hi", 17, "Broadcasts");
+                box.store("t1", lena, mine, "Deleted", "hi", 18, "Trash");
+                box.store("a2", mona, mine, "Kept", "hi", 19, "Archive");
                 box.saveContact(erin, "Erin E.");
+            }
+            {
+                // An earlier release put the Sent recipients of this one in its book; its Inbox
+                // senders it never did.
+                const auto key = made.addMailboxKey();
+                bm::Mailbox box;
+                box.create(laterFile, key, made.mailboxKey(key));
+                box.setSetting("migrated:sent-recipients", "1");
+                box.store("s1", mine, nora, "Hello Nora", "hi", 1, "Sent");
+                box.store("i1", owen, mine, "From Owen", "hi", 2, "Inbox");
             }
             made.lock();
             QDir().mkpath(temp.filePath("sent-node"));
@@ -5669,14 +5819,24 @@ int main(int argc, char **argv) {
                 return names;
             };
             require(book() == QMap<QString, QString>({{dora, bm::addressTitle(dora)},
-                                                      {erin, "Erin E."}}),
-                    "opening adds each address a letter was sent to, once, named from the "
-                    "address; no own address, chan, bad address or letter outside Sent, and "
-                    "a name already given stays");
+                                                      {erin, "Erin E."},
+                                                      {frank, bm::addressTitle(frank)},
+                                                      {ivan, bm::addressTitle(ivan)}}),
+                    "opening adds each address a letter was sent to and each one that wrote to "
+                    "an identity, once, named from the address; no own address, chan or bad "
+                    "address, no sender outside the Inbox (channel, broadcast, trash, archive), "
+                    "and a name already given stays");
             legacy.removeContact(dora);
+            legacy.removeContact(frank);
             legacy.openMailboxAt(mailboxFile);
-            require(legacy.mailboxOpen() && !legacy.isContact(dora) && legacy.isContact(erin),
-                    "a contact deleted later is not added again: the migration runs once");
+            require(legacy.mailboxOpen() && !legacy.isContact(dora) && !legacy.isContact(frank) &&
+                        legacy.isContact(erin),
+                    "a contact deleted later is not added again: each migration runs once");
+            legacy.openMailboxAt(laterFile);
+            require(legacy.mailboxOpen() &&
+                        book() == QMap<QString, QString>({{owen, bm::addressTitle(owen)}}),
+                    "a mailbox that had its Sent recipients added earlier gets its Inbox senders "
+                    "now, and only those: each migration has a flag of its own");
             // A mailbox made now has nothing to catch up on: whom it writes to later stays
             // out of the book until the user adds them.
             const auto madeNow = temp.filePath("sent-made-now.bmmail");
@@ -5706,10 +5866,12 @@ int main(int argc, char **argv) {
                 }
                 require(box.isOpen(), "the new mailbox opens with one of the vault's keys");
                 box.store("n1", mine, hana, "Hello Hana", "hi", 9, "Sent");
+                box.store("n2", pia, mine, "Hello from Pia", "hi", 10, "Inbox");
             }
             legacy.openMailboxAt(madeNow);
             require(legacy.mailboxOpen() && legacy.contacts().isEmpty(),
-                    "a mailbox made now is not migrated when it is next opened");
+                    "a mailbox made now is not migrated when it is next opened: neither whom it "
+                    "wrote to nor who wrote to it later");
         }
         {
             // The echo bot is every mailbox's first contact, once: /echobot by nickname and by
@@ -6256,6 +6418,7 @@ int main(int argc, char **argv) {
         testRailBadges(temp);
         testPyBitmessageImport(temp);
         testPyBitmessageOffer(temp);
+        testPyBitmessageImportAddsPeople(temp);
         require(session.portMapper().state() == bm::PortMapper::State::Off,
                 "an offline session never talks to the router");
         {

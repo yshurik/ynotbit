@@ -528,6 +528,14 @@ void PyBitmessageImportDialog::finish() {
     line(tr("Identities and chans added: %1"), identitiesAdded);
     line(tr("Identities already in the vault: %1"), identitiesPresent);
     line(tr("Contacts added: %1"), r.contacts.added);
+    // The people the letters that came in were written by or sent to are known to the user: they
+    // join the address book as they do for a mailbox from before the book was filled. What the
+    // import stored is what counts, so one that was stopped brings its people too.
+    QStringList people;
+    for (const auto &address : r.people)
+        people << bridge::fromStd(address);
+    peopleAdded_ = session_.addToAddressBook(people);
+    line(tr("Contacts added from the letters: %1"), peopleAdded_);
     line(tr("Subscriptions added: %1"), r.subscriptions.added);
     line(tr("Unsent letters kept as drafts: %1"), r.drafts.added);
     if (unusable > 0) {
@@ -591,6 +599,7 @@ QString PyBitmessageImportDialog::details() const {
                .arg(int(r.trouble))
                .arg(bridge::fromStd(r.detail));
     out << "Contacts: " + count(r.contacts);
+    out << QString("Contacts added to the address book from the letters: %1").arg(peopleAdded_);
     out << "Subscriptions: " + count(r.subscriptions);
     out << "Inbox: " + count(r.inbox);
     out << "Channels: " + count(r.channels);

@@ -354,6 +354,26 @@ TEST(channels_are_listed_with_their_unread_state) {
     m.close();
 }
 
+TEST(the_senders_of_a_folder_are_listed_once_each) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    m.store("hash-1", "BM-2cBob", "BM-2cMe", "One", "Body", -1, "Inbox");
+    m.store("hash-2", "BM-2cAnn", "BM-2cMe", "Two", "Body", -1, "Inbox");
+    m.store("hash-3", "BM-2cBob", "BM-2cMe", "Three", "Body", -1, "Inbox");
+    m.store("hash-4", "", "BM-2cMe", "Nobody wrote this", "Body", -1, "Inbox");
+    m.store("hash-5", "BM-2cChan", "BM-2cChan", "On a chan", "Body", -1, "Channels");
+    const auto inbox = m.senders("Inbox");
+    CHECK_EQ(inbox.size(), size_t(2)); // each once, and none for a letter with no sender
+    CHECK_EQ(inbox.front(), std::string("BM-2cAnn")); // in order of address
+    CHECK_EQ(inbox.back(), std::string("BM-2cBob"));
+    CHECK_EQ(m.senders("Channels").size(), size_t(1)); // a folder of its own
+    CHECK_EQ(m.senders("Channels").front(), std::string("BM-2cChan"));
+    CHECK(m.senders("Sent").empty());
+    m.close();
+}
+
 TEST(a_backup_is_a_usable_mailbox) {
     const auto path = aNewMailbox();
     const auto copy = aNewMailbox("copy.bmmail");

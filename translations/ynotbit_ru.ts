@@ -1792,6 +1792,10 @@ Date: %1
         <translation>Добавлено контактов: %1</translation>
     </message>
     <message>
+        <source>Contacts added from the letters: %1</source>
+        <translation>Добавлено контактов из писем: %1</translation>
+    </message>
+    <message>
         <source>Subscriptions added: %1</source>
         <translation>Добавлено подписок: %1</translation>
     </message>

@@ -327,6 +327,14 @@ class Session : public QObject {
     // per mailbox: for those made before the book was filled this way. A mailbox made now starts
     // marked, so whom it writes to later stays out until the user adds them.
     void addSentRecipients();
+    // The same for everyone who wrote a letter in the Inbox: the user knows them. Once per
+    // mailbox, and a mailbox made now starts marked too, so whoever writes to it later stays out
+    // until the user adds them.
+    void addInboxSenders();
+    // The same, now, for people met in letters that have just come in (an import): each named from
+    // its address, unless it is in the book already, is one of the vault's own or is no address.
+    // How many were added.
+    int addToAddressBook(const QStringList &addresses);
     // Where the window opens after a mailbox opens, once per opening: the
     // Subscriptions page on the Bitmessage digest.
     QString takeWelcomeSource() {
