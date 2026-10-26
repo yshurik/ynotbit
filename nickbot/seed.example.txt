@@ -1,0 +1,18 @@
+# The operator's file of names (nickbot --seed FILE). One name a line: a nickname and, if you give
+# one, an address. With an address the name is that address's for good: nobody can take it, change
+# it or give it up. Without one the name is only kept free. A line that begins with "# " is a
+# comment; "#room" (no space) is the name of a chan.
+
+# The echo bot that ynotbit's own contacts name.
+/echobot  BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8
+
+# This nickbot's own name. Put its address here (it is on the first line of its log, "Address:"):
+# /nickbot  BM-...
+
+# Names nobody should be able to take.
+@admin
+@root
+@support
+@ynotbit
+@bitmessage
+@nickbot

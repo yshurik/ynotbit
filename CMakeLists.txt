@@ -3,6 +3,7 @@ project(ynotbit VERSION 0.7.1 LANGUAGES C CXX) # the one place the version is se
 set(CMAKE_CXX_STANDARD 20)
 # Off builds only what has no Qt: the node, bmclient and their tests (servers, containers).
 option(YNOTBIT_QT "Build the Qt app, its tools and its tests" ON)
+option(YNOTBIT_NICKBOT "Build and test nickbot, the nicknames service in Go (needs Go)" OFF)
 enable_testing()
 # The static libraries below go into libbmbot, a shared library: their code has to be position
 # independent (macOS makes it so; Linux does not, and the link fails).
@@ -141,6 +142,9 @@ if(NOT WIN32)
  include(GNUInstallDirs)
  install(TARGETS chat_responder bmnode RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
  add_subdirectory(tests/bmbot)
+ if(YNOTBIT_NICKBOT)
+  add_subdirectory(nickbot)
+ endif()
 endif()
 if(YNOTBIT_QT)
  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/qt-app.cmake)

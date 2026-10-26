@@ -249,9 +249,14 @@ jobs:
 
   core-no-qt:
     # bmclient, the part of the code bots will run, builds and tests with no Qt on the machine.
+    # nickbot, the nicknames service in Go on libbmbot, is built and tested here too.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: nickbot/go.mod
 
       - name: Install build tools
         run: |
@@ -259,8 +264,11 @@ jobs:
           sudo apt-get install -y build-essential cmake ninja-build pkg-config \
             libssl-dev libsodium-dev libsqlcipher-dev
 
+      - name: Go formatting
+        run: test -z "$(gofmt -l nickbot)"
+
       - name: Configure
-        run: cmake -S . -B build-core -G Ninja -DYNOTBIT_QT=OFF -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build-core -G Ninja -DYNOTBIT_QT=OFF -DYNOTBIT_NICKBOT=ON -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build-core
