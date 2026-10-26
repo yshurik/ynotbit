@@ -36,17 +36,17 @@ Flags of the service:
 `
 
 type options struct {
-	dataDir, phraseFile, seedFile, statusFile string
-	peer, proxy                               string
-	anonPhrase                                string
-	public, listen                            bool
-	port, retentionMB, retentionDays          int
-	maxOutgoing, maxIncoming                  int
-	hang                                      time.Duration
-	changesPerDay, newPerHour, maxNicks       int
-	check                                     string
-	maxAge                                    time.Duration
-	minPeers                                  int
+	dataDir, phraseFile, keysFile, seedFile, statusFile string
+	peer, proxy                                         string
+	anonPhrase                                          string
+	public, listen                                      bool
+	port, retentionMB, retentionDays                    int
+	maxOutgoing, maxIncoming                            int
+	hang                                                time.Duration
+	changesPerDay, newPerHour, maxNicks                 int
+	check                                               string
+	maxAge                                              time.Duration
+	minPeers                                            int
 }
 
 func parseFlags(args []string, stderr io.Writer) (*options, error) {
@@ -59,6 +59,7 @@ func parseFlags(args []string, stderr io.Writer) (*options, error) {
 	}
 	fs.StringVar(&o.dataDir, "data-dir", "/data", "where everything is kept: state/ (the bot), nickbot.sqlite, backup/, status.json")
 	fs.StringVar(&o.phraseFile, "phrase-file", "/run/secrets/phrase", "a file whose first line is the secret phrase the address comes from")
+	fs.StringVar(&o.keysFile, "keys-file", "", "instead of --phrase-file: a file with the two private keys the address is made of (signing, then encryption, one to a line; hex or wallet import format)")
 	fs.StringVar(&o.seedFile, "seed", "", "the operator's file of reserved and permanent names (optional)")
 	fs.StringVar(&o.statusFile, "status-file", "", "where to write the status every 10 seconds (default DATA/status.json)")
 	fs.StringVar(&o.anonPhrase, "anon-phrase", "anonymous", "the phrase of the chan every lookup comes from")
@@ -80,6 +81,16 @@ func parseFlags(args []string, stderr io.Writer) (*options, error) {
 	fs.IntVar(&o.minPeers, "peers", 1, "with --check: how many peers it must name")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
+	}
+	if o.keysFile != "" {
+		// The phrase file has a default; only one that was asked for is a second source.
+		asked := false
+		fs.Visit(func(f *flag.Flag) { asked = asked || f.Name == "phrase-file" })
+		if asked {
+			fmt.Fprintln(stderr, "nickbot: give --phrase-file or --keys-file, not both")
+			return nil, errors.New("both a phrase file and a keys file")
+		}
+		o.phraseFile = ""
 	}
 	if o.statusFile == "" {
 		o.statusFile = filepath.Join(o.dataDir, "status.json")
@@ -154,6 +165,7 @@ func serve(ctx context.Context, o *options, logger *log.Logger) error {
 	bot, err := bmbot.Open(bmbot.Config{
 		DataDir:     stateDir,
 		PhraseFile:  o.phraseFile,
+		KeysFile:    o.keysFile,
 		Label:       "nickbot",
 		HangSeconds: int(o.hang / time.Second),
 		Node: bmbot.Node{

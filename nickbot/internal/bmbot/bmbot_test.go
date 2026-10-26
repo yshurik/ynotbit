@@ -4,6 +4,7 @@ package bmbot
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -60,6 +61,38 @@ func TestABotWithNoNodeOpensAnswersAndCloses(t *testing.T) {
 	}
 	if err := b.Done("x"); err == nil {
 		t.Error("Done on a closed bot had no error")
+	}
+}
+
+func TestABotOpensFromAKeysFileAndKeepsItsAddress(t *testing.T) {
+	// Two private keys, one to a line: the address is theirs, and no phrase made it.
+	keys := filepath.Join(t.TempDir(), "keys")
+	text := "# a made-up pair\n" + strings.Repeat("11", 32) + "\n" + strings.Repeat("22", 32) + "\n"
+	if err := os.WriteFile(keys, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "bot")
+	open := func() string {
+		b, err := Open(Config{DataDir: dir, KeysFile: keys, Node: Node{Bin: ""}, StepMs: 20})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer b.Close()
+		st, err := b.Status()
+		if err != nil || !strings.HasPrefix(st.Address, "BM-") {
+			t.Fatalf("status = %+v, %v", st, err)
+		}
+		return st.Address
+	}
+	first := open()
+	if again := open(); again != first {
+		t.Errorf("the address changed on the second open: %s, then %s", first, again)
+	}
+	// A phrase as well is a mistake, and a permanent one.
+	_, err := Open(Config{DataDir: dir, KeysFile: keys, Phrase: "and a phrase", Node: Node{Bin: ""}})
+	var e *Error
+	if !errors.As(err, &e) || !e.Permanent() || !strings.Contains(e.Text, "keys_file") {
+		t.Errorf("a phrase and keys: %v", err)
 	}
 }
 

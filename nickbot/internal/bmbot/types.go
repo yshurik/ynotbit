@@ -27,7 +27,8 @@ type Node struct {
 type Config struct {
 	DataDir     string `json:"data_dir"`
 	PhraseFile  string `json:"phrase_file,omitempty"`
-	Phrase      string `json:"phrase,omitempty"` // public: for tests and demos
+	KeysFile    string `json:"keys_file,omitempty"` // the two private keys of an address no phrase made
+	Phrase      string `json:"phrase,omitempty"`    // public: for tests and demos
 	Label       string `json:"label,omitempty"`
 	HangSeconds int    `json:"hang_seconds,omitempty"`
 	StepMs      int    `json:"step_ms,omitempty"`

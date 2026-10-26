@@ -7,6 +7,7 @@
 #include <bmc/clock.h>
 #include <bmc/json.h>
 #include <bmc/phrase.h>
+#include <bmc/pybitmessage.h>
 #include <bmc/test.h>
 #include <chrono>
 #include <csignal>
@@ -461,4 +462,171 @@ TEST(the_configuration_is_checked) {
     CHECK(node.node.watchdogMinutes == 15 && node.node.retentionMB == 512 &&
           node.node.retentionDays == 4);
     CHECK_EQ(node.node.peer, std::string("127.0.0.1:8444"));
+}
+
+// --- a bot made from keys instead of a phrase -------------------------------------------------
+
+namespace {
+// The private keys of a phrase's first pair are what its address is made of: a bot opened from
+// them has the phrase's address.
+struct PhraseKeys {
+    unsigned char sign[32], enc[32];
+    explicit PhraseKeys(const std::string &phrase) {
+        bmc::phrase::key(phrase, 0, sign);
+        bmc::phrase::key(phrase, 1, enc);
+    }
+    std::string signHex() const {
+        return bmc::hex(bmc::ByteView(sign, 32));
+    }
+    std::string encHex() const {
+        return bmc::hex(bmc::ByteView(enc, 32));
+    }
+};
+
+std::string keysFileWith(const std::string &content) {
+    const auto path = bmc::test::tempDir() + "/keys.txt";
+    bmc::test::writeFile(path, bmc::view(content));
+    return path;
+}
+
+std::string configWithKeys(const std::string &root, const std::string &file) {
+    return R"({"data_dir":)" + bmc::json::quote(root) + R"(,"keys_file":)" +
+           bmc::json::quote(file) + R"(,"node":{"bin":""}})";
+}
+
+Options optionsWithKeys(const std::string &root, const std::string &file) {
+    auto o = Options::fromJson(configWithKeys(root, file));
+    o.stepMs = 20;
+    return o;
+}
+} // namespace
+
+TEST(a_bot_opened_from_a_keys_file_has_the_address_of_its_keys) {
+    const PhraseKeys keys("bot test keys");
+    const auto file = keysFileWith(keys.signHex() + "\n" + keys.encHex() + "\n");
+    const auto o = optionsWithKeys(bmc::test::tempDir() + "/bot", file);
+    CHECK(o.secret); // as with a phrase file, the keys make the vault's password
+    CHECK(o.phrase.empty());
+    Bot bot(o);
+    CHECK_EQ(bot.address(), addressOf("bot test keys"));
+    bot.inspect([&](bmc::Client &, bmc::Vault &vault) {
+        CHECK_EQ(vault.identities().size(), size_t(1));
+        CHECK_EQ(vault.identities().front().label, o.label); // "Bot", not the empty label of keys
+    });
+}
+
+TEST(a_keys_file_holds_two_keys_as_hex_or_wallet_import_lines) {
+    const PhraseKeys keys("bot test keys");
+    const auto both = [](const Options &o) {
+        return bmc::hex(bmc::view(o.signingKey)) + " " + bmc::hex(bmc::view(o.encryptionKey));
+    };
+    // Comments, empty lines, a BOM, CRLF and the space around a key are not part of it.
+    const auto plain = Options::fromJson(
+        configWithKeys("/x", keysFileWith("\xEF\xBB\xBF# the keys of a bot\r\n\r\n  " +
+                                          keys.signHex() + "  \r\n" + keys.encHex() + "\r\n\r\n")));
+    CHECK_EQ(both(plain), keys.signHex() + " " + keys.encHex());
+    // PyBitmessage's keys.dat writes a private key in the wallet import format: a line may be one.
+    const std::string wif = "5Jnbdwc4u4DG9ipJxYLznXSvemkRFueQJNHujAQamtDDoX3N1eQ";
+    const auto decoded = bmc::pybm::decodeWif(wif);
+    const auto mixed =
+        Options::fromJson(configWithKeys("/x", keysFileWith(wif + "\n" + keys.encHex() + "\n")));
+    CHECK_EQ(both(mixed), bmc::hex(bmc::ByteView(decoded.data(), 32)) + " " + keys.encHex());
+}
+
+TEST(a_keys_file_that_is_wrong_is_refused_and_never_quoted) {
+    const PhraseKeys keys("bot test keys");
+    const auto reason = [](const std::string &json) {
+        try {
+            Options::fromJson(json);
+        } catch (const bmc::Error &e) {
+            CHECK(e.code() == bmc::Code::Argument || e.code() == bmc::Code::Io);
+            return std::string(e.what());
+        }
+        return std::string();
+    };
+    const auto with = [&](const std::string &content) {
+        return reason(configWithKeys("/x", keysFileWith(content)));
+    };
+    const auto has = [](const std::string &text, const char *part) {
+        return text.find(part) != std::string::npos;
+    };
+    CHECK(has(reason(R"({"data_dir":"/x","keys_file":"/nonexistent/keys"})"), "keys file"));
+    CHECK(has(with(""), "two private keys"));
+    CHECK(has(with(keys.signHex() + "\n"), "two private keys"));
+    CHECK(has(with(keys.signHex() + "\n" + keys.encHex() + "\n" + keys.encHex() + "\n"),
+              "two private keys"));
+    // A line that is no key says which one it is for, and never what it holds.
+    const auto notHex = "zz" + keys.encHex().substr(2);
+    const auto bad = with(keys.signHex() + "\n" + notHex + "\n");
+    CHECK(has(bad, "encryption key"));
+    CHECK(!has(bad, notHex.c_str()) && !has(bad, keys.signHex().c_str()));
+    // Zero, and the curve's order, are no private keys.
+    CHECK(has(with(std::string(64, '0') + "\n" + keys.encHex() + "\n"), "valid private key"));
+    CHECK(has(with(keys.signHex() + "\nFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD"
+                                    "0364141\n"),
+              "valid private key"));
+    // The address comes from one place.
+    const auto file = keysFileWith(keys.signHex() + "\n" + keys.encHex() + "\n");
+    const auto quoted = bmc::json::quote(file);
+    CHECK(has(reason(R"({"data_dir":"/x","phrase":"p","keys_file":)" + quoted + "}"), "keys_file"));
+    CHECK(has(reason(R"({"data_dir":"/x","phrase_file":"/p","keys_file":)" + quoted + "}"),
+              "keys_file"));
+}
+
+TEST(a_bot_made_from_keys_opens_again_with_them_and_not_with_other_keys) {
+    const auto root = bmc::test::tempDir() + "/bot";
+    const PhraseKeys keys("bot test keys"), other("bot test other keys");
+    const auto file = keysFileWith(keys.signHex() + "\n" + keys.encHex() + "\n");
+    const auto otherFile = keysFileWith(other.signHex() + "\n" + other.encHex() + "\n");
+    { Bot made(optionsWithKeys(root, file)); }
+    {
+        Bot again(optionsWithKeys(root, file));
+        CHECK_EQ(again.address(), addressOf("bot test keys"));
+    }
+    // The vault's password is made from the keys, so other keys do not open it.
+    bool refused = false;
+    try {
+        Bot wrong(optionsWithKeys(root, otherFile));
+    } catch (const bmc::Error &e) {
+        refused = e.code() == bmc::Code::Auth;
+    }
+    CHECK(refused);
+}
+
+TEST(
+    a_data_directory_made_from_keys_is_not_opened_with_other_keys_even_with_the_constant_password) {
+    // With "secret":false the password is the constant one, so only the address can tell.
+    const auto root = bmc::test::tempDir() + "/bot";
+    const PhraseKeys keys("bot test keys"), other("bot test other keys");
+    const auto open = [&](const PhraseKeys &k) {
+        const auto file = keysFileWith(k.signHex() + "\n" + k.encHex() + "\n");
+        auto o =
+            Options::fromJson(R"({"data_dir":)" + bmc::json::quote(root) + R"(,"keys_file":)" +
+                              bmc::json::quote(file) + R"(,"secret":false,"node":{"bin":""}})");
+        o.stepMs = 20;
+        return o;
+    };
+    { Bot made(open(keys)); }
+    std::string why;
+    try {
+        Bot wrong(open(other));
+    } catch (const bmc::Error &e) {
+        CHECK(e.code() == bmc::Code::Auth);
+        why = e.what();
+    }
+    CHECK(why.find("other keys") != std::string::npos);
+}
+
+TEST(a_bot_made_from_keys_sends_a_chat_that_a_bot_made_from_a_phrase_reads) {
+    const auto dir = bmc::test::tempDir();
+    const auto rootA = dir + "/alice", rootB = dir + "/bob";
+    const PhraseKeys keys("bot test keys");
+    Bot a(optionsWithKeys(rootA, keysFileWith(keys.signHex() + "\n" + keys.encHex() + "\n")));
+    Bot b(optionsFor(rootB, "bot test bob"));
+    keepKeyOf(a, "bot test bob");
+    CHECK(!a.sendChat("", b.address(), "hello from keys").empty());
+    bmc::json::Value event;
+    CHECK(pump(rootA, rootB, [&] { return nextEvent(b, 0, event); }));
+    CHECK_EQ(event.at("text").toString(), std::string("hello from keys"));
+    CHECK_EQ(event.at("from").toString(), addressOf("bot test keys"));
 }

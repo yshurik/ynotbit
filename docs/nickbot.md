@@ -127,11 +127,12 @@ A container from the shared image, target `nickbot`:
 scripts/build-image.sh user@host ynotbit-nickbot:2026-10-25 nickbot       # builds on that host's Docker
 ```
 
-It needs a phrase (the phrase *is* its address; keep a copy) and a volume:
+It needs a phrase (the phrase *is* its address; keep a copy) and a volume (an address that a vanity search found has no phrase: see
+below the flags):
 
 ```
 mkdir -p /data/nickbot/data /data/nickbot/secrets
-head -c 32 /dev/urandom | base64 > /data/nickbot/secrets/phrase            # or a phrase from bm-vanity
+head -c 32 /dev/urandom | base64 > /data/nickbot/secrets/phrase            # or a keys file from tools/vanity, see below
 chown -R 10001:10001 /data/nickbot/data /data/nickbot/secrets && chmod 400 /data/nickbot/secrets/phrase
 docker run -d --name nickbot --restart unless-stopped --memory 256m --cpus 1 \
   --ulimit memlock=33554432:33554432 --read-only --tmpfs /tmp:size=16m,noexec,nosuid \
@@ -151,6 +152,7 @@ and node), `nickbot.sqlite` (the registry), `backup/` (a copy a day, seven kept)
 |---|---|---|
 | `--data-dir` | `/data` | |
 | `--phrase-file` | `/run/secrets/phrase` | first line is the secret phrase |
+| `--keys-file` | none | instead of the phrase file: the address's two private keys, one to a line (see below) |
 | `--seed` | none | the operator's names |
 | `--public` | true | join the public network; `--public=false --peer IP:port` links to one peer |
 | `--listen`, `--port` | off, 8444 | accept incoming connections |
@@ -160,6 +162,13 @@ and node), `nickbot.sqlite` (the registry), `backup/` (a copy a day, seven kept)
 | `--new-per-hour` | 200 | registrations and changes the whole registry takes in an hour |
 | `--max-nicks` | 1000000 | |
 | `--hang` | 120s | abort when the library's loop stalls, so that Docker starts it again |
+
+**An address with a word in it.** [`tools/vanity`](../tools/vanity/README.md) searches for addresses such as `BM-87nickbot...` and
+finds their two keys, not a phrase. `bm_vanity --export ADDRESS -f hits.txt -o nickbot.keys` writes the keys (the signing key, then the
+encryption key, one to a line); put that file where the phrase would be (mode 400, owned by the container's user, mounted at
+`/run/secrets/keys`) and start the service with `--keys-file /run/secrets/keys` in place of `--phrase-file`. The first log line,
+`Address: BM-...`, has to be the address `bm_vanity --address-of nickbot.keys` prints. The keys file is the address: keep a copy.
+Move it between machines with `ssh ... | ssh ...` under `umask 077`, never through a chat, a mail or a repository.
 
 Health: `nickbot --check /data/status.json --max-age 90s --peers 1` (the image's `HEALTHCHECK`). Stop with `docker stop` (SIGTERM,
 "Bye."). Limits: 10 commands at once and one every 6 seconds per address, 60 and two a second for the shared address, 600 answers

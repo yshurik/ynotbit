@@ -27,10 +27,16 @@ namespace bmbot_lib {
 struct Options {
     std::string dataDir;
     std::string phrase;
-    std::string label = "Bot"; // the label of the identity made from the phrase
-    // A secret phrase also makes the vault's password (a hash of it), so what is on the disk is of
-    // no use without it. A phrase that is public keeps the constant password of the first
-    // chat_responder, whose folders it opens.
+    // Or the two private keys the address is made of, 32 bytes each (the config's keys_file): for
+    // an address that no phrase made, such as one a vanity search found. Used instead of phrase.
+    std::string signingKey, encryptionKey;
+    bool hasKeys() const {
+        return !signingKey.empty();
+    }
+    std::string label = "Bot"; // the label of the identity made from the phrase or the keys
+    // A secret phrase (or the keys) also makes the vault's password (a hash of it), so what is on
+    // the disk is of no use without it. A phrase that is public keeps the constant password of the
+    // first chat_responder, whose folders it opens.
     bool secret = true;
     struct Node {
         // "auto": $BMBOT_NODE, then bmnode beside the library or the program, then the PATH.

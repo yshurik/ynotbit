@@ -8,6 +8,7 @@
 #include <bmc/mailbox.h>
 #include <bmc/path.h>
 #include <bmc/phrase.h>
+#include <bmc/pybitmessage.h>
 #include <bmc/text.h>
 #include <bmc/vault.h>
 #include <bmc/wire.h>
@@ -20,6 +21,7 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <openssl/crypto.h>
 #include <sstream>
 #include <sys/file.h>
 #include <unistd.h>
@@ -62,6 +64,56 @@ std::string firstLine(std::string raw) {
     if (raw.rfind("\xEF\xBB\xBF", 0) == 0)
         raw.erase(0, 3);
     return trimmed(raw.substr(0, raw.find('\n')));
+}
+
+// A private key in a line of a keys file: 64 hex digits, or the wallet import format that
+// PyBitmessage's keys.dat writes. An error names the key and never says what the line holds.
+std::string keyOf(std::string_view line, const char *which) {
+    try {
+        if (line.size() == 64) { // a WIF key has 51 or 52 characters: unhex says if these are hex
+            const auto raw = bmc::unhex(line);
+            return std::string(raw.begin(), raw.end());
+        }
+        const auto key = bmc::pybm::decodeWif(line);
+        return std::string(reinterpret_cast<const char *>(key.data()), key.size());
+    } catch (const Error &) {
+    }
+    throw Error(Code::Argument, std::string("The ") + which +
+                                    " in the keys file is neither 64 hex digits nor a wallet "
+                                    "import key");
+}
+
+// A keys file: the private signing key, then the private encryption key, one to a line. A BOM,
+// the white space around a key, empty lines and lines that start with # are not part of a key.
+// The text is wiped.
+void readKeys(std::string raw, std::string &signing, std::string &encryption) {
+    std::vector<std::string_view> lines;
+    try {
+        std::string_view rest(raw);
+        if (rest.substr(0, 3) == "\xEF\xBB\xBF")
+            rest.remove_prefix(3);
+        const auto space = [](char c) { return c == ' ' || c == '\t' || c == '\r'; };
+        while (!rest.empty()) {
+            const auto end = rest.find('\n');
+            auto line = rest.substr(0, end);
+            rest = end == std::string_view::npos ? std::string_view() : rest.substr(end + 1);
+            while (!line.empty() && space(line.front()))
+                line.remove_prefix(1);
+            while (!line.empty() && space(line.back()))
+                line.remove_suffix(1);
+            if (!line.empty() && line.front() != '#')
+                lines.push_back(line);
+        }
+        if (lines.size() != 2)
+            throw Error(Code::Argument, "The keys file must hold two private keys, the signing key "
+                                        "and then the encryption key, one to a line");
+        signing = keyOf(lines[0], "signing key");
+        encryption = keyOf(lines[1], "encryption key");
+    } catch (...) {
+        OPENSSL_cleanse(raw.data(), raw.size());
+        throw;
+    }
+    OPENSSL_cleanse(raw.data(), raw.size());
 }
 
 std::string number(int64_t n) {
@@ -165,10 +217,27 @@ Options Options::fromJson(std::string_view text) {
     if (o.dataDir.empty())
         throw Error(Code::Argument, "data_dir is required");
     const auto file = textOf(c, "phrase_file");
+    const auto keysFile = textOf(c, "keys_file");
     o.phrase = textOf(c, "phrase");
-    if (file.empty() && o.phrase.empty())
-        throw Error(Code::Argument, "phrase_file or phrase is required");
-    if (!file.empty()) {
+    if (file.empty() && o.phrase.empty() && keysFile.empty())
+        throw Error(Code::Argument, "phrase_file, phrase or keys_file is required");
+    if (!keysFile.empty() && (!file.empty() || !o.phrase.empty()))
+        throw Error(Code::Argument, "Give keys_file, or phrase_file, or phrase, not more than one");
+    if (!keysFile.empty()) {
+        std::ifstream in(bmc::path(keysFile), std::ios::binary);
+        if (!in)
+            throw Error(Code::Io, "Cannot read the keys file");
+        readKeys(std::string(std::istreambuf_iterator<char>(in), {}), o.signingKey,
+                 o.encryptionKey);
+        // The keys must make an address; a zero key or one past the curve's order does not.
+        try {
+            bmc::phrase::fromKeys(reinterpret_cast<const unsigned char *>(o.signingKey.data()),
+                                  reinterpret_cast<const unsigned char *>(o.encryptionKey.data()));
+        } catch (const std::exception &) {
+            throw Error(Code::Argument, "The keys file does not hold valid private keys");
+        }
+        o.secret = true;
+    } else if (!file.empty()) {
         std::ifstream in(bmc::path(file), std::ios::binary);
         if (!in)
             throw Error(Code::Io, "Cannot read the phrase file");
@@ -179,7 +248,7 @@ Options Options::fromJson(std::string_view text) {
     } else {
         o.secret = false;
     }
-    if (o.phrase.empty())
+    if (!o.hasKeys() && o.phrase.empty())
         throw Error(Code::Argument, "The phrase is empty");
     o.secret = flagOf(c, "secret", o.secret);
     if (const auto label = textOf(c, "label"); !label.empty())
@@ -261,11 +330,20 @@ void Bot::openStorage() {
                         fs::exists(bmc::path(root_ + "/responder.bmvault"));
     vaultPath_ = root_ + (legacy ? "/responder.bmvault" : "/bot.bmvault");
     mailPath_ = root_ + (legacy ? "/responder.bmmail" : "/bot.bmmail");
+    // A secret makes the password: the phrase, or the two keys, hashed.
+    std::string secretText = o_.hasKeys()
+                                 ? "ynotbit bot keys vault\n" + o_.signingKey + o_.encryptionKey
+                                 : "ynotbit chat responder vault\n" + o_.phrase;
     const std::string password =
-        o_.secret ? bmc::hex(bmc::hash(bmc::Digest::Sha256,
-                                       bmc::view("ynotbit chat responder vault\n" + o_.phrase)))
+        o_.secret ? bmc::hex(bmc::hash(bmc::Digest::Sha256, bmc::view(secretText)))
                   : std::string("ynotbit chat responder");
-    auto identity = bmc::phrase::identity(o_.phrase, o_.label, 0);
+    OPENSSL_cleanse(secretText.data(), secretText.size());
+    auto identity = o_.hasKeys()
+                        ? bmc::phrase::fromKeys(
+                              reinterpret_cast<const unsigned char *>(o_.signingKey.data()),
+                              reinterpret_cast<const unsigned char *>(o_.encryptionKey.data()))
+                        : bmc::phrase::identity(o_.phrase, o_.label, 0);
+    identity.label = o_.label;
     address_ = identity.address;
     vault_ = std::make_shared<bmc::Vault>();
     mailbox_ = std::make_shared<bmc::Mailbox>();
@@ -291,7 +369,10 @@ void Bot::openStorage() {
             if (std::string(e.what()).find("Wrong password") != std::string::npos)
                 throw Error(Code::Auth,
                             std::string(e.what()) +
-                                (o_.secret ? " (is it the phrase this was made with?)" : ""));
+                                (o_.secret
+                                     ? (o_.hasKeys() ? " (are they the keys this was made with?)"
+                                                     : " (is it the phrase this was made with?)")
+                                     : ""));
             throw;
         }
         bool mine = false;
@@ -299,7 +380,9 @@ void Bot::openStorage() {
             mine = mine || (!i.chan && i.address == address_);
         if (!mine) {
             vault_->lock();
-            throw Error(Code::Auth, "This data directory was made with another phrase");
+            throw Error(Code::Auth, o_.hasKeys()
+                                        ? "This data directory was made with other keys"
+                                        : "This data directory was made with another phrase");
         }
         if (!fs::exists(bmc::path(mailPath_))) {
             const auto ids = vault_->mailboxIds();

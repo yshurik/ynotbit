@@ -1,6 +1,6 @@
 # bmbot
 
-A Bitmessage bot library with a C ABI, for programs in any language. It opens a vault and a mailbox from a phrase, runs the node
+A Bitmessage bot library with a C ABI, for programs in any language. It opens a vault and a mailbox from a phrase (or from the two private keys of an address), runs the node
 (`bmnode`) as a child process that it watches and starts again, and hands out the chats and letters that come as JSON events. No Qt.
 
 ```
@@ -26,7 +26,9 @@ for (;;) {
 }
 ```
 
-- **Config** (JSON): `data_dir`; `phrase_file` (the secret phrase; it also makes the vault's password) or `phrase` (public); `label`;
+- **Config** (JSON): `data_dir`; `phrase_file` (the secret phrase; it also makes the vault's password) or `phrase` (public) or `keys_file`
+  (the signing key and the encryption key, one to a line, in hex or wallet import format, for an address no phrase made, such as one
+  [`tools/vanity`](../tools/vanity/README.md) found; it makes the vault's password too); `label`;
   `hang_seconds` (abort when the driver loop stalls, so that Docker or systemd starts it again); `node`: `bin` (`"auto"`, a path, or
   `""` for no node here), `public` (default true; false links to `peer` alone), `peer`, `proxy`, `listen`, `port`, `max_outgoing`,
   `max_incoming`, `watchdog_minutes`, `retention_mb`, `retention_days`. The full list is in `bmbot.h`.
@@ -36,8 +38,8 @@ for (;;) {
   done comes back after a crash or a restart.
 - **States** (`bmbot_state`) are the strings ynotbit shows for a message's delivery: `queued`, `awaiting_pubkey`,
   `calculating_message`, `awaiting_ack`, `acknowledged`, `failed`, ...
-- **One process to a data directory** (`bmbot_open` fails with `BMBOT_E_STATE` for the second), and the phrase has to be the one the
-  data was made with (`BMBOT_E_AUTH`).
+- **One process to a data directory** (`bmbot_open` fails with `BMBOT_E_STATE` for the second), and the phrase (or the keys) have to be the
+  ones the data was made with (`BMBOT_E_AUTH`).
 - Limits on how much a bot answers are the bot's: `tools/chat_bot.h` is one (rates per peer and in all, a bounded queue, retries; a letter is answered with a letter, once a day to a sender), on
   top of this ABI.
 

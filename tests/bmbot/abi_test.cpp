@@ -2,6 +2,7 @@
 #include <atomic>
 #include <bmbot.h>
 #include <bmc/json.h>
+#include <bmc/phrase.h>
 #include <bmc/test.h>
 #include <chrono>
 #include <string>
@@ -139,4 +140,33 @@ TEST(a_chan_address_comes_from_the_phrase_alone) {
     take(error);
     CHECK_EQ(bmbot_chan_address("general", nullptr, nullptr),
              BMBOT_E_ARGUMENT); // the error is optional
+}
+
+TEST(a_bot_opens_from_a_keys_file_and_has_the_address_of_its_keys) {
+    unsigned char sign[32], enc[32];
+    bmc::phrase::key("abi test phrase", 0, sign);
+    bmc::phrase::key("abi test phrase", 1, enc);
+    const auto file = bmc::test::tempDir() + "/keys.txt";
+    const std::string keys =
+        bmc::hex(bmc::ByteView(sign, 32)) + "\n" + bmc::hex(bmc::ByteView(enc, 32)) + "\n";
+    bmc::test::writeFile(file, bmc::view(keys));
+    const auto json = R"({"data_dir":)" + bmc::json::quote(bmc::test::tempDir() + "/abi") +
+                      R"(,"keys_file":)" + bmc::json::quote(file) +
+                      R"(,"node":{"bin":""},"step_ms":20})";
+    bmbot *bot = nullptr;
+    char *error = nullptr, *status = nullptr;
+    CHECK_EQ(bmbot_open(json.c_str(), &bot, &error), BMBOT_OK);
+    CHECK_EQ(bmbot_status(bot, &status, &error), BMBOT_OK);
+    const auto parsed = bmc::json::parse(take(status));
+    CHECK(parsed.has_value());
+    CHECK_EQ(parsed->at("address").toString(),
+             bmc::phrase::identity("abi test phrase", "x", 0).address);
+    bmbot_close(bot);
+
+    // A phrase beside the keys is a mistake, said so.
+    const auto both =
+        R"({"data_dir":"/x","phrase":"p","keys_file":)" + bmc::json::quote(file) + "}";
+    CHECK_EQ(bmbot_open(both.c_str(), &bot, &error), BMBOT_E_ARGUMENT);
+    CHECK(bot == nullptr);
+    CHECK(take(error).find("keys_file") != std::string::npos);
 }

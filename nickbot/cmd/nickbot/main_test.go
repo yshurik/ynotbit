@@ -96,6 +96,25 @@ func TestFlagsDefaults(t *testing.T) {
 	}
 }
 
+func TestAKeysFileStandsInForThePhraseFile(t *testing.T) {
+	var stderr bytes.Buffer
+	o, err := parseFlags([]string{"--data-dir", "/x"}, &stderr)
+	if err != nil || o.phraseFile != "/run/secrets/phrase" || o.keysFile != "" {
+		t.Fatalf("defaults: %+v, %v", o, err)
+	}
+	// An address that no phrase made (a vanity search found it) comes from its two keys; the
+	// phrase file's default then names nothing.
+	o, err = parseFlags([]string{"--data-dir", "/x", "--keys-file", "/run/secrets/keys"}, &stderr)
+	if err != nil || o.keysFile != "/run/secrets/keys" || o.phraseFile != "" {
+		t.Errorf("with a keys file: %+v, %v", o, err)
+	}
+	// Asked for both, it says so rather than choosing.
+	stderr.Reset()
+	if _, err := parseFlags([]string{"--phrase-file", "/p", "--keys-file", "/k"}, &stderr); err == nil {
+		t.Error("a phrase file and a keys file were both accepted")
+	}
+}
+
 func TestRunCheckAndAdminExitCodes(t *testing.T) {
 	var out, errOut bytes.Buffer
 	good := filepath.Join(t.TempDir(), "s.json")

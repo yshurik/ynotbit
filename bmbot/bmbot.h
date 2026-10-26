@@ -1,6 +1,7 @@
 /* bmbot: a Bitmessage bot library with a C ABI, for programs in any language (Go cgo, Python
- * ctypes, ...). It opens a vault and a mailbox from a phrase, runs the node as a child process,
- * and hands out the chats and letters that come as JSON events.
+ * ctypes, ...). It opens a vault and a mailbox from a phrase (or the two private keys of an
+ * address), runs the node as a child process, and hands out the chats and letters that come as JSON
+ * events.
  *
  * All strings are UTF-8 char*. Nothing but bmbot *, int, const char * and char ** crosses the
  * ABI: no struct, no callback, no thread-local state, so a handle may be used from any thread
@@ -15,7 +16,13 @@
  *                  makes the vault's password, so the disk is of no use without it
  *   phrase         or the phrase itself, which is public (a test or a demo): the vault keeps a
  *                  constant password
- *   secret         true or false, to override the two rules above
+ *   keys_file      or a file with the two private keys the address is made of, for an address that
+ *                  no phrase made (one a vanity search found): the signing key, then the
+ *                  encryption key, one to a line, each as 64 hex digits or in the wallet import
+ *                  format of PyBitmessage's keys.dat. Empty lines and lines that start with # are
+ *                  skipped. As with phrase_file, the keys also make the vault's password. Give
+ *                  one of phrase_file, phrase and keys_file.
+ *   secret         true or false, to override the rules above
  *   label          the label of the identity (default "Bot")
  *   hang_seconds   abort() when the driver loop has not run for this long, so that Docker or
  *                  systemd starts the process again (default 0: never)
