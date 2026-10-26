@@ -1374,9 +1374,14 @@ void Session::unsubscribe(QString address) {
 void Session::renameIdentity(QString address) {
     attempt([&] {
         check(unlocked(), tr("Unlock a vault first"));
+        // The prompt starts from the name there is.
+        QString current;
+        for (const auto &identity : vault_.identities())
+            if (identity.address == address)
+                current = identity.label;
         bool ok = false;
         auto label = QInputDialog::getText(nullptr, tr("Rename identity"), tr("Label"),
-                                           QLineEdit::Normal, {}, &ok);
+                                           QLineEdit::Normal, current, &ok);
         if (ok)
             vault_.renameIdentity(address, label);
     });

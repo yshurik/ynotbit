@@ -95,7 +95,6 @@ int publish(const Broadcast &b) {
 
     // A dry run stays offline: no node starts, nothing leaves this machine.
     bm::Session session(root, !b.send);
-    session.nicks().setBackgroundLookups(false); // this is a publisher, not a mail client
     session.choosePendingVault(vaultPath);
     session.submitVaultPassword(QString::fromLatin1(password));
     if (!session.mailboxOpen())

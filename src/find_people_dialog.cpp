@@ -122,7 +122,7 @@ void FindPeopleDialog::ask() {
     if (bmc::Wire::validAddress(text.toStdString())) {
         kind_ = "nickname";
         key_ = q(nb::keyOfNicknameRequest({text.toStdString()}));
-        problem = session_.nicks().lookupNicknames({text}, bot, true);
+        problem = session_.nicks().lookupNicknames({text}, bot);
     } else if (nb::parseNick(text.toStdString())) {
         kind_ = "address";
         key_ = q(nb::keyOfAddressRequest(*nb::parseNick(text.toStdString())));

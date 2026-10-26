@@ -141,10 +141,10 @@ The phrase `anonymous` makes a chan (everybody who knows it has its keys). ynotb
 
 | Leak | Mitigation |
 |---|---|
-| Timing: a registration at 12:00:01 and a lookup at 12:00:05 look like one person | lookups are queued and sent after a random delay (3 to 30 seconds when the user waits for the answer, 1 to 10 minutes when the app keeps the book up to date), never within 2 minutes after an identified message to the same bot, and in batches |
-| A burst of lookups reads as one client | at most one background message per bot every 2 minutes; `/nickname` carries up to 8 addresses |
+| Timing: a registration at 12:00:01 and a lookup at 12:00:05 look like one person | lookups are queued and sent after a random delay (3 to 30 seconds), never within 2 minutes after an identified message to the same bot, and in batches |
+| A burst of lookups reads as one client | `/nickname` carries up to 8 addresses, and the messages of a check of the whole address book go ten seconds apart |
 | The bot's network neighbours see where a message first appeared | out of scope: Tor (the proxy setting) covers it |
-| What a user looks up | the query is in the clear to chan members; nothing links it to the user. Contacts are looked up automatically; senders of letters are not, unless the user asks |
+| What a user looks up | the query is in the clear to chan members; nothing links it to the user. Nothing is looked up unless the user asks (Find people, Check nicknames): the app sends no message of its own accord |
 | A nickbot the user switched off | master switch: off means no message of any kind is sent |
 
 Requests carry a short life, 1 hour, not the day a chat gets: they cost less proof of work and they cannot be replayed from the network later.
@@ -155,9 +155,9 @@ Requests carry a short life, 1 hour, not the day a chat gets: they cost less pro
 
 Settings gets a page **Nickbots**: up to five rows (colour, label, address). The first row is the default. The colour is the row's position, taken from the same palette as the quote levels in a letter (blue, green, amber, purple, and a fifth, coral). Moving a row moves its colour; the page says so. A nickname seen in the UI in the first colour is the default nickbot's.
 
-Kept in the open mailbox's settings (`nickbots`, a JSON list), like the other per-mailbox choices; a mailbox that has never set it uses the built-in default list. Rules: valid address, no duplicates, not one of the user's own, at most five. **(my call)** One switch turns every nickbot message off (`Use nickbots`), and one turns off the automatic lookup of contacts.
+Kept in the open mailbox's settings (`nickbots`, a JSON list), like the other per-mailbox choices; a mailbox that has never set it uses the built-in default list. Rules: valid address, no duplicates, not one of the user's own, at most five. **(my call)** One switch turns every nickbot message off (`Use nickbots`).
 
-The same page shows the user's identities with their nickname per nickbot and the state of a registration (not registered, waiting for an answer, registered, refused: with the reason), and a button to register or change.
+The user's own nicknames are not on this page: they are on the Identities page (5.9).
 
 ### 5.2 Transport inside ynotbit
 
@@ -170,9 +170,9 @@ The same page shows the user's identities with their nickname per nickbot and th
 
 `Session` owns one queue per nickbot. A lookup is a request to be sent later, not now: the user's click only queues it, the scheduler sends it after the delay of 4.2, and the answer, minutes later, updates the cache and tells the window. Every function that asks is asynchronous and says so in the UI ("Asked @nickbot; answers take a few minutes").
 
-The cache is the address book: a contact's nickname is the setting `nickname:<address>` that already exists (it holds `/echobot` for the echo bot today); beside it `nickbot:<address>` says which nickbot said so (it picks the colour) and `nickchecked:<address>` when. A nickname typed or seeded by hand has no nickbot and no colour. Addresses that are not contacts (search results, other people's answers) are cached in memory only.
+The cache is the address book: a contact's nickname is the setting `nickname:<address>` that already exists (it holds `/echobot` for the echo bot today); beside it `nickbot:<address>` says which nickbot said so (it picks the colour) and nothing more. A nickname typed or seeded by hand has no nickbot and no colour. Addresses that are not contacts (search results, other people's answers) are cached in memory only.
 
-Automatic refresh (on by default): a contact with no nickname, or checked more than 7 days ago, is queued for `/nickname`, eight to a message, at the pace of 4.2.
+**Checking the address book, when the user asks.** *Revised 2026-10-26: the first design refreshed the contacts' nicknames on its own, in the background (on by default, with a switch); the user decided against anything the app does without being asked.* Contacts gets a button, **Check nicknames**: it asks the default nickbot for the nicknames of every contact, eight to a message (`/nickname`), the first after the usual random wait and each next one ten seconds behind the one before, so that a long address book is no burst on the shared chan or the bot's limits. While it is under way the button waits and a line under the filter says so; when the last message is answered (or has timed out) the line says that it is over. The answers fill the Nickname column as they come, as any answer does (5.6); a nickname a nickbot vouched for earlier and the nickbot no longer has is taken away. The setting `nickchecked:<address>` and the automatic switch are gone. A second press while a check is under way does nothing (the button is grey).
 
 ### 5.4 Registering
 
@@ -194,6 +194,16 @@ The dialog that makes an identity (alone, or with a new vault) has a checkbox **
 
 `bm::updates::defaultContacts()` gets the default nickbot (`/nickbot`) beside `/echobot`, and the built-in list of nickbots has it as the only entry.
 
+### 5.9 The Identities page
+
+*Reworked after the first review, 2026-10-26: the nicknames of the user's identities were a table on the Nickbots page, and the page of identities was a list of cards.* Now the Identities page is the address book's table (a tree view over a sorted proxy, the same toolbar, filter and empty note) with the columns **Address** (with its identicon), **Nickname** and **Local name**. What the first design put on the Nickbots page and on the cards is in one place:
+
+- **Rows.** One per identity and chan, in the vault's order until a header is clicked. The local name carries a pill, *Default* or *Channel*. The filter matches the name, the nickname and the address.
+- **Nickname cell.** The nickname that stands (said by a nickbot, or set by hand) in its nickbot's colour, with the nickbot's name as the tip. Where none stands: a try that waits is shown muted, one that was refused or went unanswered in red, with the words of the state as the tip. An own identity with nothing to show offers *Register a nickname…* in muted italics, while nicknames can be asked for at all. A chan has no nickname to ask for here **(my call: a chan's nickname is its passphrase, which the vault does not keep for a secret chan)**.
+- **Toolbar.** *Nickname…* (for the selected identity), a pill of icon buttons (copy the address, QR code, set as default, rename, delete), *Join a channel…*, *New identity*. A button is on while a row is selected; *Set as default* is grey on the default, *Nickname…* on a chan. The right-click menu holds the same actions in words, and a double-click does what its cell is about: the address is copied (a tip says so), the nickname is asked for, the local name is renamed (the prompt starts from the name there is).
+- **Nickname dialog.** The identity (identicon, name, address); how the last try stands (muted while it waits, in red with the reason when refused, *Registered: @name*); the nickname, offered as the last try, else the one that stands, else one made from the identity's name; the nickbot, when several are listed; the problem that is in the way before anything is typed (nickbots off, none listed); and *Register*, grey for a nickname that is not valid, is a chan's (`#`), or is the one that stands. A request the client refuses keeps the dialog open with the reason.
+- **Smoothness.** The page opens on the default identity, so that its buttons work at once; a redraw keeps the selection and happens only when what the table shows has changed (nicknames come in as the session ticks, and a redraw per tick would cost the user the row); an identity that was just made, joined or imported is selected and scrolled to; the answer of a nickbot changes the cell as it arrives.
+
 ## 6. Missing pieces considered
 
 | Piece | Decision |
@@ -213,7 +223,7 @@ The dialog that makes an identity (alone, or with a new vault) has a checkbox **
 | A user who joined the chan `anonymous` by hand | the app does not take it over: lookups stay off, the page says why |
 | A vault with several mailboxes | the lookup chan is the vault's, found by its label, so every mailbox uses the one chan; a user who then tries to join `anonymous` by hand is told "Channel already joined", which is true: it is the same chan, hidden from the lists **(my call)** |
 | Backup and moderation | daily `VACUUM INTO`, `nickbot admin` |
-| Opting out | master switch; automatic contact lookup switch |
+| Opting out | master switch; nothing is asked unless the user asks |
 
 ## 7. Testing
 
@@ -229,4 +239,4 @@ Name length 3 to 32 (the sigil is not counted); case rules; reserved names and t
 
 ## 9. Follow-ups, not in this slice
 
-The chats the app sends from its lookup chan stay in the mailbox (a few hundred bytes each, at most one background message every ten minutes): a prune of the old ones; nicknames as recipients in the To field and the New chat dialog; a vanity address for the nickbot; deployment on tos (needs the user's go-ahead); a web page of the registry; reading the nickname into letters' signatures; a second ABI call for cheaper proof of work on lookups.
+The chats the app sends from its lookup chan stay in the mailbox (a few hundred bytes each, as many as the user's lookups and checks): a prune of the old ones; nicknames as recipients in the To field and the New chat dialog; a vanity address for the nickbot; deployment on tos (needs the user's go-ahead); a web page of the registry; reading the nickname into letters' signatures; a second ABI call for cheaper proof of work on lookups.

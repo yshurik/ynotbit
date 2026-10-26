@@ -86,27 +86,37 @@ register, unregister or ask `/whoami`.
 ## In ynotbit
 
 - **Settings → Nickbots** lists up to five nickbots. The first is the default; each has a colour (the first four are the colours of
-  the quote levels of a letter, the fifth is coral) and moving a nickbot moves its colour. The page also has two switches: *Use
-  nickbots* (off, and nothing is ever sent to one) and *Look up the nicknames of my contacts on their own*, and it shows each
-  identity's nickname and the state of its registration, with a button to register one. The list is kept in the open mailbox
-  (`nickbots:list`); a mailbox that never set one has the built-in default, `/nickbot`.
+  the quote levels of a letter, the fifth is coral) and moving a nickbot moves its colour. The page also has a switch, *Use
+  nickbots* (off, and nothing is ever sent to one). The list is kept in the open mailbox (`nickbots:list`); a mailbox that never
+  set one has the built-in default, `/nickbot`.
+- **The Identities page** is a table like the address book, with the columns *Address*, *Nickname* and *Local name* (the default
+  identity and a chan carry a pill beside the name). The buttons for the selected row are in the toolbar: *Nickname…*, then
+  copy the address, show its QR code, make it the default, rename, delete, and *Join a channel…* and *New identity* beside
+  them; the right-click menu holds the same, and a double-click does what its cell is about (copy an address, ask for a
+  nickname, rename). *Nickname…* asks a nickbot, by a chat from the identity, to give it the nickname. The cell then shows the
+  nickname as it stands, in its nickbot's colour; while a try waits for its answer it is muted, and a try that was refused or
+  went unanswered is red, with the reason in the tip. A chan has no nickname to ask for here.
 - **Contacts → Find people…** asks a nickbot: a whole nickname (`@ben`) for its address, an address for its nicknames, any other
   word of four letters or more is searched for. The answer takes minutes (the window can be closed), the table shows it in the
   nickbot's colour, and *Add to contacts* names each contact by its nickname.
+- **Contacts → Check nicknames** asks the default nickbot for the nicknames of every contact, eight to a message and the messages
+  ten seconds apart, so that a long address book is no burst. The page says that the check is under way (the button waits) and
+  when it is over; what the nickbot has appears in the Nickname column as the answers come, and a nickname the nickbot vouched for
+  earlier and no longer has is taken away. **Nothing is asked about the contacts unless the user presses it**: there is no
+  setting that does it on its own.
 - **New identity** has *Register with the nickbot as*, on, with the nickname made from the Nickname field (`Quick Otter of Zeta`
   becomes `@quick_otter_of_zeta`) unless you write one. With a new vault, which has no mailbox yet, the registration goes out when
   the first mailbox opens.
 - **Where a nickname shows**: the letter list (from and to), the header of a letter, the chat list and the Contacts table. The
   nickname comes first, in its nickbot's colour, then the name you gave the contact; a name that is only the one made up from the
   address gives way to the nickname. A nickname set by hand or built in (`/echobot`) is never replaced by a nickbot's, only
-  confirmed; one a nickbot vouched for goes when the nickbot says the address has none. The contacts' nicknames are looked up
-  eight to a message, at most one message every ten minutes, each a week after the last.
+  confirmed; one a nickbot vouched for goes when the nickbot says the address has none.
 - **What goes out, and when.** A registration is a chat from the identity to the nickbot (the user can read it and the answer in the
   Chats page, without the last line, which is for programs). A lookup is a chat of the chan `anonymous` to the nickbot, with an
-  hour to live, sent a few seconds after the click when the user waits for it and 1 to 10 minutes after when it keeps the address
-  book up to date, never within two minutes of a message that names the user, and never two background ones within two minutes of
-  each other. What comes back to that chan is filed under a hidden folder (`Service`), read once, and deleted; only a listed
-  nickbot's answers are believed, and each is checked again for a bad nickname or address before anything is kept.
+  hour to live, sent 3 to 30 seconds after the click (the messages of a check of the address book ten seconds apart), and never within
+  two minutes of a message that names the user. Only the user's own action sends one. What comes back to that chan is filed under
+  a hidden folder (`Service`), read once, and deleted; only a listed nickbot's answers are believed, and each is checked again
+  for a bad nickname or address before anything is kept.
 - A chan the user joined by hand under the phrase `anonymous` is not taken over: lookups then say why they are off.
 
 ## Running it

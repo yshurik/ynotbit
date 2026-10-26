@@ -10,7 +10,6 @@
 #include <QPair>
 #include <QRandomGenerator>
 #include <QSet>
-#include <algorithm>
 #include <bmc/chat_format.h>
 #include <bmc/clock.h>
 #include <bmc/nickbot.h>
@@ -21,22 +20,18 @@
 namespace bm {
 namespace {
 namespace nb = bmc::nickbot;
-// Seconds. A lookup the user waits for goes out soon; one that only keeps the book up to date goes
-// out some time in the next ten minutes, and never close behind another or a message with the
-// user's name on it (docs/nickbot.md, "Privacy").
-constexpr int kUrgentDelay[2] = {3, 30};
-constexpr int kBackgroundDelay[2] = {60, 600};
-constexpr qint64 kGapBetweenBackground = 120;
+// Seconds. A lookup goes out some time in the next half minute, so that it does not line up with
+// what the user did, and never within two minutes of a message with the user's name on it
+// (docs/nickbot.md, "Privacy"). The messages of a check of the whole book are ten seconds apart.
+constexpr int kLookupDelay[2] = {3, 30};
 constexpr qint64 kAfterIdentified = 120;
+constexpr qint64 kCheckSpacing = 10;
 constexpr qint64 kAnswerWait = nb::kLookupTtlSeconds + 300;
 constexpr qint64 kRegistrationWait = bmc::kChatTtlSeconds;
-constexpr qint64 kRecheckAfter = 7 * 86400;
-constexpr qint64 kAutoEvery = 600;
 constexpr int kServiceBatch = 50;
 
 const QString kListSetting = "nickbots:list", kEnabledSetting = "nickbots:enabled",
-              kAutoSetting = "nickbots:auto", kRegistrationSetting = "nickreg:",
-              kVouchedBySetting = "nickbot:", kCheckedSetting = "nickchecked:";
+              kRegistrationSetting = "nickreg:", kVouchedBySetting = "nickbot:";
 // What the vault calls the chan lookups go out from. The label is how the app knows its own chan
 // from one the user joined with the same phrase.
 const char *const kLaneLabel = "nickbot lookups";
@@ -104,10 +99,9 @@ void NickClient::setClockForTesting(std::function<qint64()> now) {
 void NickClient::setDelayForTesting(std::function<int(int, int)> pick) {
     pick_ = std::move(pick);
 }
-int NickClient::delay(bool urgent) const {
-    const auto *range = urgent ? kUrgentDelay : kBackgroundDelay;
-    return pick_ ? pick_(range[0], range[1])
-                 : QRandomGenerator::global()->bounded(range[0], range[1] + 1);
+int NickClient::delay() const {
+    return pick_ ? pick_(kLookupDelay[0], kLookupDelay[1])
+                 : QRandomGenerator::global()->bounded(kLookupDelay[0], kLookupDelay[1] + 1);
 }
 QString NickClient::setting(const QString &name) const {
     return session_.mailboxOpen() ? q(session_.coreMailbox().setting(st(name))) : QString();
@@ -183,13 +177,6 @@ void NickClient::setEnabled(bool on) {
     setSetting(kEnabledSetting, on ? "1" : "0");
     emit changed();
 }
-bool NickClient::autoLookups() const {
-    return setting(kAutoSetting) != "0";
-}
-void NickClient::setAutoLookups(bool on) {
-    setSetting(kAutoSetting, on ? "1" : "0");
-    emit changed();
-}
 
 // --- the lane ---------------------------------------------------------------------------------
 
@@ -262,12 +249,12 @@ QString NickClient::problemWith(const QString &bot, QString *resolved) {
     return {};
 }
 
-QString NickClient::ask(Pending pending) {
+QString NickClient::ask(Pending pending, int later) {
     for (const auto *list : {&queue_, &waiting_})
         for (const auto &p : *list)
             if (p.bot == pending.bot && p.key == pending.key)
                 return {}; // the same question is already out
-    pending.due = now() + delay(pending.urgent);
+    pending.due = now() + delay() + later;
     queue_.push_back(std::move(pending));
     return {};
 }
@@ -281,17 +268,11 @@ QString NickClient::lookupAddress(const QString &text, const QString &bot) {
     QString resolved;
     if (const auto problem = problemWith(bot, &resolved); !problem.isEmpty())
         return problem;
-    return ask({resolved,
-                "address",
-                q(nb::keyOfAddressRequest(*n)),
-                q(nb::addressRequest(*n)),
-                {},
-                0,
-                0,
-                true});
+    return ask(
+        {resolved, "address", q(nb::keyOfAddressRequest(*n)), q(nb::addressRequest(*n)), {}, 0, 0});
 }
 
-QString NickClient::lookupNicknames(const QStringList &addresses, const QString &bot, bool urgent) {
+QString NickClient::lookupNicknames(const QStringList &addresses, const QString &bot) {
     if (addresses.isEmpty())
         return tr("Enter an address");
     std::vector<std::string> asked;
@@ -308,7 +289,7 @@ QString NickClient::lookupNicknames(const QStringList &addresses, const QString 
         for (const auto &a : batch)
             list << q(a);
         const auto problem = ask({resolved, "nickname", q(nb::keyOfNicknameRequest(batch)),
-                                  q(nb::nicknameRequest(batch)), list, 0, 0, urgent});
+                                  q(nb::nicknameRequest(batch)), list, 0, 0});
         if (!problem.isEmpty())
             return problem;
     }
@@ -334,12 +315,15 @@ QString NickClient::search(const QString &text, const QString &bot) {
                 q(nb::searchRequest(term)),
                 {},
                 0,
-                0,
-                true});
+                0});
 }
 
 void NickClient::finish(const Pending &p, const QVariantMap &result) {
     emit lookupFinished(p.kind, p.key, p.bot, result);
+    // The last message of a check: the pages that show it are told, as they are of any other
+    // change.
+    if (p.check && !checking())
+        emit changed();
 }
 
 void NickClient::sendDue() {
@@ -351,10 +335,7 @@ void NickClient::sendDue() {
         const auto p = queue_[i];
         const bool held =
             t < lastIdentified_.value(p.bot, -kAfterIdentified * 10) + kAfterIdentified;
-        const bool crowded =
-            !p.urgent &&
-            t < lastAnonymous_.value(p.bot, -kGapBetweenBackground * 10) + kGapBetweenBackground;
-        if (p.due > t || held || crowded) {
+        if (p.due > t || held) {
             ++i;
             continue;
         }
@@ -369,7 +350,6 @@ void NickClient::sendDue() {
         auto sent = p;
         sent.sent = t;
         waiting_.push_back(sent);
-        lastAnonymous_[p.bot] = t;
     }
 }
 
@@ -411,15 +391,10 @@ bool NickClient::known(const QString &address) const {
     return false;
 }
 
-void NickClient::markChecked(const QString &address) {
-    setSetting(kCheckedSetting + address, QString::number(now()));
-}
-
 // A nickname set by hand or built in is confirmed by a nickbot, never replaced by one.
 bool NickClient::learn(const QString &address, const QString &nick, const QString &bot) {
     if (!known(address))
         return false;
-    markChecked(address);
     const auto have = setting(updates::kNicknameSetting + address);
     const auto vouched = setting(kVouchedBySetting + address);
     if (!have.isEmpty() && vouched.isEmpty() && have != nick)
@@ -435,7 +410,6 @@ bool NickClient::learn(const QString &address, const QString &nick, const QStrin
 bool NickClient::forget(const QString &address, const QString &bot) {
     if (!known(address))
         return false;
-    markChecked(address);
     if (setting(kVouchedBySetting + address) != bot)
         return false;
     setSetting(updates::kNicknameSetting + address, {});
@@ -502,6 +476,16 @@ static QString newestFromBot(Session &session, const QString &identity, const QS
     return {};
 }
 
+QString NickClient::registrationProblem() const {
+    if (!session_.mailboxOpen())
+        return tr("Open a mailbox first");
+    if (!enabled())
+        return tr("Nicknames are turned off in Settings");
+    if (bots().isEmpty())
+        return tr("No nickbot is listed");
+    return {};
+}
+
 QString NickClient::registerNickname(const QString &identity, const QString &text,
                                      const QString &bot) {
     if (!session_.mailboxOpen())
@@ -516,11 +500,9 @@ QString NickClient::registerNickname(const QString &identity, const QString &tex
         own = own || (!i.chan && q(i.address) == identity);
     if (!own)
         return tr("Choose one of your identities");
-    if (!enabled())
-        return tr("Nicknames are turned off in Settings");
+    if (const auto problem = registrationProblem(); !problem.isEmpty())
+        return problem;
     const auto list = bots();
-    if (list.isEmpty())
-        return tr("No nickbot is listed");
     QString resolved = list.first().address;
     if (!bot.isEmpty()) {
         if (botIndex(bot) < 0)
@@ -637,35 +619,51 @@ void NickClient::checkRegistrations() {
     }
 }
 
-// --- keeping the book up to date --------------------------------------------------------------
+// --- checking the book ------------------------------------------------------------------------
 
-void NickClient::autoRefresh() {
-    const auto t = now();
-    if (!backgroundLookups_ || t < nextAuto_ || !autoLookups() || !enabled() || bots().isEmpty())
-        return;
-    nextAuto_ = t + kAutoEvery;
-    // One batch of the background at a time.
+int NickClient::checkContacts(QString *problem) {
+    const auto refuse = [&](const QString &why) {
+        if (problem)
+            *problem = why;
+        return 0;
+    };
+    if (checking())
+        return refuse(tr("A check is already under way"));
+    if (const auto why = registrationProblem(); !why.isEmpty())
+        return refuse(why);
+    std::vector<std::string> addresses;
+    for (const auto &c : session_.coreMailbox().contacts())
+        addresses.push_back(c.address);
+    if (addresses.empty())
+        return refuse(tr("There are no contacts to check"));
+    QString resolved;
+    if (const auto why = problemWith({}, &resolved); !why.isEmpty())
+        return refuse(why);
+    int later = 0;
+    for (const auto &batch : nb::nicknameBatches(addresses)) {
+        QStringList list;
+        for (const auto &a : batch)
+            list << q(a);
+        Pending p{resolved,
+                  "nickname",
+                  q(nb::keyOfNicknameRequest(batch)),
+                  q(nb::nicknameRequest(batch)),
+                  list,
+                  0,
+                  0,
+                  true};
+        ask(std::move(p), later);
+        later += kCheckSpacing;
+    }
+    return int(addresses.size());
+}
+
+bool NickClient::checking() const {
     for (const auto *list : {&queue_, &waiting_})
         for (const auto &p : *list)
-            if (!p.urgent && p.kind == "nickname")
-                return;
-    QHash<QString, qint64> checked;
-    for (const auto &[name, value] : session_.coreMailbox().settings(st(kCheckedSetting)))
-        checked[q(name).mid(kCheckedSetting.size())] = q(value).toLongLong();
-    QList<QPair<qint64, QString>> stale;
-    for (const auto &c : session_.coreMailbox().contacts()) {
-        const auto address = q(c.address);
-        const auto last = checked.value(address, 0);
-        if (t - last >= kRecheckAfter)
-            stale.push_back({last, address});
-    }
-    if (stale.isEmpty())
-        return;
-    std::sort(stale.begin(), stale.end());
-    QStringList batch;
-    for (const auto &entry : stale.mid(0, nb::kBatch))
-        batch << entry.second;
-    lookupNicknames(batch, {}, false);
+            if (p.check)
+                return true;
+    return false;
 }
 
 // --- nicknames on the screen ------------------------------------------------------------------
@@ -799,15 +797,12 @@ void NickClient::tick() {
     expire();
     sendDue();
     checkRegistrations();
-    autoRefresh();
 }
 
 void NickClient::mailboxOpened() {
     queue_.clear();
     waiting_.clear();
-    lastAnonymous_.clear();
     lastIdentified_.clear();
-    nextAuto_ = now() + 60;
     setLaneInDelivery();
     // Opening a mailbox happens inside Session::attempt, which refuses a nested one, and sending a
     // chat is one: the registrations asked for before the mailbox existed go on the next tick.

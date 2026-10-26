@@ -86,4 +86,6 @@ QTextEdit *subjectArea(QBoxLayout *layout, const QString &name);
 void setSubject(QTextEdit *subject, const QString &text, BodyView mode = BodyView::Text);
 QColor iconColor(bool dark);
 QIcon materialIcon(const QString &name, QColor color);
+// A dot in a colour, 16 px: what stands for a nickbot's colour in a list or a menu.
+QIcon dotIcon(const QColor &color);
 } // namespace bm

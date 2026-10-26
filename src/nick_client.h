@@ -68,15 +68,6 @@ class NickClient : public QObject {
     // Every message to a nickbot is off when this is. On by default.
     bool enabled() const;
     void setEnabled(bool on);
-    // The contacts' nicknames are looked up on their own (on by default).
-    bool autoLookups() const;
-    void setAutoLookups(bool on);
-    // A program that is not the app (a tool that publishes, a benchmark) turns the lookups it did
-    // not ask for off for good: it must not join a chan to its vault or write to a nickbot on its
-    // own. Not kept: it is a property of the process, not of the mailbox.
-    void setBackgroundLookups(bool on) {
-        backgroundLookups_ = on;
-    }
 
     // --- the chan the lookups go out from --------------------------------------------------------
     // Its address once the app has joined it to the vault (so in every mailbox of it), else empty.
@@ -89,11 +80,23 @@ class NickClient : public QObject {
     // --- lookups: each returns empty when queued, else why not (translated) ----------------------
     // The answers come as lookupFinished, minutes later.
     QString lookupAddress(const QString &nick, const QString &bot = {});
-    QString lookupNicknames(const QStringList &addresses, const QString &bot = {},
-                            bool urgent = false);
+    QString lookupNicknames(const QStringList &addresses, const QString &bot = {});
     QString search(const QString &term, const QString &bot = {});
 
+    // --- checking the address book: only when the user asks -------------------------------------
+    // Asks the default nickbot for the nicknames of every contact, eight to a message and the
+    // messages ten seconds apart. Returns how many contacts it asks about; 0, with *problem
+    // (already translated), when it cannot: nickbots off or none listed, no contacts, or a check
+    // that is under way. The answers come as the other lookups' do.
+    int checkContacts(QString *problem = nullptr);
+    // A check was asked for and some of its messages are not answered yet (or timed out). The
+    // client says changed() when that stops being so.
+    bool checking() const;
+
     // --- registration ----------------------------------------------------------------------------
+    // Why no nickname can be asked for now (translated), or empty: no mailbox, nickbots off, or
+    // none listed.
+    QString registrationProblem() const;
     // Asks the nickbot, by a chat from the identity, to give the nickname to it.
     QString registerNickname(const QString &identity, const QString &nick, const QString &bot = {});
     // state: none, waiting, registered, refused, noanswer; with nick, bot and error (a code).
@@ -146,33 +149,29 @@ class NickClient : public QObject {
         QString bot, kind, key, command;
         QStringList addresses; // for a nickname lookup
         qint64 due = 0, sent = 0;
-        bool urgent =
-            false; // somebody is waiting for it, rather than the book being kept up to date
+        bool check = false; // one of the messages of a check of the whole address book
     };
     Session &session_;
     QList<Pending> queue_, waiting_;
-    QHash<QString, qint64> lastAnonymous_, lastIdentified_; // by nickbot, in seconds
-    QList<QPair<QString, QString>> toRegister_;             // identity, nickname
-    qint64 nextAuto_ = 0;
+    QHash<QString, qint64> lastIdentified_;     // by nickbot, in seconds
+    QList<QPair<QString, QString>> toRegister_; // identity, nickname
     bool flushRegistrations_ = false;
-    bool backgroundLookups_ = true;
     std::function<qint64()> clock_;
     std::function<int(int, int)> pick_;
 
     qint64 now() const;
-    int delay(bool urgent) const;
+    int delay() const;
     QString problemWith(const QString &bot, QString *resolved);
-    QString ask(Pending pending);
+    // Queues a question for later, and `later` seconds on top of the random wait.
+    QString ask(Pending pending, int later = 0);
     void sendDue();
     void expire();
     void processService();
     void apply(const bmc::nickbot::Reply &reply, const QString &bot);
     bool learn(const QString &address, const QString &nick, const QString &bot);
     bool forget(const QString &address, const QString &bot);
-    void markChecked(const QString &address);
     bool known(const QString &address) const;
     void checkRegistrations();
-    void autoRefresh();
     void setLaneInDelivery();
     QString setting(const QString &name) const;
     void setSetting(const QString &name, const QString &value);

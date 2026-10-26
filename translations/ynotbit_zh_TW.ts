@@ -1019,6 +1019,66 @@ Date: %1
         <source>Find people…</source>
         <translation>尋找使用者…</translation>
     </message>
+    <message>
+        <source>Nickname…</source>
+        <translation>暱稱…</translation>
+    </message>
+    <message>
+        <source>Address copied</source>
+        <translation>地址已複製</translation>
+    </message>
+    <message>
+        <source>No identities yet.
+
+Make one with “New identity” above, or join a chan.</source>
+        <translation>還沒有身分。
+
+用上方的“新建身分”建立一個，或加入頻道。</translation>
+    </message>
+    <message>
+        <source>No identity matches “%1”.</source>
+        <translation>沒有與“%1”匹配的身分。</translation>
+    </message>
+    <message>
+        <source>Filter by name, nickname or address</source>
+        <translation>按名稱、暱稱或地址篩選</translation>
+    </message>
+    <message>
+        <source>Register a nickname…</source>
+        <translation>註冊暱稱…</translation>
+    </message>
+    <message>
+        <source>%1 (waiting)</source>
+        <translation>%1（等待中）</translation>
+    </message>
+    <message>
+        <source>%1 (refused)</source>
+        <translation>%1（被拒絕）</translation>
+    </message>
+    <message>
+        <source>%1 (no answer)</source>
+        <translation>%1（無回應）</translation>
+    </message>
+    <message>
+        <source>Named by your subscription; not in your contacts</source>
+        <translation>來自您訂閱的名稱；不在聯絡人中</translation>
+    </message>
+    <message>
+        <source>Check nicknames</source>
+        <translation>檢查暱稱</translation>
+    </message>
+    <message>
+        <source>Ask the nickbot for the nicknames of all your contacts</source>
+        <translation>向暱稱機器人詢問所有聯絡人的暱稱</translation>
+    </message>
+    <message>
+        <source>Asking the nickbot for the nicknames of your contacts. The answers take a few minutes.</source>
+        <translation>正在向暱稱機器人詢問您聯絡人的暱稱。回覆需要幾分鐘。</translation>
+    </message>
+    <message>
+        <source>Checked your contacts. The nicknames the nickbot has are in the table.</source>
+        <translation>已檢查聯絡人。暱稱機器人所知的暱稱已顯示在表格中。</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -2464,12 +2524,8 @@ Date: %1
         <translation>使用暱稱機器人</translation>
     </message>
     <message>
-        <source>Look up the nicknames of my contacts on their own</source>
-        <translation>自動查詢我的聯絡人的暱稱</translation>
-    </message>
-    <message>
-        <source>A lookup is sent from a chan that everybody has, so the nickbot cannot tell who asks. It takes a few minutes. Turn nickbots off and nothing is sent at all.</source>
-        <translation>查詢會從每個人都有的一個頻道發出，因此暱稱機器人無法得知是誰在詢問。這需要幾分鐘。關閉暱稱機器人後，將不會傳送任何內容。</translation>
+        <source>Nothing is asked of a nickbot unless you ask: Find people… and Check nicknames are on the Contacts page. A lookup is sent from a chan that everybody has, so the nickbot cannot tell who asks. It takes a few minutes. Turn nickbots off and nothing is sent at all.</source>
+        <translation>除非您主動詢問，否則不會向暱稱機器人詢問任何內容：“尋找使用者…”和“檢查暱稱”在“聯絡人”頁面。查詢會從每個人都有的一個頻道發出，因此暱稱機器人無法得知是誰在詢問。這需要幾分鐘。關閉暱稱機器人後，將不會傳送任何內容。</translation>
     </message>
     <message>
         <source>Your nickbots</source>
@@ -2498,26 +2554,6 @@ Date: %1
     <message>
         <source>Remove</source>
         <translation>移除</translation>
-    </message>
-    <message>
-        <source>Your nicknames</source>
-        <translation>你的暱稱</translation>
-    </message>
-    <message>
-        <source>Identity</source>
-        <translation>身分</translation>
-    </message>
-    <message>
-        <source>Nickname</source>
-        <translation>暱稱</translation>
-    </message>
-    <message>
-        <source>Register a nickname…</source>
-        <translation>註冊暱稱…</translation>
-    </message>
-    <message>
-        <source>Registering sends one message from the identity to the nickbot, which then knows the identity's address; the nickname and the address are public.</source>
-        <translation>註冊時，該身分會向暱稱機器人傳送一則訊息，暱稱機器人因此會知道該身分的地址；暱稱和地址都是公開的。</translation>
     </message>
     <message>
         <source>%1 (default)</source>
@@ -2552,20 +2588,8 @@ Date: %1
         <translation>新增</translation>
     </message>
     <message>
-        <source>Register a nickname</source>
-        <translation>註冊暱稱</translation>
-    </message>
-    <message>
-        <source>Identity: %1</source>
-        <translation>身分：%1</translation>
-    </message>
-    <message>
-        <source>A nickname is @, / or # followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -. # is for chans only.</source>
-        <translation>暱稱由 @、/ 或 # 加上 3 到 32 個字元的名稱組成：先是一個字母，再是字母、數字、_ 或 -。# 僅用於頻道。</translation>
-    </message>
-    <message>
-        <source>Register</source>
-        <translation>註冊</translation>
+        <source>To get a nickname for one of your identities, select it on the Identities page and choose Nickname…</source>
+        <translation>要為您的某個身分取得暱稱，請在“身分”頁面選取它，然後選擇“暱稱…”。</translation>
     </message>
 </context>
 <context>
@@ -2681,6 +2705,45 @@ Date: %1
     <message>
         <source>No nickname</source>
         <translation>沒有暱稱</translation>
+    </message>
+    <message>
+        <source>A check is already under way</source>
+        <translation>檢查已在進行中</translation>
+    </message>
+    <message>
+        <source>There are no contacts to check</source>
+        <translation>沒有可檢查的聯絡人</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NicknameDialog</name>
+    <message>
+        <source>Nickname</source>
+        <translation>暱稱</translation>
+    </message>
+    <message>
+        <source>Nickbot</source>
+        <translation>暱稱機器人</translation>
+    </message>
+    <message>
+        <source>Register</source>
+        <translation>註冊</translation>
+    </message>
+    <message>
+        <source>A nickname is @, / or # followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -. # is for chans only.</source>
+        <translation>暱稱由 @、/ 或 # 加上 3 到 32 個字元的名稱組成：先是一個字母，再是字母、數字、_ 或 -。# 僅用於頻道。</translation>
+    </message>
+    <message>
+        <source>Registering sends one message from the identity to the nickbot, which then knows the identity's address; the nickname and the address are public.</source>
+        <translation>註冊時，該身分會向暱稱機器人傳送一則訊息，暱稱機器人因此會知道該身分的地址；暱稱和地址都是公開的。</translation>
+    </message>
+    <message>
+        <source>Registered: %1</source>
+        <translation>已註冊：%1</translation>
+    </message>
+    <message>
+        <source># is for chans. Start with @ for a person or / for a bot.</source>
+        <translation># 僅用於頻道。個人請以 @ 開頭，機器人請以 / 開頭。</translation>
     </message>
 </context>
 </TS>

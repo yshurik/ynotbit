@@ -1,9 +1,14 @@
+#include "address_label.h"
+#include "ellipsis_label.h"
 #include "app_badge.h"
 #include "desktop_window.h"
 #include "chats_pane.h"
 #include "coolname.h"
 #include "session.h"
 #include "ntb-object-db.h"
+extern "C" {
+#include "ntb-address.h"
+}
 #include "updates.h"
 #include "feed_view.h"
 #include "find_people_dialog.h"
@@ -18,6 +23,7 @@
 #include "join_channel_dialog.h"
 #include "nick_client.h"
 #include "nickbots_page.h"
+#include "nickname_dialog.h"
 #include "new_vault_dialog.h"
 #include "sound_theme.h"
 #include "tray_icon.h"
@@ -32,6 +38,7 @@
 #include <QtWidgets>
 #include "bmclient/pybm_fixtures.h"
 #include <bmc/chat_format.h>
+#include <bmc/wire.h>
 #include <bmc/clock.h>
 #include <filesystem>
 #include <functional>
@@ -1521,7 +1528,7 @@ static void testNickbots(const QTemporaryDir &temp) {
     require(nick.bots().size() == 1 && nick.bots()[0].address == bot && nick.botIndex(bot) == 0 &&
                 nick.botIndex(second) == -1,
             "a mailbox that never set its list has the built-in one: the default nickbot");
-    require(nick.enabled() && nick.autoLookups(), "nickbots and automatic lookups start on");
+    require(nick.enabled(), "nickbots start on");
     QString why;
     require(nick.setBots({{bot, "one"}, {second, "two"}}, &why) && nick.bots().size() == 2 &&
                 nick.bots()[1].address == second && nick.botIndex(second) == 1 &&
@@ -1541,10 +1548,8 @@ static void testNickbots(const QTemporaryDir &temp) {
     require(nick.setBots({{bot, "nickbot"}}, &why) && nick.bots().size() == 1,
             "the list shrinks again");
     nick.setEnabled(false);
-    nick.setAutoLookups(false);
-    require(!nick.enabled() && !nick.autoLookups(), "the two switches turn off");
+    require(!nick.enabled(), "the switch turns off");
     nick.setEnabled(true);
-    nick.setAutoLookups(false); // the automatic lookups have a section of their own
 
     // --- words ---------------------------------------------------------------------------------
     for (const auto &[name, want] :
@@ -1701,7 +1706,7 @@ static void testNickbots(const QTemporaryDir &temp) {
     nick.tick();
     require(nick.nicknameOf(ann).text.isEmpty(),
             "what a stranger says about a contact is not taken");
-    require(nick.lookupNicknames({ann, ben}, {}, true).isEmpty(), "test sanity: a batch lookup");
+    require(nick.lookupNicknames({ann, ben}, {}).isEmpty(), "test sanity: a batch lookup");
     now += 4;
     nick.tick();
     require(sentFrom(lane, bot).size() == 3 &&
@@ -1805,6 +1810,21 @@ static void testNickbots(const QTemporaryDir &temp) {
                 !nick.search("b%n_").isEmpty() && !nick.lookupAddress("@ben", second).isEmpty(),
             "a bad nickname, a bad address, a short or odd term and a nickbot that is not listed "
             "are refused");
+    // What the dialog that asks for a nickname says before anything is typed.
+    require(nick.registrationProblem().isEmpty(),
+            "with nickbots on and listed nothing is in the way");
+    nick.setEnabled(false);
+    require(nick.registrationProblem() ==
+                bm::NickClient::tr("Nicknames are turned off in Settings"),
+            "nickbots off is in the way of a registration, and it says so");
+    nick.setEnabled(true);
+    {
+        const auto listed = nick.bots();
+        nick.setBots({});
+        require(nick.registrationProblem() == bm::NickClient::tr("No nickbot is listed"),
+                "so is an empty list");
+        nick.setBots(listed);
+    }
 
     // --- searching
     // ---------------------------------------------------------------------------------
@@ -1830,24 +1850,6 @@ static void testNickbots(const QTemporaryDir &temp) {
     require(!nick.nicknameOf(dee).text.isEmpty() == s.isContact(dee),
             "a hit who is no contact is not put in the book by a search");
     finished.clear();
-
-    // --- background lookups are not sent together
-    // ----------------------------------------------------------
-    {
-        now += 200; // clear of the search above
-        nick.tick();
-        const auto before = sentFrom(lane, bot).size();
-        require(nick.lookupNicknames({addressOf("crowd one")}, {}, false).isEmpty() &&
-                    nick.lookupNicknames({addressOf("crowd two")}, {}, false).isEmpty(),
-                "test sanity: two lookups that only keep the book up to date");
-        now += 61;
-        nick.tick();
-        require(sentFrom(lane, bot).size() == before + 1, "one of them goes when its time comes");
-        now += 130;
-        nick.tick();
-        require(sentFrom(lane, bot).size() == before + 2,
-                "and the other two minutes after, not with it");
-    }
 
     // --- registration
     // --------------------------------------------------------------------------------
@@ -1932,8 +1934,8 @@ static void testNickbots(const QTemporaryDir &temp) {
     nick.tick();
     require(sentFrom(me, bot).size() == count, "and only once");
 
-    // --- the book is kept up to date on its own
-    // ----------------------------------------------------------
+    // --- the book is checked when the user asks, and never on its own
+    // ---------------------------------------------------
     {
         QStringList fresh;
         for (int i = 0; i < 11; ++i) {
@@ -1941,86 +1943,121 @@ static void testNickbots(const QTemporaryDir &temp) {
             s.addContact(a, "Contact " + QString::number(i));
             fresh << a;
         }
-        std::sort(fresh.begin(), fresh.end());
-        const auto batch = [&](int from, int count) {
-            return "/nickname " + fresh.mid(from, count).join(' ');
+        const auto contacts = s.coreMailbox().contacts().size();
+        // The addresses of the /nickname messages sent from the lane after the first `since`.
+        const auto asked = [&](int since) {
+            QStringList out;
+            for (const auto &text : sentFrom(lane, bot).mid(since))
+                if (text.startsWith("/nickname "))
+                    out << text.mid(10).split(' ');
+            return out;
         };
-        const auto results = [&](const QStringList &addresses, const QString &firstNick) {
+        // The answer to a /nickname message, from a nickbot that has what the book has, and gives
+        // `named` the nickname.
+        const auto reply = [&](const QString &text, const QString &named, const QString &nickname) {
+            const auto addresses = text.mid(10).split(' ');
             QStringList entries;
-            for (int i = 0; i < addresses.size(); ++i)
-                entries << R"({"address":")" + addresses[i] + R"(","nicks":[)" +
-                               (i == 0 && !firstNick.isEmpty() ? "\"" + firstNick + "\""
-                                                               : QString()) +
-                               "]}";
+            for (const auto &a : addresses) {
+                const auto has = a == named ? nickname : nick.nicknameOf(a).text;
+                entries << R"({"address":")" + a + R"(","nicks":[)" +
+                               (has.isEmpty() ? QString() : "\"" + has + "\"") + "]}";
+            }
             return R"({"v":1,"cmd":"nickname","ok":true,"results":[)" + entries.join(',') + "]}";
         };
-        nick.setAutoLookups(true);
         now += 200; // clear of the registration above
         finished.clear();
         const auto start = sentFrom(lane, bot).size();
+        // Nothing is asked about the contacts on its own, however long the time.
+        for (int round = 0; round < 3; ++round) {
+            now += 10 * 86400;
+            nick.tick();
+            now += 700;
+            nick.tick();
+        }
+        require(sentFrom(lane, bot).size() == start && !nick.checking(),
+                "the contacts are not asked about unless the user asks");
+        QString problem;
+        nick.setEnabled(false);
+        require(nick.checkContacts(&problem) == 0 &&
+                    problem == bm::NickClient::tr("Nicknames are turned off in Settings") &&
+                    !nick.checking(),
+                "with nickbots off a check says so, and asks nothing");
+        nick.setEnabled(true);
+        problem.clear();
+        require(nick.checkContacts(&problem) == contacts && problem.isEmpty() && nick.checking(),
+                "a check asks about every contact");
+        require(nick.checkContacts(&problem) == 0 &&
+                    problem == bm::NickClient::tr("A check is already under way"),
+                "and is not started a second time while it is under way");
+        QSignalSpy changes(&nick, &bm::NickClient::changed);
+        now += 2;
         nick.tick();
         require(sentFrom(lane, bot).size() == start,
-                "a pass only queues: nothing goes out at once");
-        now += 61;
+                "nothing goes out at once: the first message waits its random time");
+        now += 1;
         nick.tick();
         require(sentFrom(lane, bot).size() == start + 1 &&
-                    sentFrom(lane, bot).last() == batch(0, 8),
-                "then the contacts nobody has checked go, eight to a message");
-        now += 700;
+                    sentFrom(lane, bot).last().split(' ').size() == 1 + 8,
+                "then the first goes, eight addresses to a message");
+        now += 9;
         nick.tick();
         require(sentFrom(lane, bot).size() == start + 1,
-                "and no second batch is started while the first has no answer");
-        answer(bot, results(fresh.mid(0, 8), "@first"));
+                "the next is ten seconds behind it, not close: a long address book is no burst");
+        now += 1;
         nick.tick();
-        require(finished.size() == 1 && nick.nicknameOf(fresh[0]).text == "@first" &&
-                    nick.nicknameOf(fresh[1]).text.isEmpty(),
-                "the answer gives the names it has");
-        finished.clear();
-        now += 700;
+        require(sentFrom(lane, bot).size() == start + 2, "and goes then");
+        const int batches = (contacts + 7) / 8;
+        for (int i = 2; i < batches; ++i) {
+            now += 10;
+            nick.tick();
+        }
+        auto got = asked(start);
+        auto want = QStringList();
+        for (const auto &c : s.coreMailbox().contacts())
+            want << QString::fromStdString(c.address);
+        std::sort(got.begin(), got.end());
+        std::sort(want.begin(), want.end());
+        require(sentFrom(lane, bot).size() == start + batches && got == want,
+                "every contact is asked about, once, in the messages of the whole check");
+        // The answers come as the nickbot sends them; the check is over with the last.
+        const auto messages = sentFrom(lane, bot).mid(start);
+        const auto before = changes.size();
+        // A contact of this block, with no nickname yet, that the first message asks about.
+        QString named;
+        for (const auto &a : messages[0].mid(10).split(' '))
+            if (named.isEmpty() && fresh.contains(a))
+                named = a;
+        require(!named.isEmpty(), "test sanity: the first message asks about one of them");
+        for (int i = 0; i < messages.size() - 1; ++i) {
+            answer(bot, reply(messages[i], named, "@checked_one"));
+            nick.tick();
+        }
+        require(nick.nicknameOf(named).text == "@checked_one",
+                "what an answer holds is in the book while the rest are awaited");
+        require(nick.checking(), "the check is under way until the last answer");
+        answer(bot, reply(messages.last(), {}, {}));
         nick.tick();
-        now += 61;
+        require(!nick.checking() && changes.size() > before,
+                "with the last answer it is over, and the client says so");
+        // One that is never answered ends too, by the time the answer is overdue.
+        require(nick.checkContacts() == contacts, "test sanity: a second check");
+        now += 3;
         nick.tick();
-        require(sentFrom(lane, bot).size() == start + 2 &&
-                    sentFrom(lane, bot).last() == batch(8, 3),
-                "the next pass asks for the three that are left, not for those just checked");
-        answer(bot, results(fresh.mid(8, 3), {}));
+        require(nick.checking(), "test sanity: it is under way");
+        for (int i = 1; i < batches; ++i) {
+            now += 10;
+            nick.tick();
+        }
+        now += 3900 + 1; // longer than a lookup is waited for
         nick.tick();
-        // A week on, everything is stale again, the oldest check first.
-        now += 8 * 86400;
-        nick.tick();
-        now += 61;
-        nick.tick();
-        require(sentFrom(lane, bot).size() == start + 3 &&
-                    sentFrom(lane, bot).last().startsWith("/nickname "),
-                "after a week the contacts are asked about again");
-        nick.setAutoLookups(false);
-        answer(bot, R"({"v":1,"cmd":"help","ok":true})");
-        now += 8 * 86400;
-        nick.tick();
-        now += 700;
-        nick.tick();
-        require(sentFrom(lane, bot).size() == start + 3,
-                "with the switch off nothing more is asked");
-        // A program that is no mail client never asks on its own, whatever the switch says.
-        nick.setAutoLookups(true);
-        nick.setBackgroundLookups(false);
-        now += 8 * 86400;
-        nick.tick();
-        now += 700;
-        nick.tick();
-        now += 700;
-        nick.tick();
-        require(sentFrom(lane, bot).size() == start + 3,
-                "a tool that turned background lookups off asks nothing");
-        nick.setBackgroundLookups(true);
-        nick.setAutoLookups(false);
+        require(!nick.checking(), "a check whose answers never come is over when they are overdue");
+        nick.setEnabled(true);
     }
 
     // --- on the screen
     // ------------------------------------------------------------------------------------
     {
         nick.setBots({{bot, "nickbot"}});
-        nick.setAutoLookups(false);
         require(s.addContact(dee, bm::addressTitle(dee)),
                 "test sanity: a contact whose name is made up");
         nick.adopt(dee, "@dee", bot);
@@ -2193,8 +2230,7 @@ static void testLaneBelongsToTheVault(const QTemporaryDir &temp) {
         require(i.toMap()["address"].toString() != lane,
                 "and with no mailbox open the identities do not show it");
 }
-// Settings > Nickbots: the list with its colours, the order and the switches, and the registration
-// of an identity's nickname.
+// Settings > Nickbots: the list with its colours, the order and the switches.
 static void testNickbotsPage(const QTemporaryDir &temp) {
     const auto vaultFile = temp.filePath("nickpage.bmvault"),
                boxFile = temp.filePath("nickpage.bmmail");
@@ -2234,7 +2270,6 @@ static void testNickbotsPage(const QTemporaryDir &temp) {
     page.show();
     QCoreApplication::processEvents();
     auto list = page.findChild<QTreeWidget *>("nickbotsList");
-    auto identities = page.findChild<QTreeWidget *>("nickIdentitiesList");
     auto click = [&](const char *name) { page.findChild<QPushButton *>(name)->click(); };
     // Drives a dialog that is open and waiting: finds it as the modal window and calls f on it.
     auto inDialog = [&](const char *name, const std::function<void(QDialog *)> &f) {
@@ -2244,19 +2279,23 @@ static void testNickbotsPage(const QTemporaryDir &temp) {
             f(d);
         });
     };
-    require(list && identities, "the page has its two lists");
+    require(list, "the page has its list of nickbots");
     require(list->topLevelItemCount() == 1 &&
                 list->topLevelItem(0)->text(0) ==
                     bm::NickbotsPage::tr("%1 (default)").arg("nickbot") &&
                 list->topLevelItem(0)->text(1) == bot && !list->topLevelItem(0)->icon(0).isNull(),
             "the list holds the default nickbot, named as the default, with a colour");
-    require(
-        identities->topLevelItemCount() == 1 && identities->topLevelItem(0)->text(0) == "Mine" &&
-            identities->topLevelItem(0)->text(1) == bm::NickClient::describe({{"state", "none"}}),
-        "the identities are the user's own, not chans, each with what it has registered");
+    require(!page.findChild<QTreeWidget *>("nickIdentitiesList") &&
+                !page.findChild<QPushButton *>("nickRegisterButton"),
+            "the identities and their nicknames are not on this page");
+    require(page.findChild<QLabel *>("nickbotsIdentitiesNote")->text() ==
+                bm::NickbotsPage::tr("To get a nickname for one of your identities, select it on "
+                                     "the Identities page and choose Nickname…"),
+            "but it says where they are");
     require(page.findChild<QCheckBox *>("nickbotsEnabledCheck")->isChecked() &&
-                page.findChild<QCheckBox *>("nickbotsAutoCheck")->isChecked(),
-            "the two switches start on");
+                !page.findChild<QCheckBox *>("nickbotsAutoCheck"),
+            "the switch starts on, and there is no other: the contacts are checked when the user "
+            "asks, from the Contacts page");
 
     // Add a nickbot.
     inDialog("nickbotAddDialog", [&](QDialog *d) {
@@ -2314,46 +2353,874 @@ static void testNickbotsPage(const QTemporaryDir &temp) {
             "with five nickbots Add is grey");
     s.nicks().setBots({{bot, "nickbot"}});
 
-    // Registration.
-    require(page.findChild<QPushButton *>("nickRegisterButton")->isEnabled(),
-            "with a nickbot and an identity, Register is on");
-    inDialog("nickRegisterDialog", [&](QDialog *d) {
-        auto field = d->findChild<QLineEdit *>("nickRegisterField");
-        auto ok = d->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok);
-        require(field->text() == "@mine" && ok->isEnabled(),
-                "the nickname is made from the identity's name, and good");
-        field->setText("mine");
-        require(!ok->isEnabled(), "Register waits for a valid nickname");
-        field->setText("@mine_page");
-        ok->click();
-    });
-    click("nickRegisterButton");
-    require(s.nicks().registration(s.identities().front().toMap()["address"].toString())["state"] ==
-                    "waiting" &&
-                identities->topLevelItem(0)->text(1) ==
-                    bm::NickClient::describe({{"state", "waiting"}, {"nick", "@mine_page"}}),
-            "the registration is asked for, and the page says it waits");
-    // The answer changes the row, in the nickbot's colour.
-    {
-        const auto me = s.identities().front().toMap()["address"].toString();
-        const auto text =
-            std::string("Registered.\nnickbot: "
-                        "{\"v\":1,\"cmd\":\"register\",\"ok\":true,\"query\":\"@mine_page\","
-                        "\"nick\":\"@mine_page\",\"address\":\"") +
-            me.toStdString() + "\"}";
-        s.coreMailbox().storeChat("page-answer", bot.toStdString(), me.toStdString(), 5, text,
-                                  bmc::now() + 3600);
-        s.nicks().tick();
-        require(identities->topLevelItem(0)->text(1) == "@mine_page" &&
-                    identities->topLevelItem(0)->foreground(1).color() == bm::nickbotColor(0),
-                "the nickname that was registered shows, in the colour of the nickbot");
-    }
     // The switch.
     page.findChild<QCheckBox *>("nickbotsEnabledCheck")->setChecked(false);
-    require(!s.nicks().enabled() &&
-                !page.findChild<QPushButton *>("nickRegisterButton")->isEnabled() &&
-                !page.findChild<QCheckBox *>("nickbotsAutoCheck")->isEnabled(),
-            "with nickbots off nothing can be registered and the other switch is grey");
+    require(!s.nicks().enabled(), "the switch turns nickbots off");
+}
+// The dialog that asks a nickbot for the nickname of one of the user's identities: what it offers,
+// what it refuses, what it says of the last try, and how it ends.
+static void testNicknameDialog(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("nickdlg.bmvault"),
+               boxFile = temp.filePath("nickdlg.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        made.addChannel("a chan of the nickname dialog test", "A chan");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("nickdlg-node"));
+    {
+        QSettings config(temp.filePath("nickdlg-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    const auto addressOf = [](const char *who) {
+        return QString::fromStdString(bmc::Protocol::identity(who).address);
+    };
+    const auto bot = addressOf("the dialog's nickbot"),
+               second = addressOf("the dialog's second nickbot");
+    bm::updates::setDefaultNickbotsForTesting({{bot, "nickbot"}});
+    struct Restore {
+        ~Restore() {
+            bm::updates::setDefaultNickbotsForTesting({});
+        }
+    } restore;
+    bm::Session s(temp.filePath("nickdlg-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen(), "test sanity: the mailbox opens");
+    QString me, chan;
+    for (const auto &v : s.identities())
+        (v.toMap()["chan"].toBool() ? chan : me) = v.toMap()["address"].toString();
+    require(!me.isEmpty() && !chan.isEmpty(), "test sanity: an identity and a chan");
+    int serial = 0;
+    // What the nickbot says back is a chat to the identity, with a line for programs at its end.
+    const auto answer = [&](const QString &json) {
+        s.coreMailbox().storeChat("dialog-answer-" + std::to_string(++serial), bot.toStdString(),
+                                  me.toStdString(), 100 + serial,
+                                  "Words.\nnickbot: " + json.toStdString(), bmc::now() + 3600);
+        s.nicks().tick();
+    };
+    struct Parts {
+        QLineEdit *field;
+        QPushButton *ok;
+        QLabel *problem, *state;
+        QComboBox *which;
+    };
+    const auto parts = [](bm::NicknameDialog &dialog) {
+        return Parts{dialog.findChild<QLineEdit *>("nicknameField"),
+                     dialog.findChild<QPushButton *>("nicknameRegisterButton"),
+                     dialog.findChild<QLabel *>("nicknameProblem"),
+                     dialog.findChild<QLabel *>("nicknameState"),
+                     dialog.findChild<QComboBox *>("nicknameBot")};
+    };
+
+    // A new identity: a nickname made from its name, nothing said of an earlier try.
+    {
+        bm::NicknameDialog dialog(s, me, "Mine");
+        dialog.show();
+        const auto [field, ok, problem, state, which] = parts(dialog);
+        require(field && ok && problem && state, "the dialog has its parts");
+        require(dialog.findChild<QLabel *>("nicknameIdentityName")->text() == "Mine" &&
+                    dialog.findChild<QLabel *>("nicknameIdentityAddress")->text() == me,
+                "it says whose nickname it is");
+        require(field->text() == "@mine" && ok->isEnabled() && !state->isVisible() &&
+                    !problem->isVisible() && !which,
+                "a new identity is offered a nickname made from its name, with no earlier try to "
+                "report and no nickbot to choose from");
+        field->setText("mine");
+        require(!ok->isEnabled(), "Register waits for a valid nickname");
+        field->setText("#mine");
+        require(!ok->isEnabled() && problem->isVisible() &&
+                    problem->text() ==
+                        bm::NicknameDialog::tr(
+                            "# is for chans. Start with @ for a person or / for a bot."),
+                "a chan's sigil is refused for an identity, and the dialog says why");
+        field->setText("/mine_bot");
+        require(ok->isEnabled() && !problem->isVisible(), "a bot's nickname is fine");
+        field->setText("@mine_dialog");
+        ok->click();
+        require(dialog.result() == QDialog::Accepted && !dialog.isVisible(),
+                "Register closes the dialog");
+        const auto reg = s.nicks().registration(me);
+        require(reg["state"].toString() == "waiting" && reg["nick"].toString() == "@mine_dialog" &&
+                    reg["bot"].toString() == bot,
+                "and asks the default nickbot for the nickname");
+    }
+    // The try that waits for its answer is reported, and can be asked again.
+    {
+        bm::NicknameDialog dialog(s, me, "Mine");
+        dialog.show();
+        const auto [field, ok, problem, state, which] = parts(dialog);
+        require(state->isVisible() &&
+                    state->text() == bm::NickClient::describe(s.nicks().registration(me)) &&
+                    field->text() == "@mine_dialog" && ok->isEnabled(),
+                "a registration that waits is reported, its nickname is in the field, and it can "
+                "be asked for again");
+    }
+    // Accepted: the nickname stands, and asking for it again is pointless until it changes.
+    answer(
+        R"({"v":1,"cmd":"register","ok":true,"query":"@mine_dialog","nick":"@mine_dialog","address":")" +
+        me + R"("})");
+    {
+        bm::NicknameDialog dialog(s, me, "Mine");
+        dialog.show();
+        const auto [field, ok, problem, state, which] = parts(dialog);
+        require(state->isVisible() &&
+                    state->text() == bm::NicknameDialog::tr("Registered: %1").arg("@mine_dialog") &&
+                    field->text() == "@mine_dialog",
+                "a nickname that stands is reported and offered");
+        require(!ok->isEnabled(), "and Register has nothing to do with it as it is");
+        field->setText("@another_one");
+        require(ok->isEnabled(), "but has with another");
+        field->setText("@mine_dialog");
+        require(!ok->isEnabled(), "and not when it is put back");
+    }
+    // Refused: the reason is reported in red, and the same nickname can be tried again.
+    {
+        bm::NicknameDialog dialog(s, me, "Mine");
+        dialog.show();
+        dialog.findChild<QLineEdit *>("nicknameField")->setText("@taken_name");
+        dialog.findChild<QPushButton *>("nicknameRegisterButton")->click();
+    }
+    answer(R"({"v":1,"cmd":"register","ok":false,"error":"taken","query":"@taken_name"})");
+    {
+        bm::NicknameDialog dialog(s, me, "Mine");
+        dialog.show();
+        const auto [field, ok, problem, state, which] = parts(dialog);
+        require(state->isVisible() &&
+                    state->text() == bm::NickClient::describe(s.nicks().registration(me)) &&
+                    state->text().contains(bm::NickClient::errorText("taken")) &&
+                    state->styleSheet().contains("#d93025"),
+                "a refusal is reported with its reason, in red");
+        require(field->text() == "@taken_name" && ok->isEnabled(),
+                "the nickname that was refused is in the field, and can be tried again");
+    }
+    // Several nickbots: the user chooses which is asked.
+    s.nicks().setBots({{bot, "nickbot"}, {second, "second"}});
+    {
+        bm::NicknameDialog dialog(s, me, "Mine");
+        dialog.show();
+        const auto [field, ok, problem, state, which] = parts(dialog);
+        require(which && which->count() == 2 && which->currentData().toString() == bot &&
+                    which->itemData(1).toString() == second && !which->itemIcon(0).isNull() &&
+                    which->itemIcon(0).pixmap(16, 16).toImage().pixelColor(8, 8) ==
+                        bm::nickbotColor(0),
+                "with several nickbots there is a choice, the default first, each in its colour");
+        which->setCurrentIndex(1);
+        field->setText("@second_one");
+        ok->click();
+        require(s.nicks().registration(me)["bot"].toString() == second,
+                "the registration goes to the nickbot that was chosen");
+    }
+    {
+        bm::NicknameDialog dialog(s, me, "Mine");
+        dialog.show();
+        require(dialog.findChild<QComboBox *>("nicknameBot")->currentData().toString() == second,
+                "the next time the nickbot of the last try is the one offered");
+    }
+    s.nicks().setBots({{bot, "nickbot"}});
+    // What is in the way is said before anything is typed.
+    s.nicks().setEnabled(false);
+    {
+        bm::NicknameDialog dialog(s, me, "Mine");
+        dialog.show();
+        const auto [field, ok, problem, state, which] = parts(dialog);
+        require(!ok->isEnabled() && problem->isVisible() &&
+                    problem->text() == bm::NickClient::tr("Nicknames are turned off in Settings"),
+                "with nickbots off Register is grey, and the dialog says why");
+    }
+    s.nicks().setEnabled(true);
+    s.nicks().setBots({});
+    {
+        bm::NicknameDialog dialog(s, me, "Mine");
+        dialog.show();
+        const auto [field, ok, problem, state, which] = parts(dialog);
+        require(!ok->isEnabled() && problem->isVisible() &&
+                    problem->text() == bm::NickClient::tr("No nickbot is listed"),
+                "with no nickbot listed it says so");
+    }
+    s.nicks().setBots({{bot, "nickbot"}});
+    // What the nickbot client refuses stays in the dialog, in words.
+    {
+        bm::NicknameDialog dialog(s, chan, "A chan");
+        dialog.show();
+        const auto [field, ok, problem, state, which] = parts(dialog);
+        field->setText("@a_chan");
+        require(ok->isEnabled(), "test sanity: the nickname is good");
+        ok->click();
+        require(dialog.isVisible() && problem->isVisible() &&
+                    problem->text() == bm::NickClient::tr("Choose one of your identities"),
+                "a chan is no identity: the dialog stays, with the reason");
+        dialog.reject();
+    }
+}
+// The icons the identities toolbar has that no button had before: a star, an @, and a dot in a
+// nickbot's colour.
+static void testIdentityIcons() {
+    const auto ink = [](const QIcon &icon) {
+        const auto image =
+            icon.pixmap(QSize(80, 80)).toImage().convertToFormat(QImage::Format_ARGB32);
+        int count = 0;
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                count += qAlpha(image.pixel(x, y)) >= 200;
+        return count;
+    };
+    const QColor color("#435867");
+    const auto star = bm::materialIcon("star", color), at = bm::materialIcon("nickname", color),
+               rename = bm::materialIcon("rename", color);
+    require(ink(star) > 250 && ink(at) > 250, "the star and the @ are drawn, not blank squares");
+    require(star.pixmap(QSize(80, 80)).toImage() != at.pixmap(QSize(80, 80)).toImage() &&
+                star.pixmap(QSize(80, 80)).toImage() != rename.pixmap(QSize(80, 80)).toImage() &&
+                at.pixmap(QSize(80, 80)).toImage() != rename.pixmap(QSize(80, 80)).toImage(),
+            "and differ from each other and from the buttons beside them");
+    const auto dot = bm::dotIcon(QColor("#4a8fd6")).pixmap(16, 16).toImage();
+    require(dot.pixelColor(8, 8) == QColor("#4a8fd6") && dot.pixelColor(0, 0).alpha() == 0,
+            "a dot is in its colour, with nothing round it");
+}
+// The Identities page: a table like the address book's, with the buttons for the selected row in
+// the toolbar, and the nicknames the nickbots give.
+static void testIdentitiesPage(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("idpage.bmvault"),
+               boxFile = temp.filePath("idpage.bmmail");
+    QString me, work;
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        me = made.addIdentity("Mine");
+        work = made.addIdentity("Work");
+        made.addChannel("a chan of the identities page test", "A chan");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("idpage-node"));
+    {
+        QSettings config(temp.filePath("idpage-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    const auto bot =
+        QString::fromStdString(bmc::Protocol::identity("the identities page's nickbot").address);
+    bm::updates::setDefaultNickbotsForTesting({{bot, "nickbot"}});
+    struct Restore {
+        ~Restore() {
+            bm::updates::setDefaultNickbotsForTesting({});
+        }
+    } restore;
+    bm::Session s(temp.filePath("idpage-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen(), "test sanity: the mailbox opens");
+    QString chan;
+    for (const auto &v : s.identities())
+        if (v.toMap()["chan"].toBool())
+            chan = v.toMap()["address"].toString();
+    require(!chan.isEmpty(), "test sanity: a chan");
+    bm::DesktopWindow window(s, temp.filePath("sounds-idpage"));
+    window.show();
+    window.findChild<QToolButton *>("folderIcon_Identities")->click();
+    QCoreApplication::processEvents();
+
+    auto tree = window.findChild<QTreeView *>("identitiesTree");
+    require(window.findChild<QWidget *>("identitiesPane")->isVisible() &&
+                !window.findChild<QWidget *>("listColumn")->isVisible() && tree,
+            "Identities is a whole-pane page, and its identities are a tree view");
+    const auto model = [&] { return tree->model(); };
+    const auto cell = [&](int row, int column) { return model()->index(row, column); };
+    const auto text = [&](int row, int column) { return cell(row, column).data().toString(); };
+    const auto rowOf = [&](const QString &address) {
+        for (int row = 0; row < model()->rowCount(); ++row)
+            if (text(row, 0) == address)
+                return row;
+        return -1;
+    };
+    const auto selected = [&] {
+        const auto rows = tree->selectionModel()->selectedRows(0);
+        return rows.isEmpty() ? QString() : rows.first().data().toString();
+    };
+    const auto select = [&](const QString &address) {
+        tree->setCurrentIndex(cell(rowOf(address), 0));
+    };
+    const auto button = [&](const char *name) {
+        auto b = window.findChild<QAbstractButton *>(name);
+        require(b, name);
+        return b;
+    };
+    const auto isDefault = [&](const QString &address) {
+        return cell(rowOf(address), 2).data(bm::DesktopWindow::kIdentityDefaultRole).toBool();
+    };
+    // A dialog's exec() waits, so a timer answers it: runs f on the modal window or the menu that
+    // opens next.
+    const auto onNext = [&](const std::function<void(QWidget *)> &f, bool popup = false) {
+        auto poll = new QTimer(&window);
+        poll->setObjectName("onNextPoll");
+        QObject::connect(poll, &QTimer::timeout, &window, [poll, f, popup] {
+            if (auto w =
+                    popup ? QApplication::activePopupWidget() : QApplication::activeModalWidget()) {
+                poll->stop();
+                poll->deleteLater();
+                f(w);
+            }
+        });
+        poll->start(10);
+    };
+
+    // The columns and the rows: each identity by address, with its nickname and local name.
+    QStringList columns;
+    for (int column = 0; column < model()->columnCount(); ++column)
+        columns << model()->headerData(column, Qt::Horizontal).toString();
+    require(columns == QStringList({"Address", "Nickname", "Local name"}),
+            "the identities have the address book's columns");
+    require(model()->rowCount() == 3 && text(0, 0) == me && text(0, 2) == "Mine" &&
+                text(1, 0) == work && text(1, 2) == "Work" && text(2, 0) == chan &&
+                text(2, 2) == "#A chan",
+            "a row per identity and chan, in the vault's order, by address and local name");
+    {
+        const auto ratio = tree->devicePixelRatioF();
+        const auto side = tree->iconSize().width();
+        for (int row = 0; row < model()->rowCount(); ++row)
+            require(cell(row, 0)
+                            .data(Qt::DecorationRole)
+                            .value<QIcon>()
+                            .pixmap(tree->iconSize(), ratio)
+                            .toImage() ==
+                        bm::identiconPixmap(text(row, 0), qRound(side * ratio)).toImage(),
+                    "each address is shown with its own identicon");
+    }
+    require(isDefault(me) && !isDefault(work) && !isDefault(chan) &&
+                !cell(0, 2).data(bm::DesktopWindow::kIdentityChanRole).toBool() &&
+                cell(2, 2).data(bm::DesktopWindow::kIdentityChanRole).toBool(),
+            "the local name says which is the default identity and which is a chan");
+
+    // The toolbar: the buttons for the selected row, in the pill beside Join and New identity.
+    const QList<QAbstractButton *> rowButtons{
+        button("identityNicknameButton"), button("copyAddressButton"),
+        button("showQrButton"),           button("setDefaultIdentityButton"),
+        button("renameIdentityButton"),   button("deleteIdentityButton")};
+    auto join = button("joinChannelButton"), create = button("newIdentityButton");
+    const auto topOf = [&](QWidget *w) { return w->mapTo(&window, QPoint()).y(); };
+    for (auto b : rowButtons)
+        require(topOf(b) < topOf(tree) && topOf(b) < topOf(create) + create->height() &&
+                    topOf(b) + b->height() > topOf(create),
+                "a row's buttons sit in the toolbar of New identity, above the table");
+    {
+        auto pill = button("copyAddressButton")->parentWidget();
+        bool one = true;
+        QAbstractButton *before = nullptr;
+        for (auto b : rowButtons)
+            if (b != rowButtons.first()) {
+                one = one && b->parentWidget() == pill && (!before || b->x() > before->x());
+                before = b;
+            }
+        require(one && pill->grab().toImage().pixelColor(0, pill->height() / 2).alpha() == 255,
+                "all but Nickname sit in one pill, drawn as the address book's");
+    }
+    require(button("copyAddressButton")->toolTip() == "Copy address" &&
+                button("showQrButton")->toolTip() == "Show QR code" &&
+                button("setDefaultIdentityButton")->toolTip() == "Set as default" &&
+                button("renameIdentityButton")->toolTip() == "Rename identity" &&
+                button("deleteIdentityButton")->toolTip() == "Delete identity",
+            "the pill's buttons say what they act on");
+    require(create->isEnabled() && join->isEnabled(), "New identity and Join are always on");
+
+    // The page opens on the default identity, so that its buttons work at once.
+    require(selected() == me, "the default identity is selected when the page opens");
+    for (auto b : rowButtons)
+        require(b->isEnabled() == (b != button("setDefaultIdentityButton")),
+                "with the default selected everything is on but Set as default");
+    select(work);
+    require(button("setDefaultIdentityButton")->isEnabled(),
+            "another identity can be made the default");
+    select(chan);
+    require(!button("identityNicknameButton")->isEnabled() &&
+                button("setDefaultIdentityButton")->isEnabled() &&
+                button("renameIdentityButton")->isEnabled(),
+            "a chan has no nickname to ask for, and the rest is on");
+
+    // Set as default: the pill moves, the selection stays.
+    select(work);
+    button("setDefaultIdentityButton")->click();
+    QTest::qWait(30);
+    require(isDefault(work) && !isDefault(me) && selected() == work &&
+                !button("setDefaultIdentityButton")->isEnabled(),
+            "Set as default moves the mark and keeps the row selected");
+    // Copy.
+    QApplication::clipboard()->clear();
+    button("copyAddressButton")->click();
+    require(QApplication::clipboard()->text() == work, "Copy address copies the selected address");
+    QApplication::clipboard()->clear();
+    QTest::keyClick(tree, Qt::Key_C, Qt::ControlModifier);
+    require(QApplication::clipboard()->text() == work, "so does the copy shortcut");
+    // QR.
+    {
+        bool shown = false;
+        onNext([&](QWidget *w) {
+            shown = w->objectName() == "qrDialog" && w->isVisible();
+            w->close();
+        });
+        button("showQrButton")->click();
+        require(shown, "Show QR code opens the QR dialog");
+    }
+
+    // The filter: names, nicknames and addresses.
+    auto filter = window.findChild<QLineEdit *>("identitiesFilter");
+    auto empty = window.findChild<QLabel *>("identitiesEmpty");
+    require(filter && empty && !empty->isVisible() && tree->isVisible(),
+            "with identities listed there is no empty note");
+    filter->setText("wOrK");
+    require(model()->rowCount() == 1 && text(0, 0) == work,
+            "the filter matches names, ignoring case");
+    filter->setText(me.mid(5, 6));
+    require(model()->rowCount() == 1 && text(0, 0) == me, "and addresses");
+    filter->setText("nobody-matches");
+    require(model()->rowCount() == 0 && empty->isVisible() && !tree->isVisible(),
+            "a filter with no match says so");
+    for (auto b : rowButtons)
+        require(!b->isEnabled(), "a selection the filter hides turns the buttons off");
+    filter->clear();
+    require(model()->rowCount() == 3 && tree->isVisible() && !empty->isVisible(),
+            "clearing it brings the rows back");
+
+    // The nickname column: what stands, what waits, what was refused.
+    require(
+        text(0, 1).isEmpty() &&
+            cell(rowOf(me), 1).data(bm::DesktopWindow::kIdentityHintRole).toString() ==
+                bm::DesktopWindow::tr("Register a nickname…") &&
+            cell(rowOf(chan), 1).data(bm::DesktopWindow::kIdentityHintRole).toString().isEmpty(),
+        "an identity with no nickname offers to get one, and a chan does not");
+    s.nicks().adopt(me, "@mine_nick", bot);
+    QCoreApplication::processEvents();
+    require(text(rowOf(me), 1) == "@mine_nick" &&
+                cell(rowOf(me), 1).data(Qt::ForegroundRole).value<QBrush>().color() ==
+                    bm::nickbotColor(0) &&
+                cell(rowOf(me), 1).data(Qt::ToolTipRole).toString() == "nickbot" &&
+                cell(rowOf(me), 1).data(bm::DesktopWindow::kIdentityHintRole).toString().isEmpty(),
+            "a nickname that stands shows in the colour of the nickbot that said it, which the "
+            "tip names");
+    require(s.nicks().registerNickname(work, "@work_nick").isEmpty(), "test sanity: a request");
+    QCoreApplication::processEvents();
+    const auto muted = tree->palette().color(QPalette::Mid);
+    require(text(rowOf(work), 1) == bm::DesktopWindow::tr("%1 (waiting)").arg("@work_nick") &&
+                cell(rowOf(work), 1).data(Qt::ForegroundRole).value<QBrush>().color() == muted &&
+                cell(rowOf(work), 1)
+                    .data(Qt::ToolTipRole)
+                    .toString()
+                    .contains(bm::NickClient::describe(s.nicks().registration(work))),
+            "a registration that waits shows its nickname and says so, muted, with the state as "
+            "the tip");
+    int serial = 0;
+    const auto answer = [&](const QString &identity, const QString &json) {
+        s.coreMailbox().storeChat("idpage-answer-" + std::to_string(++serial), bot.toStdString(),
+                                  identity.toStdString(), 100 + serial,
+                                  "Words.\nnickbot: " + json.toStdString(), bmc::now() + 3600);
+        s.nicks().tick();
+        QCoreApplication::processEvents();
+    };
+    answer(work, R"({"v":1,"cmd":"register","ok":false,"error":"taken","query":"@work_nick"})");
+    require(text(rowOf(work), 1) == bm::DesktopWindow::tr("%1 (refused)").arg("@work_nick") &&
+                cell(rowOf(work), 1).data(Qt::ForegroundRole).value<QBrush>().color() ==
+                    QColor("#d93025") &&
+                cell(rowOf(work), 1)
+                    .data(Qt::ToolTipRole)
+                    .toString()
+                    .contains(bm::NickClient::errorText("taken")),
+            "a refusal shows the nickname that was asked for, says it was refused, in red, with "
+            "the reason as the tip");
+    require(s.nicks().registerNickname(work, "@work_two").isEmpty(), "test sanity: another try");
+    answer(
+        work,
+        R"({"v":1,"cmd":"register","ok":true,"query":"@work_two","nick":"@work_two","address":")" +
+            work + R"("})");
+    require(text(rowOf(work), 1) == "@work_two" &&
+                cell(rowOf(work), 1).data(Qt::ForegroundRole).value<QBrush>().color() ==
+                    bm::nickbotColor(0),
+            "an acceptance makes it the nickname, in the nickbot's colour");
+    // A change while a nickname stands leaves it, in its colour; the tip tells of the try.
+    require(s.nicks().registerNickname(work, "@work_three").isEmpty(), "test sanity: a change");
+    QCoreApplication::processEvents();
+    require(text(rowOf(work), 1) == "@work_two" &&
+                cell(rowOf(work), 1).data(Qt::ForegroundRole).value<QBrush>().color() ==
+                    bm::nickbotColor(0) &&
+                cell(rowOf(work), 1).data(Qt::ToolTipRole).toString() ==
+                    "nickbot\n" + bm::NickClient::describe(s.nicks().registration(work)),
+            "a change that waits leaves the nickname that stands, and the tip tells of the try");
+    answer(work, R"({"v":1,"cmd":"register","ok":false,"error":"taken","query":"@work_three"})");
+    require(text(rowOf(work), 1) == "@work_two" &&
+                cell(rowOf(work), 1)
+                    .data(Qt::ToolTipRole)
+                    .toString()
+                    .contains(bm::NickClient::errorText("taken")),
+            "and so does a change that was refused");
+    // The filter finds nicknames too.
+    filter->setText("@WORK_t");
+    require(model()->rowCount() == 1 && text(0, 0) == work, "the filter matches nicknames");
+    filter->clear();
+    s.setNickname(me, ""); // an identity with no nickname to show
+    QCoreApplication::processEvents();
+    require(cell(rowOf(me), 1).data(bm::DesktopWindow::kIdentityHintRole).toString() ==
+                bm::DesktopWindow::tr("Register a nickname…"),
+            "an identity whose nickname is gone offers to get one");
+    s.nicks().setEnabled(false);
+    QCoreApplication::processEvents();
+    require(cell(rowOf(chan), 1).data(bm::DesktopWindow::kIdentityHintRole).toString().isEmpty() &&
+                cell(rowOf(me), 1).data(bm::DesktopWindow::kIdentityHintRole).toString().isEmpty(),
+            "with nickbots off nothing offers a nickname");
+    s.nicks().setEnabled(true);
+
+    // Sorting is the address book's: the vault's order until a header is clicked.
+    {
+        const auto header = tree->header();
+        const auto names = [&] {
+            QStringList out;
+            for (int row = 0; row < model()->rowCount(); ++row)
+                out << text(row, 2);
+            return out;
+        };
+        require(names() == QStringList({"Mine", "Work", "#A chan"}),
+                "the rows keep the vault's order until a header is clicked");
+        QTest::mouseClick(header->viewport(), Qt::LeftButton, {},
+                          QPoint(header->sectionViewportPosition(2) + 8, header->height() / 2));
+        require(names() == QStringList({"#A chan", "Mine", "Work"}),
+                "a click on Local name sorts the rows by name");
+        QTest::mouseClick(header->viewport(), Qt::LeftButton, {},
+                          QPoint(header->sectionViewportPosition(2) + 8, header->height() / 2));
+        require(names() == QStringList({"Work", "Mine", "#A chan"}), "a second click reverses it");
+        header->setSortIndicator(-1, Qt::AscendingOrder);
+        require(names() == QStringList({"Mine", "Work", "#A chan"}),
+                "and the vault's order comes back");
+    }
+
+    // Nothing is redrawn when nothing changed: the rows, the selection and the scroll stay.
+    {
+        select(me);       // not the default: a redraw that forgets the selection would pick that
+        QTest::qWait(30); // what is still waiting to be drawn is drawn first
+        int removed = 0;
+        const auto onRemoved = QObject::connect(model(), &QAbstractItemModel::rowsRemoved, &window,
+                                                [&] { ++removed; });
+        const auto onReset =
+            QObject::connect(model(), &QAbstractItemModel::modelReset, &window, [&] { ++removed; });
+        for (int i = 0; i < 3; ++i) {
+            emit s.changed();
+            QCoreApplication::processEvents();
+        }
+        require(removed == 0 && selected() == me,
+                "a change that is none of the identities' leaves the rows and the selection alone");
+        s.nicks().adopt(chan, "#a_chan_nick", bot);
+        QCoreApplication::processEvents();
+        require(selected() == me && text(rowOf(chan), 1) == "#a_chan_nick",
+                "and one that is keeps the selection while the cell changes");
+        QObject::disconnect(onRemoved); // the counter is gone with this block
+        QObject::disconnect(onReset);
+    }
+
+    // A theme switch recolours the toolbar's icons, and the table keeps its selection.
+    {
+        select(work);
+        const auto themeTo = [&](const QString &mode) {
+            window.findChild<QAction *>("settingsAction")->trigger();
+            auto combo =
+                window.findChild<QWidget *>("settingsPane")->findChild<QComboBox *>("themeCombo");
+            combo->setCurrentIndex(combo->findData(mode));
+            window.findChild<QToolButton *>("folderIcon_Identities")->click();
+            QCoreApplication::processEvents();
+        };
+        window.findChild<QAction *>("settingsAction")->trigger();
+        const auto before = window.findChild<QWidget *>("settingsPane")
+                                ->findChild<QComboBox *>("themeCombo")
+                                ->currentData()
+                                .toString();
+        themeTo("light");
+        const auto light = button("renameIdentityButton")->icon().pixmap(18, 18).toImage();
+        const auto lightStar = button("setDefaultIdentityButton")->icon().pixmap(18, 18).toImage();
+        themeTo("dark");
+        require(button("renameIdentityButton")->icon().pixmap(18, 18).toImage() != light &&
+                    button("setDefaultIdentityButton")->icon().pixmap(18, 18).toImage() !=
+                        lightStar,
+                "a theme switch recolours the identities toolbar's icons");
+        require(selected() == work && model()->rowCount() == 3,
+                "and the table keeps its rows and its selection");
+        themeTo(before);
+    }
+
+    // Double-click does what the cell is about.
+    const auto doubleClick = [&](const QString &address, int column) {
+        const auto rect = tree->visualRect(cell(rowOf(address), column));
+        QTest::mouseClick(tree->viewport(), Qt::LeftButton, {}, rect.center()); // the first click
+        QTest::mouseDClick(tree->viewport(), Qt::LeftButton, {}, rect.center());
+    };
+    {
+        QApplication::clipboard()->clear();
+        doubleClick(me, 0);
+        require(QApplication::clipboard()->text() == me, "a double-click on an address copies it");
+        QString opened;
+        onNext([&](QWidget *w) {
+            opened = w->objectName() + "|" +
+                     (w->findChild<QLabel *>("nicknameIdentityAddress")
+                          ? w->findChild<QLabel *>("nicknameIdentityAddress")->text()
+                          : QString());
+            static_cast<QDialog *>(w)->reject();
+        });
+        doubleClick(work, 1);
+        require(opened == "nicknameDialog|" + work, "a double-click on a nickname asks for one");
+        onNext([&](QWidget *w) {
+            auto input = qobject_cast<QInputDialog *>(w);
+            require(input, "a double-click on a local name opens the rename prompt");
+            require(input->textValue() == "Work", "which starts from the name there is");
+            input->setTextValue("Work renamed");
+            input->accept();
+        });
+        doubleClick(work, 2);
+        QTest::qWait(30);
+        require(text(rowOf(work), 2) == "Work renamed" && selected() == work,
+                "and the new name shows at once, the row still selected");
+        // Not on a chan's nickname: there is nothing to ask for.
+        bool asked = false;
+        onNext([&](QWidget *w) {
+            asked = true;
+            static_cast<QDialog *>(w)->reject();
+        });
+        doubleClick(chan, 1);
+        QTest::qWait(60);
+        require(!asked, "a chan's nickname is not asked for");
+        for (auto poll : window.findChildren<QTimer *>("onNextPoll")) // the one that never fired
+            delete poll;
+    }
+
+    // The menu of a row holds what the toolbar does.
+    {
+        QStringList items;
+        QList<bool> on;
+        onNext(
+            [&](QWidget *w) {
+                for (auto action : w->actions())
+                    if (!action->isSeparator()) {
+                        items << action->text();
+                        on << action->isEnabled();
+                    }
+                w->close();
+            },
+            true);
+        select(me);
+        emit tree->customContextMenuRequested(tree->visualRect(cell(rowOf(chan), 0)).center());
+        require(items == QStringList({"Copy address", "Show QR code", "Set as default", "Nickname…",
+                                      "Rename identity", "Delete identity"}),
+                "the menu of a row has the toolbar's actions, in words");
+        require(selected() == chan, "and a right-click selects its row first");
+        require(on == QList<bool>({true, true, true, false, true, true}),
+                "a chan's menu has no nickname to ask for");
+    }
+
+    // A new identity is selected, as is one that is joined: the page shows what was added.
+    {
+        const auto before = QSet<QString>{me, work, chan};
+        onNext([&](QWidget *w) { w->findChild<QPushButton *>("newVaultCreateButton")->click(); });
+        create->click();
+        QTest::qWait(50);
+        require(model()->rowCount() == 4, "New identity adds its row");
+        const auto added = selected();
+        require(!added.isEmpty() && !before.contains(added),
+                "and selects it, so its buttons are ready");
+        // Deleting it takes the row away, and the selection goes to the default.
+        onNext(
+            [&](QWidget *w) { qobject_cast<QMessageBox *>(w)->button(QMessageBox::Yes)->click(); });
+        button("deleteIdentityButton")->click();
+        QTest::qWait(50);
+        require(model()->rowCount() == 3 && rowOf(added) < 0 && selected() == work,
+                "Delete takes its row away and selects the default");
+    }
+}
+// An address in a letter's header is on one line when the room is there, and wrapped, within the
+// room, only when it is not. A plain wrapping QLabel reports a broken-up text as its size hint, so
+// a layout with room to spare cut the address after "BM-"; and a width of the text's rounded
+// advance leaves the label a fraction of a pixel short, with the same result, at some sizes of the
+// font.
+static void testAddressLabel() {
+    // One that can be broken after the "BM-" (a letter follows it; before a digit the text cannot
+    // be broken at all), which is the one that was cut. Its length is such that the width of a font
+    // of 0.6 em, the usual one for a fixed pitch, has a fraction of a pixel at most sizes.
+    const QString address = "BM-NBSeFsd41rbt2emv1HBTMwQagLtdSsYRx";
+    QWidget host;
+    auto row = new QHBoxLayout(&host);
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(0);
+    auto label = new bm::AddressLabel(address);
+    label->setFont(bm::addressFont());
+    label->setTextFormat(Qt::PlainText);
+    label->setWordWrap(true);
+    row->addWidget(label, 0, Qt::AlignTop); // not stretched to the height of the row
+    row->addStretch();                      // as in the header: a button, then what is left
+    // What the text needs on one line, as Qt itself measures it: a label that does not wrap.
+    QLabel oneLine(address);
+    oneLine.setTextFormat(Qt::PlainText);
+    host.resize(2000, 300);
+    host.show();
+    for (int pixels = 9; pixels <= 24; ++pixels) {
+        auto font = bm::addressFont();
+        font.setPixelSize(pixels);
+        label->setFont(font);
+        oneLine.setFont(font);
+        QCoreApplication::processEvents();
+        const QSize single = oneLine.sizeHint();
+        require(
+            label->width() >= single.width() &&
+                label->heightForWidth(label->width()) <= single.height(),
+            qPrintable(
+                QString("an address with the room it needs is on one line, at %1 px").arg(pixels)));
+        require(label->sizeHint().width() >= single.width() &&
+                    label->sizeHint().height() == single.height(),
+                qPrintable(QString("and asks for that line, no less, at %1 px").arg(pixels)));
+    }
+    auto font = bm::addressFont();
+    font.setPixelSize(13);
+    label->setFont(font);
+    oneLine.setFont(font);
+    QCoreApplication::processEvents(); // the window's least width follows the font before it is
+                                       // narrowed
+    const QSize single = oneLine.sizeHint();
+    host.resize(single.width() - 8, 300);
+    QCoreApplication::processEvents();
+    require(label->width() < single.width() && label->width() <= host.width() &&
+                label->height() > single.height(),
+            "and is wrapped, within the room, when the room is not there");
+}
+// The subtitle of a page gives way to the buttons beside it, and says so with "…", where a plain
+// label kept its width and was cut off mid-word at the least width of the window.
+static void testEllipsisLabel() {
+    const QString text = "People you write to. Names are private to this mailbox.";
+    QWidget host;
+    auto row = new QHBoxLayout(&host);
+    row->setContentsMargins(0, 0, 0, 0);
+    auto label = new bm::EllipsisLabel(text);
+    auto button = new QPushButton("A button that wants its room");
+    row->addWidget(label);
+    row->addStretch();
+    row->addWidget(button);
+    host.resize(2000, 100);
+    host.show();
+    QCoreApplication::processEvents();
+    require(label->width() >= label->sizeHint().width() && label->shownText() == text,
+            "with the room there is, the whole text is shown");
+    host.resize(label->sizeHint().width() / 2 + button->sizeHint().width(), 100);
+    QCoreApplication::processEvents();
+    require(host.width() < label->sizeHint().width() + button->sizeHint().width() &&
+                label->width() < label->sizeHint().width() && label->shownText().endsWith("…") &&
+                label->shownText().size() < text.size() &&
+                button->width() >= button->sizeHint().width(),
+            "with less the label ends in an ellipsis, and the button keeps its room");
+}
+// The letter's header: the sender's address whole on one line beside its name and the button, and a
+// name that does not come from the address book saying where it does.
+static void testReaderHeader(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("header.bmvault"),
+               boxFile = temp.filePath("header.bmmail");
+    // An address with two zero bytes at the front of its RIPE, like the shorter ones PyBitmessage
+    // makes on request: a letter follows its "BM-", where the text can be broken (before a digit it
+    // cannot), and where a sender's address was cut.
+    ntb_address made{};
+    made.version = 3;
+    made.stream = 1;
+    for (int i = 2; i < 20; ++i)
+        made.ripe[i] = uint8_t(0x30 + i);
+    char encoded[NTB_ADDRESS_MAX_LENGTH + 1];
+    ntb_address_encode(&made, encoded);
+    const QString sender = encoded;
+    require(sender.at(3).isLetter() && bmc::Wire::validAddress(sender.toStdString()),
+            "test sanity: a valid address with a letter after BM-");
+    // The built-in notices of ynotbit come from an address that is named, and no subscription names
+    // it.
+    const auto publisher =
+        QString::fromStdString(bmc::Protocol::identity("the header test's publisher").address);
+    const auto publisherBefore = bm::updates::publisherAddress();
+    bm::updates::setPublisherAddressForTesting(publisher);
+    struct Restore {
+        QString was;
+        ~Restore() {
+            bm::updates::setPublisherAddressForTesting(was);
+        }
+    } restore{publisherBefore};
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        const auto me = made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        // The senders of the Inbox were put in the address book when the mailbox was first opened;
+        // this one is a later one.
+        box.setSetting("migrated:inbox-senders", "1");
+        box.store("header-1", sender, me, "A letter", "Body", 1800, "Inbox");
+        box.subscribe(sender, "MiNode-Refined-updates");
+        box.store("header-2", publisher, me, "Release notes", "Body", 1801, "Inbox");
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("header-node"));
+    {
+        QSettings config(temp.filePath("header-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    const auto bot =
+        QString::fromStdString(bmc::Protocol::identity("the header test's nickbot").address);
+    bm::updates::setDefaultNickbotsForTesting({{bot, "nickbot"}});
+    struct RestoreBots {
+        ~RestoreBots() {
+            bm::updates::setDefaultNickbotsForTesting({});
+        }
+    } restoreBots;
+    bm::Session s(temp.filePath("header-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen(), "test sanity: the mailbox opens");
+    bm::DesktopWindow window(s, temp.filePath("sounds-header"));
+    window.resize(1160, 780);
+    window.show();
+    window.findChild<QToolButton *>("folderIcon_Inbox")->click();
+    window.selectMessage("header-1");
+    QCoreApplication::processEvents();
+    auto address = window.findChild<QLabel *>("messageAddresses");
+    auto name = window.findChild<QLabel *>("fromName");
+    auto add = window.findChild<QToolButton *>("addSenderContact");
+    require(address && address->isVisible() && address->text() == sender && name->isVisible() &&
+                name->text().contains("MiNode-Refined-updates") && add->isVisible(),
+            "test sanity: a sender named by a subscription, who is not in the address book");
+    {
+        QLabel oneLine(address->text()); // the text on one line, as Qt measures it
+        oneLine.setFont(address->font());
+        oneLine.setTextFormat(Qt::PlainText);
+        require(address->width() >= oneLine.sizeHint().width() &&
+                    address->heightForWidth(address->width()) <= oneLine.sizeHint().height(),
+                "the sender's address is on one line when the pane has the room for it");
+    }
+    const auto at = [&](QWidget *w) { return w->mapTo(&window, QPoint()); };
+    require(at(add).x() - (at(address).x() + address->width()) <= 8 &&
+                at(add).y() < at(address).y() + address->height(),
+            "and the add button is beside the end of the address, not far off");
+    require(name->toolTip() ==
+                bm::DesktopWindow::tr("Named by your subscription; not in your contacts"),
+            "the name says it comes from a subscription, which is why the button is there");
+    require(s.addContact(sender, "Minode"), "test sanity: the sender joins the address book");
+    QCoreApplication::processEvents();
+    require(!add->isVisible() && name->text().contains("Minode") && name->toolTip().isEmpty(),
+            "once a contact the button is gone and the name needs no explanation");
+    // A nickname a nickbot gave goes beside the name, and the tip names the nickbot.
+    s.nicks().adopt(sender, "@minode", bot);
+    QCoreApplication::processEvents();
+    require(name->text().contains("@minode") && name->toolTip() == "nickbot",
+            "the nickbot that gave the nickname is named by the tip");
+    // A name from the built-in notices is not a subscription's: the button is there and says
+    // nothing.
+    window.selectMessage("header-2");
+    QCoreApplication::processEvents();
+    require(name->isVisible() && name->text().contains(bm::Session::tr("ynotbit updates")) &&
+                add->isVisible() && name->toolTip().isEmpty(),
+            "a name that no subscription gave has no such tip");
 }
 // Contacts > Find people: the question asked from what is typed, the answer in the table, and what
 // is added to the address book.
@@ -2393,7 +3260,6 @@ static void testFindPeople(const QTemporaryDir &temp) {
     qint64 now = QDateTime::currentSecsSinceEpoch();
     nick.setClockForTesting([&] { return now; });
     nick.setDelayForTesting([](int low, int) { return low; });
-    nick.setAutoLookups(false);
     int serial = 0;
     const auto answer = [&](const QString &json) {
         const auto text = "Words.\nnickbot: " + json.toStdString();
@@ -2505,6 +3371,158 @@ static void testFindPeople(const QTemporaryDir &temp) {
             "with nickbots off the dialog says why nothing is asked");
     nick.setEnabled(true);
 }
+// Contacts > Check nicknames: the whole address book is asked about when the user says so, the page
+// says that it is under way and when it is over, and the answers fill the Nickname column.
+static void testCheckNicknames(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("check.bmvault"), boxFile = temp.filePath("check.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("check-node"));
+    {
+        QSettings config(temp.filePath("check-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    const auto addressOf = [](const std::string &who) {
+        return QString::fromStdString(bmc::Protocol::identity(who).address);
+    };
+    const auto bot = addressOf("the check test's nickbot");
+    bm::updates::setDefaultNickbotsForTesting({{bot, "nickbot"}});
+    struct Restore {
+        ~Restore() {
+            bm::updates::setDefaultNickbotsForTesting({});
+        }
+    } restore;
+    bm::Session s(temp.filePath("check-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen(), "test sanity: the mailbox opens");
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+    s.nicks().setClockForTesting([&] { return now; });
+    s.nicks().setDelayForTesting([](int low, int) { return low; });
+    // An address book with nobody in it (the built-in contacts too).
+    for (const auto &c : s.coreMailbox().contacts())
+        s.removeContact(QString::fromStdString(c.address));
+    require(s.coreMailbox().contacts().empty(), "test sanity: an empty address book");
+    bm::DesktopWindow window(s, temp.filePath("sounds-check"));
+    window.resize(1160, 780);
+    window.show();
+    window.findChild<QToolButton *>("folderIcon_Contacts")->click();
+    QCoreApplication::processEvents();
+    auto check = window.findChild<QPushButton *>("checkNicknamesButton");
+    auto note = window.findChild<QLabel *>("contactsCheckNote");
+    auto tree = window.findChild<QTreeView *>("contactsTree");
+    require(check && note && tree && check->isEnabled() && !note->isVisible(),
+            "the address book has a button that checks nicknames, and nothing is said yet");
+    require(check->text() == bm::DesktopWindow::tr("Check nicknames") &&
+                check->toolTip() ==
+                    bm::DesktopWindow::tr("Ask the nickbot for the nicknames of all your contacts"),
+            "which says what it does");
+    // Nobody to ask about: it says so.
+    check->click();
+    require(note->isVisible() &&
+                note->text() == bm::NickClient::tr("There are no contacts to check") &&
+                note->styleSheet().contains("#d93025") && check->isEnabled(),
+            "with an empty address book the page says there is nothing to check");
+    QStringList contacts;
+    for (int i = 0; i < 10; ++i) {
+        contacts << addressOf("a contact of the check test " + std::to_string(i));
+        require(s.addContact(contacts.last(), "Contact " + QString::number(i)),
+                "test sanity: a contact");
+    }
+    const auto sent = [&] {
+        int count = 0;
+        for (const auto &m :
+             s.coreMailbox().chatMessages(s.nicks().laneAddress().toStdString(), bot.toStdString()))
+            count += m.outgoing;
+        return count;
+    };
+
+    const auto at = [&](QWidget *w) { return w->mapTo(&window, QPoint()); };
+    auto addContact = window.findChild<QPushButton *>("addContactButton");
+    require(at(check).y() < at(tree).y() &&
+                at(check).y() < at(addContact).y() + addContact->height() &&
+                at(check).y() + check->height() > at(addContact).y(),
+            "it sits in the toolbar of Add contact, above the table");
+
+    // What is in the way is said on the page, in red, and nothing is sent.
+    s.nicks().setBots({});
+    check->click();
+    require(note->isVisible() && note->text() == bm::NickClient::tr("No nickbot is listed") &&
+                note->styleSheet().contains("#d93025") && check->isEnabled() &&
+                !s.nicks().checking(),
+            "with no nickbot listed the page says so, and the button stays on");
+    s.nicks().setBots({{bot, "nickbot"}});
+
+    // A check: under way, said so, one button press at a time.
+    check->click();
+    require(s.nicks().checking() && !check->isEnabled() && note->isVisible() &&
+                note->text() ==
+                    bm::DesktopWindow::tr("Asking the nickbot for the nicknames of your contacts. "
+                                          "The answers take a few minutes.") &&
+                !note->styleSheet().contains("#d93025"),
+            "a check is under way: the page says so, and the button waits");
+    now += 3;
+    s.nicks().tick();
+    require(sent() == 1, "the first message goes after its random wait");
+    now += 10;
+    s.nicks().tick();
+    require(sent() == 2, "and the second ten seconds after");
+    // The answers: the first message's first contact gets a nickname.
+    const auto answer = [&](const QString &json, int number) {
+        const auto text = "Words.\nnickbot: " + json.toStdString();
+        s.coreMailbox().store("check-answer-" + std::to_string(number), bot.toStdString(),
+                              s.nicks().laneAddress().toStdString(), "",
+                              bmc::chatMessageBody(1, text), -1, "Service");
+    };
+    QStringList messages;
+    for (const auto &m :
+         s.coreMailbox().chatMessages(s.nicks().laneAddress().toStdString(), bot.toStdString()))
+        if (m.outgoing)
+            messages << QString::fromStdString(m.body);
+    // One of the contacts of this test, which the first message asks about, has a nickname.
+    QString firstAsked;
+    for (const auto &a : messages[0].mid(10).split(' '))
+        if (firstAsked.isEmpty() && contacts.contains(a))
+            firstAsked = a;
+    require(!firstAsked.isEmpty(), "test sanity: the first message asks about one of them");
+    for (int i = 0; i < messages.size(); ++i) {
+        const auto addresses = messages[i].mid(10).split(' ');
+        QStringList entries;
+        for (const auto &a : addresses)
+            entries << R"({"address":")" + a + R"(","nicks":[)" +
+                           (a == firstAsked ? "\"@page_check\"" : QString()) + "]}";
+        answer(R"({"v":1,"cmd":"nickname","ok":true,"results":[)" + entries.join(',') + "]}", i);
+    }
+    s.nicks().tick();
+    QCoreApplication::processEvents();
+    require(!s.nicks().checking() && check->isEnabled() &&
+                note->text() ==
+                    bm::DesktopWindow::tr("Checked your contacts. The nicknames the nickbot has "
+                                          "are in the table.") &&
+                !note->styleSheet().contains("#d93025"),
+            "with the last answer the check is over: the page says so, and the button is on again");
+    bool shown = false;
+    for (int row = 0; row < tree->model()->rowCount(); ++row)
+        if (tree->model()->index(row, 0).data().toString() == firstAsked)
+            shown = tree->model()->index(row, 1).data().toString() == "@page_check" &&
+                    tree->model()->index(row, 1).data(Qt::ForegroundRole).value<QBrush>().color() ==
+                        bm::nickbotColor(0);
+    require(shown,
+            "and the nickname that was found is in the Nickname column, in the nickbot's colour");
+    // What the page says of a check does not outlive its mailbox.
+    s.closeMailbox();
+    QCoreApplication::processEvents();
+    require(note->text().isEmpty() && check->isEnabled(),
+            "with the mailbox closed the page keeps nothing of the check");
+}
 // The New identity dialog asks the nickbot for a nickname together with the identity.
 static void testNewIdentityRegisters(const QTemporaryDir &temp) {
     const auto vaultFile = temp.filePath("newid.bmvault"), boxFile = temp.filePath("newid.bmmail");
@@ -2534,7 +3552,6 @@ static void testNewIdentityRegisters(const QTemporaryDir &temp) {
     s.beginVaultUnlock();
     s.submitVaultPassword("test password");
     require(s.mailboxOpen(), "test sanity: the mailbox opens");
-    s.nicks().setAutoLookups(false);
     const auto chatsTo = [&](const QString &identity) {
         QStringList texts;
         for (const auto &m :
@@ -2683,6 +3700,12 @@ int main(int argc, char **argv) {
         // First: every window of a process gives the badge its own number, and this test has to
         // hear only the one it makes, so no other window is open yet.
         testBadgeInWindow(temp);
+        // Before the window test below starts its responder, which answers every text prompt: this
+        // one has prompts of its own to answer.
+        testIdentitiesPage(temp);
+        testAddressLabel();
+        testEllipsisLabel();
+        testReaderHeader(temp);
         for (const auto &icon : {bm::appLogo(), bm::windowLogo()}) {
             for (int size : {16, 20, 24, 32, 40, 48, 64, 96, 128, 256, 512, 1024}) {
                 require(icon.availableSizes().contains(QSize(size, size)),
@@ -5840,36 +6863,48 @@ int main(int argc, char **argv) {
                     "identities pane shown");
             require(!window.findChild<QTextEdit *>("subject")->isVisible(),
                     "the reader's subject does not float above the identities pane");
-            auto addressLabels = window.findChildren<QLabel *>("identityAddress");
-            require(addressLabels.size() == 2, "one card per identity");
-            QStringList shown;
-            for (auto l : addressLabels)
-                shown << l->text();
-            require(shown.contains(address) && shown.contains(emptyChannel),
-                    "both identities are listed");
-            require(window.findChild<QLabel *>("defaultBadge"),
-                    "the default identity shows a badge");
-            require(window.findChild<QLabel *>("channelBadge"),
-                    "the chan identity shows a Channel badge");
-            require(window.findChildren<QPushButton *>("setDefaultButton").size() == 1,
-                    "only the non-default identity offers Set as default");
-            auto identiconFor = [&](const QString &addr) -> QImage {
-                for (auto card : window.findChildren<QFrame *>("identityCard")) {
-                    auto addrLabel = card->findChild<QLabel *>("identityAddress");
-                    if (addrLabel && addrLabel->text() == addr) {
-                        auto icon = card->findChild<QLabel *>("identityIdenticon");
-                        return icon ? icon->pixmap().toImage() : QImage();
-                    }
-                }
-                return QImage();
+            auto identitiesTree = window.findChild<QTreeView *>("identitiesTree");
+            require(identitiesTree && identitiesTree->model()->rowCount() == 2,
+                    "one row per identity");
+            const auto identityRow = [&](const QString &addr) {
+                for (int row = 0; row < identitiesTree->model()->rowCount(); ++row)
+                    if (identitiesTree->model()->index(row, 0).data().toString() == addr)
+                        return row;
+                return -1;
             };
-            require(window.findChildren<QLabel *>("identityIdenticon").size() == 2,
-                    "each identity card shows an identicon");
+            const auto identityCell = [&](const QString &addr, int column) {
+                return identitiesTree->model()->index(identityRow(addr), column);
+            };
+            const auto selectIdentity = [&](int row) {
+                identitiesTree->setCurrentIndex(identitiesTree->model()->index(row, 0));
+            };
+            require(identityRow(address) >= 0 && identityRow(emptyChannel) >= 0,
+                    "both identities are listed");
+            require(
+                identityCell(address, 2).data(bm::DesktopWindow::kIdentityDefaultRole).toBool() &&
+                    !identityCell(emptyChannel, 2)
+                         .data(bm::DesktopWindow::kIdentityDefaultRole)
+                         .toBool(),
+                "the default identity is marked");
+            require(
+                identityCell(emptyChannel, 2).data(bm::DesktopWindow::kIdentityChanRole).toBool() &&
+                    !identityCell(address, 2).data(bm::DesktopWindow::kIdentityChanRole).toBool(),
+                "the chan identity is marked as one");
+            auto setDefault = window.findChild<QToolButton *>("setDefaultIdentityButton");
+            require(setDefault && !setDefault->isEnabled(),
+                    "with the default identity selected Set as default has nothing to do");
+            auto identiconFor = [&](const QString &addr) -> QImage {
+                return identityCell(addr, 0)
+                    .data(Qt::DecorationRole)
+                    .value<QIcon>()
+                    .pixmap(identitiesTree->iconSize())
+                    .toImage();
+            };
             auto personalIcon = identiconFor(address);
             auto chanIcon = identiconFor(emptyChannel);
             require(!personalIcon.isNull() && !chanIcon.isNull(), "identicon pixmaps render");
-            require(personalIcon.size() == QSize(40, 40),
-                    "identicon scaled to the card avatar size");
+            require(personalIcon.size() == identitiesTree->iconSize(),
+                    "identicon scaled to the table's icon size");
             require(personalIcon != chanIcon,
                     "different addresses render different identicons (real MD5 seed, not a "
                     "placeholder)");
@@ -5888,17 +6923,17 @@ int main(int argc, char **argv) {
                 window.grab().save(dir + "/identities.png");
             }
 
-            require(copyStyled(window.findChild<QToolButton *>("copyAddressButton")),
-                    "an identity card's copy-address button is drawn like the other tool buttons");
             {
+                auto copy = window.findChild<QToolButton *>("copyAddressButton");
                 auto qr = window.findChild<QToolButton *>("showQrButton");
                 auto rename = window.findChild<QToolButton *>("renameIdentityButton");
                 auto remove = window.findChild<QToolButton *>("deleteIdentityButton");
-                require(inOnePill({qr, rename, remove}),
-                        "an identity card's QR, Rename and Delete sit in one pill");
+                require(inOnePill({copy, qr, setDefault, rename, remove}),
+                        "an identity's Copy address, QR, Set as default, Rename and Delete sit in "
+                        "one pill");
                 require(rename->toolTip() == "Rename identity" &&
                             remove->toolTip() == "Delete identity",
-                        "an identity card's buttons say what they act on");
+                        "the identities' buttons say what they act on");
                 const auto [renameInk, renameLine] = ink(rename->icon());
                 const auto [editInk, editLine] =
                     ink(window.findChild<QAction *>("editAction")->icon());
@@ -5906,12 +6941,14 @@ int main(int argc, char **argv) {
                         "Rename shows a pencil over a line of text; Edit / Send, the pencil alone");
                 require(editInk >= 450, "Edit / Send's pencil is drawn whole, not a bare stroke");
             }
+            QApplication::clipboard()->clear();
             window.findChild<QToolButton *>("copyAddressButton")->click();
-            auto copied = QApplication::clipboard()->text();
-            require(copied == address || copied == emptyChannel,
-                    "copy button copies that card's address");
+            require(QApplication::clipboard()->text() == address,
+                    "the copy button copies the selected identity's address");
 
-            window.findChild<QPushButton *>("setDefaultButton")->click();
+            selectIdentity(identityRow(emptyChannel));
+            require(setDefault->isEnabled(), "another identity can be made the default");
+            setDefault->click();
             QTest::qWait(20);
             bool channelIsDefault = false;
             for (auto v : session.identities())
@@ -5919,8 +6956,11 @@ int main(int argc, char **argv) {
                     channelIsDefault = v.toMap()["default"].toBool();
             require(channelIsDefault, "Set as default promotes the chosen identity");
             require(identiconFor(address) == personalIcon,
-                    "the same address renders the identical identicon after the cards rebuild");
+                    "the same address renders the identical identicon after the table is drawn "
+                    "again");
 
+            // The personal identity goes: it is not the default now.
+            selectIdentity(identityRow(address));
             QTimer::singleShot(0, &window, [&] {
                 auto box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
                 if (box)
@@ -5939,6 +6979,7 @@ int main(int argc, char **argv) {
                 if (qr)
                     qr->close();
             });
+            selectIdentity(0);
             window.findChild<QToolButton *>("showQrButton")->click();
             require(qrFound, "the QR button opens a visible QR dialog");
 
@@ -5961,12 +7002,15 @@ int main(int argc, char **argv) {
             require(identityDialog && session.identities().size() == beforeAdd + 1,
                     "New identity adds the identity its dialog shows");
 
+            selectIdentity(0);
             window.findChild<QToolButton *>("renameIdentityButton")->click();
             QTest::qWait(50);
             bool renamed = false;
-            // The first card may be a chan, whose name keeps a '#'.
-            for (auto l : window.findChildren<QLabel *>("identityName"))
-                renamed = renamed || l->text() == "test password" || l->text() == "#test password";
+            // The first row may be a chan, whose name keeps a '#'.
+            for (int row = 0; row < identitiesTree->model()->rowCount(); ++row) {
+                const auto name = identitiesTree->model()->index(row, 2).data().toString();
+                renamed = renamed || name == "test password" || name == "#test password";
+            }
             require(renamed, "Rename updates the identity's label via the same prompt");
 
             // Menu items change identities behind the open Identities page; the
@@ -5991,19 +7035,14 @@ int main(int argc, char **argv) {
                 });
                 poll->start(10);
             };
-            auto cards = [&] { return window.findChildren<QFrame *>("identityCard").size(); };
-            auto cardFor = [&](const QString &addr) {
-                for (auto l : window.findChildren<QLabel *>("identityAddress"))
-                    if (l->text() == addr)
-                        return true;
-                return false;
-            };
+            auto cards = [&] { return identitiesTree->model()->rowCount(); };
+            auto cardFor = [&](const QString &addr) { return identityRow(addr) >= 0; };
             auto shownCards = cards();
             createIdentity();
             menuItem("Create identity…")->trigger();
             QTest::qWait(50);
             require(identityDialog && cards() == shownCards + 1,
-                    "Identity > Create identity… shows the new card on the open Identities page");
+                    "Identity > Create identity… shows the new row on the open Identities page");
             const QString imported = "BM-2cSsZnHbLbJr5A2RCrCMQo7vwGBi7CKNfz";
             {
                 QFile keys(temp.filePath("import-keys.dat"));
@@ -6259,7 +7298,7 @@ int main(int argc, char **argv) {
                         "test sanity: the feed's group has a border and dividers");
                 require(likeFeed(window.findChild<QToolButton *>("renameIdentityButton"),
                                  window.findChild<QToolButton *>("deleteIdentityButton")),
-                        "an identity card's pill is drawn as the feed's action group");
+                        "the identities toolbar's pill is drawn as the feed's action group");
                 folders->setCurrentRow(9);
                 QCoreApplication::processEvents();
                 require(likeFeed(window.findChild<QToolButton *>("copyContactAddressButton"),
@@ -7605,6 +8644,9 @@ int main(int argc, char **argv) {
         testNickbots(temp);
         testLaneBelongsToTheVault(temp);
         testNickbotsPage(temp);
+        testNicknameDialog(temp);
+        testIdentityIcons();
+        testCheckNicknames(temp);
         testFindPeople(temp);
         testNewIdentityRegisters(temp);
         require(session.portMapper().state() == bm::PortMapper::State::Off,

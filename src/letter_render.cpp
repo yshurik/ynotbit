@@ -780,6 +780,27 @@ QIcon materialIcon(const QString &name, QColor color) {
         gear.closeSubpath();
         p.drawPath(gear);
         p.drawEllipse(QPointF(20, 20), 4.5, 4.5);
+    } else if (name == "star") {
+        // A five-pointed star, for what is the default.
+        QPainterPath star;
+        for (int point = 0; point < 10; ++point) {
+            const double radius = point % 2 == 0 ? 13.0 : 5.6;
+            const double angle = qDegreesToRadians(-90.0 + point * 36.0);
+            const QPointF at(20 + radius * qCos(angle), 21.3 + radius * qSin(angle));
+            if (point == 0)
+                star.moveTo(at);
+            else
+                star.lineTo(at);
+        }
+        star.closeSubpath();
+        p.drawPath(star);
+    } else if (name == "nickname") {
+        // An @, which is what a nickname starts with.
+        auto font = QApplication::font();
+        font.setPixelSize(30);
+        font.setWeight(QFont::DemiBold);
+        p.setFont(font);
+        p.drawText(QRectF(0, -1, 40, 40), Qt::AlignCenter, "@");
     } else if (name == "eye" || name == "eyeOff") {
         // An eye round its pupil; struck through for the one that hides.
         QPainterPath eye;
@@ -791,6 +812,16 @@ QIcon materialIcon(const QString &name, QColor color) {
         if (name == "eyeOff")
             p.drawLine(QPointF(10, 30), QPointF(30, 10));
     }
+    return QIcon(pixmap);
+}
+QIcon dotIcon(const QColor &color) {
+    QPixmap pixmap(16, 16);
+    pixmap.fill(Qt::transparent);
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setBrush(color);
+    p.setPen(Qt::NoPen);
+    p.drawEllipse(QRectF(2, 2, 12, 12));
     return QIcon(pixmap);
 }
 } // namespace bm

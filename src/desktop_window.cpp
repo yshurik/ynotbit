@@ -1,9 +1,12 @@
+#include "address_label.h"
+#include "ellipsis_label.h"
 #include "desktop_window.h"
 #include "app_badge.h"
 #include "pybm_import_dialog.h"
 #include "rail_badge.h"
 #include "settings_pane.h"
 #include "new_vault_dialog.h"
+#include "nickname_dialog.h"
 #include "coolname.h"
 #include "session.h"
 #include "i18n.h"
@@ -1491,6 +1494,75 @@ class AddressDelegate : public QStyledItemDelegate {
         }
     }
 };
+// The identities table's cells: the local name carries a pill for what the identity is (the default
+// one, a chan), and a nickname cell that is empty says what it is for.
+class IdentityDelegate : public AddressDelegate {
+  public:
+    using AddressDelegate::AddressDelegate;
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override {
+        AddressDelegate::paint(painter, option, index);
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        const auto style = opt.widget ? opt.widget->style() : QApplication::style();
+        const auto text = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, opt.widget);
+        const int margin = style->pixelMetric(QStyle::PM_FocusFrameHMargin, &opt, opt.widget) + 1;
+        const bool selected = opt.state & QStyle::State_Selected;
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        if (index.column() == 1 && opt.text.isEmpty()) {
+            const auto hint = index.data(DesktopWindow::kIdentityHintRole).toString();
+            if (!hint.isEmpty()) {
+                auto font = opt.font;
+                font.setItalic(true);
+                painter->setFont(font);
+                painter->setPen(
+                    opt.palette.color(selected ? QPalette::HighlightedText : QPalette::Mid));
+                const auto room = text.adjusted(margin, 0, -margin, 0);
+                painter->drawText(
+                    room, Qt::AlignVCenter | Qt::AlignLeft,
+                    QFontMetrics(font).elidedText(hint, Qt::ElideRight, room.width()));
+            }
+        } else if (index.column() == 2) {
+            struct Pill {
+                QString text;
+                bool strong;
+            };
+            QList<Pill> pills;
+            if (index.data(DesktopWindow::kIdentityDefaultRole).toBool())
+                pills.push_back({DesktopWindow::tr("Default"), true});
+            if (index.data(DesktopWindow::kIdentityChanRole).toBool())
+                pills.push_back({DesktopWindow::tr("Channel"), false});
+            auto small = opt.font;
+            small.setPixelSize(11);
+            small.setWeight(QFont::DemiBold);
+            const QFontMetrics metrics(small);
+            painter->setFont(small);
+            int x = text.left() + margin + opt.fontMetrics.horizontalAdvance(opt.text) + 10;
+            for (const auto &pill : pills) {
+                const QRect box(x, opt.rect.center().y() - (metrics.height() + 4) / 2,
+                                metrics.horizontalAdvance(pill.text) + 14, metrics.height() + 4);
+                if (box.right() > opt.rect.right() - 4)
+                    break;
+                // On the selection's colour a pill is drawn the other way round, to stay seen.
+                const auto ground = selected      ? opt.palette.color(QPalette::HighlightedText)
+                                    : pill.strong ? opt.palette.color(QPalette::Highlight)
+                                                  : opt.palette.color(QPalette::Mid);
+                const auto ink = selected      ? opt.palette.color(QPalette::Highlight)
+                                 : pill.strong ? opt.palette.color(QPalette::HighlightedText)
+                                               : opt.palette.color(QPalette::Text);
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(ground);
+                painter->drawRoundedRect(box, 5, 5);
+                painter->setPen(ink);
+                painter->drawText(box, Qt::AlignCenter, pill.text);
+                x = box.right() + 6;
+            }
+        }
+        painter->restore();
+    }
+};
 class ContactDialog : public QDialog {
   public:
     ContactDialog(Session &session, QString address, QString label, QWidget *parent)
@@ -1786,8 +1858,8 @@ class LetterPane : public KindFrame {
         // From / To: the correspondent's local name (when there is one), then the
         // address itself -- always shown, so a name can never stand in for a
         // different sender -- then a button to save an unknown address.
-        fromAddress_ = new QLabel;
-        toAddress_ = new QLabel;
+        fromAddress_ = new AddressLabel;
+        toAddress_ = new AddressLabel;
         fromAddress_->setObjectName("messageAddresses");
         toAddress_->setObjectName("toAddress");
         fromName_ = new QLabel;
@@ -1980,12 +2052,20 @@ class LetterPane : public KindFrame {
             const auto shown =
                 shownName(address, session_.nameFor(address), session_.nicks().nicknameOf(address));
             name->setText(shown.html());
-            name->setToolTip(shown.bot.isEmpty() ? QString() : shown.bot);
             name->setVisible(!shown.empty());
             // Offered for any foreign address not yet in the book -- including a
             // subscription, whose label is not a contact.
-            add->setVisible(!address.isEmpty() && session_.contactProblem(address).isEmpty() &&
-                            !session_.isContact(address));
+            const bool offered = !address.isEmpty() && session_.contactProblem(address).isEmpty() &&
+                                 !session_.isContact(address);
+            add->setVisible(offered);
+            // A name that is not in the address book comes from a subscription, which the tip says:
+            // a name beside a button that adds the address looks like a contact that is added.
+            QStringList tip;
+            if (offered && !shown.local.isEmpty() && namedBySubscription(address))
+                tip << DesktopWindow::tr("Named by your subscription; not in your contacts");
+            if (!shown.bot.isEmpty())
+                tip << shown.bot;
+            name->setToolTip(tip.join("\n"));
         }
     }
     void setDark(bool dark) {
@@ -2000,6 +2080,13 @@ class LetterPane : public KindFrame {
     }
 
   private:
+    bool namedBySubscription(const QString &address) const {
+        for (const auto &v : session_.subscriptions())
+            if (const auto m = v.toMap();
+                m["address"].toString() == address && !m["label"].toString().trimmed().isEmpty())
+                return true;
+        return false;
+    }
     QAction *action(const char *name) const {
         return toolbar_->findChild<QAction *>(name);
     }
@@ -2554,6 +2641,8 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     noMailOuter->addStretch();
     welcomeStack_->addWidget(noMailboxPage_);
     read->addWidget(welcomeStack_, 1);
+    // Identities and chans: a table like the address book's. The buttons for the selected row sit
+    // in the toolbar beside New identity.
     identities_ = new QWidget;
     identities_->setObjectName("identitiesPane");
     auto identitiesOuter = new QVBoxLayout(identities_);
@@ -2565,11 +2654,62 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     identitiesHeading->setObjectName("identitiesHeading");
     identitiesHeading->setStyleSheet("font-size:20px;font-weight:600;");
     identitiesTitleCol->addWidget(identitiesHeading);
-    auto identitiesSub = new QLabel(tr("Addresses you can send mail from"));
+    auto identitiesSub = new EllipsisLabel(tr("Addresses you can send mail from"));
     identitiesSub->setStyleSheet("color:palette(mid);font-size:12px;");
     identitiesTitleCol->addWidget(identitiesSub);
     identitiesHeadRow->addLayout(identitiesTitleCol);
     identitiesHeadRow->addStretch();
+    identitiesHeadRow->setSpacing(8);
+    identityNickname_ =
+        button(tr("Nickname…"), identitiesHeadRow, [this] { askForNickname(selectedIdentity(0)); });
+    identityNickname_->setObjectName("identityNicknameButton");
+    identityNickname_->setCursor(Qt::PointingHandCursor);
+    identityCopy_ =
+        actionButton("copyAddressButton", "copy", tr("Copy address"), appearance_.dark());
+    identityQr_ = actionButton("showQrButton", "qr", tr("Show QR code"), appearance_.dark());
+    identityDefault_ =
+        actionButton("setDefaultIdentityButton", "star", tr("Set as default"), appearance_.dark());
+    identityRename_ =
+        actionButton("renameIdentityButton", "rename", tr("Rename identity"), appearance_.dark());
+    identityDelete_ =
+        actionButton("deleteIdentityButton", "delete", tr("Delete identity"), appearance_.dark());
+    // The session says when the vault changed; the later redraw is for the change that comes with
+    // no signal, and by then the click's own handler is over.
+    const auto afterChange = [this] {
+        QTimer::singleShot(0, this, [this] { refreshIdentities(); });
+    };
+    connect(identityCopy_, &QToolButton::clicked, this, [this] {
+        if (const auto address = selectedIdentity(0); !address.isEmpty()) {
+            session_.copyAddress(address);
+            QToolTip::showText(QCursor::pos(), tr("Address copied"), identitiesTree_, {}, 1500);
+        }
+    });
+    connect(identityQr_, &QToolButton::clicked, this, [this] {
+        if (const auto address = selectedIdentity(0); !address.isEmpty())
+            showAddressQr(address, selectedIdentity(2));
+    });
+    connect(identityDefault_, &QToolButton::clicked, this, [this, afterChange] {
+        if (const auto address = selectedIdentity(0); !address.isEmpty()) {
+            session_.setDefaultIdentity(address);
+            afterChange();
+        }
+    });
+    connect(identityRename_, &QToolButton::clicked, this, [this, afterChange] {
+        if (const auto address = selectedIdentity(0); !address.isEmpty()) {
+            session_.renameIdentity(address);
+            afterChange();
+        }
+    });
+    connect(identityDelete_, &QToolButton::clicked, this, [this, afterChange] {
+        if (const auto address = selectedIdentity(0); !address.isEmpty()) {
+            session_.deleteIdentity(address);
+            afterChange();
+        }
+    });
+    identityActions_ = cardActions(
+        {identityCopy_, identityQr_, identityDefault_, identityRename_, identityDelete_},
+        appearance_.dark());
+    identitiesHeadRow->addWidget(identityActions_);
     button(tr("Join a channel…"), identitiesHeadRow, [this] {
         joinChannel();
         refreshIdentities();
@@ -2577,18 +2717,69 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     button(tr("New identity"), identitiesHeadRow, [this] {
         newIdentity();
     })->setObjectName("newIdentityButton");
+    for (int i = 0; i < identitiesHeadRow->count(); ++i)
+        if (auto item = identitiesHeadRow->itemAt(i); item->widget())
+            identitiesHeadRow->setAlignment(item->widget(), Qt::AlignVCenter);
     identitiesOuter->addLayout(identitiesHeadRow);
-    auto identitiesScroll = new QScrollArea;
-    identitiesScroll->setObjectName("identitiesScroll");
-    identitiesScroll->setWidgetResizable(true);
-    identitiesScroll->setFrameShape(QFrame::NoFrame);
-    identitiesScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    auto identitiesListContainer = new QWidget;
-    identityLayout_ = new QVBoxLayout(identitiesListContainer);
-    identityLayout_->setContentsMargins(0, 4, 4, 16);
-    identityLayout_->setSpacing(10);
-    identitiesScroll->setWidget(identitiesListContainer);
-    identitiesOuter->addWidget(identitiesScroll, 1);
+    identitiesFilter_ = new QLineEdit;
+    identitiesFilter_->setObjectName("identitiesFilter");
+    identitiesFilter_->setPlaceholderText(tr("Filter by name, nickname or address"));
+    identitiesFilter_->setClearButtonEnabled(true);
+    connect(identitiesFilter_, &QLineEdit::textChanged, this, [this] { refreshIdentities(); });
+    identitiesOuter->addWidget(identitiesFilter_);
+    identitiesModel_ = new QStandardItemModel(this);
+    identitiesModel_->setHorizontalHeaderLabels({tr("Address"), tr("Nickname"), tr("Local name")});
+    identitiesSorted_ = new QSortFilterProxyModel(this);
+    identitiesSorted_->setSourceModel(identitiesModel_);
+    identitiesSorted_->setSortCaseSensitivity(Qt::CaseInsensitive);
+    identitiesTree_ = new QTreeView;
+    identitiesTree_->setObjectName("identitiesTree");
+    identitiesTree_->setModel(identitiesSorted_);
+    identitiesTree_->setRootIsDecorated(false);
+    identitiesTree_->setItemsExpandable(false);
+    identitiesTree_->setUniformRowHeights(true);
+    identitiesTree_->setAllColumnsShowFocus(true);
+    identitiesTree_->setSelectionMode(QAbstractItemView::SingleSelection);
+    identitiesTree_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    identitiesTree_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    identitiesTree_->setIconSize(QSize(24, 24));
+    identitiesTree_->setTextElideMode(Qt::ElideMiddle);
+    identitiesTree_->setItemDelegate(new IdentityDelegate(identitiesTree_));
+    identitiesTree_->setContextMenuPolicy(Qt::CustomContextMenu);
+    // The vault's own order, until a header is clicked.
+    identitiesTree_->header()->setSortIndicator(-1, Qt::AscendingOrder);
+    identitiesTree_->setSortingEnabled(true);
+    identitiesTree_->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    identitiesTree_->header()->resizeSection(1, 180);
+    identitiesTree_->header()->setStretchLastSection(true);
+    connect(identitiesTree_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this] { updateIdentityActions(); });
+    // A double-click does what its cell is about: copy an address, ask for a nickname, rename.
+    connect(identitiesTree_, &QTreeView::doubleClicked, this, [this](const QModelIndex &index) {
+        const auto address = index.sibling(index.row(), 0).data().toString();
+        if (address.isEmpty())
+            return;
+        if (index.column() == 0)
+            identityCopy_->click();
+        else if (index.column() == 1) {
+            if (!index.sibling(index.row(), 2).data(kIdentityChanRole).toBool())
+                askForNickname(address);
+        } else
+            identityRename_->click();
+    });
+    connect(identitiesTree_, &QWidget::customContextMenuRequested, this,
+            [this](const QPoint &at) { identityMenu(at); });
+    auto copyShortcut = new QShortcut(QKeySequence::Copy, identitiesTree_);
+    copyShortcut->setContext(Qt::WidgetShortcut);
+    connect(copyShortcut, &QShortcut::activated, this, [this] { identityCopy_->click(); });
+    identitiesEmpty_ = new QLabel;
+    identitiesEmpty_->setObjectName("identitiesEmpty");
+    identitiesEmpty_->setWordWrap(true);
+    identitiesEmpty_->setAlignment(Qt::AlignHCenter | Qt::AlignTop);
+    identitiesEmpty_->setStyleSheet("color:palette(mid);padding:24px;");
+    identitiesOuter->addWidget(identitiesEmpty_, 1);
+    identitiesOuter->addWidget(identitiesTree_, 1);
+    updateIdentityActions();
     read->addWidget(identities_);
     // Subscriptions: a feed of the selected sender's posts instead of the list
     // and the reader.
@@ -2624,7 +2815,8 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     contactsHeading->setObjectName("contactsHeading");
     contactsHeading->setStyleSheet("font-size:20px;font-weight:600;");
     contactsTitleCol->addWidget(contactsHeading);
-    auto contactsSub = new QLabel(tr("People you write to. Names are private to this mailbox."));
+    auto contactsSub =
+        new EllipsisLabel(tr("People you write to. Names are private to this mailbox."));
     contactsSub->setStyleSheet("color:palette(mid);font-size:12px;");
     contactsTitleCol->addWidget(contactsSub);
     contactsHeadRow->addLayout(contactsTitleCol);
@@ -2668,6 +2860,10 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
         dialog.exec();
         refreshContacts();
     })->setObjectName("findPeopleButton");
+    contactsCheck_ =
+        button(tr("Check nicknames"), contactsHeadRow, [this] { checkContactNicknames(); });
+    contactsCheck_->setObjectName("checkNicknamesButton");
+    contactsCheck_->setToolTip(tr("Ask the nickbot for the nicknames of all your contacts"));
     button(tr("Add contact…"), contactsHeadRow, [this] {
         if (editContact({}))
             refreshContacts();
@@ -2682,6 +2878,11 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     contactsFilter_->setClearButtonEnabled(true);
     connect(contactsFilter_, &QLineEdit::textChanged, this, [this] { refreshContacts(); });
     contactsOuter->addWidget(contactsFilter_);
+    contactsCheckNote_ = new QLabel;
+    contactsCheckNote_->setObjectName("contactsCheckNote");
+    contactsCheckNote_->setWordWrap(true);
+    contactsCheckNote_->hide();
+    contactsOuter->addWidget(contactsCheckNote_);
     contactsModel_ = new QStandardItemModel(this);
     contactsModel_->setHorizontalHeaderLabels({tr("Address"), tr("Nickname"), tr("Local name")});
     contactsSorted_ = new QSortFilterProxyModel(this);
@@ -3007,8 +3208,15 @@ void DesktopWindow::updateTheme() {
     contactRename_->setIcon(materialIcon("rename", color));
     contactDelete_->setIcon(materialIcon("delete", color));
     styleActionGroup(contactActions_, dark);
+    // So is the identities toolbar, and the table's muted and nickbot colours.
+    identityCopy_->setIcon(materialIcon("copy", color));
+    identityQr_->setIcon(materialIcon("qr", color));
+    identityDefault_->setIcon(materialIcon("star", color));
+    identityRename_->setIcon(materialIcon("rename", color));
+    identityDelete_->setIcon(materialIcon("delete", color));
+    styleActionGroup(identityActions_, dark);
     if (identities_->isVisible())
-        refreshIdentities(); // the cards' icons and action groups
+        refreshIdentities(true);
 }
 void DesktopWindow::updateState() {
     updateFileMenu(); // first: a mailbox that opens must not leave its items grey until the next
@@ -3071,14 +3279,14 @@ void DesktopWindow::updateState() {
     if (identities != channelIdentities_) {
         channelIdentities_ = identities;
         refreshChannels();
-        // Created, joined or imported from the menu while the page is open. Later,
-        // not now: a card's own button may be what changed them, mid-click.
-        if (folders_->currentRow() == 8)
-            QTimer::singleShot(0, this, [this] {
-                if (folders_->currentRow() == 8)
-                    refreshIdentities();
-            });
     }
+    // The page follows the vault, and the nicknames that come in as the session ticks. Later, not
+    // now: the change may be a button's own, mid-click.
+    if (folders_->currentRow() == 8 && mailboxState)
+        QTimer::singleShot(0, this, [this] {
+            if (folders_->currentRow() == 8)
+                refreshIdentities();
+        });
     // After refreshChannels(), which may have picked a different active chan.
     // Whole sentences, so languages can inflect "folder"/"channel" as they need.
     QString placeholder = tr("Search this folder");
@@ -3107,6 +3315,7 @@ void DesktopWindow::updateState() {
         shownSubscriptions_ = subscriptions;
         pane_->updateCorrespondents();
     }
+    updateContactsCheck();
     if (const auto contacts = session_.contacts(); contacts != shownContacts_) {
         shownContacts_ = contacts;
         pane_->updateCorrespondents();
@@ -3743,137 +3952,194 @@ void DesktopWindow::fillRecentMenu(QMenu *menu, const QVariantList &recent, cons
     if (recent.isEmpty())
         menu->addAction(none)->setEnabled(false);
 }
-void DesktopWindow::refreshIdentities() {
-    while (auto item = identityLayout_->takeAt(0)) {
-        delete item->widget();
-        delete item;
+void DesktopWindow::refreshIdentities(bool force) {
+    auto &nicks = session_.nicks();
+    const auto filter = identitiesFilter_->text().trimmed();
+    const auto nicknames = nicks.nicknames();                 // said by a nickbot, or set by hand
+    const bool offer = nicks.registrationProblem().isEmpty(); // a nickname can be asked for at all
+    QVariantList rows;
+    QStringList addresses;
+    for (const auto &v : session_.identities()) {
+        const auto m = v.toMap();
+        const auto address = m["address"].toString();
+        const bool chan = m["chan"].toBool();
+        const auto info = nicknames.value(address);
+        const auto registration = chan ? QVariantMap() : nicks.registration(address);
+        const auto state = registration["state"].toString();
+        // The nickname that stands is shown. A try that waits or failed is shown where none stands,
+        // and told in the tip where one does.
+        QString nick = info.text, tip = info.bot, kind = nick.isEmpty() ? QString() : "stands";
+        if (state == "waiting" || state == "refused" || state == "noanswer") {
+            const auto words = NickClient::describe(registration);
+            tip = tip.isEmpty() ? words : tip + "\n" + words;
+            if (nick.isEmpty()) {
+                nick = registration["nick"].toString();
+                kind = state;
+            }
+        }
+        addresses << address;
+        rows << QVariantMap{{"address", address},
+                            {"label", m["label"]},
+                            {"chan", chan},
+                            {"default", m["default"]},
+                            {"nick", nick},
+                            {"kind", kind},
+                            {"color", info.color},
+                            {"tip", tip},
+                            {"hint", nick.isEmpty() && !chan && offer}};
     }
-    const auto color = iconColor(appearance_.dark());
-    for (auto v : session_.identities()) {
-        auto m = v.toMap();
-        auto address = m["address"].toString();
-        auto label = m["label"].toString();
-        bool isDefault = m["default"].toBool();
-
-        auto card = new QFrame;
-        card->setObjectName("identityCard");
-        card->setStyleSheet(
-            "QFrame#identityCard{border:1px solid palette(mid);border-radius:8px;}");
-        auto cardRow = new QHBoxLayout(card);
-        cardRow->setContentsMargins(14, 12, 14, 12);
-        cardRow->setSpacing(10);
-
-        auto identicon = new QLabel;
-        identicon->setObjectName("identityIdenticon");
-        identicon->setFixedSize(40, 40);
-        identicon->setPixmap(
-            identiconPixmap(address, 40));
-        cardRow->addWidget(identicon);
-
-        auto infoCol = new QVBoxLayout;
-        auto nameRow = new QHBoxLayout;
-        auto nameLabel = new QLabel(label);
-        nameLabel->setObjectName("identityName");
-        nameLabel->setStyleSheet("font-weight:700;");
-        nameLabel->setTextFormat(Qt::PlainText);
-        if (label.contains("BM-"))
-            nameLabel->setFont(addressFont());
-        nameRow->addWidget(nameLabel);
-        if (isDefault) {
-            auto badge = new QLabel(tr("Default"));
-            badge->setObjectName("defaultBadge");
-            badge->setStyleSheet("font-size:11px;font-weight:600;padding:2px 7px;"
-                                 "border-radius:5px;background:palette(highlight);"
-                                 "color:palette(highlighted-text);");
-            nameRow->addWidget(badge);
+    // Drawn again only when what it is drawn from has changed: a redraw costs the selection.
+    const QVariantList shown{rows, filter, appearance_.dark()};
+    if (!force && shown == shownIdentities_)
+        return;
+    shownIdentities_ = shown;
+    const auto kept = selectedIdentity(0); // the selected identity stays selected
+    // An identity that was not there when the table was last drawn is the one just made, joined or
+    // imported: it is selected, so that its buttons are ready.
+    QString added;
+    for (int i = 0; i < addresses.size() && !shownIdentityAddresses_.isEmpty(); ++i)
+        if (!shownIdentityAddresses_.contains(addresses[i])) {
+            added = addresses[i];
+            break;
         }
-        if (m["chan"].toBool()) {
-            auto chanBadge = new QLabel(tr("Channel"));
-            chanBadge->setObjectName("channelBadge");
-            chanBadge->setStyleSheet("font-size:11px;font-weight:600;padding:2px 7px;"
-                                     "border-radius:5px;background:palette(mid);");
-            nameRow->addWidget(chanBadge);
-        }
-        nameRow->addStretch();
-        infoCol->addLayout(nameRow);
-
-        auto addressRow = new QHBoxLayout;
-        auto addressLabel = new QLabel(address);
-        addressLabel->setObjectName("identityAddress");
-        addressLabel->setFont(addressFont());
-        addressLabel->setStyleSheet("color:palette(mid);font-size:12px;");
-        addressLabel->setTextFormat(Qt::PlainText);
-        addressLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        addressRow->addWidget(addressLabel);
-        auto copyButton = new QToolButton;
-        copyButton->setObjectName("copyAddressButton");
-        copyButton->setProperty("addressAction", true);
-        copyButton->setFixedSize(22, 22);
-        copyButton->setIcon(materialIcon("copy", color));
-        copyButton->setIconSize(QSize(14, 14));
-        copyButton->setAutoRaise(true);
-        copyButton->setCursor(Qt::PointingHandCursor);
-        copyButton->setToolTip(tr("Copy address"));
-        connect(copyButton, &QToolButton::clicked, this,
-                [this, address] { session_.copyAddress(address); });
-        addressRow->addWidget(copyButton);
-        addressRow->addStretch();
-        infoCol->addLayout(addressRow);
-        cardRow->addLayout(infoCol, 1);
-
-        if (!isDefault) {
-            auto setDefaultButton = new QPushButton(tr("Set as default"));
-            setDefaultButton->setObjectName("setDefaultButton");
-            setDefaultButton->setCursor(Qt::PointingHandCursor);
-            connect(setDefaultButton, &QPushButton::clicked, this, [this, address] {
-                session_.setDefaultIdentity(address);
-                QTimer::singleShot(0, this, [this] { refreshIdentities(); });
-            });
-            cardRow->addWidget(setDefaultButton);
-        }
-
-        auto qrButton = actionButton("showQrButton", "qr", tr("Show QR code"), appearance_.dark());
-        connect(qrButton, &QToolButton::clicked, this, [this, address, label] {
-            QDialog dialog(this);
-            dialog.setObjectName("qrDialog");
-            dialog.setWindowTitle(label);
-            auto qrLayout = new QVBoxLayout(&dialog);
-            qrLayout->addWidget(new QrCodeView(address, &dialog), 0, Qt::AlignHCenter);
-            auto addressText = new QLabel(address);
-            addressText->setFont(addressFont());
-            addressText->setWordWrap(true);
-            addressText->setAlignment(Qt::AlignHCenter);
-            addressText->setTextFormat(Qt::PlainText);
-            addressText->setTextInteractionFlags(Qt::TextSelectableByMouse);
-            qrLayout->addWidget(addressText);
-            auto buttonsRow = new QHBoxLayout;
-            button(tr("Copy address"), buttonsRow, [this, address] { session_.copyAddress(address); });
-            auto closeButton = new QPushButton(tr("Close"));
-            closeButton->setObjectName("qrCloseButton");
-            connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
-            buttonsRow->addWidget(closeButton);
-            qrLayout->addLayout(buttonsRow);
-            dialog.exec();
-        });
-
-        auto renameButton = actionButton("renameIdentityButton", "rename", tr("Rename identity"),
-                                         appearance_.dark());
-        connect(renameButton, &QToolButton::clicked, this, [this, address] {
-            session_.renameIdentity(address);
-            QTimer::singleShot(0, this, [this] { refreshIdentities(); });
-        });
-
-        auto deleteButton = actionButton("deleteIdentityButton", "delete", tr("Delete identity"),
-                                         appearance_.dark());
-        connect(deleteButton, &QToolButton::clicked, this, [this, address] {
-            session_.deleteIdentity(address);
-            QTimer::singleShot(0, this, [this] { refreshIdentities(); });
-        });
-        cardRow->addWidget(cardActions({qrButton, renameButton, deleteButton}, appearance_.dark()));
-
-        identityLayout_->addWidget(card);
+    shownIdentityAddresses_ = addresses;
+    const auto ratio = identitiesTree_->devicePixelRatioF();
+    const auto muted = identitiesTree_->palette().color(QPalette::Mid);
+    identitiesModel_->removeRows(0, identitiesModel_->rowCount());
+    for (const auto &v : rows) {
+        const auto row = v.toMap();
+        const auto address = row["address"].toString(), label = row["label"].toString(),
+                   nick = row["nick"].toString(), kind = row["kind"].toString();
+        if (!filter.isEmpty() && !label.contains(filter, Qt::CaseInsensitive) &&
+            !address.contains(filter, Qt::CaseInsensitive) &&
+            !nick.contains(filter, Qt::CaseInsensitive))
+            continue;
+        auto identicon =
+            identiconPixmap(address, qRound(identitiesTree_->iconSize().width() * ratio));
+        identicon.setDevicePixelRatio(ratio);
+        auto addressItem = new QStandardItem(QIcon(identicon), address);
+        // A try that has not come to a nickname says so in words: a selected row is drawn in the
+        // selection's colours, and the state must not depend on the colour of its text.
+        auto nickItem = new QStandardItem(kind == "waiting"    ? tr("%1 (waiting)").arg(nick)
+                                          : kind == "refused"  ? tr("%1 (refused)").arg(nick)
+                                          : kind == "noanswer" ? tr("%1 (no answer)").arg(nick)
+                                                               : nick);
+        if (kind == "stands" && row["color"].toInt() >= 0)
+            nickItem->setForeground(nickbotColor(row["color"].toInt()));
+        else if (kind == "waiting")
+            nickItem->setForeground(muted);
+        else if (kind == "refused" || kind == "noanswer")
+            nickItem->setForeground(QColor("#d93025"));
+        if (!row["tip"].toString().isEmpty())
+            nickItem->setToolTip(row["tip"].toString());
+        if (row["hint"].toBool())
+            nickItem->setData(tr("Register a nickname…"), kIdentityHintRole);
+        auto nameItem = new QStandardItem(label);
+        nameItem->setData(row["default"].toBool(), kIdentityDefaultRole);
+        nameItem->setData(row["chan"].toBool(), kIdentityChanRole);
+        for (auto item : {addressItem, nickItem, nameItem})
+            item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
+        identitiesModel_->appendRow({addressItem, nickItem, nameItem});
     }
-    identityLayout_->addStretch();
+    const auto select = [this](const QString &address) {
+        for (int row = 0; row < identitiesSorted_->rowCount() && !address.isEmpty(); ++row) {
+            const auto index = identitiesSorted_->index(row, 0);
+            if (index.data().toString() == address) {
+                identitiesTree_->setCurrentIndex(index);
+                identitiesTree_->scrollTo(index);
+                return true;
+            }
+        }
+        return false;
+    };
+    // With nothing selected (and no filter to blame) the page opens on the default identity.
+    if (!select(added) && !select(kept) && filter.isEmpty()) {
+        QString target = rows.isEmpty() ? QString() : rows.first().toMap()["address"].toString();
+        for (const auto &v : rows)
+            if (v.toMap()["default"].toBool())
+                target = v.toMap()["address"].toString();
+        select(target);
+    }
+    const bool any = identitiesModel_->rowCount() > 0;
+    identitiesTree_->setVisible(any);
+    identitiesEmpty_->setVisible(!any);
+    if (!any)
+        identitiesEmpty_->setText(
+            rows.isEmpty()
+                ? tr("No identities yet.\n\nMake one with “New identity” above, or join a chan.")
+                : tr("No identity matches “%1”.").arg(filter));
+    updateIdentityActions();
+}
+QString DesktopWindow::selectedIdentity(int column) const {
+    const auto rows = identitiesTree_->selectionModel()->selectedRows(column);
+    return rows.isEmpty() ? QString() : rows.first().data().toString();
+}
+void DesktopWindow::updateIdentityActions() {
+    const auto rows = identitiesTree_->selectionModel()->selectedRows(2);
+    const bool selected = !rows.isEmpty();
+    const bool chan = selected && rows.first().data(kIdentityChanRole).toBool();
+    const bool isDefault = selected && rows.first().data(kIdentityDefaultRole).toBool();
+    for (QWidget *b :
+         QList<QWidget *>{identityCopy_, identityQr_, identityRename_, identityDelete_})
+        b->setEnabled(selected);
+    identityDefault_->setEnabled(selected && !isDefault);
+    identityNickname_->setEnabled(selected && !chan); // a chan has no nickname to ask for
+}
+// What the toolbar does, for the row that was clicked.
+void DesktopWindow::identityMenu(const QPoint &at) {
+    const auto index = identitiesTree_->indexAt(at);
+    if (!index.isValid())
+        return;
+    identitiesTree_->setCurrentIndex(index.sibling(index.row(), 0));
+    updateIdentityActions();
+    QMenu menu(this);
+    const auto add = [&](const QString &text, QAbstractButton *button) {
+        auto action = menu.addAction(text);
+        action->setEnabled(button->isEnabled());
+        connect(action, &QAction::triggered, button, &QAbstractButton::click);
+    };
+    add(identityCopy_->toolTip(), identityCopy_);
+    add(identityQr_->toolTip(), identityQr_);
+    menu.addSeparator();
+    add(identityDefault_->toolTip(), identityDefault_);
+    add(identityNickname_->text(), identityNickname_);
+    add(identityRename_->toolTip(), identityRename_);
+    menu.addSeparator();
+    add(identityDelete_->toolTip(), identityDelete_);
+    menu.exec(identitiesTree_->viewport()->mapToGlobal(at));
+}
+void DesktopWindow::showAddressQr(const QString &address, const QString &label) {
+    QDialog dialog(this);
+    dialog.setObjectName("qrDialog");
+    dialog.setWindowTitle(label);
+    auto qrLayout = new QVBoxLayout(&dialog);
+    qrLayout->addWidget(new QrCodeView(address, &dialog), 0, Qt::AlignHCenter);
+    auto addressText = new QLabel(address);
+    addressText->setFont(addressFont());
+    addressText->setWordWrap(true);
+    addressText->setAlignment(Qt::AlignHCenter);
+    addressText->setTextFormat(Qt::PlainText);
+    addressText->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    qrLayout->addWidget(addressText);
+    auto buttonsRow = new QHBoxLayout;
+    button(tr("Copy address"), buttonsRow, [this, address] { session_.copyAddress(address); });
+    auto closeButton = new QPushButton(tr("Close"));
+    closeButton->setObjectName("qrCloseButton");
+    connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    buttonsRow->addWidget(closeButton);
+    qrLayout->addLayout(buttonsRow);
+    dialog.exec();
+}
+void DesktopWindow::askForNickname(const QString &address) {
+    if (address.isEmpty())
+        return;
+    QString label;
+    for (const auto &v : session_.identities())
+        if (v.toMap()["address"].toString() == address)
+            label = v.toMap()["label"].toString();
+    NicknameDialog dialog(session_, address, label, this);
+    dialog.exec();
+    refreshIdentities();
 }
 void DesktopWindow::refreshContacts() {
     const auto kept = selectedContact(0); // the selected contact stays selected
@@ -3925,6 +4191,38 @@ void DesktopWindow::refreshContacts() {
 QString DesktopWindow::selectedContact(int column) const {
     const auto rows = contactsTree_->selectionModel()->selectedRows(column);
     return rows.isEmpty() ? QString() : rows.first().data().toString();
+}
+// The nickbot is asked, for every contact, only when the user presses the button.
+void DesktopWindow::checkContactNicknames() {
+    QString problem;
+    contactsChecking_ = session_.nicks().checkContacts(&problem) > 0;
+    if (contactsChecking_)
+        setContactsNote(tr("Asking the nickbot for the nicknames of your contacts. The answers "
+                           "take a few minutes."),
+                        false);
+    else
+        setContactsNote(problem, true);
+    updateContactsCheck();
+}
+void DesktopWindow::updateContactsCheck() {
+    if (!session_.mailboxOpen()) { // nothing of a check outlives its mailbox
+        contactsChecking_ = false;
+        setContactsNote({}, false);
+        contactsCheck_->setEnabled(true);
+        return;
+    }
+    const bool checking = session_.nicks().checking();
+    contactsCheck_->setEnabled(!checking);
+    if (contactsChecking_ && !checking) {
+        contactsChecking_ = false;
+        setContactsNote(
+            tr("Checked your contacts. The nicknames the nickbot has are in the table."), false);
+    }
+}
+void DesktopWindow::setContactsNote(const QString &text, bool problem) {
+    contactsCheckNote_->setText(text);
+    contactsCheckNote_->setStyleSheet(problem ? "color:#d93025;" : "color:palette(mid);");
+    contactsCheckNote_->setVisible(!text.isEmpty());
 }
 void DesktopWindow::updateContactActions() {
     const bool selected = !selectedContact(0).isEmpty();

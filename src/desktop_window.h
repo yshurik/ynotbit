@@ -49,6 +49,11 @@ class DesktopWindow : public QMainWindow {
     TrayIcon *trayIcon() const { return tray_; }
     // For tests: what Quit does, in place of ending the app. Empty is the real thing.
     static void setQuitHandlerForTesting(std::function<void()> handler);
+    // What a row of the identities table carries beyond its text.
+    static constexpr int kIdentityDefaultRole = Qt::UserRole + 1; // local name: the default one
+    static constexpr int kIdentityChanRole = Qt::UserRole + 2;    // local name: a chan
+    static constexpr int kIdentityHintRole =
+        Qt::UserRole + 3; // nickname: what an empty cell offers
 
   protected:
     void closeEvent(QCloseEvent *event) override;
@@ -102,10 +107,27 @@ class DesktopWindow : public QMainWindow {
     QStandardItemModel *contactsModel_;     // the address book's rows: Address, Nickname, Local name
     QSortFilterProxyModel *contactsSorted_; // the same rows, sorted by a click on a header
     QLabel *contactsEmpty_;                 // stands in for the tree when no row is listed
+    QPushButton *contactsCheck_;            // asks the nickbot for every contact's nickname
+    QLabel *contactsCheckNote_;             // says that a check is under way, or why it is not
+    bool contactsChecking_ = false;         // a check this window asked for is under way
     // The buttons for the selected contact, in the toolbar beside Add contact.
     QPushButton *contactWrite_;
     QToolButton *contactCopy_, *contactRename_, *contactDelete_;
     QWidget *contactActions_; // the pill of the last three
+    // The identities and chans: a table like the address book's, and the buttons for its selected
+    // row in the toolbar beside New identity.
+    QLineEdit *identitiesFilter_;
+    QTreeView *identitiesTree_;
+    QStandardItemModel *identitiesModel_;     // Address, Nickname, Local name
+    QSortFilterProxyModel *identitiesSorted_; // the same rows, sorted by a click on a header
+    QLabel *identitiesEmpty_;                 // stands in for the table when no row is listed
+    QPushButton *identityNickname_;
+    QToolButton *identityCopy_, *identityQr_, *identityDefault_, *identityRename_, *identityDelete_;
+    QWidget *identityActions_; // the pill of the last five
+    // What the table was last drawn from: it is drawn again only when this is not what it would be
+    // drawn from now, so that a tick that changes nothing does not cost the user the selection.
+    QVariantList shownIdentities_;
+    QStringList shownIdentityAddresses_;
     QWidget *listColumn_;
     QStackedWidget *welcomeStack_;
     QWidget *lockedPage_, *noMailboxPage_;
@@ -113,7 +135,6 @@ class DesktopWindow : public QMainWindow {
     QLineEdit *vaultPasswordField_;
     QPushButton *vaultUnlockButton_;
     QVBoxLayout *lockedRecentsLayout_, *noMailboxRecentsLayout_;
-    QVBoxLayout *identityLayout_;
     QString targetVaultPath_;
     void updateState();
     void updateTray(); // the icon's menu follows the window and the mailbox
@@ -121,12 +142,23 @@ class DesktopWindow : public QMainWindow {
     void updateTheme();
     // Add (or, with a label, rename) an address-book entry; true when saved.
     bool editContact(QString address, QString label = {});
-    void refreshIdentities();
+    // Draws the identities table; with force, even if nothing it shows has changed.
+    void refreshIdentities(bool force = false);
+    // The selected identity's address (column 0), nickname (1) or local name (2); empty with no
+    // row selected.
+    QString selectedIdentity(int column = 0) const;
+    void updateIdentityActions(); // the toolbar's buttons follow the selected row
+    void identityMenu(const QPoint &at);
+    void showAddressQr(const QString &address, const QString &label);
+    void askForNickname(const QString &address);
     void refreshContacts();
     // The selected contact's address (column 0) or local name (column 2); empty with no row
     // selected.
     QString selectedContact(int column) const;
     void updateContactActions(); // the toolbar's buttons are on while a row is selected
+    void checkContactNicknames();
+    void updateContactsCheck(); // the check's button and note follow the nickbot client
+    void setContactsNote(const QString &text, bool problem);
     void refreshChannels();
     // The open chat's messages: a window of its newest ones; *older says more are kept.
     QVariantList chatThread(bool *older);
