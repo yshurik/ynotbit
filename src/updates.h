@@ -32,6 +32,13 @@ struct DefaultContact {
 QList<DefaultContact> defaultContacts(); // the echo bot
 void setDefaultContactsForTesting(const QList<DefaultContact> &contacts);
 inline const QString kSeededContactSetting = "seeded-contact:"; // + address: added once already
+// The nickbots a mailbox lists until it sets its own list (docs/nickbot.md): the first is the
+// default.
+struct DefaultNickbot {
+    QString address, label;
+};
+QList<DefaultNickbot> defaultNickbots();
+void setDefaultNickbotsForTesting(const QList<DefaultNickbot> &bots);
 // An address's nickname is kept in the mailbox's settings, not chosen by the user.
 inline const QString kNicknameSetting = "nickname:"; // + address
 // The version a subject such as "ynotbit 0.5.2" announces.

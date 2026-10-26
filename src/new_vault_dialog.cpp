@@ -2,10 +2,12 @@
 #include "appearance.h"
 #include "coolname.h"
 #include "letter_render.h"
+#include "nick_client.h"
 #include "protocol.h"
 #include "session.h"
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QClipboard>
 #include <QDir>
 #include <QFileDialog>
@@ -23,6 +25,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <bmc/nickbot.h>
 #include <cmath>
 namespace bm {
 namespace {
@@ -114,6 +117,27 @@ NewVaultDialog::NewVaultDialog(Session &session, const QString &folder, bool dar
     nickname_ = new QLineEdit;
     nickname_->setObjectName("nicknameField");
     form->addRow(tr("Nickname"), nickname_);
+    // The nickname at the nickbot: asked for together with the identity, made from the Nickname
+    // above until the user writes another.
+    registerBox_ = new QCheckBox(tr("Register with the nickbot as"));
+    registerBox_->setObjectName("registerNickBox");
+    registerBox_->setChecked(true);
+    registerField_ = new QLineEdit;
+    registerField_->setObjectName("registerNickField");
+    registerField_->setPlaceholderText("@name");
+    registerProblem_ = note(tr("A nickname is @ or / followed by a name of 3 to 32 characters: a "
+                               "letter, then letters, digits, _ or -."),
+                            "registerNickProblem", true);
+    registerProblem_->hide();
+    auto registerColumn = new QVBoxLayout;
+    auto registerLine = new QHBoxLayout;
+    registerLine->addWidget(registerBox_);
+    registerLine->addWidget(registerField_, 1);
+    registerColumn->addLayout(registerLine);
+    registerColumn->addWidget(registerProblem_);
+    form->addRow(registerColumn);
+    registerOffered_ = session_.nicks().enabled() && !session_.nicks().bots().isEmpty();
+    form->setRowVisible(registerColumn, registerOffered_);
     // The address, with its identicon and buttons, and the search for a
     // shorter one.
     identicon_ = new QLabel;
@@ -268,6 +292,13 @@ NewVaultDialog::NewVaultDialog(Session &session, const QString &folder, bool dar
         nicknameEdited_ = true;
         updateFile();
     });
+    connect(nickname_, &QLineEdit::textChanged, this, [this] {
+        if (!registerEdited_)
+            registerField_->setText(NickClient::suggestNick(nickname_->text()));
+    });
+    connect(registerField_, &QLineEdit::textEdited, this, [this] { registerEdited_ = true; });
+    connect(registerField_, &QLineEdit::textChanged, this, [this] { validate(); });
+    connect(registerBox_, &QCheckBox::toggled, this, [this] { validate(); });
     connect(random_, &QRadioButton::toggled, this, [this](bool on) {
         phraseRow_->setVisible(!on);
         another_->setVisible(on);
@@ -390,12 +421,20 @@ void NewVaultDialog::updateFile() {
     }
     validate();
 }
+// The nickname to register, if one is asked for, is one the nickbot can take from an identity.
+bool NewVaultDialog::registerOk() const {
+    if (!registerOffered_ || !registerBox_->isChecked())
+        return true;
+    const auto n = bmc::nickbot::parseNick(registerField_->text().trimmed().toStdString());
+    return n && n->sigil != bmc::nickbot::Sigil::Chan;
+}
 void NewVaultDialog::validate() {
     const auto &address = identity_.address;
     const bool taken = !address.isEmpty() && vaultAddresses_.contains(address);
     taken_->setVisible(taken);
+    registerProblem_->setVisible(!registerOk() && !registerField_->text().trimmed().isEmpty());
     if (makes_ == IdentityOnly) {
-        create_->setEnabled(!address.isEmpty() && !taken);
+        create_->setEnabled(!address.isEmpty() && !taken && registerOk());
         return;
     }
     const auto path = file_->text().trimmed();
@@ -406,7 +445,7 @@ void NewVaultDialog::validate() {
     passwordProblem_->setVisible(!repeat.isEmpty() && repeat.size() >= password.size() &&
                                  repeat != password);
     create_->setEnabled(!identity_.address.isEmpty() && !path.isEmpty() && !exists &&
-                        !password.isEmpty() && password == repeat);
+                        !password.isEmpty() && password == repeat && registerOk());
 }
 void NewVaultDialog::create() {
     stopSearch();
@@ -415,6 +454,14 @@ void NewVaultDialog::create() {
     if (makes_ == IdentityOnly ? session_.addIdentity(identity_)
                                : session_.createVault(file_->text().trimmed(), password_->text(),
                                                       repeat_->text(), identity_)) {
+        // The nickname at the nickbot goes with it: now if a mailbox is open, else when one opens.
+        if (registerOffered_ && registerBox_->isChecked()) {
+            const auto nick = registerField_->text().trimmed();
+            if (session_.mailboxOpen())
+                session_.nicks().registerNickname(identity_.address, nick);
+            else
+                session_.nicks().registerWhenAMailboxOpens(identity_.address, nick);
+        }
         accept();
         return;
     }

@@ -1,6 +1,7 @@
 #pragma once
 #include <QByteArray>
 #include <QMap>
+#include <QPair>
 #include <QString>
 #include <QVector>
 #include <bmc/mailbox.h>
@@ -253,6 +254,11 @@ class Mailbox {
     qint64 dataVersion() const;
     QString setting(const QString &name, const QString &fallback = {}) const;
     void setSetting(const QString &name, const QString &value);
+    // Every setting whose name starts with the prefix (read literally), in order of name.
+    QVector<QPair<QString, QString>> settings(const QString &prefix) const;
+    // The letters filed under "Service" (Delivery::setServiceAddresses), oldest first, at most
+    // limit: returned and deleted in one step.
+    QVector<Message> takeService(int limit);
 };
 } // namespace bm
 

@@ -56,14 +56,23 @@ void MessageModel::fetchAround(int row) const {
     }
 }
 QHash<int, QByteArray> MessageModel::roleNames() const {
-    static const QHash<int, QByteArray> roles{
-        {Qt::UserRole + 1, "hash"},     {Qt::UserRole + 2, "from"},
-        {Qt::UserRole + 3, "to"},       {Qt::UserRole + 4, "subject"},
-        {Qt::UserRole + 5, "preview"},  {Qt::UserRole + 6, "folder"},
-        {Qt::UserRole + 7, "state"},    {Qt::UserRole + 8, "deliveryError"},
-        {Qt::UserRole + 9, "unread"},   {Qt::UserRole + 10, "kind"},
-        {Qt::UserRole + 11, "received"}, {Qt::UserRole + 12, "fromName"},
-        {Qt::UserRole + 13, "toName"}};
+    static const QHash<int, QByteArray> roles{{Qt::UserRole + 1, "hash"},
+                                              {Qt::UserRole + 2, "from"},
+                                              {Qt::UserRole + 3, "to"},
+                                              {Qt::UserRole + 4, "subject"},
+                                              {Qt::UserRole + 5, "preview"},
+                                              {Qt::UserRole + 6, "folder"},
+                                              {Qt::UserRole + 7, "state"},
+                                              {Qt::UserRole + 8, "deliveryError"},
+                                              {Qt::UserRole + 9, "unread"},
+                                              {Qt::UserRole + 10, "kind"},
+                                              {Qt::UserRole + 11, "received"},
+                                              {Qt::UserRole + 12, "fromName"},
+                                              {Qt::UserRole + 13, "toName"},
+                                              {Qt::UserRole + 14, "fromNick"},
+                                              {Qt::UserRole + 15, "fromNickColor"},
+                                              {Qt::UserRole + 16, "toNick"},
+                                              {Qt::UserRole + 17, "toNickColor"}};
     return roles;
 }
 void MessageModel::setFolder(const QString &folder) {

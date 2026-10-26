@@ -138,4 +138,13 @@ QString Mailbox::setting(const QString &name, const QString &fallback) const {
 void Mailbox::setSetting(const QString &name, const QString &value) {
     core_->setSetting(bridge::toStd(name), bridge::toStd(value));
 }
+QVector<QPair<QString, QString>> Mailbox::settings(const QString &prefix) const {
+    QVector<QPair<QString, QString>> out;
+    for (const auto &[name, value] : core_->settings(bridge::toStd(prefix)))
+        out.push_back({bridge::fromStd(name), bridge::fromStd(value)});
+    return out;
+}
+QVector<Message> Mailbox::takeService(int limit) {
+    return convertAll<Message>(core_->takeService(limit));
+}
 } // namespace bm

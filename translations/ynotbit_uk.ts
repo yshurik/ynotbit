@@ -1015,6 +1015,10 @@ Date: %1
         <source>Don't ask again</source>
         <translation>Більше не питати</translation>
     </message>
+    <message>
+        <source>Find people…</source>
+        <translation>Знайти людей…</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1535,6 +1539,14 @@ Date: %1
     <message>
         <source>Create identity</source>
         <translation>Створити ідентичність</translation>
+    </message>
+    <message>
+        <source>Register with the nickbot as</source>
+        <translation>Зареєструвати в нікбота як</translation>
+    </message>
+    <message>
+        <source>A nickname is @ or / followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -.</source>
+        <translation>Псевдонім — це @ або /, а за ним ім'я з 3–32 символів: літера, далі літери, цифри, _ або -.</translation>
     </message>
 </context>
 <context>
@@ -2364,6 +2376,311 @@ Date: %1
     <message>
         <source>Changes apply at once</source>
         <translation>Зміни застосовуються одразу</translation>
+    </message>
+    <message>
+        <source>Nickbots</source>
+        <translation>Нікбот</translation>
+    </message>
+</context>
+<context>
+    <name>bm::FindPeopleDialog</name>
+    <message>
+        <source>Find people</source>
+        <translation>Пошук людей</translation>
+    </message>
+    <message>
+        <source>Ask a nickbot. Type a nickname (@ben), a name to search for (at least 4 letters) or an address (BM-…). The answer takes a few minutes: you can close this window and come back.</source>
+        <translation>Запитайте нікбота. Введіть псевдонім (@ben), ім'я для пошуку (щонайменше 4 літери) або адресу (BM-…). Відповідь приходить за кілька хвилин: вікно можна закрити й повернутися пізніше.</translation>
+    </message>
+    <message>
+        <source>Nickbot</source>
+        <translation>Нікбот</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>Знайти</translation>
+    </message>
+    <message>
+        <source>Find</source>
+        <translation>Що шукати</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>Псевдонім</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>Адреса</translation>
+    </message>
+    <message>
+        <source>In contacts</source>
+        <translation>У контактах</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed. Add one in Settings &gt; Nickbots.</source>
+        <translation>У списку немає жодного нікбота. Додайте його в Налаштування &gt; Нікботи.</translation>
+    </message>
+    <message>
+        <source>Add to contacts</source>
+        <translation>Додати до контактів</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Закрити</translation>
+    </message>
+    <message>
+        <source>Asked %1. The answer takes a few minutes.</source>
+        <translation>Запит надіслано: %1. Відповідь прийде за кілька хвилин.</translation>
+    </message>
+    <message>
+        <source>yes</source>
+        <translation>так</translation>
+    </message>
+    <message>
+        <source>%1 knows no one by that.</source>
+        <translation>%1 нікого не знає під таким іменем.</translation>
+    </message>
+    <message>
+        <source>Found: %1. There are more: search for more letters.</source>
+        <translation>Знайдено: %1. Є й інші: введіть більше літер.</translation>
+    </message>
+    <message>
+        <source>Found: %1.</source>
+        <translation>Знайдено: %1.</translation>
+    </message>
+    <message>
+        <source>Added to your contacts: %1.</source>
+        <translation>Додано до контактів: %1.</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NickbotsPage</name>
+    <message>
+        <source>A nickbot gives people nicknames you can search for and add to your contacts. The first one is the default. Each has a colour, and a nickname is shown in the colour of the nickbot that vouches for it.</source>
+        <translation>Нікбот присвоює людям псевдоніми, які можна шукати й додавати до контактів. Перший у списку — типовий. Кожен має свій колір, і псевдонім показується кольором нікбота, який за нього ручається.</translation>
+    </message>
+    <message>
+        <source>Use nickbots</source>
+        <translation>Використовувати нікботів</translation>
+    </message>
+    <message>
+        <source>Look up the nicknames of my contacts on their own</source>
+        <translation>Самостійно шукати псевдоніми моїх контактів</translation>
+    </message>
+    <message>
+        <source>A lookup is sent from a chan that everybody has, so the nickbot cannot tell who asks. It takes a few minutes. Turn nickbots off and nothing is sent at all.</source>
+        <translation>Запит надсилається з каналу, який є в усіх, тому нікбот не знає, хто питає. Це займає кілька хвилин. Якщо вимкнути нікботів, нічого не надсилається.</translation>
+    </message>
+    <message>
+        <source>Your nickbots</source>
+        <translation>Ваші нікботи</translation>
+    </message>
+    <message>
+        <source>Nickbot</source>
+        <translation>Нікбот</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>Адреса</translation>
+    </message>
+    <message>
+        <source>Add…</source>
+        <translation>Додати…</translation>
+    </message>
+    <message>
+        <source>Move up</source>
+        <translation>Вище</translation>
+    </message>
+    <message>
+        <source>Move down</source>
+        <translation>Нижче</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Видалити</translation>
+    </message>
+    <message>
+        <source>Your nicknames</source>
+        <translation>Ваші псевдоніми</translation>
+    </message>
+    <message>
+        <source>Identity</source>
+        <translation>Ідентичність</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>Псевдонім</translation>
+    </message>
+    <message>
+        <source>Register a nickname…</source>
+        <translation>Зареєструвати псевдонім…</translation>
+    </message>
+    <message>
+        <source>Registering sends one message from the identity to the nickbot, which then knows the identity's address; the nickname and the address are public.</source>
+        <translation>Під час реєстрації ідентичність надсилає нікботу одне повідомлення, тому нікбот дізнається її адресу; псевдонім і адреса публічні.</translation>
+    </message>
+    <message>
+        <source>%1 (default)</source>
+        <translation>%1 (типовий)</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed, so nothing can be looked up or registered.</source>
+        <translation>У списку немає жодного нікбота, тож нічого не можна шукати чи реєструвати.</translation>
+    </message>
+    <message>
+        <source>Five nickbots are listed, the most.</source>
+        <translation>У списку п'ять нікботів — це максимум.</translation>
+    </message>
+    <message>
+        <source>Moving a nickbot moves its colour.</source>
+        <translation>Колір переміщується разом із нікботом.</translation>
+    </message>
+    <message>
+        <source>Add a nickbot</source>
+        <translation>Додати нікбота</translation>
+    </message>
+    <message>
+        <source>Optional</source>
+        <translation>Необов'язково</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>Ім'я</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Додати</translation>
+    </message>
+    <message>
+        <source>Register a nickname</source>
+        <translation>Реєстрація псевдоніма</translation>
+    </message>
+    <message>
+        <source>Identity: %1</source>
+        <translation>Ідентичність: %1</translation>
+    </message>
+    <message>
+        <source>A nickname is @, / or # followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -. # is for chans only.</source>
+        <translation>Псевдонім — це @, / або #, а за ним ім'я з 3–32 символів: літера, далі літери, цифри, _ або -. # — лише для каналів.</translation>
+    </message>
+    <message>
+        <source>Register</source>
+        <translation>Зареєструвати</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NickClient</name>
+    <message>
+        <source>Open a mailbox first</source>
+        <translation>Спершу відкрийте поштову скриньку</translation>
+    </message>
+    <message>
+        <source>Up to five nickbots can be listed</source>
+        <translation>У списку може бути не більше п'яти нікботів</translation>
+    </message>
+    <message>
+        <source>That is not a valid Bitmessage address</source>
+        <translation>Це неправильна адреса Bitmessage</translation>
+    </message>
+    <message>
+        <source>That nickbot is listed twice</source>
+        <translation>Цей нікбот указано двічі</translation>
+    </message>
+    <message>
+        <source>That is one of your own addresses</source>
+        <translation>Це одна з ваших власних адрес</translation>
+    </message>
+    <message>
+        <source>You have joined the chan “anonymous” yourself, so nicknames cannot be looked up through it. Leave it first.</source>
+        <translation>Ви самі приєдналися до каналу «anonymous», тому через нього не можна шукати псевдоніми. Спершу залиште його.</translation>
+    </message>
+    <message>
+        <source>Nicknames are turned off in Settings</source>
+        <translation>Псевдоніми вимкнено в налаштуваннях</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed</source>
+        <translation>Жодного нікбота не вказано</translation>
+    </message>
+    <message>
+        <source>That nickbot is not in your list</source>
+        <translation>Цього нікбота немає у вашому списку</translation>
+    </message>
+    <message>
+        <source>That is not a valid nickname. A nickname is @, / or # followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -.</source>
+        <translation>Це неприпустимий псевдонім. Псевдонім — це @, / або #, а за ним ім'я з 3–32 символів: літера, далі літери, цифри, _ або -.</translation>
+    </message>
+    <message>
+        <source>Enter an address</source>
+        <translation>Введіть адресу</translation>
+    </message>
+    <message>
+        <source>Search for at least %1 letters, digits, _ or -</source>
+        <translation>Для пошуку потрібно щонайменше %1 літер, цифр, _ або -</translation>
+    </message>
+    <message>
+        <source>A search term is letters, digits, _ and - only</source>
+        <translation>Пошуковий запит складається лише з літер, цифр, _ та -</translation>
+    </message>
+    <message>
+        <source>Choose one of your identities</source>
+        <translation>Виберіть одну з ваших ідентичностей</translation>
+    </message>
+    <message>
+        <source>That nickname is taken</source>
+        <translation>Цей псевдонім зайнято</translation>
+    </message>
+    <message>
+        <source>That nickname is reserved</source>
+        <translation>Цей псевдонім зарезервовано</translation>
+    </message>
+    <message>
+        <source>That is not a valid nickname</source>
+        <translation>Це неприпустимий псевдонім</translation>
+    </message>
+    <message>
+        <source>Too many changes lately; try again tomorrow</source>
+        <translation>Забагато змін останнім часом; спробуйте завтра</translation>
+    </message>
+    <message>
+        <source>The nickbot is busy; try again later</source>
+        <translation>Нікбот зайнятий; спробуйте пізніше</translation>
+    </message>
+    <message>
+        <source>That nickname is permanent</source>
+        <translation>Цей псевдонім постійний</translation>
+    </message>
+    <message>
+        <source>A chan's nickname can only be registered from the chan itself</source>
+        <translation>Псевдонім каналу можна зареєструвати лише від імені самого каналу</translation>
+    </message>
+    <message>
+        <source>That nickname belongs to another address</source>
+        <translation>Цей псевдонім належить іншій адресі</translation>
+    </message>
+    <message>
+        <source>No answer</source>
+        <translation>Немає відповіді</translation>
+    </message>
+    <message>
+        <source>The nickbot refused (%1)</source>
+        <translation>Нікбот відмовив (%1)</translation>
+    </message>
+    <message>
+        <source>Asked for %1; waiting for the nickbot</source>
+        <translation>Запрошено %1; чекаємо на нікбота</translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <translation>%1: %2</translation>
+    </message>
+    <message>
+        <source>%1: the nickbot did not answer</source>
+        <translation>%1: нікбот не відповів</translation>
+    </message>
+    <message>
+        <source>No nickname</source>
+        <translation>Немає псевдоніма</translation>
     </message>
 </context>
 </TS>

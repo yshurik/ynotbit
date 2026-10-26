@@ -1015,6 +1015,10 @@ Date: %1
         <source>Don't ask again</source>
         <translation>다시 묻지 않기</translation>
     </message>
+    <message>
+        <source>Find people…</source>
+        <translation>사람 찾기…</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1535,6 +1539,14 @@ Date: %1
     <message>
         <source>Create identity</source>
         <translation>신원 만들기</translation>
+    </message>
+    <message>
+        <source>Register with the nickbot as</source>
+        <translation>닉봇에 등록할 별명</translation>
+    </message>
+    <message>
+        <source>A nickname is @ or / followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -.</source>
+        <translation>별명은 @ 또는 / 뒤에 3~32자의 이름(영문자로 시작하고 이어서 영문자·숫자·_·-)이 오는 형식입니다.</translation>
     </message>
 </context>
 <context>
@@ -2364,6 +2376,311 @@ Date: %1
     <message>
         <source>Changes apply at once</source>
         <translation>변경 사항은 바로 적용됩니다</translation>
+    </message>
+    <message>
+        <source>Nickbots</source>
+        <translation>닉봇</translation>
+    </message>
+</context>
+<context>
+    <name>bm::FindPeopleDialog</name>
+    <message>
+        <source>Find people</source>
+        <translation>사람 찾기</translation>
+    </message>
+    <message>
+        <source>Ask a nickbot. Type a nickname (@ben), a name to search for (at least 4 letters) or an address (BM-…). The answer takes a few minutes: you can close this window and come back.</source>
+        <translation>닉봇에게 물어봅니다. 별명(@ben), 검색할 이름(4자 이상) 또는 주소(BM-…)를 입력하세요. 응답에는 몇 분이 걸립니다. 이 창을 닫았다가 나중에 다시 와도 됩니다.</translation>
+    </message>
+    <message>
+        <source>Nickbot</source>
+        <translation>닉봇</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>검색</translation>
+    </message>
+    <message>
+        <source>Find</source>
+        <translation>찾을 대상</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>별명</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>주소</translation>
+    </message>
+    <message>
+        <source>In contacts</source>
+        <translation>연락처에 있음</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed. Add one in Settings &gt; Nickbots.</source>
+        <translation>등록된 닉봇이 없습니다. 설정 &gt; 닉봇에서 추가하세요.</translation>
+    </message>
+    <message>
+        <source>Add to contacts</source>
+        <translation>연락처에 추가</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>닫기</translation>
+    </message>
+    <message>
+        <source>Asked %1. The answer takes a few minutes.</source>
+        <translation>%1에 물어봤습니다. 응답에는 몇 분이 걸립니다.</translation>
+    </message>
+    <message>
+        <source>yes</source>
+        <translation>예</translation>
+    </message>
+    <message>
+        <source>%1 knows no one by that.</source>
+        <translation>%1은(는) 그런 이름의 사람을 알지 못합니다.</translation>
+    </message>
+    <message>
+        <source>Found: %1. There are more: search for more letters.</source>
+        <translation>찾음: %1. 더 있습니다. 더 많은 글자로 검색하세요.</translation>
+    </message>
+    <message>
+        <source>Found: %1.</source>
+        <translation>찾음: %1.</translation>
+    </message>
+    <message>
+        <source>Added to your contacts: %1.</source>
+        <translation>연락처에 추가됨: %1.</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NickbotsPage</name>
+    <message>
+        <source>A nickbot gives people nicknames you can search for and add to your contacts. The first one is the default. Each has a colour, and a nickname is shown in the colour of the nickbot that vouches for it.</source>
+        <translation>닉봇은 사람들에게 별명을 부여하며, 별명을 검색해 연락처에 추가할 수 있습니다. 첫 번째가 기본입니다. 각 닉봇에는 색이 있고, 별명은 그것을 보증하는 닉봇의 색으로 표시됩니다.</translation>
+    </message>
+    <message>
+        <source>Use nickbots</source>
+        <translation>닉봇 사용</translation>
+    </message>
+    <message>
+        <source>Look up the nicknames of my contacts on their own</source>
+        <translation>연락처의 별명을 자동으로 조회</translation>
+    </message>
+    <message>
+        <source>A lookup is sent from a chan that everybody has, so the nickbot cannot tell who asks. It takes a few minutes. Turn nickbots off and nothing is sent at all.</source>
+        <translation>조회는 모두가 가진 채널에서 전송되므로 닉봇은 누가 묻는지 알 수 없습니다. 몇 분이 걸립니다. 닉봇을 끄면 아무것도 전송되지 않습니다.</translation>
+    </message>
+    <message>
+        <source>Your nickbots</source>
+        <translation>내 닉봇</translation>
+    </message>
+    <message>
+        <source>Nickbot</source>
+        <translation>닉봇</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>주소</translation>
+    </message>
+    <message>
+        <source>Add…</source>
+        <translation>추가…</translation>
+    </message>
+    <message>
+        <source>Move up</source>
+        <translation>위로</translation>
+    </message>
+    <message>
+        <source>Move down</source>
+        <translation>아래로</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>삭제</translation>
+    </message>
+    <message>
+        <source>Your nicknames</source>
+        <translation>내 별명</translation>
+    </message>
+    <message>
+        <source>Identity</source>
+        <translation>신원</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>별명</translation>
+    </message>
+    <message>
+        <source>Register a nickname…</source>
+        <translation>별명 등록…</translation>
+    </message>
+    <message>
+        <source>Registering sends one message from the identity to the nickbot, which then knows the identity's address; the nickname and the address are public.</source>
+        <translation>등록하면 신원이 닉봇에 메시지 하나를 보내므로 닉봇이 그 신원의 주소를 알게 됩니다. 별명과 주소는 공개됩니다.</translation>
+    </message>
+    <message>
+        <source>%1 (default)</source>
+        <translation>%1 (기본)</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed, so nothing can be looked up or registered.</source>
+        <translation>등록된 닉봇이 없어서 조회도 등록도 할 수 없습니다.</translation>
+    </message>
+    <message>
+        <source>Five nickbots are listed, the most.</source>
+        <translation>닉봇이 5개 등록되어 있습니다(최대).</translation>
+    </message>
+    <message>
+        <source>Moving a nickbot moves its colour.</source>
+        <translation>닉봇을 옮기면 색도 함께 옮겨집니다.</translation>
+    </message>
+    <message>
+        <source>Add a nickbot</source>
+        <translation>닉봇 추가</translation>
+    </message>
+    <message>
+        <source>Optional</source>
+        <translation>선택 사항</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>이름</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>추가</translation>
+    </message>
+    <message>
+        <source>Register a nickname</source>
+        <translation>별명 등록</translation>
+    </message>
+    <message>
+        <source>Identity: %1</source>
+        <translation>신원: %1</translation>
+    </message>
+    <message>
+        <source>A nickname is @, / or # followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -. # is for chans only.</source>
+        <translation>별명은 @, / 또는 # 뒤에 3~32자의 이름(영문자로 시작하고 이어서 영문자·숫자·_·-)이 오는 형식입니다. #는 채널 전용입니다.</translation>
+    </message>
+    <message>
+        <source>Register</source>
+        <translation>등록</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NickClient</name>
+    <message>
+        <source>Open a mailbox first</source>
+        <translation>먼저 메일함을 여세요</translation>
+    </message>
+    <message>
+        <source>Up to five nickbots can be listed</source>
+        <translation>닉봇은 최대 5개까지 등록할 수 있습니다</translation>
+    </message>
+    <message>
+        <source>That is not a valid Bitmessage address</source>
+        <translation>올바른 Bitmessage 주소가 아닙니다</translation>
+    </message>
+    <message>
+        <source>That nickbot is listed twice</source>
+        <translation>그 닉봇이 두 번 등록되어 있습니다</translation>
+    </message>
+    <message>
+        <source>That is one of your own addresses</source>
+        <translation>그것은 내 주소 중 하나입니다</translation>
+    </message>
+    <message>
+        <source>You have joined the chan “anonymous” yourself, so nicknames cannot be looked up through it. Leave it first.</source>
+        <translation>채널 ‘anonymous’에 직접 가입하셨기 때문에 이를 통해 별명을 조회할 수 없습니다. 먼저 탈퇴하세요.</translation>
+    </message>
+    <message>
+        <source>Nicknames are turned off in Settings</source>
+        <translation>별명 기능이 설정에서 꺼져 있습니다</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed</source>
+        <translation>등록된 닉봇이 없습니다</translation>
+    </message>
+    <message>
+        <source>That nickbot is not in your list</source>
+        <translation>그 닉봇은 목록에 없습니다</translation>
+    </message>
+    <message>
+        <source>That is not a valid nickname. A nickname is @, / or # followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -.</source>
+        <translation>올바른 별명이 아닙니다. 별명은 @, / 또는 # 뒤에 3~32자의 이름(영문자로 시작하고 이어서 영문자·숫자·_·-)이 오는 형식입니다.</translation>
+    </message>
+    <message>
+        <source>Enter an address</source>
+        <translation>주소를 입력하세요</translation>
+    </message>
+    <message>
+        <source>Search for at least %1 letters, digits, _ or -</source>
+        <translation>검색하려면 영문자·숫자·_·-를 %1자 이상 입력하세요</translation>
+    </message>
+    <message>
+        <source>A search term is letters, digits, _ and - only</source>
+        <translation>검색어는 영문자, 숫자, _, -만 쓸 수 있습니다</translation>
+    </message>
+    <message>
+        <source>Choose one of your identities</source>
+        <translation>내 신원 중 하나를 선택하세요</translation>
+    </message>
+    <message>
+        <source>That nickname is taken</source>
+        <translation>이미 사용 중인 별명입니다</translation>
+    </message>
+    <message>
+        <source>That nickname is reserved</source>
+        <translation>예약된 별명입니다</translation>
+    </message>
+    <message>
+        <source>That is not a valid nickname</source>
+        <translation>올바른 별명이 아닙니다</translation>
+    </message>
+    <message>
+        <source>Too many changes lately; try again tomorrow</source>
+        <translation>최근 변경이 너무 많습니다. 내일 다시 시도하세요</translation>
+    </message>
+    <message>
+        <source>The nickbot is busy; try again later</source>
+        <translation>닉봇이 바쁩니다. 나중에 다시 시도하세요</translation>
+    </message>
+    <message>
+        <source>That nickname is permanent</source>
+        <translation>영구 별명입니다</translation>
+    </message>
+    <message>
+        <source>A chan's nickname can only be registered from the chan itself</source>
+        <translation>채널의 별명은 그 채널 자체에서만 등록할 수 있습니다</translation>
+    </message>
+    <message>
+        <source>That nickname belongs to another address</source>
+        <translation>그 별명은 다른 주소의 것입니다</translation>
+    </message>
+    <message>
+        <source>No answer</source>
+        <translation>응답 없음</translation>
+    </message>
+    <message>
+        <source>The nickbot refused (%1)</source>
+        <translation>닉봇이 거부했습니다(%1)</translation>
+    </message>
+    <message>
+        <source>Asked for %1; waiting for the nickbot</source>
+        <translation>%1을(를) 요청했습니다. 닉봇의 응답을 기다리는 중</translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <translation>%1: %2</translation>
+    </message>
+    <message>
+        <source>%1: the nickbot did not answer</source>
+        <translation>%1: 닉봇이 응답하지 않았습니다</translation>
+    </message>
+    <message>
+        <source>No nickname</source>
+        <translation>별명 없음</translation>
     </message>
 </context>
 </TS>

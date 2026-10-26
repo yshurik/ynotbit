@@ -1015,6 +1015,10 @@ Date: %1
         <source>Don't ask again</source>
         <translation>今後は確認しない</translation>
     </message>
+    <message>
+        <source>Find people…</source>
+        <translation>人を探す…</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1535,6 +1539,14 @@ Date: %1
     <message>
         <source>Create identity</source>
         <translation>ID を作成</translation>
+    </message>
+    <message>
+        <source>Register with the nickbot as</source>
+        <translation>ニックボットに登録する名前：</translation>
+    </message>
+    <message>
+        <source>A nickname is @ or / followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -.</source>
+        <translation>ニックネームは @ または / に、3〜32文字の名前（英字で始まり、続けて英数字・_・-）を続けたものです。</translation>
     </message>
 </context>
 <context>
@@ -2364,6 +2376,311 @@ Date: %1
     <message>
         <source>Changes apply at once</source>
         <translation>変更はすぐに反映されます</translation>
+    </message>
+    <message>
+        <source>Nickbots</source>
+        <translation>ニックボット</translation>
+    </message>
+</context>
+<context>
+    <name>bm::FindPeopleDialog</name>
+    <message>
+        <source>Find people</source>
+        <translation>人を探す</translation>
+    </message>
+    <message>
+        <source>Ask a nickbot. Type a nickname (@ben), a name to search for (at least 4 letters) or an address (BM-…). The answer takes a few minutes: you can close this window and come back.</source>
+        <translation>ニックボットに尋ねます。ニックネーム（@ben）、検索する名前（4文字以上）、またはアドレス（BM-…）を入力してください。応答には数分かかります。このウィンドウを閉じて、あとで戻ってくることもできます。</translation>
+    </message>
+    <message>
+        <source>Nickbot</source>
+        <translation>ニックボット</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>検索</translation>
+    </message>
+    <message>
+        <source>Find</source>
+        <translation>検索対象</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>ニックネーム</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>アドレス</translation>
+    </message>
+    <message>
+        <source>In contacts</source>
+        <translation>連絡先にあり</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed. Add one in Settings &gt; Nickbots.</source>
+        <translation>ニックボットが登録されていません。設定 &gt; ニックボットで追加してください。</translation>
+    </message>
+    <message>
+        <source>Add to contacts</source>
+        <translation>連絡先に追加</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>閉じる</translation>
+    </message>
+    <message>
+        <source>Asked %1. The answer takes a few minutes.</source>
+        <translation>%1 に問い合わせました。応答には数分かかります。</translation>
+    </message>
+    <message>
+        <source>yes</source>
+        <translation>はい</translation>
+    </message>
+    <message>
+        <source>%1 knows no one by that.</source>
+        <translation>%1 にはそれに該当する人がいません。</translation>
+    </message>
+    <message>
+        <source>Found: %1. There are more: search for more letters.</source>
+        <translation>見つかった数：%1。ほかにもあります。もっと多くの文字で検索してください。</translation>
+    </message>
+    <message>
+        <source>Found: %1.</source>
+        <translation>見つかった数：%1。</translation>
+    </message>
+    <message>
+        <source>Added to your contacts: %1.</source>
+        <translation>連絡先に追加した数：%1。</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NickbotsPage</name>
+    <message>
+        <source>A nickbot gives people nicknames you can search for and add to your contacts. The first one is the default. Each has a colour, and a nickname is shown in the colour of the nickbot that vouches for it.</source>
+        <translation>ニックボットは、人々にニックネームを割り当て、検索して連絡先に追加できるようにします。先頭がデフォルトです。それぞれに色があり、ニックネームはそれを保証するニックボットの色で表示されます。</translation>
+    </message>
+    <message>
+        <source>Use nickbots</source>
+        <translation>ニックボットを使う</translation>
+    </message>
+    <message>
+        <source>Look up the nicknames of my contacts on their own</source>
+        <translation>連絡先のニックネームを自動で調べる</translation>
+    </message>
+    <message>
+        <source>A lookup is sent from a chan that everybody has, so the nickbot cannot tell who asks. It takes a few minutes. Turn nickbots off and nothing is sent at all.</source>
+        <translation>検索は全員が持つチャンネルから送信されるため、ニックボットは誰が尋ねたのか分かりません。数分かかります。ニックボットをオフにすると、何も送信されません。</translation>
+    </message>
+    <message>
+        <source>Your nickbots</source>
+        <translation>ニックボット一覧</translation>
+    </message>
+    <message>
+        <source>Nickbot</source>
+        <translation>ニックボット</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>アドレス</translation>
+    </message>
+    <message>
+        <source>Add…</source>
+        <translation>追加…</translation>
+    </message>
+    <message>
+        <source>Move up</source>
+        <translation>上へ</translation>
+    </message>
+    <message>
+        <source>Move down</source>
+        <translation>下へ</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>削除</translation>
+    </message>
+    <message>
+        <source>Your nicknames</source>
+        <translation>あなたのニックネーム</translation>
+    </message>
+    <message>
+        <source>Identity</source>
+        <translation>ID</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>ニックネーム</translation>
+    </message>
+    <message>
+        <source>Register a nickname…</source>
+        <translation>ニックネームを登録…</translation>
+    </message>
+    <message>
+        <source>Registering sends one message from the identity to the nickbot, which then knows the identity's address; the nickname and the address are public.</source>
+        <translation>登録すると、IDからニックボットへ1通のメッセージが送られ、ニックボットはそのIDのアドレスを知ることになります。ニックネームとアドレスは公開されます。</translation>
+    </message>
+    <message>
+        <source>%1 (default)</source>
+        <translation>%1（デフォルト）</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed, so nothing can be looked up or registered.</source>
+        <translation>ニックボットが登録されていないため、検索も登録もできません。</translation>
+    </message>
+    <message>
+        <source>Five nickbots are listed, the most.</source>
+        <translation>ニックボットが5つ登録されています（上限）。</translation>
+    </message>
+    <message>
+        <source>Moving a nickbot moves its colour.</source>
+        <translation>ニックボットを移動すると、色も一緒に移動します。</translation>
+    </message>
+    <message>
+        <source>Add a nickbot</source>
+        <translation>ニックボットを追加</translation>
+    </message>
+    <message>
+        <source>Optional</source>
+        <translation>任意</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>名前</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>追加</translation>
+    </message>
+    <message>
+        <source>Register a nickname</source>
+        <translation>ニックネームの登録</translation>
+    </message>
+    <message>
+        <source>Identity: %1</source>
+        <translation>ID：%1</translation>
+    </message>
+    <message>
+        <source>A nickname is @, / or # followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -. # is for chans only.</source>
+        <translation>ニックネームは @、/ または # に、3〜32文字の名前（英字で始まり、続けて英数字・_・-）を続けたものです。# はチャンネル専用です。</translation>
+    </message>
+    <message>
+        <source>Register</source>
+        <translation>登録</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NickClient</name>
+    <message>
+        <source>Open a mailbox first</source>
+        <translation>先にメールボックスを開いてください</translation>
+    </message>
+    <message>
+        <source>Up to five nickbots can be listed</source>
+        <translation>リストに入れられるニックボットは5つまでです</translation>
+    </message>
+    <message>
+        <source>That is not a valid Bitmessage address</source>
+        <translation>有効な Bitmessage アドレスではありません</translation>
+    </message>
+    <message>
+        <source>That nickbot is listed twice</source>
+        <translation>そのニックボットは重複しています</translation>
+    </message>
+    <message>
+        <source>That is one of your own addresses</source>
+        <translation>それはあなた自身のアドレスです</translation>
+    </message>
+    <message>
+        <source>You have joined the chan “anonymous” yourself, so nicknames cannot be looked up through it. Leave it first.</source>
+        <translation>チャンネル「anonymous」にご自身で参加しているため、これを使ってニックネームを検索できません。先に退出してください。</translation>
+    </message>
+    <message>
+        <source>Nicknames are turned off in Settings</source>
+        <translation>ニックネームは設定でオフになっています</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed</source>
+        <translation>ニックボットが登録されていません</translation>
+    </message>
+    <message>
+        <source>That nickbot is not in your list</source>
+        <translation>そのニックボットはリストにありません</translation>
+    </message>
+    <message>
+        <source>That is not a valid nickname. A nickname is @, / or # followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -.</source>
+        <translation>有効なニックネームではありません。ニックネームは @、/ または # に、3〜32文字の名前（英字で始まり、続けて英数字・_・-）を続けたものです。</translation>
+    </message>
+    <message>
+        <source>Enter an address</source>
+        <translation>アドレスを入力してください</translation>
+    </message>
+    <message>
+        <source>Search for at least %1 letters, digits, _ or -</source>
+        <translation>検索には英数字・_・- を %1 文字以上入力してください</translation>
+    </message>
+    <message>
+        <source>A search term is letters, digits, _ and - only</source>
+        <translation>検索語は英数字・_・- のみです</translation>
+    </message>
+    <message>
+        <source>Choose one of your identities</source>
+        <translation>ご自身のIDを選んでください</translation>
+    </message>
+    <message>
+        <source>That nickname is taken</source>
+        <translation>そのニックネームはすでに使われています</translation>
+    </message>
+    <message>
+        <source>That nickname is reserved</source>
+        <translation>そのニックネームは予約されています</translation>
+    </message>
+    <message>
+        <source>That is not a valid nickname</source>
+        <translation>有効なニックネームではありません</translation>
+    </message>
+    <message>
+        <source>Too many changes lately; try again tomorrow</source>
+        <translation>最近の変更が多すぎます。明日もう一度お試しください</translation>
+    </message>
+    <message>
+        <source>The nickbot is busy; try again later</source>
+        <translation>ニックボットは混み合っています。後でもう一度お試しください</translation>
+    </message>
+    <message>
+        <source>That nickname is permanent</source>
+        <translation>そのニックネームは固定されています</translation>
+    </message>
+    <message>
+        <source>A chan's nickname can only be registered from the chan itself</source>
+        <translation>チャンネルのニックネームは、そのチャンネル自身からのみ登録できます</translation>
+    </message>
+    <message>
+        <source>That nickname belongs to another address</source>
+        <translation>そのニックネームは別のアドレスのものです</translation>
+    </message>
+    <message>
+        <source>No answer</source>
+        <translation>応答なし</translation>
+    </message>
+    <message>
+        <source>The nickbot refused (%1)</source>
+        <translation>ニックボットに拒否されました（%1）</translation>
+    </message>
+    <message>
+        <source>Asked for %1; waiting for the nickbot</source>
+        <translation>%1 を申請しました。ニックボットの応答を待っています</translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <translation>%1: %2</translation>
+    </message>
+    <message>
+        <source>%1: the nickbot did not answer</source>
+        <translation>%1：ニックボットから応答がありませんでした</translation>
+    </message>
+    <message>
+        <source>No nickname</source>
+        <translation>ニックネームなし</translation>
     </message>
 </context>
 </TS>

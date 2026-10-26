@@ -4,6 +4,7 @@
 #include "coolname.h"
 #include "i18n.h"
 #include "message_model.h"
+#include "nick_client.h"
 #include "pow.h"
 #include "protocol.h"
 #include "protocol_wire.h"
@@ -100,6 +101,15 @@ Session::Session(QString root, bool offline, QObject *parent)
     nodeLock_ = std::make_unique<QLockFile>(root_ + "/desktop.lock");
     check(nodeLock_->tryLock(), tr("Another app instance is using this node folder"));
     client_ = std::make_shared<bmc::Client>(vaultCore_, mailboxCore_, bridge::toStd(root_));
+    nicks_ = new NickClient(*this);
+    connect(this, &Session::aboutToCloseMailbox, nicks_, &NickClient::mailboxClosing);
+    // A nickname that came in, or a nickbot that moved (and its colour with it), changes what the
+    // lists show for the people in them.
+    connect(nicks_, &NickClient::changed, this, [this] {
+        if (mailboxOpen())
+            messageModel()->reload();
+        emit changed();
+    });
     QSettings recent(root_ + "/desktop.ini", QSettings::IniFormat);
     vaultPath_ = recent.value("vault").toString();
     mailPath_ = recent.value("mailbox").toString();
@@ -190,9 +200,14 @@ QString Session::document() const {
 }
 QVariantList Session::identities() const {
     QVariantList result;
+    // The chan the nickbot lookups go out from is the app's, not one of the user's.
+    const auto lane = nicks_->laneAddress();
     for (const auto &i : vault_.identities())
-        result << QVariantMap{
-            {"label", i.label}, {"address", i.address}, {"chan", i.chan}, {"default", i.isDefault}};
+        if (lane.isEmpty() || i.address != lane)
+            result << QVariantMap{{"label", i.label},
+                                  {"address", i.address},
+                                  {"chan", i.chan},
+                                  {"default", i.isDefault}};
     return result;
 }
 void Session::attempt(const std::function<void()> &f) {
@@ -429,6 +444,7 @@ void Session::createMailbox() {
             mailKey_ = id;
             rememberMailbox(p);
             bindMailboxToCache();
+            nicks_->mailboxOpened();
             considerPyBitmessageOffer();
             refresh();
         } catch (...) {
@@ -480,6 +496,7 @@ void Session::openMailboxPath(const QString &p) {
             mailPath_ = p;
             mailKey_ = id;
             rememberMailbox(p);
+            nicks_->mailboxOpened();
             considerPyBitmessageOffer();
             refresh();
             return;
@@ -635,7 +652,8 @@ QVariantList Session::channels() const {
 }
 // One row of the letter list.
 static QVariantMap listRow(const Mailbox &mailbox, const Message &m,
-                           const QHash<QString, QString> &names) {
+                           const QHash<QString, QString> &names,
+                           const QHash<QString, NickInfo> &nicks) {
     OutboxItem out;
     if (m.folder == "Outbox" || m.folder == "Sent") {
         try {
@@ -643,12 +661,21 @@ static QVariantMap listRow(const Mailbox &mailbox, const Message &m,
         } catch (...) {
         }
     }
+    const auto local = [&](const QString &address) {
+        return names.value(address) == address ? QString() : names.value(address);
+    };
+    const auto from = shownName(m.from, local(m.from), nicks.value(m.from)),
+               to = shownName(m.to, local(m.to), nicks.value(m.to));
     return QVariantMap{
         {"hash", m.hash},
         {"from", m.from},
         {"to", m.to},
-        {"fromName", names.value(m.from) == m.from ? QString() : names.value(m.from)},
-        {"toName", names.value(m.to) == m.to ? QString() : names.value(m.to)},
+        {"fromName", from.local},
+        {"toName", to.local},
+        {"fromNick", from.nick},
+        {"fromNickColor", from.color},
+        {"toNick", to.nick},
+        {"toNickColor", to.color},
         {"subject", m.subject},
         {"preview", m.body},
         {"folder", m.folder},
@@ -665,9 +692,10 @@ QVariantList Session::messagePage(const QString &folder, const QString &search, 
     if (!mailboxOpen())
         return result;
     const auto names = this->names();
+    const auto nicks = nicks_->nicknames();
     for (const auto &m : mailbox_.messageSummaries(folder, search, offset, limit, recipient,
                                                    unreadOnly, anonymousOnly))
-        result << listRow(mailbox_, m, names);
+        result << listRow(mailbox_, m, names, nicks);
     return result;
 }
 QHash<QString, QVariantMap> Session::messageRows(const QStringList &hashes) const {
@@ -675,8 +703,9 @@ QHash<QString, QVariantMap> Session::messageRows(const QStringList &hashes) cons
     if (!mailboxOpen())
         return result;
     const auto names = this->names();
+    const auto nicks = nicks_->nicknames();
     for (const auto &m : mailbox_.messageSummaries(hashes))
-        result.insert(m.hash, listRow(mailbox_, m, names));
+        result.insert(m.hash, listRow(mailbox_, m, names, nicks));
     return result;
 }
 QVariantMap Session::message(QString id) const {
@@ -785,6 +814,7 @@ void Session::tick() {
                 activity_ =
                     tr("Retention cleanup removed older objects · Some older letters may no "
                        "longer be recoverable");
+            nicks_->tick();
         }
     } catch (const std::exception &e) {
         error_ = errorText(e);
@@ -819,9 +849,13 @@ QVariantList Session::chatMessages(QString local, QString peer, int limit, bool 
         *more = false;
     if (!mailboxOpen() || local.isEmpty() || peer.isEmpty())
         return result;
+    // A nickbot's chat ends with a line for programs: the pane shows what a person reads.
+    const bool fromNickbot = nicks_->botIndex(peer) >= 0;
     for (const auto &message : mailbox_.chatMessages(local, peer, limit, more))
         result << QVariantMap{{"id", message.id},
-                              {"body", message.body},
+                              {"body", fromNickbot && !message.outgoing
+                                           ? NickClient::withoutTrailer(message.body)
+                                           : message.body},
                               {"outgoing", message.outgoing},
                               {"seqno", message.seqno},
                               {"received", message.received},
@@ -882,15 +916,21 @@ QVariantList Session::chatConversations() const {
         if (!identity.chan)
             mine.insert(identity.address);
     const auto labels = names();
+    const auto nicks = nicks_->nicknames();
     for (const auto &summary : mailbox_.chatSummaries()) {
         if (!mine.contains(summary.local))
             continue;
+        // What the user calls the peer and what it calls itself, in one line.
+        const auto shown = shownName(summary.peer, labels.value(summary.peer, summary.peer),
+                                     nicks.value(summary.peer));
         result << QVariantMap{{"key", chatKey(summary.local, summary.peer)},
                               {"address", summary.peer},
-                              {"label", labels.value(summary.peer, summary.peer)},
+                              {"label", shown.empty() ? summary.peer : shown.plain()},
                               {"local", summary.local},
                               {"localLabel", labels.value(summary.local, summary.local)},
-                              {"body", summary.body},
+                              {"body", nicks_->botIndex(summary.peer) >= 0 && !summary.outgoing
+                                           ? NickClient::withoutTrailer(summary.body)
+                                           : summary.body},
                               {"received", summary.received},
                               {"outgoing", summary.outgoing},
                               {"state", summary.state},
@@ -1218,11 +1258,17 @@ void Session::setUpdateNotices(bool on) {
 }
 QVariantList Session::contacts() const {
     QVariantList result;
-    if (mailboxOpen())
-        for (const auto &c : mailbox_.contacts())
-            result << QVariantMap{{"address", c.address},
-                                  {"label", c.label},
-                                  {"nickname", nickname(c.address)}};
+    if (!mailboxOpen())
+        return result;
+    const auto nicks = nicks_->nicknames(); // one read for all of them
+    for (const auto &c : mailbox_.contacts()) {
+        const auto info = nicks.value(c.address);
+        result << QVariantMap{{"address", c.address},
+                              {"label", c.label},
+                              {"nickname", info.text},
+                              {"nickColor", info.color},
+                              {"nickBot", info.bot}};
+    }
     return result;
 }
 QString Session::nickname(QString address) const {

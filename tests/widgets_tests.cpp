@@ -6,6 +6,7 @@
 #include "ntb-object-db.h"
 #include "updates.h"
 #include "feed_view.h"
+#include "find_people_dialog.h"
 #include "protocol.h"
 #include "pybm_import_dialog.h"
 #include "rail_badge.h"
@@ -15,6 +16,8 @@
 #include "key_search.h"
 #include "new_chat_dialog.h"
 #include "join_channel_dialog.h"
+#include "nick_client.h"
+#include "nickbots_page.h"
 #include "new_vault_dialog.h"
 #include "sound_theme.h"
 #include "tray_icon.h"
@@ -29,6 +32,7 @@
 #include <QtWidgets>
 #include "bmclient/pybm_fixtures.h"
 #include <bmc/chat_format.h>
+#include <bmc/clock.h>
 #include <filesystem>
 #include <functional>
 #include <iostream>
@@ -1471,6 +1475,1175 @@ static void testPyBitmessageImportAddsPeople(const QTemporaryDir &temp) {
                 slow.findChild<QLabel *>("pybmResultText")->text().contains(line(1)),
             "what a stopped import stored brings its people, and the result says so");
 }
+// The nickbots of a mailbox: the list, the hidden chan that lookups go out from, the lookups, the
+// answers that come back, the registration of a nickname, and the nicknames the address book keeps.
+static void testNickbots(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("nick.bmvault"), boxFile = temp.filePath("nick.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("nick-node"));
+    {
+        QSettings config(temp.filePath("nick-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    const auto addressOf = [](const char *who) {
+        return QString::fromStdString(bmc::Protocol::identity(who).address);
+    };
+    const auto bot = addressOf("the nickbot"), second = addressOf("a second nickbot"),
+               ann = addressOf("Ann"), ben = addressOf("Ben"), cy = addressOf("Cy"),
+               dee = addressOf("Dee");
+    bm::updates::setDefaultNickbotsForTesting({{bot, "nickbot"}});
+    struct Restore {
+        ~Restore() {
+            bm::updates::setDefaultNickbotsForTesting({});
+        }
+    } restore;
+
+    bm::Session s(temp.filePath("nick-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen(), "test sanity: the mailbox opens");
+    auto &nick = s.nicks();
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+    nick.setClockForTesting([&] { return now; });
+    nick.setDelayForTesting([](int low, int) { return low; }); // no chance in a test
+    const auto me = s.identities().first().toMap()["address"].toString();
+
+    // --- the list ------------------------------------------------------------------------------
+    require(nick.bots().size() == 1 && nick.bots()[0].address == bot && nick.botIndex(bot) == 0 &&
+                nick.botIndex(second) == -1,
+            "a mailbox that never set its list has the built-in one: the default nickbot");
+    require(nick.enabled() && nick.autoLookups(), "nickbots and automatic lookups start on");
+    QString why;
+    require(nick.setBots({{bot, "one"}, {second, "two"}}, &why) && nick.bots().size() == 2 &&
+                nick.bots()[1].address == second && nick.botIndex(second) == 1 &&
+                nick.bots()[1].label == "two",
+            "a list of two is kept, in order, with its labels");
+    require(!nick.setBots({{bot, ""}, {bot, ""}}, &why) && !why.isEmpty() &&
+                nick.bots().size() == 2,
+            "a nickbot twice is refused, and the list stays");
+    require(!nick.setBots({{"BM-nope", ""}}, &why) && !why.isEmpty(), "a bad address is refused");
+    require(!nick.setBots({{me, ""}}, &why) && !why.isEmpty(),
+            "one of the user's own addresses is no nickbot");
+    QList<bm::Nickbot> six;
+    for (int i = 0; i < 6; ++i)
+        six.push_back({addressOf(QByteArray("bot" + QByteArray::number(i)).constData()), ""});
+    require(!nick.setBots(six, &why) && nick.bots().size() == 2, "at most five");
+    require(nick.setBots(six.mid(0, 5), &why) && nick.bots().size() == 5, "five are fine");
+    require(nick.setBots({{bot, "nickbot"}}, &why) && nick.bots().size() == 1,
+            "the list shrinks again");
+    nick.setEnabled(false);
+    nick.setAutoLookups(false);
+    require(!nick.enabled() && !nick.autoLookups(), "the two switches turn off");
+    nick.setEnabled(true);
+    nick.setAutoLookups(false); // the automatic lookups have a section of their own
+
+    // --- words ---------------------------------------------------------------------------------
+    for (const auto &[name, want] :
+         QList<QPair<QString, QString>>{{"Quick Otter of Zeta", "@quick_otter_of_zeta"},
+                                        {"Ann", "@ann"},
+                                        {"  Ben  ", "@ben"},
+                                        {"Ünï Ben!!", "@n_ben"},
+                                        {"a-b_c", "@a-b_c"},
+                                        {"Al", ""},
+                                        {"123 456", ""},
+                                        {"", ""},
+                                        {"BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN", ""},
+                                        {"9lives", "@lives"},
+                                        {QString(50, 'x'), "@" + QString(32, 'x')}})
+        require(bm::NickClient::suggestNick(name) == want,
+                qPrintable("a name becomes a nickname: " + name));
+    for (int i = 0; i < 4; ++i)
+        require(bm::nickbotColor(i) == bm::quoteColor(i + 1),
+                "the first four nickbots have the colours of the first four quote levels");
+    require(bm::nickbotColor(4) != bm::nickbotColor(0) &&
+                bm::nickbotColor(4) != bm::nickbotColor(3) &&
+                bm::nickbotColor(-3) == bm::nickbotColor(0) &&
+                bm::nickbotColor(9) == bm::nickbotColor(4),
+            "the fifth is its own, and a place outside the five takes the nearest");
+    require(bm::NickClient::errorText("taken") != bm::NickClient::errorText("syntax") &&
+                bm::NickClient::errorText("something new").contains("something new"),
+            "every code has words, and an unknown one is quoted");
+
+    // --- the lane ------------------------------------------------------------------------------
+    require(nick.laneAddress().isEmpty(), "no lookup chan before one is needed");
+    const auto lane = nick.ensureLane();
+    require(!lane.isEmpty() && nick.laneAddress() == lane && !nick.laneIsTheUsers(),
+            "the chan lookups are sent from is joined when it is first needed");
+    require(lane == QString::fromStdString(bmc::Protocol::channel("anonymous", "x", 4).address),
+            "it is the chan of the phrase anonymous");
+    bool inVault = false;
+    for (const auto &i : s.coreVault().identities())
+        inVault = inVault || (i.address == lane.toStdString() && i.chan);
+    require(inVault, "it is a chan of the vault");
+    for (const auto &i : s.identities())
+        require(i.toMap()["address"].toString() != lane, "but no list of identities shows it");
+    require(nick.ensureLane() == lane, "asked again it is the same chan, joined once");
+    require(s.coreClient().delivery().serviceAddresses() ==
+                std::set<std::string>{lane.toStdString()},
+            "and the scan is told that what comes to it is not mail");
+    s.coreClient().delivery().setServiceAddresses({});
+    nick.mailboxOpened();
+    require(s.coreClient().delivery().serviceAddresses() ==
+                std::set<std::string>{lane.toStdString()},
+            "a mailbox that opens tells it again");
+
+    // --- a lookup goes out late, from the chan, short-lived --------------------------------------
+    QSignalSpy finished(&nick, &bm::NickClient::lookupFinished);
+    const auto sentFrom = [&](const QString &from, const QString &to) {
+        QStringList texts;
+        for (const auto &m : s.coreMailbox().chatMessages(from.toStdString(), to.toStdString()))
+            if (m.outgoing)
+                texts << QString::fromStdString(m.body);
+        return texts;
+    };
+    require(nick.lookupAddress("@ben").isEmpty(), "a lookup is queued");
+    nick.tick();
+    require(sentFrom(lane, bot).isEmpty(), "and not sent at once");
+    now += 2;
+    nick.tick();
+    require(sentFrom(lane, bot).isEmpty(), "nor before its delay is over");
+    now += 2;
+    nick.tick();
+    require(sentFrom(lane, bot) == QStringList{"/address @ben"},
+            "after the delay it goes, from the lane, to the nickbot, as the command");
+    const auto lookupChat =
+        s.coreMailbox().chatMessages(lane.toStdString(), bot.toStdString()).front();
+    require(lookupChat.expires <= QDateTime::currentSecsSinceEpoch() + 3601 &&
+                lookupChat.expires > QDateTime::currentSecsSinceEpoch() + 3000,
+            "its life on the network is an hour, not a day");
+    require(nick.lookupAddress("@ben").isEmpty(), "asking the same again is no new message");
+    now += 600;
+    nick.tick();
+    require(sentFrom(lane, bot).size() == 1,
+            "the same question is not sent twice while one is out");
+
+    // --- the answer ------------------------------------------------------------------------------
+    int serial = 0;
+    const auto answer = [&](const QString &from, const QString &json, const QString &to = {}) {
+        const auto text = "Some words.\nnickbot: " + json.toStdString();
+        s.coreMailbox().store("answer-" + std::to_string(++serial), from.toStdString(),
+                              (to.isEmpty() ? lane : to).toStdString(), "",
+                              bmc::chatMessageBody(1, text), -1, "Service");
+    };
+    const auto serviceLeft = [&] { return s.coreMailbox().takeService(100).size(); };
+    // A stranger's word is nothing: the sender is what the signature proves.
+    answer(
+        ann,
+        R"({"v":1,"cmd":"address","ok":true,"query":"@ben","found":true,"nick":"@ben","address":")" +
+            cy + R"("})");
+    nick.tick();
+    require(
+        finished.isEmpty() && serviceLeft() == 0,
+        "an answer from an address that is no listed nickbot is not believed, and is cleared away");
+    answer(
+        bot,
+        R"({"v":1,"cmd":"address","ok":true,"query":"@ben","found":true,"nick":"@Ben","address":")" +
+            ben + R"("})");
+    nick.tick();
+    require(finished.size() == 1, "the nickbot's answer finishes the lookup");
+    {
+        const auto args = finished.takeFirst();
+        const auto result = args[3].toMap();
+        require(args[0].toString() == "address" && args[2].toString() == bot &&
+                    result["found"].toBool() && result["nick"].toString() == "@Ben" &&
+                    result["address"].toString() == ben,
+                "with what was asked, who answered and the result");
+    }
+    require(serviceLeft() == 0, "the Service folder is emptied by the tick");
+    now += 600;
+    nick.tick();
+    require(sentFrom(lane, bot).size() == 1, "an answered lookup is not asked again");
+
+    // --- answers that are wrong, and ones nobody asked for
+    // ----------------------------------------
+    answer(bot, R"({"v":1,"cmd":"address","ok":true,"found":true,"nick":"ben","address":")" + ben +
+                    R"("})");
+    answer(bot, R"(garbage)");
+    nick.tick();
+    require(finished.isEmpty(), "an answer with a bad field is not believed");
+
+    // --- a failed lookup says why; a lookup nobody answers times out
+    // -------------------------------
+    require(nick.lookupAddress("@nobody").isEmpty(), "test sanity: another lookup");
+    now += 4;
+    nick.tick();
+    answer(bot, R"({"v":1,"cmd":"","ok":false,"error":"rate_limited"})");
+    nick.tick();
+    // The slow-down notice names no command, so it finishes nothing; the lookup times out.
+    require(finished.isEmpty(), "a notice that names no command finishes nothing");
+    now += 3950;
+    nick.tick();
+    require(finished.size() == 1 && finished[0][0].toString() == "address" &&
+                finished[0][3].toMap()["error"].toString() == "timeout",
+            "a lookup that nobody answers ends, with timeout, after its hour and a little more");
+    finished.clear();
+
+    // --- what the address book keeps
+    // ----------------------------------------------------------------
+    s.addContact(ann, "Ann");
+    s.addContact(ben, "Ben");
+    s.addContact(cy, "Cy");
+    require(nick.nicknameOf(ann).text.isEmpty(), "a contact has no nickname to begin with");
+    // Anybody can write to the chan: what one who is no listed nickbot says about a contact is not
+    // taken.
+    answer(addressOf("Mallory who is no nickbot"),
+           R"({"v":1,"cmd":"nickname","ok":true,"results":[{"address":")" + ann +
+               R"(","nicks":["@mallory"]}]})");
+    nick.tick();
+    require(nick.nicknameOf(ann).text.isEmpty(),
+            "what a stranger says about a contact is not taken");
+    require(nick.lookupNicknames({ann, ben}, {}, true).isEmpty(), "test sanity: a batch lookup");
+    now += 4;
+    nick.tick();
+    require(sentFrom(lane, bot).size() == 3 &&
+                sentFrom(lane, bot)[2] == "/nickname " + ann + " " + ben,
+            "two addresses go in one message");
+    QSignalSpy changed(&nick, &bm::NickClient::changed);
+    answer(bot, R"({"v":1,"cmd":"nickname","ok":true,"results":[{"address":")" + ann +
+                    R"(","nicks":["@ann","/annbot"]},{"address":")" + ben + R"(","nicks":[]}]})");
+    nick.tick();
+    require(finished.size() == 1 && !changed.isEmpty(),
+            "the batch answer finishes the lookup and changes the book");
+    auto info = nick.nicknameOf(ann);
+    require(info.text == "@ann" && info.color == 0 && info.bot == "nickbot" &&
+                s.nickname(ann) == "@ann" && nick.nicknameOf(ben).text.isEmpty(),
+            "a contact gets the first nickname, in the colour of the nickbot that said it");
+    finished.clear();
+    // A nickname typed or built in is never replaced, only confirmed.
+    s.setNickname(cy, "/cyber");
+    answer(bot, R"({"v":1,"cmd":"nickname","ok":true,"results":[{"address":")" + cy +
+                    R"(","nicks":["@cyrus"]}]})");
+    nick.tick();
+    require(s.nickname(cy) == "/cyber" && nick.nicknameOf(cy).color == -1,
+            "a nickname that was not the nickbot's stays, with no colour");
+    require(nick.nicknames().contains(cy) && nick.nicknames()[cy].color == -1,
+            "also in the list of them all");
+    answer(bot, R"({"v":1,"cmd":"nickname","ok":true,"results":[{"address":")" + cy +
+                    R"(","nicks":["/cyber"]}]})");
+    nick.tick();
+    require(nick.nicknameOf(cy).text == "/cyber" && nick.nicknameOf(cy).color == 0,
+            "but if the nickbot says the same, it is the nickbot's from then on");
+    // One the nickbot vouched for goes when the nickbot says there is none.
+    answer(bot, R"({"v":1,"cmd":"nickname","ok":true,"results":[{"address":")" + ann +
+                    R"(","nicks":[]}]})");
+    nick.tick();
+    require(nick.nicknameOf(ann).text.isEmpty() && s.nickname(ann).isEmpty(),
+            "a nickname the nickbot vouched for is dropped when the nickbot has none");
+    {
+        const auto eve = addressOf("Eve with a nickname of her own");
+        s.addContact(eve, "Eve");
+        s.setNickname(eve, "/evebot");
+        answer(bot, R"({"v":1,"cmd":"nickname","ok":true,"results":[{"address":")" + eve +
+                        R"(","nicks":[]}]})");
+        nick.tick();
+        require(s.nickname(eve) == "/evebot",
+                "a nickname the nickbot never vouched for stays when it says the address has none");
+    }
+    // An answer nobody asked for still teaches the book.
+    answer(
+        bot,
+        R"({"v":1,"cmd":"address","ok":true,"query":"@Ben","found":true,"nick":"@Ben","address":")" +
+            ben + R"("})");
+    nick.tick();
+    require(nick.nicknameOf(ben).text == "@Ben",
+            "an answer nobody asked for still teaches the contact");
+    // Colours follow the list.
+    nick.setBots({{second, "second"}, {bot, "nickbot"}});
+    require(nick.nicknameOf(ben).color == 1 && nick.nicknameOf(ben).bot == "nickbot",
+            "the colour is the nickbot's place in the list, so it moves with it");
+    nick.setBots({{second, "second"}});
+    require(nick.nicknameOf(ben).text == "@Ben" && nick.nicknameOf(ben).color == -1,
+            "a nickbot no longer listed gives its names no colour");
+    nick.setBots({{bot, "nickbot"}});
+    const auto all = nick.nicknames();
+    require(all.contains(ben) && all[ben].text == "@Ben" && all.contains(cy) && !all.contains(ann),
+            "nicknames() lists every address that has one");
+
+    // --- two nickbots: an answer from one does not finish a question put to the other
+    // -----------------------
+    {
+        nick.setBots({{bot, "nickbot"}, {second, "second"}});
+        require(nick.lookupAddress("@zeta", bot).isEmpty(), "test sanity: a question to the first");
+        now += 4;
+        nick.tick();
+        finished.clear();
+        answer(
+            second,
+            R"({"v":1,"cmd":"address","ok":true,"query":"@zeta","found":true,"nick":"@zeta","address":")" +
+                dee + R"("})");
+        nick.tick();
+        require(finished.isEmpty(),
+                "the second nickbot's answer does not finish the question put to the first");
+        answer(
+            bot,
+            R"({"v":1,"cmd":"address","ok":true,"query":"@zeta","found":true,"nick":"@zeta","address":")" +
+                dee + R"("})");
+        nick.tick();
+        require(finished.size() == 1 && finished[0][2].toString() == bot, "the first one's does");
+        finished.clear();
+        nick.setBots({{bot, "nickbot"}});
+    }
+
+    // --- the switches
+    // --------------------------------------------------------------------------------
+    nick.setEnabled(false);
+    require(!nick.lookupAddress("@ben").isEmpty() && !nick.lookupNicknames({ann}).isEmpty() &&
+                !nick.search("benn").isEmpty() && !nick.registerNickname(me, "@mine").isEmpty(),
+            "with nickbots off nothing is asked, and each says so");
+    nick.setEnabled(true);
+    require(!nick.lookupAddress("ben").isEmpty() && !nick.lookupNicknames({"BM-nope"}).isEmpty() &&
+                !nick.lookupNicknames({}).isEmpty() && !nick.search("ben").isEmpty() &&
+                !nick.search("b%n_").isEmpty() && !nick.lookupAddress("@ben", second).isEmpty(),
+            "a bad nickname, a bad address, a short or odd term and a nickbot that is not listed "
+            "are refused");
+
+    // --- searching
+    // ---------------------------------------------------------------------------------
+    now += 4000;
+    nick.tick();
+    finished.clear();
+    const auto before = sentFrom(lane, bot).size();
+    require(nick.search("BENN").isEmpty(), "a search is queued");
+    now += 4;
+    nick.tick();
+    require(sentFrom(lane, bot).size() == before + 1 &&
+                sentFrom(lane, bot).last() == "/search benn",
+            "it goes out in lower case, as a command");
+    answer(
+        bot,
+        R"({"v":1,"cmd":"search","ok":true,"query":"benn","results":[{"nick":"@benny","address":")" +
+            dee + R"("}],"more":true})");
+    nick.tick();
+    require(finished.size() == 1 && finished[0][0].toString() == "search" &&
+                finished[0][3].toMap()["hits"].toList().size() == 1 &&
+                finished[0][3].toMap()["more"].toBool(),
+            "the hits come with the answer");
+    require(!nick.nicknameOf(dee).text.isEmpty() == s.isContact(dee),
+            "a hit who is no contact is not put in the book by a search");
+    finished.clear();
+
+    // --- background lookups are not sent together
+    // ----------------------------------------------------------
+    {
+        now += 200; // clear of the search above
+        nick.tick();
+        const auto before = sentFrom(lane, bot).size();
+        require(nick.lookupNicknames({addressOf("crowd one")}, {}, false).isEmpty() &&
+                    nick.lookupNicknames({addressOf("crowd two")}, {}, false).isEmpty(),
+                "test sanity: two lookups that only keep the book up to date");
+        now += 61;
+        nick.tick();
+        require(sentFrom(lane, bot).size() == before + 1, "one of them goes when its time comes");
+        now += 130;
+        nick.tick();
+        require(sentFrom(lane, bot).size() == before + 2,
+                "and the other two minutes after, not with it");
+    }
+
+    // --- registration
+    // --------------------------------------------------------------------------------
+    require(nick.registration(me)["state"].toString() == "none",
+            "no registration before one is asked for");
+    require(!nick.registerNickname(me, "mine").isEmpty() &&
+                nick.registerNickname(lane, "@mine") ==
+                    bm::NickClient::tr("Choose one of your identities") &&
+                nick.registerNickname(addressOf("a stranger"), "@mine") ==
+                    bm::NickClient::tr("Choose one of your identities"),
+            "a nickname that is none, a chan and an address that is not the vault's are refused, "
+            "and it says why");
+    require(nick.registerNickname(me, "@mine").isEmpty(), "a registration is queued");
+    require(sentFrom(me, bot) == QStringList{"/register @mine"},
+            "it is a chat from the identity itself to the nickbot, which the user can read");
+    auto reg = nick.registration(me);
+    require(reg["state"].toString() == "waiting" && reg["nick"].toString() == "@mine" &&
+                reg["bot"].toString() == bot,
+            "and it waits for the answer");
+    // The answer is a chat in that conversation; its trailer says how it went.
+    const auto incoming = [&](const QString &json) {
+        const auto text = "Words.\nnickbot: " + json.toStdString();
+        s.coreMailbox().storeChat("reg-answer-" + std::to_string(++serial), bot.toStdString(),
+                                  me.toStdString(), 100 + serial, text, bmc::now() + 3600);
+    };
+    incoming(R"({"v":1,"cmd":"register","ok":false,"error":"taken","query":"@mine"})");
+    nick.tick();
+    reg = nick.registration(me);
+    require(reg["state"].toString() == "refused" && reg["error"].toString() == "taken" &&
+                s.nickname(me).isEmpty(),
+            "a refusal is kept with its reason, and the identity gets no nickname");
+    require(nick.registerNickname(me, "@mine2").isEmpty() &&
+                nick.registration(me)["state"].toString() == "waiting",
+            "a new try starts again");
+    now += 5;
+    incoming(R"({"v":1,"cmd":"register","ok":true,"query":"@mine2","nick":"@mine2","address":")" +
+             me + R"("})");
+    nick.tick();
+    reg = nick.registration(me);
+    require(reg["state"].toString() == "registered" && reg["nick"].toString() == "@mine2" &&
+                s.nickname(me) == "@mine2" && nick.nicknameOf(me).color == 0,
+            "an acceptance makes the identity's nickname, in the nickbot's colour");
+    // Nothing comes back: no answer, after a day.
+    require(nick.registerNickname(me, "@mine3").isEmpty(), "test sanity: another try");
+    now += 3600;
+    nick.tick();
+    require(nick.registration(me)["state"].toString() == "waiting", "an hour is not yet no answer");
+    now += 24 * 3600;
+    nick.tick();
+    require(nick.registration(me)["state"].toString() == "noanswer", "a day and more is");
+    // A lookup is held back from a registration for a while: the two must not line up.
+    nick.registerNickname(me, "@mine4");
+    nick.lookupAddress("@ben");
+    now += 4;
+    nick.tick();
+    const auto lanes = sentFrom(lane, bot).size();
+    now += 100;
+    nick.tick();
+    require(sentFrom(lane, bot).size() == lanes,
+            "a lookup is not sent within two minutes of a message that names the user");
+    now += 30;
+    nick.tick();
+    require(sentFrom(lane, bot).size() == lanes + 1, "and goes after");
+
+    nick.setBots({{bot, "nickbot"}, {second, "second"}});
+    require(nick.registerNickname(me, "@second_one", second).isEmpty() &&
+                sentFrom(me, second) == QStringList{"/register @second_one"} &&
+                nick.registration(me)["bot"].toString() == second,
+            "a registration goes to the nickbot that was asked for, not always to the default");
+    nick.setBots({{bot, "nickbot"}});
+
+    // --- a registration waits for a mailbox that is not there yet
+    // ---------------------------------------
+    nick.registerWhenAMailboxOpens(me, "@later");
+    nick.mailboxOpened();
+    nick.tick();
+    require(sentFrom(me, bot).contains("/register @later") &&
+                nick.registration(me)["nick"].toString() == "@later",
+            "a registration asked for before the mailbox existed goes out when one opens");
+    const auto count = sentFrom(me, bot).size();
+    nick.mailboxOpened();
+    nick.tick();
+    require(sentFrom(me, bot).size() == count, "and only once");
+
+    // --- the book is kept up to date on its own
+    // ----------------------------------------------------------
+    {
+        QStringList fresh;
+        for (int i = 0; i < 11; ++i) {
+            const auto a = addressOf(("a contact nobody has checked " + std::to_string(i)).c_str());
+            s.addContact(a, "Contact " + QString::number(i));
+            fresh << a;
+        }
+        std::sort(fresh.begin(), fresh.end());
+        const auto batch = [&](int from, int count) {
+            return "/nickname " + fresh.mid(from, count).join(' ');
+        };
+        const auto results = [&](const QStringList &addresses, const QString &firstNick) {
+            QStringList entries;
+            for (int i = 0; i < addresses.size(); ++i)
+                entries << R"({"address":")" + addresses[i] + R"(","nicks":[)" +
+                               (i == 0 && !firstNick.isEmpty() ? "\"" + firstNick + "\""
+                                                               : QString()) +
+                               "]}";
+            return R"({"v":1,"cmd":"nickname","ok":true,"results":[)" + entries.join(',') + "]}";
+        };
+        nick.setAutoLookups(true);
+        now += 200; // clear of the registration above
+        finished.clear();
+        const auto start = sentFrom(lane, bot).size();
+        nick.tick();
+        require(sentFrom(lane, bot).size() == start,
+                "a pass only queues: nothing goes out at once");
+        now += 61;
+        nick.tick();
+        require(sentFrom(lane, bot).size() == start + 1 &&
+                    sentFrom(lane, bot).last() == batch(0, 8),
+                "then the contacts nobody has checked go, eight to a message");
+        now += 700;
+        nick.tick();
+        require(sentFrom(lane, bot).size() == start + 1,
+                "and no second batch is started while the first has no answer");
+        answer(bot, results(fresh.mid(0, 8), "@first"));
+        nick.tick();
+        require(finished.size() == 1 && nick.nicknameOf(fresh[0]).text == "@first" &&
+                    nick.nicknameOf(fresh[1]).text.isEmpty(),
+                "the answer gives the names it has");
+        finished.clear();
+        now += 700;
+        nick.tick();
+        now += 61;
+        nick.tick();
+        require(sentFrom(lane, bot).size() == start + 2 &&
+                    sentFrom(lane, bot).last() == batch(8, 3),
+                "the next pass asks for the three that are left, not for those just checked");
+        answer(bot, results(fresh.mid(8, 3), {}));
+        nick.tick();
+        // A week on, everything is stale again, the oldest check first.
+        now += 8 * 86400;
+        nick.tick();
+        now += 61;
+        nick.tick();
+        require(sentFrom(lane, bot).size() == start + 3 &&
+                    sentFrom(lane, bot).last().startsWith("/nickname "),
+                "after a week the contacts are asked about again");
+        nick.setAutoLookups(false);
+        answer(bot, R"({"v":1,"cmd":"help","ok":true})");
+        now += 8 * 86400;
+        nick.tick();
+        now += 700;
+        nick.tick();
+        require(sentFrom(lane, bot).size() == start + 3,
+                "with the switch off nothing more is asked");
+        // A program that is no mail client never asks on its own, whatever the switch says.
+        nick.setAutoLookups(true);
+        nick.setBackgroundLookups(false);
+        now += 8 * 86400;
+        nick.tick();
+        now += 700;
+        nick.tick();
+        now += 700;
+        nick.tick();
+        require(sentFrom(lane, bot).size() == start + 3,
+                "a tool that turned background lookups off asks nothing");
+        nick.setBackgroundLookups(true);
+        nick.setAutoLookups(false);
+    }
+
+    // --- on the screen
+    // ------------------------------------------------------------------------------------
+    {
+        nick.setBots({{bot, "nickbot"}});
+        nick.setAutoLookups(false);
+        require(s.addContact(dee, bm::addressTitle(dee)),
+                "test sanity: a contact whose name is made up");
+        nick.adopt(dee, "@dee", bot);
+        const auto rowFrom = [&](const QString &sender) {
+            const auto id = std::string("show-") + sender.left(12).toStdString();
+            s.coreMailbox().store(id, sender.toStdString(), me.toStdString(), "Hello", "body", -1,
+                                  "Inbox");
+            for (const auto &r : s.messagePage("Inbox", {}, 0, 50))
+                if (r.toMap()["hash"].toString() == QString::fromStdString(id))
+                    return r.toMap();
+            return QVariantMap();
+        };
+        const auto fromBen = rowFrom(ben);
+        require(
+            fromBen["fromName"] == "Ben" && fromBen["fromNick"] == "@Ben" &&
+                fromBen["fromNickColor"] == 0,
+            "a letter from a contact with a nickname carries both, and the colour of the nickbot");
+        const auto fromDee = rowFrom(dee);
+        require(fromDee["fromName"].toString().isEmpty() && fromDee["fromNick"] == "@dee",
+                "a name that is only made up from the address gives way to the nickname");
+        const auto fromStranger = rowFrom(addressOf("a stranger with no nickname"));
+        require(fromStranger["fromNick"].toString().isEmpty() &&
+                    fromStranger["fromNickColor"] == -1,
+                "someone with no nickname has none");
+        QVariantMap benContact;
+        for (const auto &c : s.contacts())
+            if (c.toMap()["address"].toString() == ben)
+                benContact = c.toMap();
+        require(benContact["nickname"] == "@Ben" && benContact["nickColor"] == 0 &&
+                    benContact["nickBot"] == "nickbot",
+                "the address book rows carry the nickname with its colour and nickbot");
+        s.coreMailbox().storeChat("show-chat", ben.toStdString(), me.toStdString(), 1, "hello",
+                                  bmc::now() + 3600);
+        QString chatLabel;
+        for (const auto &c : s.chatConversations())
+            if (c.toMap()["address"].toString() == ben)
+                chatLabel = c.toMap()["label"].toString();
+        require(chatLabel == "@Ben · Ben", "a chat is titled by the nickname and the name");
+        // A nickbot's chat is shown without its line for programs; anyone else's, as it is.
+        const auto words =
+            std::string("Registered @x for you.\nnickbot: {\"v\":1,\"cmd\":\"help\",\"ok\":true}");
+        s.coreMailbox().storeChat("shown-bot", bot.toStdString(), me.toStdString(), 7, words,
+                                  bmc::now() + 3600);
+        s.coreMailbox().storeChat("shown-ben", ben.toStdString(), me.toStdString(), 8, words,
+                                  bmc::now() + 3600);
+        const auto lastBody = [&](const QString &peer) {
+            const auto list = s.chatMessages(me, peer);
+            return list.isEmpty() ? QString() : list.last().toMap()["body"].toString();
+        };
+        require(lastBody(bot) == "Registered @x for you." && lastBody(ben).contains("nickbot: {"),
+                "a nickbot's chat is shown without its line for programs, and nobody else's is "
+                "changed");
+        QString botPreview, benPreview;
+        for (const auto &c : s.chatConversations()) {
+            if (c.toMap()["address"].toString() == bot)
+                botPreview = c.toMap()["body"].toString();
+            if (c.toMap()["address"].toString() == ben)
+                benPreview = c.toMap()["body"].toString();
+        }
+        require(botPreview == "Registered @x for you." && benPreview.contains("nickbot: {"),
+                "so is the line of the chat list");
+        require(
+            bm::NickClient::withoutTrailer("Hello.\nnickbot: garbage") ==
+                    "Hello.\nnickbot: garbage" &&
+                bm::NickClient::withoutTrailer("nickbot: {\"v\":1,\"cmd\":\"help\",\"ok\":true}")
+                    .isEmpty(),
+            "a last line that is no good is left, and a message that is only a trailer is empty");
+        const auto shown = bm::shownName(ben, "Ben", nick.nicknameOf(ben));
+        require(shown.html() == "<span style=\"color:" + bm::nickbotColor(0).name() +
+                                    "\">@Ben</span> · Ben" &&
+                    shown.plain() == "@Ben · Ben",
+                "as HTML the nickname is in its colour, and escaped");
+        require(bm::shownName(ben, "<b>x</b>", {"@a", -1, {}}).html() ==
+                    "@a · &lt;b&gt;x&lt;/b&gt;",
+                "and nothing the user's names say can be markup");
+        require(bm::shownName(ben, "/echo", {"/echo", 0, "x"}).plain() == "/echo",
+                "a name that says what the nickname says is shown once");
+    }
+
+
+    // --- the user's own chan is left alone
+    // -------------------------------------------------------------------
+    {
+        const auto vaultTwo = temp.filePath("nick2.bmvault"),
+                   boxTwo = temp.filePath("nick2.bmmail");
+        {
+            bm::Vault made;
+            made.create(vaultTwo, "test password");
+            made.addIdentity("Mine");
+            made.addChannel("anonymous", "anonymous"); // joined by hand, as any chan is
+            const auto key = made.addMailboxKey();
+            bm::Mailbox box;
+            box.create(boxTwo, key, made.mailboxKey(key));
+            made.lock();
+        }
+        QDir().mkpath(temp.filePath("nick-node-two"));
+        {
+            QSettings config(temp.filePath("nick-node-two/desktop.ini"), QSettings::IniFormat);
+            config.setValue("vault", vaultTwo);
+            config.setValue("mailbox", boxTwo);
+        }
+        bm::Session other(temp.filePath("nick-node-two"), true);
+        other.beginVaultUnlock();
+        other.submitVaultPassword("test password");
+        require(other.mailboxOpen(), "test sanity: the second mailbox opens");
+        auto &two = other.nicks();
+        QString problem;
+        require(two.laneIsTheUsers() && two.laneAddress().isEmpty() &&
+                    two.ensureLane(&problem).isEmpty() && !problem.isEmpty() &&
+                    !two.lookupAddress("@ben").isEmpty(),
+                "a chan 'anonymous' the user joined is not taken over: nothing is looked up, and "
+                "it says why");
+        bool listed = false;
+        for (const auto &i : other.identities())
+            listed = listed || i.toMap()["chan"].toBool();
+        require(listed, "and the user's chan stays in the lists");
+    }
+}
+// The chan lookups go out from belongs to the vault, which has many mailboxes: one that is opened
+// later finds it made and the app's own, and no list shows it with no mailbox open.
+static void testLaneBelongsToTheVault(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("nicklane.bmvault"),
+               boxOne = temp.filePath("nicklane1.bmmail"),
+               boxTwo = temp.filePath("nicklane2.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        for (const auto &file : {boxOne, boxTwo}) {
+            const auto key = made.addMailboxKey();
+            bm::Mailbox box;
+            box.create(file, key, made.mailboxKey(key));
+        }
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("nick-node-lane"));
+    {
+        QSettings config(temp.filePath("nick-node-lane/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxOne);
+    }
+    bm::Session s(temp.filePath("nick-node-lane"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen() && s.document() == "nicklane1.bmmail",
+            "test sanity: the first mailbox opens");
+    auto &nick = s.nicks();
+    const auto lane = nick.ensureLane();
+    require(!lane.isEmpty(), "test sanity: the lane is made through the first mailbox");
+
+    s.openMailboxAt(boxTwo);
+    require(s.mailboxOpen() && s.document() == "nicklane2.bmmail",
+            "test sanity: the second mailbox of the vault opens");
+    QString problem;
+    require(nick.laneAddress() == lane && !nick.laneIsTheUsers() &&
+                nick.ensureLane(&problem) == lane && problem.isEmpty(),
+            "another mailbox of the vault finds the chan made, and the app's, not the user's");
+    require(s.coreClient().delivery().serviceAddresses() ==
+                std::set<std::string>{lane.toStdString()},
+            "and its scan is told that what comes to the chan is not mail");
+    int copies = 0;
+    for (const auto &i : s.coreVault().identities())
+        copies += i.address == lane.toStdString();
+    require(copies == 1, "the vault has it once");
+
+    s.closeMailbox();
+    require(!s.mailboxOpen() && nick.laneAddress() == lane,
+            "it is the vault's: closing the mailbox does not lose it");
+    for (const auto &i : s.identities())
+        require(i.toMap()["address"].toString() != lane,
+                "and with no mailbox open the identities do not show it");
+}
+// Settings > Nickbots: the list with its colours, the order and the switches, and the registration
+// of an identity's nickname.
+static void testNickbotsPage(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("nickpage.bmvault"),
+               boxFile = temp.filePath("nickpage.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        made.addChannel("a chan of the nickbots page test", "A chan");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("nickpage-node"));
+    {
+        QSettings config(temp.filePath("nickpage-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    const auto addressOf = [](const char *who) {
+        return QString::fromStdString(bmc::Protocol::identity(who).address);
+    };
+    const auto bot = addressOf("the page's nickbot"),
+               second = addressOf("the page's second nickbot");
+    bm::updates::setDefaultNickbotsForTesting({{bot, "nickbot"}});
+    struct Restore {
+        ~Restore() {
+            bm::updates::setDefaultNickbotsForTesting({});
+        }
+    } restore;
+    bm::Session s(temp.filePath("nickpage-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen(), "test sanity: the mailbox opens");
+    bm::NickbotsPage page(s);
+    page.resize(700, 700);
+    page.show();
+    QCoreApplication::processEvents();
+    auto list = page.findChild<QTreeWidget *>("nickbotsList");
+    auto identities = page.findChild<QTreeWidget *>("nickIdentitiesList");
+    auto click = [&](const char *name) { page.findChild<QPushButton *>(name)->click(); };
+    // Drives a dialog that is open and waiting: finds it as the modal window and calls f on it.
+    auto inDialog = [&](const char *name, const std::function<void(QDialog *)> &f) {
+        QTimer::singleShot(50, [name, f] {
+            auto d = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            require(d && d->objectName() == name, "the dialog is open");
+            f(d);
+        });
+    };
+    require(list && identities, "the page has its two lists");
+    require(list->topLevelItemCount() == 1 &&
+                list->topLevelItem(0)->text(0) ==
+                    bm::NickbotsPage::tr("%1 (default)").arg("nickbot") &&
+                list->topLevelItem(0)->text(1) == bot && !list->topLevelItem(0)->icon(0).isNull(),
+            "the list holds the default nickbot, named as the default, with a colour");
+    require(
+        identities->topLevelItemCount() == 1 && identities->topLevelItem(0)->text(0) == "Mine" &&
+            identities->topLevelItem(0)->text(1) == bm::NickClient::describe({{"state", "none"}}),
+        "the identities are the user's own, not chans, each with what it has registered");
+    require(page.findChild<QCheckBox *>("nickbotsEnabledCheck")->isChecked() &&
+                page.findChild<QCheckBox *>("nickbotsAutoCheck")->isChecked(),
+            "the two switches start on");
+
+    // Add a nickbot.
+    inDialog("nickbotAddDialog", [&](QDialog *d) {
+        auto address = d->findChild<QLineEdit *>("nickbotAddressField");
+        auto ok = d->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok);
+        require(!ok->isEnabled(), "Add waits for an address");
+        address->setText("BM-nope");
+        require(!ok->isEnabled(), "and for a good one");
+        address->setText(s.coreVault().identities().front().address.c_str());
+        require(ok->isEnabled(), "an address that is valid enables Add");
+        ok->click();
+        require(
+            d->isVisible() && !d->findChild<QLabel *>("nickbotAddProblem")->text().isEmpty(),
+            "one of the user's own addresses is refused, with the reason, and the dialog stays");
+        address->setText(second);
+        d->findChild<QLineEdit *>("nickbotLabelField")->setText("second");
+        ok->click();
+    });
+    click("nickbotAddButton");
+    require(list->topLevelItemCount() == 2 && s.nicks().bots().size() == 2 &&
+                list->topLevelItem(1)->text(0) == "second" &&
+                list->topLevelItem(1)->text(1) == second,
+            "the added nickbot is last in the list");
+    require(list->topLevelItem(0)->icon(0).pixmap(16, 16).toImage().pixelColor(8, 8) ==
+                    bm::nickbotColor(0) &&
+                list->topLevelItem(1)->icon(0).pixmap(16, 16).toImage().pixelColor(8, 8) ==
+                    bm::nickbotColor(1) &&
+                bm::nickbotColor(0) != bm::nickbotColor(1),
+            "each row shows the colour of its place");
+    // Order: moving a nickbot moves its colour and the default.
+    list->setCurrentItem(list->topLevelItem(1));
+    click("nickbotUpButton");
+    require(s.nicks().bots()[0].address == second &&
+                list->topLevelItem(0)->text(0) ==
+                    bm::NickbotsPage::tr("%1 (default)").arg("second"),
+            "Move up puts it first, and so makes it the default");
+    require(!page.findChild<QPushButton *>("nickbotUpButton")->isEnabled() &&
+                page.findChild<QPushButton *>("nickbotDownButton")->isEnabled(),
+            "the first row cannot go up, and can go down");
+    list->setCurrentItem(list->topLevelItem(1));
+    require(!page.findChild<QPushButton *>("nickbotDownButton")->isEnabled() &&
+                page.findChild<QPushButton *>("nickbotUpButton")->isEnabled(),
+            "the last row cannot go down, and can go up");
+    list->setCurrentItem(list->topLevelItem(0));
+    click("nickbotRemoveButton");
+    require(s.nicks().bots().size() == 1 && s.nicks().bots()[0].address == bot,
+            "Remove takes the selected nickbot out");
+    for (int i = 0; i < 4; ++i) { // fill to five, and the sixth is not offered
+        auto more = s.nicks().bots();
+        more.push_back({addressOf(QByteArray("fill" + QByteArray::number(i)).constData()), ""});
+        s.nicks().setBots(more);
+    }
+    require(list->topLevelItemCount() == 5 &&
+                !page.findChild<QPushButton *>("nickbotAddButton")->isEnabled(),
+            "with five nickbots Add is grey");
+    s.nicks().setBots({{bot, "nickbot"}});
+
+    // Registration.
+    require(page.findChild<QPushButton *>("nickRegisterButton")->isEnabled(),
+            "with a nickbot and an identity, Register is on");
+    inDialog("nickRegisterDialog", [&](QDialog *d) {
+        auto field = d->findChild<QLineEdit *>("nickRegisterField");
+        auto ok = d->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok);
+        require(field->text() == "@mine" && ok->isEnabled(),
+                "the nickname is made from the identity's name, and good");
+        field->setText("mine");
+        require(!ok->isEnabled(), "Register waits for a valid nickname");
+        field->setText("@mine_page");
+        ok->click();
+    });
+    click("nickRegisterButton");
+    require(s.nicks().registration(s.identities().front().toMap()["address"].toString())["state"] ==
+                    "waiting" &&
+                identities->topLevelItem(0)->text(1) ==
+                    bm::NickClient::describe({{"state", "waiting"}, {"nick", "@mine_page"}}),
+            "the registration is asked for, and the page says it waits");
+    // The answer changes the row, in the nickbot's colour.
+    {
+        const auto me = s.identities().front().toMap()["address"].toString();
+        const auto text =
+            std::string("Registered.\nnickbot: "
+                        "{\"v\":1,\"cmd\":\"register\",\"ok\":true,\"query\":\"@mine_page\","
+                        "\"nick\":\"@mine_page\",\"address\":\"") +
+            me.toStdString() + "\"}";
+        s.coreMailbox().storeChat("page-answer", bot.toStdString(), me.toStdString(), 5, text,
+                                  bmc::now() + 3600);
+        s.nicks().tick();
+        require(identities->topLevelItem(0)->text(1) == "@mine_page" &&
+                    identities->topLevelItem(0)->foreground(1).color() == bm::nickbotColor(0),
+                "the nickname that was registered shows, in the colour of the nickbot");
+    }
+    // The switch.
+    page.findChild<QCheckBox *>("nickbotsEnabledCheck")->setChecked(false);
+    require(!s.nicks().enabled() &&
+                !page.findChild<QPushButton *>("nickRegisterButton")->isEnabled() &&
+                !page.findChild<QCheckBox *>("nickbotsAutoCheck")->isEnabled(),
+            "with nickbots off nothing can be registered and the other switch is grey");
+}
+// Contacts > Find people: the question asked from what is typed, the answer in the table, and what
+// is added to the address book.
+static void testFindPeople(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("find.bmvault"), boxFile = temp.filePath("find.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("find-node"));
+    {
+        QSettings config(temp.filePath("find-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    const auto addressOf = [](const char *who) {
+        return QString::fromStdString(bmc::Protocol::identity(who).address);
+    };
+    const auto bot = addressOf("the finder's nickbot"), ben = addressOf("Ben found"),
+               benny = addressOf("Benny found");
+    bm::updates::setDefaultNickbotsForTesting({{bot, "nickbot"}});
+    struct Restore {
+        ~Restore() {
+            bm::updates::setDefaultNickbotsForTesting({});
+        }
+    } restore;
+    bm::Session s(temp.filePath("find-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen(), "test sanity: the mailbox opens");
+    auto &nick = s.nicks();
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+    nick.setClockForTesting([&] { return now; });
+    nick.setDelayForTesting([](int low, int) { return low; });
+    nick.setAutoLookups(false);
+    int serial = 0;
+    const auto answer = [&](const QString &json) {
+        const auto text = "Words.\nnickbot: " + json.toStdString();
+        s.coreMailbox().store("find-answer-" + std::to_string(++serial), bot.toStdString(),
+                              nick.laneAddress().toStdString(), "", bmc::chatMessageBody(1, text),
+                              -1, "Service");
+        nick.tick();
+    };
+    const auto sent = [&] {
+        QStringList texts;
+        for (const auto &m :
+             s.coreMailbox().chatMessages(nick.laneAddress().toStdString(), bot.toStdString()))
+            texts << QString::fromStdString(m.body);
+        return texts;
+    };
+    bm::FindPeopleDialog dialog(s);
+    dialog.show();
+    QCoreApplication::processEvents();
+    auto field = dialog.findChild<QLineEdit *>("findPeopleField");
+    auto search = dialog.findChild<QPushButton *>("findPeopleSearchButton");
+    auto add = dialog.findChild<QPushButton *>("findPeopleAddButton");
+    auto results = dialog.findChild<QTreeWidget *>("findPeopleResults");
+    auto status = dialog.findChild<QLabel *>("findPeopleStatus");
+    require(!search->isEnabled() && !add->isEnabled(), "nothing to ask, nothing to add");
+    field->setText("ben");
+    require(search->isEnabled(), "something typed can be asked");
+    search->click();
+    require(results->topLevelItemCount() == 0 && !status->text().isEmpty() && sent().isEmpty(),
+            "three letters are too few: it says so and asks nothing");
+
+    // A word is searched for.
+    field->setText("benn");
+    search->click();
+    now += 4;
+    nick.tick();
+    require(sent() == QStringList{"/search benn"} && status->text().contains("nickbot"),
+            "a word is searched for, and the dialog says whom it asked");
+    answer(
+        R"({"v":1,"cmd":"search","ok":true,"query":"benn","results":[{"nick":"@benny","address":")" +
+        benny + R"("},{"nick":"@bennett","address":")" + ben + R"("}],"more":false})");
+    require(results->topLevelItemCount() == 2 && results->topLevelItem(0)->text(0) == "@benny" &&
+                results->topLevelItem(0)->text(1) == benny &&
+                results->topLevelItem(0)->foreground(0).color() == bm::nickbotColor(0),
+            "the hits fill the table, in the nickbot's colour");
+    require(!add->isEnabled(), "nothing is added until something is chosen");
+    results->topLevelItem(0)->setSelected(true);
+    require(add->isEnabled(), "a chosen row can be added");
+    add->click();
+    require(s.isContact(benny) && s.nickname(benny) == "@benny" &&
+                nick.nicknameOf(benny).color == 0 && !s.isContact(ben) &&
+                results->topLevelItem(0)->text(2) == bm::FindPeopleDialog::tr("yes"),
+            "it joins the address book under its nickname, which is kept as the nickbot's");
+    bool named = false;
+    for (const auto &c : s.contacts())
+        named = named || (c.toMap()["address"].toString() == benny &&
+                          c.toMap()["label"].toString() == "@benny");
+    require(named, "and the contact is called by it");
+
+    // A whole nickname is asked for its address, an address for its nicknames.
+    field->setText("@Ben");
+    search->click();
+    now += 4;
+    nick.tick();
+    require(sent().last() == "/address @Ben", "a nickname is asked for its address");
+    answer(
+        R"({"v":1,"cmd":"address","ok":true,"query":"@Ben","found":true,"nick":"@Ben","address":")" +
+        ben + R"("})");
+    require(results->topLevelItemCount() == 1 && results->topLevelItem(0)->text(1) == ben &&
+                results->currentItem() == results->topLevelItem(0),
+            "the one it found is chosen already");
+    field->setText(benny);
+    search->click();
+    now += 4;
+    nick.tick();
+    require(sent().last() == "/nickname " + benny, "an address is asked for its nicknames");
+    answer(R"({"v":1,"cmd":"nickname","ok":true,"query":")" + benny +
+           R"(","results":[{"address":")" + benny + R"(","nicks":["@benny","/bennybot"]}]})");
+    require(results->topLevelItemCount() == 2 && results->topLevelItem(1)->text(0) == "/bennybot",
+            "one row for each of its nicknames");
+    // Nobody by that name.
+    field->setText("@nobody");
+    search->click();
+    now += 4;
+    nick.tick();
+    answer(R"({"v":1,"cmd":"address","ok":true,"query":"@nobody","found":false})");
+    require(results->topLevelItemCount() == 0 && status->text().contains("nickbot"),
+            "an empty answer says that the nickbot knows no one by that");
+    // An answer to somebody else's question, of the same kind, does not fill the table.
+    require(nick.lookupAddress("@other").isEmpty(), "test sanity: another asker's question");
+    field->setText("@later");
+    search->click();
+    now += 4;
+    nick.tick();
+    answer(
+        R"({"v":1,"cmd":"address","ok":true,"query":"@other","found":true,"nick":"@other","address":")" +
+        ben + R"("})");
+    require(results->topLevelItemCount() == 0,
+            "an answer to another question is not shown as this one's");
+    answer(
+        R"({"v":1,"cmd":"address","ok":true,"query":"@later","found":true,"nick":"@later","address":")" +
+        benny + R"("})");
+    require(results->topLevelItemCount() == 1 && results->topLevelItem(0)->text(0) == "@later",
+            "the answer to this one is");
+    // Nickbots off: it says so.
+    nick.setEnabled(false);
+    field->setText("@ben");
+    search->click();
+    require(status->text() == bm::NickClient::tr("Nicknames are turned off in Settings"),
+            "with nickbots off the dialog says why nothing is asked");
+    nick.setEnabled(true);
+}
+// The New identity dialog asks the nickbot for a nickname together with the identity.
+static void testNewIdentityRegisters(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("newid.bmvault"), boxFile = temp.filePath("newid.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("newid-node"));
+    QSettings config(temp.filePath("newid-node/desktop.ini"), QSettings::IniFormat);
+    config.setValue("vault", vaultFile);
+    config.setValue("mailbox", boxFile);
+    config.sync();
+    const auto bot =
+        QString::fromStdString(bmc::Protocol::identity("the identity dialog's nickbot").address);
+    bm::updates::setDefaultNickbotsForTesting({{bot, "nickbot"}});
+    struct Restore {
+        ~Restore() {
+            bm::updates::setDefaultNickbotsForTesting({});
+        }
+    } restore;
+    bm::Session s(temp.filePath("newid-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen(), "test sanity: the mailbox opens");
+    s.nicks().setAutoLookups(false);
+    const auto chatsTo = [&](const QString &identity) {
+        QStringList texts;
+        for (const auto &m :
+             s.coreMailbox().chatMessages(identity.toStdString(), bot.toStdString()))
+            if (m.outgoing)
+                texts << QString::fromStdString(m.body);
+        return texts;
+    };
+    {
+        bm::NewVaultDialog dialog(s, {}, false, nullptr, bm::NewVaultDialog::IdentityOnly);
+        dialog.show();
+        QCoreApplication::processEvents();
+        auto box = dialog.findChild<QCheckBox *>("registerNickBox");
+        auto field = dialog.findChild<QLineEdit *>("registerNickField");
+        auto nickname = dialog.findChild<QLineEdit *>("nicknameField");
+        auto create = dialog.findChild<QPushButton *>("newVaultCreateButton");
+        auto problem = dialog.findChild<QLabel *>("registerNickProblem");
+        require(box && field && box->isVisible() && box->isChecked(),
+                "the dialog offers to register the nickname, and it is on");
+        QTest::qWait(50);
+        require(field->text() == bm::NickClient::suggestNick(nickname->text()) &&
+                    field->text().startsWith('@'),
+                "the nickname asked for is made from the one above");
+        nickname->setText("Ann Example");
+        require(field->text() == "@ann_example", "and follows it as it is typed");
+        field->setText("@ann_x");
+        emit field->textEdited("@ann_x");
+        nickname->setText("Ann Other");
+        require(field->text() == "@ann_x", "until it is written by hand: then it stays");
+        field->setText("ann");
+        require(!create->isEnabled() && problem->isVisible(),
+                "a nickname that is none stops Create, and the dialog says what one is");
+        field->setText("#chan");
+        require(!create->isEnabled(), "a chan's name is not asked for an identity");
+        box->setChecked(false);
+        require(create->isEnabled() && !problem->isVisible(),
+                "with the box off the nickname does not matter");
+        box->setChecked(true);
+        field->setText("@ann_x");
+        require(create->isEnabled(), "a good one lets it be created");
+        const auto before = s.identities().size();
+        create->click();
+        require(s.identities().size() == before + 1, "test sanity: the identity is made");
+        QString made;
+        for (const auto &i : s.identities())
+            if (i.toMap()["label"].toString() == "Ann Other")
+                made = i.toMap()["address"].toString();
+        require(!made.isEmpty() && chatsTo(made) == QStringList{"/register @ann_x"} &&
+                    s.nicks().registration(made)["state"].toString() == "waiting",
+                "the nickname is asked for at once, by a chat from the new identity");
+    }
+    {
+        bm::NewVaultDialog dialog(s, {}, false, nullptr, bm::NewVaultDialog::IdentityOnly);
+        dialog.show();
+        QCoreApplication::processEvents();
+        dialog.findChild<QCheckBox *>("registerNickBox")->setChecked(false);
+        const auto before = s.identities().size();
+        dialog.findChild<QPushButton *>("newVaultCreateButton")->click();
+        require(
+            s.identities().size() == before + 1 &&
+                s.nicks()
+                        .registration(s.identities().last().toMap()["address"].toString())["state"]
+                        .toString() == "none",
+            "with the box off nothing is asked for");
+    }
+    // A new vault has no mailbox yet: the nickname waits for one.
+    {
+        const auto vaultOnly = temp.filePath("newid-vault-only.bmvault");
+        {
+            bm::Vault made;
+            made.create(vaultOnly, "test password");
+            made.addIdentity("Mine");
+            made.lock();
+        }
+        QDir().mkpath(temp.filePath("newid-node-two"));
+        QSettings two(temp.filePath("newid-node-two/desktop.ini"), QSettings::IniFormat);
+        two.setValue("vault", vaultOnly);
+        two.sync();
+        bm::Session bare(temp.filePath("newid-node-two"), true);
+        bare.beginVaultUnlock();
+        bare.submitVaultPassword("test password");
+        require(bare.unlocked() && !bare.mailboxOpen(), "test sanity: a vault with no mailbox");
+        bm::NewVaultDialog dialog(bare, temp.filePath("newid-vaults"), false, nullptr);
+        dialog.show();
+        QCoreApplication::processEvents();
+        QDir().mkpath(temp.filePath("newid-vaults"));
+        require(
+            dialog.findChild<QCheckBox *>("registerNickBox")->isVisible(),
+            "a new vault offers the nickname too: the default nickbot is known with no mailbox");
+        dialog.findChild<QLineEdit *>("nicknameField")->setText("Bea Bare");
+        dialog.findChild<QLineEdit *>("vaultFileField")
+            ->setText(temp.filePath("newid-vaults/bea.bmvault"));
+        dialog.findChild<QLineEdit *>("newVaultPasswordField")->setText("a long test password");
+        dialog.findChild<QLineEdit *>("newVaultRepeatField")->setText("a long test password");
+        auto create = dialog.findChild<QPushButton *>("newVaultCreateButton");
+        require(create->isEnabled(), "test sanity: Create is on");
+        create->click();
+        require(bare.nicks().waitingForAMailbox().size() == 1,
+                "the nickname waits until a mailbox is open: there is none yet");
+    }
+    // No nickbots, no row.
+    s.nicks().setBots({});
+    {
+        bm::NewVaultDialog dialog(s, {}, false, nullptr, bm::NewVaultDialog::IdentityOnly);
+        dialog.show();
+        require(!dialog.findChild<QCheckBox *>("registerNickBox")->isVisible(),
+                "with no nickbot listed the dialog offers nothing");
+    }
+}
 int main(int argc, char **argv) {
     // Unbuffered: a run that hangs and is killed by ctest still shows how far it got.
     std::cout << std::unitbuf;
@@ -1496,6 +2669,10 @@ int main(int argc, char **argv) {
     app.setApplicationName("Widgets");
     // No window of these tests finds a PyBitmessage that is on the machine they run on.
     bm::Session::setPyBitmessageFoldersForTesting([] { return QStringList(); });
+    // And no mailbox lists a nickbot unless the test says so: one would look up the address book
+    // on its own and join its hidden chan to the vault.
+    const auto builtInNickbots = bm::updates::defaultNickbots();
+    bm::updates::setDefaultNickbotsForTesting({});
     QTemporaryDir temp;
     // A long vault path, like a macOS runner's /var/folders/.../T/...: the
     // locked screen must show it whole-height there too.
@@ -5875,12 +7052,18 @@ int main(int argc, char **argv) {
         }
         {
             // The echo bot is every mailbox's first contact, once: /echobot by nickname and by
-            // name.
+            // name. The default nickbot is the second, /nickbot by nickname and by name.
             const QString echo = "BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8";
-            require(builtInContacts.size() == 1 && builtInContacts[0].address == echo &&
+            require(builtInContacts.size() == 2 && builtInContacts[0].address == echo &&
                         builtInContacts[0].nickname == "/echobot" &&
                         builtInContacts[0].label == "/echobot",
-                    "the built-in contact is the echo bot, /echobot by nickname and by name");
+                    "the first built-in contact is the echo bot, /echobot by nickname and by name");
+            require(!builtInNickbots.isEmpty() &&
+                        builtInContacts[1].address == builtInNickbots.first().address &&
+                        builtInContacts[1].nickname == "/nickbot" &&
+                        builtInContacts[1].label == "/nickbot",
+                    "the second is the default nickbot, /nickbot by nickname and by name");
+            const QList<bm::updates::DefaultContact> echoOnly{builtInContacts[0]};
             const auto vaultFile = temp.filePath("echo-vault.bmvault");
             const auto first = temp.filePath("echo-first.bmmail");
             const auto second = temp.filePath("echo-second.bmmail");
@@ -5903,7 +7086,7 @@ int main(int argc, char **argv) {
                 config.setValue("vault", vaultFile);
                 config.setValue("mailbox", first);
             }
-            bm::updates::setDefaultContactsForTesting(builtInContacts);
+            bm::updates::setDefaultContactsForTesting(echoOnly);
             bm::Session starter(temp.filePath("echo-node"), true);
             starter.beginVaultUnlock();
             starter.submitVaultPassword("test password");
@@ -6419,6 +7602,11 @@ int main(int argc, char **argv) {
         testPyBitmessageImport(temp);
         testPyBitmessageOffer(temp);
         testPyBitmessageImportAddsPeople(temp);
+        testNickbots(temp);
+        testLaneBelongsToTheVault(temp);
+        testNickbotsPage(temp);
+        testFindPeople(temp);
+        testNewIdentityRegisters(temp);
         require(session.portMapper().state() == bm::PortMapper::State::Off,
                 "an offline session never talks to the router");
         {

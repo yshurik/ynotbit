@@ -3,6 +3,7 @@
 #include "appearance.h"
 #include "gpu_pow.h"
 #include "i18n.h"
+#include "nickbots_page.h"
 #include "port_mapper.h"
 #include "pow.h"
 #include "session.h"
@@ -75,6 +76,7 @@ SettingsPane::SettingsPane(Session &session, Appearance &appearance, QString den
     addPage("sending", tr("Sending"), sendingPage());
     addPage("appearance", tr("Appearance"), appearancePage(density));
     addPage("notifications", tr("Notifications"), notificationsPage());
+    addPage("nickbots", tr("Nickbots"), new NickbotsPage(session_));
     addPage("security", tr("Security"), securityPage());
     sections_->setCurrentRow(0);
     connect(&session_, &Session::changed, this, &SettingsPane::refresh);

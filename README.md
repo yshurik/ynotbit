@@ -98,6 +98,15 @@ Don't ask again. When the import is done, ynotbit reminds you that PyBitmessage 
 your private keys among it, without encryption, so that once you have fully moved you can consider
 deleting its folder; ynotbit never deletes it.
 
+**Nicknames.** A *nickbot* is a service that gives Bitmessage addresses short names: `@ben` for a
+person, `/echobot` for a bot, `#general` for a chan. **Settings → Nickbots** lists up to five of them
+(the first is the default; each has a colour, taken from the quote levels of a letter, and a nickname
+is shown in the colour of the nickbot that vouches for it). **Contacts → Find people…** asks a nickbot
+for a nickname, a name or an address and adds what it finds to the address book, and the New identity
+dialog registers the new identity's nickname with the default nickbot unless you turn that off. Lookups
+are sent from a chan that every ynotbit has, so the nickbot cannot tell who asks; they take a few
+minutes. The service itself is `nickbot/` (Go): see [docs/nickbot.md](docs/nickbot.md).
+
 ## Features
 
 - Portable vault: Argon2id (64 MiB, 3 passes) and XChaCha20-Poly1305; guarded key

@@ -1015,6 +1015,10 @@ Date: %1
         <source>Don't ask again</source>
         <translation>不再詢問</translation>
     </message>
+    <message>
+        <source>Find people…</source>
+        <translation>尋找使用者…</translation>
+    </message>
 </context>
 <context>
     <name>bm::Errors</name>
@@ -1535,6 +1539,14 @@ Date: %1
     <message>
         <source>Create identity</source>
         <translation>新建身分</translation>
+    </message>
+    <message>
+        <source>Register with the nickbot as</source>
+        <translation>在暱稱機器人處註冊為</translation>
+    </message>
+    <message>
+        <source>A nickname is @ or / followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -.</source>
+        <translation>暱稱由 @ 或 / 加上 3 到 32 個字元的名稱組成：先是一個字母，再是字母、數字、_ 或 -。</translation>
     </message>
 </context>
 <context>
@@ -2364,6 +2376,311 @@ Date: %1
     <message>
         <source>Changes apply at once</source>
         <translation>變更立即生效</translation>
+    </message>
+    <message>
+        <source>Nickbots</source>
+        <translation>暱稱機器人</translation>
+    </message>
+</context>
+<context>
+    <name>bm::FindPeopleDialog</name>
+    <message>
+        <source>Find people</source>
+        <translation>尋找使用者</translation>
+    </message>
+    <message>
+        <source>Ask a nickbot. Type a nickname (@ben), a name to search for (at least 4 letters) or an address (BM-…). The answer takes a few minutes: you can close this window and come back.</source>
+        <translation>向暱稱機器人查詢。輸入暱稱（@ben）、要搜尋的名稱（至少 4 個字母）或地址（BM-…）。回覆需要幾分鐘：你可以先關閉此視窗，稍後再回來。</translation>
+    </message>
+    <message>
+        <source>Nickbot</source>
+        <translation>暱稱機器人</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>搜尋</translation>
+    </message>
+    <message>
+        <source>Find</source>
+        <translation>尋找</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>暱稱</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>地址</translation>
+    </message>
+    <message>
+        <source>In contacts</source>
+        <translation>已在聯絡人中</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed. Add one in Settings &gt; Nickbots.</source>
+        <translation>沒有列出暱稱機器人。請在「設定 &gt; 暱稱機器人」中新增。</translation>
+    </message>
+    <message>
+        <source>Add to contacts</source>
+        <translation>新增到聯絡人</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>關閉</translation>
+    </message>
+    <message>
+        <source>Asked %1. The answer takes a few minutes.</source>
+        <translation>已詢問 %1，回覆需要幾分鐘。</translation>
+    </message>
+    <message>
+        <source>yes</source>
+        <translation>是</translation>
+    </message>
+    <message>
+        <source>%1 knows no one by that.</source>
+        <translation>%1 不認識使用該名稱的人。</translation>
+    </message>
+    <message>
+        <source>Found: %1. There are more: search for more letters.</source>
+        <translation>找到：%1。還有更多：請輸入更多字母來搜尋。</translation>
+    </message>
+    <message>
+        <source>Found: %1.</source>
+        <translation>找到：%1。</translation>
+    </message>
+    <message>
+        <source>Added to your contacts: %1.</source>
+        <translation>已新增到聯絡人：%1。</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NickbotsPage</name>
+    <message>
+        <source>A nickbot gives people nicknames you can search for and add to your contacts. The first one is the default. Each has a colour, and a nickname is shown in the colour of the nickbot that vouches for it.</source>
+        <translation>暱稱機器人為人們提供暱稱，你可以搜尋並把他們加入聯絡人。清單中的第一個是預設的。每個都有一種顏色，暱稱會以為其擔保的暱稱機器人的顏色顯示。</translation>
+    </message>
+    <message>
+        <source>Use nickbots</source>
+        <translation>使用暱稱機器人</translation>
+    </message>
+    <message>
+        <source>Look up the nicknames of my contacts on their own</source>
+        <translation>自動查詢我的聯絡人的暱稱</translation>
+    </message>
+    <message>
+        <source>A lookup is sent from a chan that everybody has, so the nickbot cannot tell who asks. It takes a few minutes. Turn nickbots off and nothing is sent at all.</source>
+        <translation>查詢會從每個人都有的一個頻道發出，因此暱稱機器人無法得知是誰在詢問。這需要幾分鐘。關閉暱稱機器人後，將不會傳送任何內容。</translation>
+    </message>
+    <message>
+        <source>Your nickbots</source>
+        <translation>你的暱稱機器人</translation>
+    </message>
+    <message>
+        <source>Nickbot</source>
+        <translation>暱稱機器人</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>地址</translation>
+    </message>
+    <message>
+        <source>Add…</source>
+        <translation>新增…</translation>
+    </message>
+    <message>
+        <source>Move up</source>
+        <translation>上移</translation>
+    </message>
+    <message>
+        <source>Move down</source>
+        <translation>下移</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>移除</translation>
+    </message>
+    <message>
+        <source>Your nicknames</source>
+        <translation>你的暱稱</translation>
+    </message>
+    <message>
+        <source>Identity</source>
+        <translation>身分</translation>
+    </message>
+    <message>
+        <source>Nickname</source>
+        <translation>暱稱</translation>
+    </message>
+    <message>
+        <source>Register a nickname…</source>
+        <translation>註冊暱稱…</translation>
+    </message>
+    <message>
+        <source>Registering sends one message from the identity to the nickbot, which then knows the identity's address; the nickname and the address are public.</source>
+        <translation>註冊時，該身分會向暱稱機器人傳送一則訊息，暱稱機器人因此會知道該身分的地址；暱稱和地址都是公開的。</translation>
+    </message>
+    <message>
+        <source>%1 (default)</source>
+        <translation>%1（預設）</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed, so nothing can be looked up or registered.</source>
+        <translation>沒有列出暱稱機器人，因此無法查詢或註冊。</translation>
+    </message>
+    <message>
+        <source>Five nickbots are listed, the most.</source>
+        <translation>已列出五個暱稱機器人，這是上限。</translation>
+    </message>
+    <message>
+        <source>Moving a nickbot moves its colour.</source>
+        <translation>移動暱稱機器人時，它的顏色也隨之移動。</translation>
+    </message>
+    <message>
+        <source>Add a nickbot</source>
+        <translation>新增暱稱機器人</translation>
+    </message>
+    <message>
+        <source>Optional</source>
+        <translation>選填</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>名稱</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>新增</translation>
+    </message>
+    <message>
+        <source>Register a nickname</source>
+        <translation>註冊暱稱</translation>
+    </message>
+    <message>
+        <source>Identity: %1</source>
+        <translation>身分：%1</translation>
+    </message>
+    <message>
+        <source>A nickname is @, / or # followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -. # is for chans only.</source>
+        <translation>暱稱由 @、/ 或 # 加上 3 到 32 個字元的名稱組成：先是一個字母，再是字母、數字、_ 或 -。# 僅用於頻道。</translation>
+    </message>
+    <message>
+        <source>Register</source>
+        <translation>註冊</translation>
+    </message>
+</context>
+<context>
+    <name>bm::NickClient</name>
+    <message>
+        <source>Open a mailbox first</source>
+        <translation>請先開啟信箱</translation>
+    </message>
+    <message>
+        <source>Up to five nickbots can be listed</source>
+        <translation>最多可列出五個暱稱機器人</translation>
+    </message>
+    <message>
+        <source>That is not a valid Bitmessage address</source>
+        <translation>這不是有效的 Bitmessage 地址</translation>
+    </message>
+    <message>
+        <source>That nickbot is listed twice</source>
+        <translation>該暱稱機器人重複了</translation>
+    </message>
+    <message>
+        <source>That is one of your own addresses</source>
+        <translation>這是你自己的地址之一</translation>
+    </message>
+    <message>
+        <source>You have joined the chan “anonymous” yourself, so nicknames cannot be looked up through it. Leave it first.</source>
+        <translation>你自己加入了頻道「anonymous」，因此無法透過它查詢暱稱。請先退出該頻道。</translation>
+    </message>
+    <message>
+        <source>Nicknames are turned off in Settings</source>
+        <translation>暱稱功能已在設定中關閉</translation>
+    </message>
+    <message>
+        <source>No nickbot is listed</source>
+        <translation>未列出任何暱稱機器人</translation>
+    </message>
+    <message>
+        <source>That nickbot is not in your list</source>
+        <translation>該暱稱機器人不在你的清單中</translation>
+    </message>
+    <message>
+        <source>That is not a valid nickname. A nickname is @, / or # followed by a name of 3 to 32 characters: a letter, then letters, digits, _ or -.</source>
+        <translation>這不是有效的暱稱。暱稱由 @、/ 或 # 加上 3 到 32 個字元的名稱組成：先是一個字母，再是字母、數字、_ 或 -。</translation>
+    </message>
+    <message>
+        <source>Enter an address</source>
+        <translation>請輸入地址</translation>
+    </message>
+    <message>
+        <source>Search for at least %1 letters, digits, _ or -</source>
+        <translation>搜尋至少需要 %1 個字母、數字、_ 或 -</translation>
+    </message>
+    <message>
+        <source>A search term is letters, digits, _ and - only</source>
+        <translation>搜尋詞只能包含字母、數字、_ 和 -</translation>
+    </message>
+    <message>
+        <source>Choose one of your identities</source>
+        <translation>請選擇你的一個身分</translation>
+    </message>
+    <message>
+        <source>That nickname is taken</source>
+        <translation>該暱稱已被佔用</translation>
+    </message>
+    <message>
+        <source>That nickname is reserved</source>
+        <translation>該暱稱已被保留</translation>
+    </message>
+    <message>
+        <source>That is not a valid nickname</source>
+        <translation>這不是有效的暱稱</translation>
+    </message>
+    <message>
+        <source>Too many changes lately; try again tomorrow</source>
+        <translation>最近變更過於頻繁，請明天再試</translation>
+    </message>
+    <message>
+        <source>The nickbot is busy; try again later</source>
+        <translation>暱稱機器人忙碌中，請稍後再試</translation>
+    </message>
+    <message>
+        <source>That nickname is permanent</source>
+        <translation>該暱稱是永久的</translation>
+    </message>
+    <message>
+        <source>A chan's nickname can only be registered from the chan itself</source>
+        <translation>頻道的暱稱只能由該頻道本身註冊</translation>
+    </message>
+    <message>
+        <source>That nickname belongs to another address</source>
+        <translation>該暱稱屬於另一個地址</translation>
+    </message>
+    <message>
+        <source>No answer</source>
+        <translation>沒有回應</translation>
+    </message>
+    <message>
+        <source>The nickbot refused (%1)</source>
+        <translation>暱稱機器人拒絕了（%1）</translation>
+    </message>
+    <message>
+        <source>Asked for %1; waiting for the nickbot</source>
+        <translation>已申請 %1，正在等待暱稱機器人回覆</translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <translation>%1: %2</translation>
+    </message>
+    <message>
+        <source>%1: the nickbot did not answer</source>
+        <translation>%1：暱稱機器人沒有回應</translation>
+    </message>
+    <message>
+        <source>No nickname</source>
+        <translation>沒有暱稱</translation>
     </message>
 </context>
 </TS>

@@ -149,7 +149,7 @@ target_link_libraries(chat_scroll_bench PRIVATE Qt6::Widgets)
 foreach(desktop_target ynotbit desktop_tests readme_screenshots feed_scroll_bench)
  target_sources(${desktop_target} PRIVATE src/chats_pane.cpp src/chats_pane.h src/new_chat_dialog.cpp src/new_chat_dialog.h
   src/join_channel_dialog.cpp src/join_channel_dialog.h src/tray_icon.cpp src/tray_icon.h src/desktop_entry.cpp src/desktop_entry.h src/data_migration.cpp src/data_migration.h
-  src/app_badge.cpp src/app_badge.h src/rail_badge.cpp src/rail_badge.h src/pybm_import_dialog.cpp src/pybm_import_dialog.h src/sound_notifier.cpp src/sound_notifier.h assets/sounds.qrc)
+  src/app_badge.cpp src/app_badge.h src/rail_badge.cpp src/rail_badge.h src/pybm_import_dialog.cpp src/pybm_import_dialog.h src/nick_client.cpp src/nick_client.h src/nickbots_page.cpp src/nickbots_page.h src/find_people_dialog.cpp src/find_people_dialog.h src/sound_notifier.cpp src/sound_notifier.h assets/sounds.qrc)
  target_link_libraries(${desktop_target} PRIVATE Qt6::Multimedia)
  if(APPLE)
   # The Dock icon and bringing the app forward (src/mac_integration.mm).
@@ -178,7 +178,7 @@ foreach(tool announce_release post_digest)
  qt_add_executable(${tool} EXCLUDE_FROM_ALL tools/${tool}.cpp
   tools/publish_broadcast.cpp tools/publish_broadcast.h
   src/i18n.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h
-  src/appearance.cpp src/appearance.h src/relay_bridge.cpp)
+  src/nick_client.cpp src/nick_client.h src/appearance.cpp src/appearance.h src/relay_bridge.cpp)
  target_include_directories(${tool} PRIVATE tools)
  target_link_libraries(${tool} PRIVATE bmcore notbit_engine Qt6::Widgets Qt6::Network)
  target_compile_definitions(${tool} PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
@@ -208,7 +208,7 @@ foreach(lang IN LISTS YNOTBIT_LANGUAGES)
  list(APPEND YNOTBIT_TS_FILES ${CMAKE_CURRENT_SOURCE_DIR}/translations/ynotbit_${lang}.ts)
 endforeach()
 qt_add_lupdate(TS_FILES ${YNOTBIT_TS_FILES}
- SOURCES src/desktop_window.cpp src/chats_pane.cpp src/new_chat_dialog.cpp src/join_channel_dialog.cpp src/settings_pane.cpp src/new_vault_dialog.cpp src/session.cpp src/feed_view.cpp src/updates.cpp src/i18n/error_catalog.cpp
+ SOURCES src/desktop_window.cpp src/chats_pane.cpp src/new_chat_dialog.cpp src/join_channel_dialog.cpp src/settings_pane.cpp src/new_vault_dialog.cpp src/session.cpp src/feed_view.cpp src/updates.cpp src/nick_client.cpp src/nickbots_page.cpp src/find_people_dialog.cpp src/i18n/error_catalog.cpp
  LUPDATE_TARGET update_translations
  OPTIONS -no-obsolete -locations none)
 qt_add_lrelease(TS_FILES ${YNOTBIT_TS_FILES} QM_FILES_OUTPUT_VARIABLE YNOTBIT_QM_FILES

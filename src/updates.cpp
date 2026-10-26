@@ -6,6 +6,7 @@
 
 namespace bm::updates {
 namespace {
+const QString kDefaultNickbotAddress = "BM-87VUnxPR6LxNzDw21trpJH9Q7meWUmAMpFT";
 QList<DefaultSubscription> &defaults() {
     static QList<DefaultSubscription> list{
         // Weekly news of the network: chans, tools, subscriptions worth following.
@@ -18,7 +19,15 @@ QList<DefaultContact> &contactDefaults() {
         // The chat responder run for ynotbit, a vanity address (BM-87echo...): it answers a chat
         // with what it was sent.
         {"BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8", "/echobot", "/echobot"},
+        // The nicknames service run for ynotbit (docs/nickbot.md). This is the address of a
+        // development phrase until the maintainer chooses the real one; replacing it is this line,
+        // the one below and nickbot/seed.example.txt.
+        {kDefaultNickbotAddress, "/nickbot", "/nickbot"},
     };
+    return list;
+}
+QList<DefaultNickbot> &nickbotDefaults() {
+    static QList<DefaultNickbot> list{{kDefaultNickbotAddress, "nickbot"}};
     return list;
 }
 } // namespace
@@ -27,6 +36,12 @@ QList<DefaultContact> defaultContacts() {
 }
 void setDefaultContactsForTesting(const QList<DefaultContact> &contacts) {
     contactDefaults() = contacts;
+}
+QList<DefaultNickbot> defaultNickbots() {
+    return nickbotDefaults();
+}
+void setDefaultNickbotsForTesting(const QList<DefaultNickbot> &bots) {
+    nickbotDefaults() = bots;
 }
 QString digestAddress() {
     return bridge::fromStd(bmc::updates::digestAddress());

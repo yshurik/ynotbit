@@ -13,6 +13,7 @@
 #include <bmc/node_watch.h>
 #include <utility>
 namespace bm {
+class NickClient;
 // What is unread, by the rail's pages: the letters of Inbox, Channels and Subscriptions (the
 // Broadcasts folder), and the chat messages.
 struct UnreadCounts {
@@ -42,6 +43,7 @@ class Session : public QObject {
     std::shared_ptr<bmc::Client> client_;
     Vault vault_{vaultCore_};
     Mailbox mailbox_{mailboxCore_};
+    NickClient *nicks_ = nullptr; // a child of this object: see nicks()
     QString welcomeSource_;
     QString pyBitmessageOffer_; // see takePyBitmessageOffer()
     std::unique_ptr<MessageModel> messageModel_;
@@ -216,6 +218,13 @@ class Session : public QObject {
     }
     bmc::Mailbox &coreMailbox() {
         return *mailboxCore_;
+    }
+    bmc::Client &coreClient() {
+        return *client_;
+    }
+    // The nickbots of the open mailbox: the list, the lookups, the registrations (docs/nickbot.md).
+    NickClient &nicks() const {
+        return *nicks_;
     }
     // While an import runs the scan of the node's objects waits: the import stores letters with the
     // date and read state they had, and then starts the scan over for the identities that came in,

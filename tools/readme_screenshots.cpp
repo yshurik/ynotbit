@@ -6,6 +6,7 @@
 #include "protocol.h"
 #include "readme_demo_text.h"
 #include "session.h"
+#include "updates.h"
 #include <QTest>
 #include <QtWidgets>
 #include <iostream>
@@ -18,6 +19,9 @@ int main(int argc, char **argv) {
     // The pictures show the demo mailbox, not an offer to import a PyBitmessage that happens to be
     // on this machine.
     bm::Session::setPyBitmessageFoldersForTesting([] { return QStringList(); });
+    // Nor does the demo mailbox look up its contacts at a nickbot, which would join a chan to its
+    // vault.
+    bm::updates::setDefaultNickbotsForTesting({});
     if (argc < 2) {
         std::cerr << "usage: readme_screenshots <output-dir> [language]\n";
         return 2;

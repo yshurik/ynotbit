@@ -11,9 +11,11 @@
 #include "letter_document.h"
 #include "letter_render.h"
 #include "feed_view.h"
+#include "find_people_dialog.h"
 #include "chats_pane.h"
 #include "new_chat_dialog.h"
 #include "join_channel_dialog.h"
+#include "nick_client.h"
 #include "tray_icon.h"
 #include "mac_integration.h"
 #include "updates.h"
@@ -179,6 +181,10 @@ class LetterDelegate : public QStyledItemDelegate {
         const bool anonymousPost = i.data(Qt::UserRole + 2) == i.data(Qt::UserRole + 3);
         const auto name =
             anonymousPost ? QString() : i.data(Qt::UserRole + (useRecipient ? 13 : 12)).toString();
+        // The nickname the correspondent goes by, in the colour of the nickbot that vouches for it.
+        const auto nick =
+            anonymousPost ? QString() : i.data(Qt::UserRole + (useRecipient ? 16 : 14)).toString();
+        const int nickColor = i.data(Qt::UserRole + (useRecipient ? 17 : 15)).toInt();
         const auto withName = [&](const QString &line) {
             return name.isEmpty() ? line : line.isEmpty() ? name : name + " · " + line;
         };
@@ -201,6 +207,29 @@ class LetterDelegate : public QStyledItemDelegate {
                 r, Qt::AlignVCenter,
                 QFontMetrics(font).elidedText(singleLine(value), Qt::ElideRight, r.width()));
         };
+        // A line that begins with the correspondent: the nickname coloured, then the rest.
+        auto nameLine = [&](int y, const QString &line, QColor color) {
+            if (nick.isEmpty()) {
+                text(y, withName(line), false, color);
+                return;
+            }
+            QFont font = o.font;
+            p->setFont(font);
+            QRect r = o.rect.adjusted(textLeft, y, -16, 0);
+            r.setHeight(24);
+            const QFontMetrics metrics(font);
+            const auto head = QFontMetrics(font).elidedText(nick, Qt::ElideRight, r.width());
+            p->setPen(nickColor >= 0 ? nickbotColor(nickColor) : color);
+            p->drawText(r, Qt::AlignVCenter | Qt::AlignLeft, head);
+            const auto rest = withName(line);
+            const int used = metrics.horizontalAdvance(head);
+            if (rest.isEmpty() || used >= r.width())
+                return;
+            p->setPen(color);
+            r.setLeft(r.left() + used);
+            p->drawText(r, Qt::AlignVCenter | Qt::AlignLeft,
+                        metrics.elidedText(" · " + singleLine(rest), Qt::ElideRight, r.width()));
+        };
         const auto preview = i.data(Qt::UserRole + 5).toString();
         const bool cryptic = looksCryptic(i.data(Qt::UserRole + 4).toString(), preview);
         const auto subject = cryptic ? crypticLabel(i.data(Qt::UserRole + 1).toString())
@@ -210,7 +239,7 @@ class LetterDelegate : public QStyledItemDelegate {
             text(3, subject, unread, pal.text().color());
         } else if (density_ == "cozy") {
             text(8, subject, unread, pal.text().color());
-            text(32, withName(previewLine), false, pal.placeholderText().color());
+            nameLine(32, previewLine, pal.placeholderText().color());
         } else {
             text(10, subject, unread, pal.text().color());
             text(36, previewLine, false, pal.placeholderText().color());
@@ -219,10 +248,10 @@ class LetterDelegate : public QStyledItemDelegate {
                 state == "acknowledged"
                     ? QColor(pal.base().color().lightness() < 128 ? "#8ce0b2" : "#17643b")
                     : pal.placeholderText().color();
-            text(62,
-                 withName(state.isEmpty() ? i.data(Qt::UserRole + 11).toString()
-                                          : deliveryStateLabel(state)),
-                 false, stateColor);
+            nameLine(62,
+                     state.isEmpty() ? i.data(Qt::UserRole + 11).toString()
+                                     : deliveryStateLabel(state),
+                     stateColor);
         }
         p->setPen(pal.mid().color());
         p->drawLine(o.rect.bottomLeft(), o.rect.bottomRight());
@@ -1771,7 +1800,8 @@ class LetterPane : public KindFrame {
             field->setTextFormat(Qt::PlainText);
             field->setWordWrap(true);
             field->setTextInteractionFlags(Qt::TextSelectableByMouse);
-            name->setTextFormat(Qt::PlainText);
+            name->setTextFormat(
+                Qt::RichText); // the name's own text is escaped: see ShownName::html
             name->setStyleSheet("font-weight:600;");
             name->setTextInteractionFlags(Qt::TextSelectableByMouse);
             name->hide();
@@ -1946,9 +1976,12 @@ class LetterPane : public KindFrame {
         for (auto [name, field, add] : {std::tuple{fromName_, fromAddress_, addFromContact_},
                                         {toName_, toAddress_, addToContact_}}) {
             const auto address = field->text();
-            const auto known = session_.nameFor(address);
-            name->setText(known);
-            name->setVisible(!known.isEmpty());
+            // The user's name for it and the nickname it goes by, the nickname in its colour.
+            const auto shown =
+                shownName(address, session_.nameFor(address), session_.nicks().nicknameOf(address));
+            name->setText(shown.html());
+            name->setToolTip(shown.bot.isEmpty() ? QString() : shown.bot);
+            name->setVisible(!shown.empty());
             // Offered for any foreign address not yet in the book -- including a
             // subscription, whose label is not a contact.
             add->setVisible(!address.isEmpty() && session_.contactProblem(address).isEmpty() &&
@@ -2630,6 +2663,11 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     contactActions_ =
         cardActions({contactCopy_, contactRename_, contactDelete_}, appearance_.dark());
     contactsHeadRow->addWidget(contactActions_);
+    button(tr("Find people…"), contactsHeadRow, [this] {
+        FindPeopleDialog dialog(session_, this);
+        dialog.exec();
+        refreshContacts();
+    })->setObjectName("findPeopleButton");
     button(tr("Add contact…"), contactsHeadRow, [this] {
         if (editContact({}))
             refreshContacts();
@@ -3857,6 +3895,11 @@ void DesktopWindow::refreshContacts() {
         identicon.setDevicePixelRatio(ratio);
         auto addressItem = new QStandardItem(QIcon(identicon), address);
         auto nicknameItem = new QStandardItem(nickname); // empty until something names it
+        // In the colour of the nickbot that vouches for it, which the tip names.
+        if (const int color = m.value("nickColor", -1).toInt(); color >= 0 && !nickname.isEmpty()) {
+            nicknameItem->setForeground(nickbotColor(color));
+            nicknameItem->setToolTip(m["nickBot"].toString());
+        }
         auto nameItem = new QStandardItem(label);
         for (auto item : {addressItem, nicknameItem, nameItem})
             item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);

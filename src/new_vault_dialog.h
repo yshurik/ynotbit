@@ -4,6 +4,7 @@
 // identity alone in the open vault.
 #include "key_search.h"
 #include <QDialog>
+class QCheckBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -42,6 +43,12 @@ class NewVaultDialog : public QDialog {
     bool nicknameEdited_ = false, fileEdited_ = false;
     qint64 firstPair_ = -1; // the phrase's own address: its key pair goes unnoted
     QLineEdit *nickname_, *phrase_, *file_, *password_, *repeat_;
+    // The nickname at the nickbot, asked for together with the identity.
+    QCheckBox *registerBox_;
+    QLineEdit *registerField_;
+    QLabel *registerProblem_;
+    bool registerOffered_ = false, registerEdited_ = false;
+    bool registerOk() const;
     QLabel *identicon_, *address_, *searchStatus_, *taken_, *rebuild_, *fileProblem_,
         *passwordProblem_, *error_;
     QRadioButton *random_, *fromPhrase_;
