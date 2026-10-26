@@ -305,6 +305,11 @@ QPushButton *button(QString text, QBoxLayout *layout, std::function<void()> fn) 
     QObject::connect(b, &QPushButton::clicked, b, std::move(fn));
     return b;
 }
+// An icon button is named for a screen reader as its tip is.
+QToolButton *named(QToolButton *b, const QString &name) {
+    b->setAccessibleName(name);
+    return b;
+}
 // A card's icon buttons in a row, drawn as a feed card's actions.
 QWidget *cardActions(const QList<QToolButton *> &buttons, bool dark) {
     auto group = new QWidget;
@@ -2660,19 +2665,27 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     identitiesHeadRow->addLayout(identitiesTitleCol);
     identitiesHeadRow->addStretch();
     identitiesHeadRow->setSpacing(8);
-    identityNickname_ =
-        button(tr("Nickname…"), identitiesHeadRow, [this] { askForNickname(selectedIdentity(0)); });
-    identityNickname_->setObjectName("identityNicknameButton");
-    identityNickname_->setCursor(Qt::PointingHandCursor);
+    // Icons, as the address book's: what is for the selected row in one pill, the page's own two
+    // buttons in another. Each tip is also the button's name for a screen reader.
+    identityNickname_ = named(
+        actionButton("identityNicknameButton", "nickname", tr("Nickname…"), appearance_.dark()),
+        tr("Nickname…"));
     identityCopy_ =
-        actionButton("copyAddressButton", "copy", tr("Copy address"), appearance_.dark());
-    identityQr_ = actionButton("showQrButton", "qr", tr("Show QR code"), appearance_.dark());
-    identityDefault_ =
-        actionButton("setDefaultIdentityButton", "star", tr("Set as default"), appearance_.dark());
-    identityRename_ =
-        actionButton("renameIdentityButton", "rename", tr("Rename identity"), appearance_.dark());
-    identityDelete_ =
-        actionButton("deleteIdentityButton", "delete", tr("Delete identity"), appearance_.dark());
+        named(actionButton("copyAddressButton", "copy", tr("Copy address"), appearance_.dark()),
+              tr("Copy address"));
+    identityQr_ = named(actionButton("showQrButton", "qr", tr("Show QR code"), appearance_.dark()),
+                        tr("Show QR code"));
+    identityDefault_ = named(
+        actionButton("setDefaultIdentityButton", "star", tr("Set as default"), appearance_.dark()),
+        tr("Set as default"));
+    identityRename_ = named(
+        actionButton("renameIdentityButton", "rename", tr("Rename identity"), appearance_.dark()),
+        tr("Rename identity"));
+    identityDelete_ = named(
+        actionButton("deleteIdentityButton", "delete", tr("Delete identity"), appearance_.dark()),
+        tr("Delete identity"));
+    connect(identityNickname_, &QToolButton::clicked, this,
+            [this] { askForNickname(selectedIdentity(0)); });
     // The session says when the vault changed; the later redraw is for the change that comes with
     // no signal, and by then the click's own handler is over.
     const auto afterChange = [this] {
@@ -2706,17 +2719,23 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
             afterChange();
         }
     });
-    identityActions_ = cardActions(
-        {identityCopy_, identityQr_, identityDefault_, identityRename_, identityDelete_},
-        appearance_.dark());
+    identityActions_ = cardActions({identityNickname_, identityCopy_, identityQr_, identityDefault_,
+                                    identityRename_, identityDelete_},
+                                   appearance_.dark());
     identitiesHeadRow->addWidget(identityActions_);
-    button(tr("Join a channel…"), identitiesHeadRow, [this] {
+    identityJoin_ = named(
+        actionButton("joinChannelButton", "channels", tr("Join a channel…"), appearance_.dark()),
+        tr("Join a channel…"));
+    identityNew_ = named(
+        actionButton("newIdentityButton", "personAdd", tr("New identity"), appearance_.dark()),
+        tr("New identity"));
+    connect(identityJoin_, &QToolButton::clicked, this, [this] {
         joinChannel();
         refreshIdentities();
-    })->setObjectName("joinChannelButton");
-    button(tr("New identity"), identitiesHeadRow, [this] {
-        newIdentity();
-    })->setObjectName("newIdentityButton");
+    });
+    connect(identityNew_, &QToolButton::clicked, this, [this] { newIdentity(); });
+    identityTools_ = cardActions({identityJoin_, identityNew_}, appearance_.dark());
+    identitiesHeadRow->addWidget(identityTools_);
     for (int i = 0; i < identitiesHeadRow->count(); ++i)
         if (auto item = identitiesHeadRow->itemAt(i); item->widget())
             identitiesHeadRow->setAlignment(item->widget(), Qt::AlignVCenter);
@@ -2822,18 +2841,25 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     contactsHeadRow->addLayout(contactsTitleCol);
     contactsHeadRow->addStretch();
     contactsHeadRow->setSpacing(8);
-    contactWrite_ = button(tr("Write"), contactsHeadRow, [this] {
-        if (const auto address = selectedContact(0); !address.isEmpty())
-            compose({{"to", address}});
-    });
-    contactWrite_->setObjectName("writeToContactButton");
-    contactWrite_->setCursor(Qt::PointingHandCursor);
-    contactCopy_ =
-        actionButton("copyContactAddressButton", "copy", tr("Copy address"), appearance_.dark());
-    contactRename_ =
-        actionButton("renameContactButton", "rename", tr("Rename contact"), appearance_.dark());
-    contactDelete_ =
-        actionButton("deleteContactButton", "delete", tr("Delete contact"), appearance_.dark());
+    // Icons, with a tip that is also the button's name for a screen reader. First what is for the
+    // selected contact, in a pill; then what is for the address book, in another.
+    contactWrite_ = named(
+        actionButton("writeToContactButton", "compose", tr("Write a letter"), appearance_.dark()),
+        tr("Write a letter"));
+    contactChat_ = named(
+        actionButton("chatWithContactButton", "chats", tr("Chat"), appearance_.dark()), tr("Chat"));
+    contactCopy_ = named(
+        actionButton("copyContactAddressButton", "copy", tr("Copy address"), appearance_.dark()),
+        tr("Copy address"));
+    contactRename_ = named(
+        actionButton("renameContactButton", "rename", tr("Rename contact"), appearance_.dark()),
+        tr("Rename contact"));
+    contactDelete_ = named(
+        actionButton("deleteContactButton", "delete", tr("Delete contact"), appearance_.dark()),
+        tr("Delete contact"));
+    connect(contactWrite_, &QToolButton::clicked, this, [this] { writeToContact(); });
+    connect(contactChat_, &QToolButton::clicked, this,
+            [this] { chatWithContact(selectedContact(0)); });
     connect(contactCopy_, &QToolButton::clicked, this,
             [this] { session_.copyAddress(selectedContact(0)); });
     connect(contactRename_, &QToolButton::clicked, this, [this] {
@@ -2853,21 +2879,34 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
         QTimer::singleShot(0, this, [this] { refreshContacts(); });
     });
     contactActions_ =
-        cardActions({contactCopy_, contactRename_, contactDelete_}, appearance_.dark());
+        cardActions({contactWrite_, contactChat_, contactCopy_, contactRename_, contactDelete_},
+                    appearance_.dark());
     contactsHeadRow->addWidget(contactActions_);
-    button(tr("Find people…"), contactsHeadRow, [this] {
+    contactFind_ =
+        named(actionButton("findPeopleButton", "search", tr("Find people…"), appearance_.dark()),
+              tr("Find people…"));
+    contactsCheck_ =
+        named(actionButton(
+                  "checkNicknamesButton", "nickname",
+                  "<b>" + tr("Check nicknames").toHtmlEscaped() + "</b><br>" +
+                      tr("Ask the nickbot for the nicknames of all your contacts").toHtmlEscaped(),
+                  appearance_.dark()),
+              tr("Check nicknames"));
+    contactAdd_ =
+        named(actionButton("addContactButton", "personAdd", tr("Add contact…"), appearance_.dark()),
+              tr("Add contact…"));
+    connect(contactFind_, &QToolButton::clicked, this, [this] {
         FindPeopleDialog dialog(session_, this);
         dialog.exec();
         refreshContacts();
-    })->setObjectName("findPeopleButton");
-    contactsCheck_ =
-        button(tr("Check nicknames"), contactsHeadRow, [this] { checkContactNicknames(); });
-    contactsCheck_->setObjectName("checkNicknamesButton");
-    contactsCheck_->setToolTip(tr("Ask the nickbot for the nicknames of all your contacts"));
-    button(tr("Add contact…"), contactsHeadRow, [this] {
+    });
+    connect(contactsCheck_, &QToolButton::clicked, this, [this] { checkContactNicknames(); });
+    connect(contactAdd_, &QToolButton::clicked, this, [this] {
         if (editContact({}))
             refreshContacts();
-    })->setObjectName("addContactButton");
+    });
+    contactTools_ = cardActions({contactFind_, contactsCheck_, contactAdd_}, appearance_.dark());
+    contactsHeadRow->addWidget(contactTools_);
     for (int i = 0; i < contactsHeadRow->count(); ++i)
         if (auto item = contactsHeadRow->itemAt(i); item->widget())
             contactsHeadRow->setAlignment(item->widget(), Qt::AlignVCenter);
@@ -2909,10 +2948,7 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     contactsTree_->header()->setStretchLastSection(true);
     connect(contactsTree_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
             [this] { updateContactActions(); });
-    connect(contactsTree_, &QTreeView::doubleClicked, this, [this] {
-        if (const auto address = selectedContact(0); !address.isEmpty())
-            compose({{"to", address}});
-    });
+    connect(contactsTree_, &QTreeView::doubleClicked, this, [this] { writeToContact(); });
     contactsEmpty_ = new QLabel;
     contactsEmpty_->setObjectName("contactsEmpty");
     contactsEmpty_->setWordWrap(true);
@@ -3204,17 +3240,26 @@ void DesktopWindow::updateTheme() {
     updateRailBadges(true);
     // The contacts toolbar is made once: its icons and its pill follow the theme.
     contactWrite_->setIcon(materialIcon("compose", color));
+    contactChat_->setIcon(materialIcon("chats", color));
     contactCopy_->setIcon(materialIcon("copy", color));
     contactRename_->setIcon(materialIcon("rename", color));
     contactDelete_->setIcon(materialIcon("delete", color));
+    contactFind_->setIcon(materialIcon("search", color));
+    contactsCheck_->setIcon(materialIcon("nickname", color));
+    contactAdd_->setIcon(materialIcon("personAdd", color));
     styleActionGroup(contactActions_, dark);
+    styleActionGroup(contactTools_, dark);
     // So is the identities toolbar, and the table's muted and nickbot colours.
+    identityNickname_->setIcon(materialIcon("nickname", color));
     identityCopy_->setIcon(materialIcon("copy", color));
     identityQr_->setIcon(materialIcon("qr", color));
     identityDefault_->setIcon(materialIcon("star", color));
     identityRename_->setIcon(materialIcon("rename", color));
     identityDelete_->setIcon(materialIcon("delete", color));
+    identityJoin_->setIcon(materialIcon("channels", color));
+    identityNew_->setIcon(materialIcon("personAdd", color));
     styleActionGroup(identityActions_, dark);
+    styleActionGroup(identityTools_, dark);
     if (identities_->isVisible())
         refreshIdentities(true);
 }
@@ -4064,10 +4109,10 @@ void DesktopWindow::refreshIdentities(bool force) {
     identitiesTree_->setVisible(any);
     identitiesEmpty_->setVisible(!any);
     if (!any)
-        identitiesEmpty_->setText(
-            rows.isEmpty()
-                ? tr("No identities yet.\n\nMake one with “New identity” above, or join a chan.")
-                : tr("No identity matches “%1”.").arg(filter));
+        identitiesEmpty_->setText(rows.isEmpty() ? tr("No identities yet.\n\nMake one with the "
+                                                      "person-plus button in the toolbar above, or "
+                                                      "join a chan with the # button.")
+                                                 : tr("No identity matches “%1”.").arg(filter));
     updateIdentityActions();
 }
 QString DesktopWindow::selectedIdentity(int column) const {
@@ -4102,7 +4147,7 @@ void DesktopWindow::identityMenu(const QPoint &at) {
     add(identityQr_->toolTip(), identityQr_);
     menu.addSeparator();
     add(identityDefault_->toolTip(), identityDefault_);
-    add(identityNickname_->text(), identityNickname_);
+    add(identityNickname_->toolTip(), identityNickname_);
     add(identityRename_->toolTip(), identityRename_);
     menu.addSeparator();
     add(identityDelete_->toolTip(), identityDelete_);
@@ -4183,8 +4228,9 @@ void DesktopWindow::refreshContacts() {
     contactsEmpty_->setVisible(!any);
     if (!any)
         contactsEmpty_->setText(
-            all.isEmpty() ? tr("No contacts yet.\n\nAdd one with “Add contact…” above, or with the "
-                            "person-plus button beside an address in a letter you are reading.")
+            all.isEmpty() ? tr("No contacts yet.\n\nAdd one with the person-plus button in the "
+                               "toolbar above, or with the one beside an address in a letter "
+                               "you are reading.")
                           : tr("No contact matches “%1”.").arg(filter));
     updateContactActions();
 }
@@ -4226,9 +4272,59 @@ void DesktopWindow::setContactsNote(const QString &text, bool problem) {
 }
 void DesktopWindow::updateContactActions() {
     const bool selected = !selectedContact(0).isEmpty();
-    for (QWidget *button :
-         QList<QWidget *>{contactWrite_, contactCopy_, contactRename_, contactDelete_})
+    for (QWidget *button : QList<QWidget *>{contactWrite_, contactChat_, contactCopy_,
+                                            contactRename_, contactDelete_})
         button->setEnabled(selected);
+    // Write is a letter to a person and the chat with a bot, which answers there.
+    const auto write = selected && isBot(selectedContact(1), selectedContact(2))
+                           ? tr("Chat with this bot")
+                           : tr("Write a letter");
+    contactWrite_->setToolTip(write);
+    contactWrite_->setAccessibleName(write);
+}
+bool DesktopWindow::isBot(const QString &nickname, const QString &localName) {
+    return nickname.startsWith('/') || localName.startsWith('/');
+}
+void DesktopWindow::writeToContact() {
+    const auto address = selectedContact(0);
+    if (address.isEmpty())
+        return;
+    if (isBot(selectedContact(1), selectedContact(2)))
+        chatWithContact(address);
+    else
+        compose({{"to", address}});
+}
+void DesktopWindow::chatWithContact(const QString &peer) {
+    if (peer.isEmpty())
+        return;
+    // The chat there is, under its own identity: one started here and not written in yet, else
+    // the newest of the mailbox's.
+    for (const auto &key : startedChats_)
+        if (Session::chatPeer(key) == peer) {
+            startChat(Session::chatLocal(key), peer);
+            return;
+        }
+    for (const auto &conversation : session_.chatConversations()) {
+        const auto chat = conversation.toMap();
+        if (chat.value("address").toString() == peer) {
+            startChat(chat.value("local").toString(), peer);
+            return;
+        }
+    }
+    // A new one: under the only identity there is, else the dialog asks which (and says so when
+    // there is none).
+    QStringList own;
+    for (const auto &identity : session_.identities())
+        if (!identity.toMap().value("chan").toBool())
+            own << identity.toMap().value("address").toString();
+    if (own.size() == 1) {
+        startChat(own.first(), peer);
+        return;
+    }
+    NewChatDialog dialog(session_, appearance_.dark(), this);
+    dialog.setPeer(peer);
+    if (dialog.exec() == QDialog::Accepted)
+        startChat(dialog.identity(), dialog.peer());
 }
 void DesktopWindow::newVault() {
     // Nothing to ask: an open vault holds nothing unsaved, and stays open

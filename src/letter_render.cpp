@@ -801,6 +801,10 @@ QIcon materialIcon(const QString &name, QColor color) {
         font.setWeight(QFont::DemiBold);
         p.setFont(font);
         p.drawText(QRectF(0, -1, 40, 40), Qt::AlignCenter, "@");
+    } else if (name == "search") {
+        // A magnifying glass: the lens and its handle.
+        p.drawEllipse(QPointF(18, 18), 9.5, 9.5);
+        p.drawLine(QPointF(25, 25), QPointF(33.5, 33.5));
     } else if (name == "eye" || name == "eyeOff") {
         // An eye round its pupil; struck through for the one that hides.
         QPainterPath eye;

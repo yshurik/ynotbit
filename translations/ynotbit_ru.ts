@@ -655,10 +655,10 @@
     <message>
         <source>No contacts yet.
 
-Add one with “Add contact…” above, or with the person-plus button beside an address in a letter you are reading.</source>
+Add one with the person-plus button in the toolbar above, or with the one beside an address in a letter you are reading.</source>
         <translation>Контактов пока нет.
 
-Добавьте контакт кнопкой «Добавить контакт…» выше или кнопкой с человечком и плюсом рядом с адресом в открытом письме.</translation>
+Добавьте контакт кнопкой с человечком и плюсом на панели выше или такой же кнопкой рядом с адресом в открытом письме.</translation>
     </message>
     <message>
         <source>No contact matches “%1”.</source>
@@ -1030,10 +1030,10 @@ Date: %1
     <message>
         <source>No identities yet.
 
-Make one with “New identity” above, or join a chan.</source>
+Make one with the person-plus button in the toolbar above, or join a chan with the # button.</source>
         <translation>Идентичностей пока нет.
 
-Создайте её кнопкой «Новая идентичность» выше или войдите в канал.</translation>
+Создайте её кнопкой с человечком и плюсом на панели выше или войдите в канал кнопкой #.</translation>
     </message>
     <message>
         <source>No identity matches “%1”.</source>
@@ -1078,6 +1078,14 @@ Make one with “New identity” above, or join a chan.</source>
     <message>
         <source>Checked your contacts. The nicknames the nickbot has are in the table.</source>
         <translation>Контакты проверены. Псевдонимы, которые знает никбот, — в таблице.</translation>
+    </message>
+    <message>
+        <source>Chat</source>
+        <translation>Чат</translation>
+    </message>
+    <message>
+        <source>Chat with this bot</source>
+        <translation>Чат с этим ботом</translation>
     </message>
 </context>
 <context>

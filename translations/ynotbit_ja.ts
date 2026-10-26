@@ -655,10 +655,10 @@
     <message>
         <source>No contacts yet.
 
-Add one with “Add contact…” above, or with the person-plus button beside an address in a letter you are reading.</source>
+Add one with the person-plus button in the toolbar above, or with the one beside an address in a letter you are reading.</source>
         <translation>連絡先はまだありません。
 
-上の「連絡先を追加…」か、読んでいるメールのアドレスの横にある人型とプラスのボタンで追加できます。</translation>
+上のツールバーにある人型とプラスのボタンか、読んでいるメールのアドレスの横にある同じボタンで追加できます。</translation>
     </message>
     <message>
         <source>No contact matches “%1”.</source>
@@ -1030,10 +1030,10 @@ Date: %1
     <message>
         <source>No identities yet.
 
-Make one with “New identity” above, or join a chan.</source>
+Make one with the person-plus button in the toolbar above, or join a chan with the # button.</source>
         <translation>ID はまだありません。
 
-上の「新しい ID」で作成するか、チャンネルに参加してください。</translation>
+上のツールバーの人型とプラスのボタンで作成するか、# のボタンでチャンネルに参加してください。</translation>
     </message>
     <message>
         <source>No identity matches “%1”.</source>
@@ -1078,6 +1078,14 @@ Make one with “New identity” above, or join a chan.</source>
     <message>
         <source>Checked your contacts. The nicknames the nickbot has are in the table.</source>
         <translation>連絡先を確認しました。ニックボットが知っているニックネームは表に表示されます。</translation>
+    </message>
+    <message>
+        <source>Chat</source>
+        <translation>チャット</translation>
+    </message>
+    <message>
+        <source>Chat with this bot</source>
+        <translation>このボットとチャット</translation>
     </message>
 </context>
 <context>

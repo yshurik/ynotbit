@@ -114,6 +114,9 @@ NewChatDialog::NewChatDialog(Session &session, bool dark, QWidget *parent)
 QString NewChatDialog::peer() const {
     return peer_->text().trimmed();
 }
+void NewChatDialog::setPeer(const QString &address) {
+    peer_->setText(address);
+}
 QString NewChatDialog::identity() const {
     return identity_->currentData().toString();
 }

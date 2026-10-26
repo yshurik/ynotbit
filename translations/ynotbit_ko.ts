@@ -655,10 +655,10 @@
     <message>
         <source>No contacts yet.
 
-Add one with “Add contact…” above, or with the person-plus button beside an address in a letter you are reading.</source>
+Add one with the person-plus button in the toolbar above, or with the one beside an address in a letter you are reading.</source>
         <translation>아직 연락처가 없습니다.
 
-위의 “연락처 추가…”나, 읽고 있는 편지의 주소 옆에 있는 사람+ 버튼으로 추가하세요.</translation>
+위 도구 모음의 사람+ 버튼이나, 읽고 있는 편지의 주소 옆에 있는 같은 버튼으로 추가하세요.</translation>
     </message>
     <message>
         <source>No contact matches “%1”.</source>
@@ -1030,10 +1030,10 @@ Date: %1
     <message>
         <source>No identities yet.
 
-Make one with “New identity” above, or join a chan.</source>
+Make one with the person-plus button in the toolbar above, or join a chan with the # button.</source>
         <translation>아직 신원이 없습니다.
 
-위의 “새 신원”으로 만들거나 채널에 참여하세요.</translation>
+위 도구 모음의 사람+ 버튼으로 만들거나 # 버튼으로 채널에 참여하세요.</translation>
     </message>
     <message>
         <source>No identity matches “%1”.</source>
@@ -1078,6 +1078,14 @@ Make one with “New identity” above, or join a chan.</source>
     <message>
         <source>Checked your contacts. The nicknames the nickbot has are in the table.</source>
         <translation>연락처를 확인했습니다. 닉봇이 아는 별명은 표에 있습니다.</translation>
+    </message>
+    <message>
+        <source>Chat</source>
+        <translation>채팅</translation>
+    </message>
+    <message>
+        <source>Chat with this bot</source>
+        <translation>이 봇과 채팅</translation>
     </message>
 </context>
 <context>

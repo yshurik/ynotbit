@@ -655,10 +655,10 @@
     <message>
         <source>No contacts yet.
 
-Add one with “Add contact…” above, or with the person-plus button beside an address in a letter you are reading.</source>
+Add one with the person-plus button in the toolbar above, or with the one beside an address in a letter you are reading.</source>
         <translation>还没有联系人。
 
-可以用上方的“添加联系人…”添加，或在阅读信件时点击地址旁带加号的人形按钮。</translation>
+可以用上方工具栏中带加号的人形按钮添加，或在阅读信件时点击地址旁的同样按钮。</translation>
     </message>
     <message>
         <source>No contact matches “%1”.</source>
@@ -1030,10 +1030,10 @@ Date: %1
     <message>
         <source>No identities yet.
 
-Make one with “New identity” above, or join a chan.</source>
+Make one with the person-plus button in the toolbar above, or join a chan with the # button.</source>
         <translation>还没有身份。
 
-用上方的“新建身份”创建一个，或加入频道。</translation>
+用上方工具栏中带加号的人形按钮创建一个，或用 # 按钮加入频道。</translation>
     </message>
     <message>
         <source>No identity matches “%1”.</source>
@@ -1078,6 +1078,14 @@ Make one with “New identity” above, or join a chan.</source>
     <message>
         <source>Checked your contacts. The nicknames the nickbot has are in the table.</source>
         <translation>已检查联系人。昵称机器人所知的昵称已显示在表格中。</translation>
+    </message>
+    <message>
+        <source>Chat</source>
+        <translation>聊天</translation>
+    </message>
+    <message>
+        <source>Chat with this bot</source>
+        <translation>与此机器人聊天</translation>
     </message>
 </context>
 <context>

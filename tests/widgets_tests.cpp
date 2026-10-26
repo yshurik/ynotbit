@@ -2699,35 +2699,60 @@ static void testIdentitiesPage(const QTemporaryDir &temp) {
                 cell(2, 2).data(bm::DesktopWindow::kIdentityChanRole).toBool(),
             "the local name says which is the default identity and which is a chan");
 
-    // The toolbar: the buttons for the selected row, in the pill beside Join and New identity.
+    // The toolbar is icons, as the address book's: what is for the selected row is in one pill
+    // (Nickname, Copy address, QR code, Set as default, Rename, Delete), and Join a channel and
+    // New identity are in another.
     const QList<QAbstractButton *> rowButtons{
         button("identityNicknameButton"), button("copyAddressButton"),
         button("showQrButton"),           button("setDefaultIdentityButton"),
         button("renameIdentityButton"),   button("deleteIdentityButton")};
     auto join = button("joinChannelButton"), create = button("newIdentityButton");
+    const auto drawn = [](const QIcon &icon) { // something is drawn, not a blank
+        const auto image =
+            icon.pixmap(QSize(80, 80)).toImage().convertToFormat(QImage::Format_ARGB32);
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                if (qAlpha(image.pixel(x, y)) > 128)
+                    return true;
+        return false;
+    };
+    for (auto b : rowButtons + QList<QAbstractButton *>{join, create}) {
+        auto tool = qobject_cast<QToolButton *>(b);
+        require(tool && tool->text().isEmpty() &&
+                    tool->toolButtonStyle() == Qt::ToolButtonIconOnly && drawn(tool->icon()) &&
+                    !tool->toolTip().isEmpty() && tool->accessibleName() == tool->toolTip(),
+                "a button of the identities toolbar is an icon with a tip, which is its name");
+    }
     const auto topOf = [&](QWidget *w) { return w->mapTo(&window, QPoint()).y(); };
     for (auto b : rowButtons)
         require(topOf(b) < topOf(tree) && topOf(b) < topOf(create) + create->height() &&
                     topOf(b) + b->height() > topOf(create),
                 "a row's buttons sit in the toolbar of New identity, above the table");
-    {
-        auto pill = button("copyAddressButton")->parentWidget();
-        bool one = true;
+    const auto inOnePill = [&](const QList<QAbstractButton *> &buttons) {
+        auto pill = buttons.first()->parentWidget();
         QAbstractButton *before = nullptr;
-        for (auto b : rowButtons)
-            if (b != rowButtons.first()) {
-                one = one && b->parentWidget() == pill && (!before || b->x() > before->x());
-                before = b;
-            }
-        require(one && pill->grab().toImage().pixelColor(0, pill->height() / 2).alpha() == 255,
-                "all but Nickname sit in one pill, drawn as the address book's");
-    }
-    require(button("copyAddressButton")->toolTip() == "Copy address" &&
+        for (auto b : buttons) {
+            if (b->parentWidget() != pill || (before && b->x() <= before->x()))
+                return false;
+            before = b;
+        }
+        return pill->grab().toImage().pixelColor(0, pill->height() / 2).alpha() == 255;
+    };
+    require(inOnePill(rowButtons), "Nickname and the row's other buttons sit in one pill");
+    require(inOnePill({join, create}) &&
+                join->parentWidget() != button("copyAddressButton")->parentWidget() &&
+                button("copyAddressButton")->parentWidget()->mapTo(&window, QPoint()).x() <
+                    join->parentWidget()->mapTo(&window, QPoint()).x(),
+            "Join a channel and New identity sit in a pill of their own, after the first");
+    require(button("identityNicknameButton")->toolTip() == bm::DesktopWindow::tr("Nickname…") &&
+                button("copyAddressButton")->toolTip() == "Copy address" &&
                 button("showQrButton")->toolTip() == "Show QR code" &&
                 button("setDefaultIdentityButton")->toolTip() == "Set as default" &&
                 button("renameIdentityButton")->toolTip() == "Rename identity" &&
-                button("deleteIdentityButton")->toolTip() == "Delete identity",
-            "the pill's buttons say what they act on");
+                button("deleteIdentityButton")->toolTip() == "Delete identity" &&
+                join->toolTip() == bm::DesktopWindow::tr("Join a channel…") &&
+                create->toolTip() == bm::DesktopWindow::tr("New identity"),
+            "the buttons say what they act on");
     require(create->isEnabled() && join->isEnabled(), "New identity and Join are always on");
 
     // The page opens on the default identity, so that its buttons work at once.
@@ -2767,6 +2792,33 @@ static void testIdentitiesPage(const QTemporaryDir &temp) {
         });
         button("showQrButton")->click();
         require(shown, "Show QR code opens the QR dialog");
+    }
+    // Nickname asks for the selected identity's nickname.
+    {
+        select(me);
+        QString opened, about;
+        onNext([&](QWidget *w) {
+            opened = w->objectName();
+            if (auto address = w->findChild<QLabel *>("nicknameIdentityAddress"))
+                about = address->text();
+            w->close();
+        });
+        button("identityNicknameButton")->click();
+        require(opened == "nicknameDialog" && about == me,
+                "Nickname opens the nickname dialog for the selected identity");
+        select(work);
+        QTest::qWait(10);
+    }
+    // The page's own buttons open their dialogs.
+    for (const auto &[tool, dialogName] :
+         {std::pair{join, "joinChannelDialog"}, std::pair{create, "newIdentityDialog"}}) {
+        QString opened;
+        onNext([&](QWidget *w) {
+            opened = w->objectName();
+            w->close();
+        });
+        tool->click();
+        require(opened == dialogName, "Join a channel and New identity open their dialogs");
     }
 
     // The filter: names, nicknames and addresses.
@@ -2936,14 +2988,21 @@ static void testIdentitiesPage(const QTemporaryDir &temp) {
                                 ->findChild<QComboBox *>("themeCombo")
                                 ->currentData()
                                 .toString();
+        const QList<QAbstractButton *> toolbar =
+            rowButtons + QList<QAbstractButton *>{join, create};
         themeTo("light");
-        const auto light = button("renameIdentityButton")->icon().pixmap(18, 18).toImage();
-        const auto lightStar = button("setDefaultIdentityButton")->icon().pixmap(18, 18).toImage();
+        QList<QImage> light;
+        for (auto b : toolbar)
+            light << b->icon().pixmap(18, 18).toImage();
+        const auto rowPill = button("copyAddressButton")->parentWidget()->styleSheet(),
+                   toolsPill = join->parentWidget()->styleSheet();
         themeTo("dark");
-        require(button("renameIdentityButton")->icon().pixmap(18, 18).toImage() != light &&
-                    button("setDefaultIdentityButton")->icon().pixmap(18, 18).toImage() !=
-                        lightStar,
-                "a theme switch recolours the identities toolbar's icons");
+        for (int i = 0; i < toolbar.size(); ++i)
+            require(toolbar[i]->icon().pixmap(18, 18).toImage() != light[i],
+                    "a theme switch recolours the identities toolbar's icons");
+        require(button("copyAddressButton")->parentWidget()->styleSheet() != rowPill &&
+                    join->parentWidget()->styleSheet() != toolsPill,
+                "and both pills' borders");
         require(selected() == work && model()->rowCount() == 3,
                 "and the table keeps its rows and its selection");
         themeTo(before);
@@ -3416,15 +3475,17 @@ static void testCheckNicknames(const QTemporaryDir &temp) {
     window.show();
     window.findChild<QToolButton *>("folderIcon_Contacts")->click();
     QCoreApplication::processEvents();
-    auto check = window.findChild<QPushButton *>("checkNicknamesButton");
+    auto check = window.findChild<QToolButton *>("checkNicknamesButton");
     auto note = window.findChild<QLabel *>("contactsCheckNote");
     auto tree = window.findChild<QTreeView *>("contactsTree");
     require(check && note && tree && check->isEnabled() && !note->isVisible(),
             "the address book has a button that checks nicknames, and nothing is said yet");
-    require(check->text() == bm::DesktopWindow::tr("Check nicknames") &&
-                check->toolTip() ==
-                    bm::DesktopWindow::tr("Ask the nickbot for the nicknames of all your contacts"),
-            "which says what it does");
+    require(check->text().isEmpty() &&
+                check->accessibleName() == bm::DesktopWindow::tr("Check nicknames") &&
+                check->toolTip().contains(bm::DesktopWindow::tr("Check nicknames")) &&
+                check->toolTip().contains(bm::DesktopWindow::tr(
+                    "Ask the nickbot for the nicknames of all your contacts")),
+            "which is an icon whose tip says what it does");
     // Nobody to ask about: it says so.
     check->click();
     require(note->isVisible() &&
@@ -3446,7 +3507,7 @@ static void testCheckNicknames(const QTemporaryDir &temp) {
     };
 
     const auto at = [&](QWidget *w) { return w->mapTo(&window, QPoint()); };
-    auto addContact = window.findChild<QPushButton *>("addContactButton");
+    auto addContact = window.findChild<QToolButton *>("addContactButton");
     require(at(check).y() < at(tree).y() &&
                 at(check).y() < at(addContact).y() + addContact->height() &&
                 at(check).y() + check->height() > at(addContact).y(),
@@ -3524,6 +3585,282 @@ static void testCheckNicknames(const QTemporaryDir &temp) {
             "with the mailbox closed the page keeps nothing of the check");
 }
 // The New identity dialog asks the nickbot for a nickname together with the identity.
+// The address book is where a conversation with a contact starts. A letter is for people; a bot (a
+// contact whose name or nickname starts with "/") answers in a chat, so Write opens the chat for
+// it, and every contact has a Chat button too. The toolbar is icons, each with a tip.
+static void testContactChats(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("cchat.bmvault"), boxFile = temp.filePath("cchat.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("cchat-node"));
+    {
+        QSettings config(temp.filePath("cchat-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    const auto addressOf = [](const std::string &who) {
+        return QString::fromStdString(bmc::Protocol::identity(who).address);
+    };
+    bm::Session s(temp.filePath("cchat-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen(), "test sanity: the mailbox opens");
+    for (const auto &c : s.coreMailbox().contacts())
+        s.removeContact(QString::fromStdString(c.address));
+    QString mine;
+    for (const auto &v : s.identities())
+        if (!v.toMap()["chan"].toBool())
+            mine = v.toMap()["address"].toString();
+    require(!mine.isEmpty(), "test sanity: an identity");
+    const auto person = addressOf("the chat test's person"),
+               echo = addressOf("the chat test's echo"),
+               helper = addressOf("the chat test's helper"),
+               veteran = addressOf("a contact with a chat"),
+               newcomer = addressOf("a contact without one"),
+               quiet = addressOf("a contact to cancel");
+    require(s.addContact(person, "Pat") && s.addContact(echo, "Echo") &&
+                s.addContact(helper, "/helper") && s.addContact(veteran, "Vic") &&
+                s.addContact(newcomer, "Nia") && s.addContact(quiet, "Quin"),
+            "test sanity: six contacts");
+    s.setNickname(person, "@pat");
+    s.setNickname(echo, "/echobot"); // a bot by its nickname; helper is one by its local name
+
+    bm::DesktopWindow window(s, temp.filePath("sounds-cchat"));
+    window.resize(1160, 780);
+    window.show();
+    const auto toContacts = [&] {
+        window.findChild<QToolButton *>("folderIcon_Contacts")->click();
+        QCoreApplication::processEvents();
+    };
+    toContacts();
+    auto tree = window.findChild<QTreeView *>("contactsTree");
+    auto pane = window.findChild<bm::ChatsPane *>("chatsPane");
+    require(tree && pane, "the address book and the chats page exist");
+    const auto toolButton = [&](const char *name) {
+        auto b = window.findChild<QToolButton *>(name);
+        require(b != nullptr, "the toolbar has the button");
+        return b;
+    };
+    auto write = toolButton("writeToContactButton"), chat = toolButton("chatWithContactButton"),
+         copy = toolButton("copyContactAddressButton"), rename = toolButton("renameContactButton"),
+         remove = toolButton("deleteContactButton"), find = toolButton("findPeopleButton"),
+         check = toolButton("checkNicknamesButton"), add = toolButton("addContactButton");
+
+    // Icons, not words: every button is an icon with a tip, and a name for a screen reader.
+    const auto drawn = [](const QIcon &icon) { // something is drawn, not a blank
+        const auto image =
+            icon.pixmap(QSize(80, 80)).toImage().convertToFormat(QImage::Format_ARGB32);
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                if (qAlpha(image.pixel(x, y)) > 128)
+                    return true;
+        return false;
+    };
+    for (auto b : {write, chat, copy, rename, remove, find, check, add}) {
+        require(drawn(b->icon()), "each button's icon is drawn");
+        require(b->text().isEmpty() && !b->icon().isNull() &&
+                    b->toolButtonStyle() == Qt::ToolButtonIconOnly && !b->toolTip().isEmpty() &&
+                    !b->accessibleName().isEmpty(),
+                "a button of the address book's toolbar is an icon with a tip and a name");
+    }
+    require(find->toolTip() == bm::DesktopWindow::tr("Find people…") &&
+                add->toolTip() == bm::DesktopWindow::tr("Add contact…") &&
+                chat->toolTip() == bm::DesktopWindow::tr("Chat") &&
+                check->toolTip().contains(bm::DesktopWindow::tr("Check nicknames")) &&
+                check->toolTip().contains(bm::DesktopWindow::tr(
+                    "Ask the nickbot for the nicknames of all your contacts")),
+            "the tips say what the buttons do");
+    // Two pills: what is for the selected contact, then what is for the address book.
+    require(write->parentWidget() == chat->parentWidget() &&
+                chat->parentWidget() == copy->parentWidget() &&
+                copy->parentWidget() == rename->parentWidget() &&
+                rename->parentWidget() == remove->parentWidget() &&
+                find->parentWidget() == check->parentWidget() &&
+                check->parentWidget() == add->parentWidget() &&
+                write->parentWidget() != find->parentWidget(),
+            "a contact's buttons are in one pill and the address book's in another");
+    require(write->x() < chat->x() && chat->x() < copy->x() && copy->x() < rename->x() &&
+                rename->x() < remove->x() &&
+                write->parentWidget()->mapTo(&window, QPoint()).x() <
+                    find->parentWidget()->mapTo(&window, QPoint()).x() &&
+                find->x() < check->x() && check->x() < add->x(),
+            "left to right: Write, Chat, Copy, Rename, Delete, then Find, Check, Add");
+    require(!write->isEnabled() && !chat->isEnabled() && find->isEnabled() && check->isEnabled() &&
+                add->isEnabled(),
+            "with no contact selected Write and Chat are off, the address book's buttons on");
+
+    const auto select = [&](const QString &address) {
+        for (int row = 0; row < tree->model()->rowCount(); ++row) {
+            const auto cell = tree->model()->index(row, 0);
+            if (cell.data().toString() == address) {
+                tree->setCurrentIndex(cell);
+                QCoreApplication::processEvents();
+                return cell;
+            }
+        }
+        require(false, "test sanity: the contact is listed");
+        return QModelIndex();
+    };
+    // The composer, if one opened, and who it is to; closed again.
+    const auto composerTo = [&]() -> QString {
+        auto dialog = window.findChild<QDialog *>("composer");
+        if (!dialog)
+            return {};
+        const auto to = dialog->findChild<QLineEdit *>("recipientField")->text();
+        dialog->reject();
+        waitComposerGone(window);
+        return to;
+    };
+    // The dialog that asks which identity, answered from a timer (it is modal).
+    int asked = 0;
+    QString askedAbout;
+    bool askedWithChoice = false;
+    std::function<void(bm::NewChatDialog &)> answer;
+    QTimer driver;
+    QObject::connect(&driver, &QTimer::timeout, [&] {
+        for (auto dialog : window.findChildren<bm::NewChatDialog *>())
+            if (dialog->isVisible()) {
+                ++asked;
+                askedAbout = dialog->peer();
+                auto box = dialog->findChild<QComboBox *>("chatIdentityBox");
+                askedWithChoice = box && box->isVisibleTo(dialog) && box->count() > 1;
+                if (answer)
+                    answer(*dialog);
+                else
+                    dialog->reject();
+            }
+    });
+    driver.start(10);
+
+    // A person: Write is a letter and Chat is a chat, from the one identity, without a question.
+    select(person);
+    require(write->isEnabled() && chat->isEnabled() && copy->isEnabled(),
+            "selecting a contact turns Write and Chat on");
+    require(write->toolTip() == bm::DesktopWindow::tr("Write a letter"),
+            "for a person Write says it writes a letter");
+    write->click();
+    require(composerTo() == person && !pane->isVisible(),
+            "Write to a person opens a letter to them, and not a chat");
+    chat->click();
+    QCoreApplication::processEvents();
+    require(pane->isVisible() && pane->contact() == person && pane->identity() == mine &&
+                asked == 0 && window.findChild<QDialog *>("composer") == nullptr,
+            "Chat opens a chat with the person from the only identity, asking nothing");
+
+    // A bot by its nickname: Write is for a chat, because a bot answers there.
+    toContacts();
+    select(echo);
+    require(write->toolTip() == bm::DesktopWindow::tr("Chat with this bot") &&
+                write->accessibleName() == write->toolTip() &&
+                chat->toolTip() == bm::DesktopWindow::tr("Chat"),
+            "for a bot Write says it chats, to the eye and to a screen reader");
+    write->click();
+    QCoreApplication::processEvents();
+    require(composerTo().isEmpty() && pane->isVisible() && pane->contact() == echo &&
+                pane->identity() == mine,
+            "Write to a bot opens the chat with it, not a letter");
+    // A bot by the name the user gave it.
+    toContacts();
+    select(helper);
+    require(write->toolTip() == bm::DesktopWindow::tr("Chat with this bot"),
+            "a contact whose local name starts with / is a bot too");
+    write->click();
+    QCoreApplication::processEvents();
+    require(composerTo().isEmpty() && pane->isVisible() && pane->contact() == helper,
+            "and Write to it opens the chat");
+    // Not a bot any more once the name is not one.
+    toContacts();
+    s.setNickname(echo, "@echo");
+    select(echo);
+    require(write->toolTip() == bm::DesktopWindow::tr("Write a letter"),
+            "a nickname that does not start with / makes no bot");
+    s.setNickname(echo, "/echobot");
+    select(echo);
+    require(write->toolTip() == bm::DesktopWindow::tr("Chat with this bot"),
+            "and the tip follows the nickname back");
+
+    // A double-click does what Write does.
+    toContacts();
+    {
+        const auto cell = select(echo);
+        QTest::mouseClick(tree->viewport(), Qt::LeftButton, {}, tree->visualRect(cell).center());
+        QTest::mouseDClick(tree->viewport(), Qt::LeftButton, {}, tree->visualRect(cell).center());
+        QCoreApplication::processEvents();
+        require(composerTo().isEmpty() && pane->isVisible() && pane->contact() == echo,
+                "a double-click on a bot opens its chat");
+    }
+    toContacts();
+    {
+        const auto cell = select(person);
+        QTest::mouseClick(tree->viewport(), Qt::LeftButton, {}, tree->visualRect(cell).center());
+        QTest::mouseDClick(tree->viewport(), Qt::LeftButton, {}, tree->visualRect(cell).center());
+        QCoreApplication::processEvents();
+        require(composerTo() == person && !pane->isVisible(),
+                "a double-click on a person opens a letter");
+    }
+
+    // Two identities: a contact with a chat under one opens that chat, with no question; one
+    // without any is asked about, once, with the contact filled in.
+    auto work = bm::Protocol::identity("the chat test's second identity");
+    work.label = "Work";
+    require(s.addIdentity(work), "a second identity joins the vault");
+    const auto expiry = QDateTime::currentSecsSinceEpoch() + 3600;
+    s.coreMailbox().storeChat("cc-1", veteran.toStdString(), work.address.toStdString(), 1,
+                              "hello Vic", expiry, false);
+    emit s.changed();
+    QCoreApplication::processEvents();
+    toContacts();
+    select(veteran);
+    chat->click();
+    QCoreApplication::processEvents();
+    require(asked == 0 && pane->isVisible() && pane->contact() == veteran &&
+                pane->identity() == work.address,
+            "Chat with a contact that has a chat opens it, under its own identity");
+    toContacts();
+    select(newcomer);
+    answer = [&](bm::NewChatDialog &dialog) {
+        auto box = dialog.findChild<QComboBox *>("chatIdentityBox");
+        box->setCurrentIndex(box->findData(work.address));
+        dialog.findChild<QPushButton *>("startChatButton")->click();
+    };
+    chat->click();
+    QCoreApplication::processEvents();
+    require(asked == 1 && askedAbout == newcomer && askedWithChoice,
+            "with several identities Chat asks which, with the contact filled in");
+    require(pane->isVisible() && pane->contact() == newcomer && pane->identity() == work.address,
+            "and the chat starts under the one chosen");
+    // The same contact again is the chat there is now: no second question.
+    toContacts();
+    select(newcomer);
+    chat->click();
+    QCoreApplication::processEvents();
+    require(asked == 1 && pane->contact() == newcomer && pane->identity() == work.address,
+            "the chat started is the one Chat opens next time");
+    // Cancelling the question starts nothing.
+    toContacts();
+    select(quiet);
+    answer = nullptr; // rejects
+    chat->click();
+    QCoreApplication::processEvents();
+    require(asked == 2 && !pane->isVisible() && pane->contact() != quiet,
+            "cancelling the question opens no chat");
+    // Write to a bot, with two identities, asks the same.
+    s.setNickname(quiet, "/quietbot");
+    select(quiet);
+    write->click();
+    QCoreApplication::processEvents();
+    require(asked == 3 && askedAbout == quiet && composerTo().isEmpty(),
+            "Write to a bot asks which identity, too, and writes no letter");
+    driver.stop();
+}
+
 static void testNewIdentityRegisters(const QTemporaryDir &temp) {
     const auto vaultFile = temp.filePath("newid.bmvault"), boxFile = temp.filePath("newid.bmmail");
     {
@@ -5827,7 +6164,7 @@ int main(int argc, char **argv) {
                         "a known address shows its current name");
                 dialog->findChild<QPushButton *>("contactCancelButton")->click();
             });
-            window.findChild<QPushButton *>("addContactButton")->click();
+            window.findChild<QToolButton *>("addContactButton")->click();
             // The Add contact dialog offers the name made from a new address (a coolname, in
             // title case), and keeps it only until a name of your own is typed.
             {
@@ -5843,7 +6180,7 @@ int main(int argc, char **argv) {
                         require(dialog, "the Add contact dialog opens");
                         body(dialog);
                     });
-                    window.findChild<QPushButton *>("addContactButton")->click();
+                    window.findChild<QToolButton *>("addContactButton")->click();
                 };
                 QApplication::clipboard()->clear();
                 addDialog([&](QDialog *dialog) {
@@ -5932,14 +6269,15 @@ int main(int argc, char **argv) {
                         contactText(0, 1).isEmpty() && contactText(0, 2) == "Alice",
                     "a contact is listed by address, with its local name and no nickname yet");
             // The buttons for the selected contact sit in the toolbar, where Add contact is.
-            auto addButton = window.findChild<QPushButton *>("addContactButton");
-            auto write = window.findChild<QPushButton *>("writeToContactButton");
+            auto addButton = window.findChild<QToolButton *>("addContactButton");
+            auto write = window.findChild<QToolButton *>("writeToContactButton");
+            auto chat = window.findChild<QToolButton *>("chatWithContactButton");
             auto copy = window.findChild<QToolButton *>("copyContactAddressButton");
             auto rename = window.findChild<QToolButton *>("renameContactButton");
             auto remove = window.findChild<QToolButton *>("deleteContactButton");
-            require(addButton && write && copy && rename && remove,
-                    "the toolbar has Write, Copy address, Rename, Delete and Add contact");
-            const QList<QWidget *> rowButtons{write, copy, rename, remove};
+            require(addButton && write && chat && copy && rename && remove,
+                    "the toolbar has Write, Chat, Copy address, Rename, Delete and Add contact");
+            const QList<QWidget *> rowButtons{write, chat, copy, rename, remove};
             const auto topOf = [&](QWidget *w) { return w->mapTo(&window, QPoint()).y(); };
             for (auto button : rowButtons)
                 require(topOf(button) < topOf(contactTree) &&
@@ -5949,9 +6287,11 @@ int main(int argc, char **argv) {
             require(addButton->isEnabled(), "Add contact is on with nothing selected");
             for (auto button : rowButtons)
                 require(!button->isEnabled(), "with no row selected a contact's buttons are off");
-            require(inOnePill({copy, rename, remove}),
-                    "Copy address, Rename and Delete sit in one pill");
-            require(copy->toolTip() == "Copy address" && rename->toolTip() == "Rename contact" &&
+            require(inOnePill({write, chat, copy, rename, remove}),
+                    "Write, Chat, Copy address, Rename and Delete sit in one pill");
+            require(write->toolTip() == "Write a letter" && chat->toolTip() == "Chat" &&
+                        copy->toolTip() == "Copy address" &&
+                        rename->toolTip() == "Rename contact" &&
                         remove->toolTip() == "Delete contact",
                     "the pill's buttons say what they act on");
             require(ink(rename->icon()).second >= 32,
@@ -6122,11 +6462,28 @@ int main(int argc, char **argv) {
                     folders->setCurrentRow(9);
                     QCoreApplication::processEvents();
                 };
+                const QList<QToolButton *> toolbar{
+                    write,
+                    chat,
+                    copy,
+                    rename,
+                    remove,
+                    window.findChild<QToolButton *>("findPeopleButton"),
+                    window.findChild<QToolButton *>("checkNicknamesButton"),
+                    addButton};
                 themeTo("light");
-                const auto light = rename->icon().pixmap(18, 18).toImage();
+                QList<QImage> light;
+                for (auto b : toolbar)
+                    light << b->icon().pixmap(18, 18).toImage();
+                const auto writePill = write->parentWidget()->styleSheet(),
+                           toolsPill = addButton->parentWidget()->styleSheet();
                 themeTo("dark");
-                require(rename->icon().pixmap(18, 18).toImage() != light,
-                        "a theme switch recolours the toolbar's icons");
+                for (int i = 0; i < toolbar.size(); ++i)
+                    require(toolbar[i]->icon().pixmap(18, 18).toImage() != light[i],
+                            "a theme switch recolours the toolbar's icons");
+                require(write->parentWidget()->styleSheet() != writePill &&
+                            addButton->parentWidget()->styleSheet() != toolsPill,
+                        "and both pills' borders");
                 themeTo(before);
             }
             require(write->isEnabled(), "the selected row stays selected when the page refreshes");
@@ -6997,7 +7354,7 @@ int main(int argc, char **argv) {
             };
             auto beforeAdd = session.identities().size();
             createIdentity();
-            window.findChild<QPushButton *>("newIdentityButton")->click();
+            window.findChild<QToolButton *>("newIdentityButton")->click();
             QTest::qWait(50);
             require(identityDialog && session.identities().size() == beforeAdd + 1,
                     "New identity adds the identity its dialog shows");
@@ -8647,6 +9004,7 @@ int main(int argc, char **argv) {
         testNicknameDialog(temp);
         testIdentityIcons();
         testCheckNicknames(temp);
+        testContactChats(temp);
         testFindPeople(temp);
         testNewIdentityRegisters(temp);
         require(session.portMapper().state() == bm::PortMapper::State::Off,

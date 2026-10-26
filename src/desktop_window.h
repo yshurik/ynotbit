@@ -107,13 +107,15 @@ class DesktopWindow : public QMainWindow {
     QStandardItemModel *contactsModel_;     // the address book's rows: Address, Nickname, Local name
     QSortFilterProxyModel *contactsSorted_; // the same rows, sorted by a click on a header
     QLabel *contactsEmpty_;                 // stands in for the tree when no row is listed
-    QPushButton *contactsCheck_;            // asks the nickbot for every contact's nickname
+    QToolButton *contactsCheck_;            // asks the nickbot for every contact's nickname
+    QToolButton *contactFind_, *contactAdd_; // the address book's other two buttons
+    QWidget *contactTools_;                  // their pill
     QLabel *contactsCheckNote_;             // says that a check is under way, or why it is not
     bool contactsChecking_ = false;         // a check this window asked for is under way
-    // The buttons for the selected contact, in the toolbar beside Add contact.
-    QPushButton *contactWrite_;
+    // The buttons for the selected contact, in the toolbar before the address book's own.
+    QToolButton *contactWrite_, *contactChat_;
     QToolButton *contactCopy_, *contactRename_, *contactDelete_;
-    QWidget *contactActions_; // the pill of the last three
+    QWidget *contactActions_; // the pill of the five
     // The identities and chans: a table like the address book's, and the buttons for its selected
     // row in the toolbar beside New identity.
     QLineEdit *identitiesFilter_;
@@ -121,9 +123,11 @@ class DesktopWindow : public QMainWindow {
     QStandardItemModel *identitiesModel_;     // Address, Nickname, Local name
     QSortFilterProxyModel *identitiesSorted_; // the same rows, sorted by a click on a header
     QLabel *identitiesEmpty_;                 // stands in for the table when no row is listed
-    QPushButton *identityNickname_;
+    QToolButton *identityNickname_;
     QToolButton *identityCopy_, *identityQr_, *identityDefault_, *identityRename_, *identityDelete_;
-    QWidget *identityActions_; // the pill of the last five
+    QToolButton *identityJoin_, *identityNew_; // the page's own two: Join a channel, New identity
+    QWidget *identityActions_;                 // the pill of the six for the selected row
+    QWidget *identityTools_;                   // the pill of the page's own two
     // What the table was last drawn from: it is drawn again only when this is not what it would be
     // drawn from now, so that a tick that changes nothing does not cost the user the selection.
     QVariantList shownIdentities_;
@@ -156,6 +160,13 @@ class DesktopWindow : public QMainWindow {
     // selected.
     QString selectedContact(int column) const;
     void updateContactActions(); // the toolbar's buttons are on while a row is selected
+    // A bot is a contact called "/something", by the user or by a nickbot: bots answer chats.
+    static bool isBot(const QString &nickname, const QString &localName);
+    // A letter to a person; to a bot, the chat with it.
+    void writeToContact();
+    // The chat with a contact: the one there is (under its identity), else a new one under the
+    // vault's only identity, else the dialog asks which identity.
+    void chatWithContact(const QString &address);
     void checkContactNicknames();
     void updateContactsCheck(); // the check's button and note follow the nickbot client
     void setContactsNote(const QString &text, bool problem);

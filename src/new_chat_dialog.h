@@ -13,6 +13,7 @@ class NewChatDialog : public QDialog {
   public:
     NewChatDialog(Session &session, bool dark, QWidget *parent = nullptr);
     QString peer() const;     // the address typed or chosen, trimmed
+    void setPeer(const QString &address); // fills in the address, as if typed
     QString identity() const; // the identity the chat is under
 
   private:
