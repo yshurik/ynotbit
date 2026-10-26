@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 struct sqlite3;
@@ -172,6 +173,9 @@ class Mailbox {
     // The addresses the letters of a folder came from, each once, in order of address; a letter
     // with no sender adds none.
     std::vector<std::string> senders(const std::string &folder) const;
+    // The messages the scan filed under "Service" (Delivery::setServiceAddresses), oldest first, at
+    // most limit: returned and deleted together, in one transaction. Nothing else is touched.
+    std::vector<Message> takeService(int limit);
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     uint64_t messageRevision() const {
         return messageRevision_;
@@ -234,5 +238,8 @@ class Mailbox {
     int64_t dataVersion() const;
     std::string setting(const std::string &name, const std::string &fallback = {}) const;
     void setSetting(const std::string &name, const std::string &value);
+    // Every setting whose name starts with the prefix, in order of name: for a family such as
+    // "nickname:<address>" read in one query instead of one per address. The prefix is literal.
+    std::vector<std::pair<std::string, std::string>> settings(const std::string &prefix) const;
 };
 } // namespace bmc

@@ -521,9 +521,13 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int64_t time, int l
                 addJob(m, {}, "incoming-ack", Protocol::inventoryHash(d.acknowledgment),
                        d.acknowledgment, 1000, 1000, "ready");
             noteRelease(m, d, publisher);
+            const bool service =
+                !d.broadcast && !chanBroadcast && serviceAddresses_.count(d.message.to);
             m.storeRouted(
                 id, d.message.from, d.message.to, d.message.subject, d.message.body, o.sequence,
-                chanBroadcast ? "Channels" : (d.broadcast ? "Broadcasts" : d.message.folder),
+                service ? "Service"
+                        : (chanBroadcast ? "Channels"
+                                         : (d.broadcast ? "Broadcasts" : d.message.folder)),
                 h->expires, o.hash);
             ++count;
             passed = 0; // store() moved the checkpoint past this object

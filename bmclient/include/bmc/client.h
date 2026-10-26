@@ -60,6 +60,11 @@ class Client {
     // English text the catalogue lists; the caller translates. sendChat returns the new id.
     std::string sendChat(const std::string &from, const std::string &peer, const std::string &body,
                          int64_t now);
+    // A chat for a service, not for a person: from any address of the vault, a chan too (the
+    // nicknames lookups go out from one), living ttlSeconds, at most a chat's day. The rest is
+    // sendChat's.
+    std::string sendServiceChat(const std::string &from, const std::string &peer,
+                                const std::string &body, int64_t ttlSeconds, int64_t now);
     std::string chatState(const std::string &id) const;
     std::vector<ChatMessage> unreadChats(int limit) const;
     bool markChatMessageRead(const std::string &id);

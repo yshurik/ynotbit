@@ -55,9 +55,24 @@ def load(path=None):
     lib.bmbot_send_letter.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, pp, pp]
     lib.bmbot_state.argtypes = [ctypes.c_void_p, ctypes.c_char_p, pp, pp]
     lib.bmbot_status.argtypes = [ctypes.c_void_p, pp, pp]
+    lib.bmbot_chan_address.argtypes = [ctypes.c_char_p, pp, pp]
     lib.bmbot_free.argtypes = [ctypes.c_void_p]
     lib.bmbot_free.restype = None
     return lib
+
+
+def chan_address(lib, phrase):
+    """The address of the chan a phrase makes (a function of the phrase alone: no bot is opened)."""
+    out, error = ctypes.c_void_p(), ctypes.c_void_p()
+    code = lib.bmbot_chan_address(phrase.encode(), ctypes.byref(out), ctypes.byref(error))
+    try:
+        if code < 0:
+            raise BotError(code, ctypes.string_at(error.value).decode() if error.value else "error")
+        return ctypes.string_at(out.value).decode()
+    finally:
+        for pointer in (out, error):
+            if pointer.value:
+                lib.bmbot_free(pointer.value)
 
 
 class Bot:

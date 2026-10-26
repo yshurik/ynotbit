@@ -113,3 +113,30 @@ TEST(closing_wakes_a_caller_waiting_in_next_with_a_state_error) {
     waiter.join();
     CHECK_EQ(code.load(), int(BMBOT_E_STATE));
 }
+
+TEST(a_chan_address_comes_from_the_phrase_alone) {
+    char *address = nullptr, *error = nullptr;
+    // The chan "general" of PyBitmessage, version 4 (tests/bmclient/protocol_test.cpp has the
+    // same).
+    CHECK_EQ(bmbot_chan_address("general", &address, &error), BMBOT_OK);
+    CHECK_EQ(take(address), "BM-2cW67GEKkHGonXKZLCzouLLxnLym3azS8r");
+    CHECK(error == nullptr);
+    // A phrase is its bytes: another case is another chan.
+    CHECK_EQ(bmbot_chan_address("General", &address, &error), BMBOT_OK);
+    const auto capital = take(address);
+    CHECK(capital.rfind("BM-", 0) == 0 && capital != "BM-2cW67GEKkHGonXKZLCzouLLxnLym3azS8r");
+    // The same phrase, the same address, whatever else the library is doing.
+    CHECK_EQ(bmbot_chan_address("general", &address, &error), BMBOT_OK);
+    CHECK_EQ(take(address), "BM-2cW67GEKkHGonXKZLCzouLLxnLym3azS8r");
+    // Refusals carry a code and a reason, and leave nothing to free.
+    CHECK_EQ(bmbot_chan_address("", &address, &error), BMBOT_E_ARGUMENT);
+    CHECK(address == nullptr);
+    CHECK(take(error).find("cannot be empty") != std::string::npos);
+    CHECK_EQ(bmbot_chan_address(nullptr, &address, &error), BMBOT_E_ARGUMENT);
+    CHECK(address == nullptr);
+    take(error);
+    CHECK_EQ(bmbot_chan_address("general", nullptr, &error), BMBOT_E_ARGUMENT);
+    take(error);
+    CHECK_EQ(bmbot_chan_address("general", nullptr, nullptr),
+             BMBOT_E_ARGUMENT); // the error is optional
+}

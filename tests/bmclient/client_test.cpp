@@ -172,6 +172,7 @@ TEST(a_chat_needs_an_own_sender_and_a_real_recipient) {
     const auto id = f.client->sendChat(f.me, f.peer, "hello", now);
     CHECK(!id.empty());
     CHECK_EQ(f.client->chatState(id), std::string("queued"));
+    CHECK_EQ(f.mailbox->outgoing(id).expires, now + bmc::kChatTtlSeconds); // a chat lives a day
     CHECK_EQ(f.mailbox->outgoing(id).state, std::string("queued"));
 
     // With no mailbox there is nothing to queue into.
@@ -181,6 +182,41 @@ TEST(a_chat_needs_an_own_sender_and_a_real_recipient) {
     CHECK_EQ(f.client->chatState(id), std::string());
     CHECK(f.client->unreadChats(10).empty());
     CHECK(!f.client->markChatMessageRead(id));
+}
+
+TEST(a_service_may_chat_from_a_chan_and_for_less_than_a_day) {
+    Fixture f;
+    const auto now = bmc::now();
+    // The rule for everybody else stays: a chan is not a chat sender.
+    CHECK_EQ(threwMessage([&] { f.client->sendChat(f.chan, f.peer, "hi", now); }),
+             std::string("Choose a sender from this vault"));
+    const auto id = f.client->sendServiceChat(f.chan, f.peer, "/address @ben", 3600, now);
+    CHECK_EQ(f.client->chatState(id), std::string("queued"));
+    CHECK_EQ(f.mailbox->outgoing(id).expires, now + 3600);
+    CHECK_EQ(f.mailbox->outgoing(id).message.from, f.chan);
+    CHECK_EQ(f.mailbox->outgoing(id).message.to, f.peer);
+    // An identity of the vault may use it too; the chat then lives as long as asked.
+    const auto second = f.client->sendServiceChat(f.me, f.peer, "/help", bmc::kChatTtlSeconds, now);
+    CHECK_EQ(f.mailbox->outgoing(second).expires, now + bmc::kChatTtlSeconds);
+    // The same refusals as for a chat, in the same words, and a life that is none or too long.
+    const auto refused = [&](const std::string &from, const std::string &to,
+                             const std::string &body, int64_t ttl) {
+        return threwMessage([&] { f.client->sendServiceChat(from, to, body, ttl, now); });
+    };
+    CHECK_EQ(refused("BM-stranger", f.peer, "hi", 60),
+             std::string("Choose a sender from this vault"));
+    CHECK_EQ(refused(f.chan, "not-an-address", "hi", 60),
+             std::string("Enter a valid Bitmessage recipient address"));
+    CHECK_EQ(refused(f.chan, f.chan, "hi", 60),
+             std::string("Enter a valid Bitmessage recipient address"));
+    CHECK_EQ(refused(f.chan, f.peer, "  ", 60),
+             std::string("Chat message must be between 1 and 8192 bytes"));
+    CHECK_EQ(refused(f.chan, f.peer, "hi", 0), std::string("Invalid chat message or expiry"));
+    CHECK_EQ(refused(f.chan, f.peer, "hi", -5), std::string("Invalid chat message or expiry"));
+    CHECK_EQ(refused(f.chan, f.peer, "hi", bmc::kChatTtlSeconds + 1),
+             std::string("Invalid chat message or expiry"));
+    f.mailbox->close();
+    CHECK_EQ(refused(f.chan, f.peer, "hi", 60), std::string("Open a mailbox first"));
 }
 
 TEST(a_chat_from_the_network_is_a_service_a_bot_can_poll) {

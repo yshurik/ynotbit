@@ -341,6 +341,32 @@ TEST(subscriptions_contacts_and_settings_round_trip) {
     m.close();
 }
 
+TEST(settings_that_share_a_prefix_are_read_together_and_a_prefix_is_never_a_pattern) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    m.setSetting("nickname:BM-b", "@bee");
+    m.setSetting("nickname:BM-a", "@ant");
+    m.setSetting("nicknamex:BM-c", "no");
+    m.setSetting("nick_name:BM-d", "no");
+    m.setSetting("theme", "dark");
+    m.setSetting("100%", "per cent");
+    const auto nicknames = m.settings("nickname:");
+    CHECK_EQ(nicknames.size(), size_t(2));
+    CHECK(nicknames[0].first == "nickname:BM-a" &&
+          nicknames[0].second == "@ant"); // in order of name
+    CHECK(nicknames[1].first == "nickname:BM-b" && nicknames[1].second == "@bee");
+    CHECK(m.settings("none:").empty());
+    // % and _ are letters of a name here, not wildcards.
+    CHECK_EQ(m.settings("nick_name:").size(), size_t(1));
+    CHECK_EQ(m.settings("100%").size(), size_t(1));
+    CHECK(m.settings("%").empty());
+    CHECK(m.settings("_").empty());
+    CHECK_EQ(m.settings("").size(), size_t(6)); // the empty prefix is everything
+    m.close();
+}
+
 TEST(channels_are_listed_with_their_unread_state) {
     const auto path = aNewMailbox();
     auto key = key32();

@@ -439,6 +439,10 @@ void Mailbox::migrate() {
     }
     // Only the unread rows, so that counting them (unreadLetters) reads no letter.
     sql("CREATE INDEX IF NOT EXISTS messages_unread ON messages(folder) WHERE unread<>0");
+    // What the scan files under "Service" (Delivery::setServiceAddresses) is looked for on every
+    // tick of the app, and there is none for nearly all of them: the index holds only those rows,
+    // so that looking costs nothing however many letters there are (the order by is its order).
+    sql("CREATE INDEX IF NOT EXISTS messages_service ON messages(received) WHERE folder='Service'");
     // The network object a letter was read from. One object makes one letter, whatever id it was
     // stored under (a letter with an acknowledgment is keyed by what it says, not by its hash), so
     // that a rescan and an import meeting the same object do not store it twice. Only the rows that
@@ -961,6 +965,29 @@ int Mailbox::markRead(const std::vector<std::string> &ids) {
     return changed;
 }
 
+std::vector<Message> Mailbox::takeService(int limit) {
+    std::vector<Message> taken;
+    if (limit <= 0)
+        return taken;
+    Transaction t(db_);
+    {
+        Statement s(db_, "SELECT hash,sender,recipient,subject,body,folder,received FROM messages "
+                         "WHERE folder='Service' ORDER BY received,rowid LIMIT ?");
+        s.number(1, limit);
+        while (s.row())
+            taken.push_back(
+                {s.text(0), s.text(1), s.text(2), s.text(3), s.text(4), s.text(5), s.number(6)});
+    }
+    Statement remove(db_, "DELETE FROM messages WHERE hash=? AND folder='Service'");
+    for (const auto &m : taken) {
+        remove.reset();
+        remove.text(1, m.hash);
+        remove.row();
+    }
+    t.commit();
+    return taken;
+}
+
 std::map<std::string, int> Mailbox::unreadByFolder() const {
     std::map<std::string, int> counts;
     Statement s(db_, "SELECT folder, COUNT(*) FROM messages WHERE unread<>0 AND "
@@ -1001,6 +1028,18 @@ void Mailbox::setSetting(const std::string &name, const std::string &value) {
     s.text(1, name);
     s.text(2, value);
     s.row();
+}
+
+std::vector<std::pair<std::string, std::string>>
+Mailbox::settings(const std::string &prefix) const {
+    // substr() and not LIKE: % and _ are letters of a name, not wildcards.
+    Statement s(db_,
+                "SELECT name,value FROM settings WHERE substr(name,1,length(?1))=?1 ORDER BY name");
+    s.text(1, prefix);
+    std::vector<std::pair<std::string, std::string>> list;
+    while (s.row())
+        list.emplace_back(s.text(0), s.text(1));
+    return list;
 }
 
 std::string letterFingerprint(std::string_view sender, std::string_view recipient,

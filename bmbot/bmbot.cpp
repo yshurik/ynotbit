@@ -3,6 +3,7 @@
 #include "bmbot.h"
 #include "bot.h"
 #include <bmc/error.h>
+#include <bmc/protocol.h>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -174,6 +175,18 @@ int bmbot_status(bmbot *bot, char **status_json, char **error) {
         *status_json = nullptr;
         *status_json = copyOf(botOf(bot)->status());
         return *status_json ? BMBOT_OK : BMBOT_E_INTERNAL;
+    });
+}
+
+int bmbot_chan_address(const char *phrase, char **address, char **error) {
+    return guarded(error, [&]() -> int {
+        if (!address)
+            throw bmc::Error(bmc::Code::Argument, "address is required");
+        *address = nullptr;
+        requireText(phrase, "phrase");
+        // Version 4, as Vault::addChannel makes it; the label is not part of an address.
+        *address = copyOf(bmc::Protocol::channel(phrase, "chan", 4).address);
+        return *address ? BMBOT_OK : BMBOT_E_INTERNAL;
     });
 }
 

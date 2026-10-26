@@ -1,0 +1,24 @@
+# Written by `go test ./internal/service -update`: the command a scripted conversation sent, a tab, and the
+# trailer the bot ended its answer with. Read by the Go test that wrote it and by the C++ core's.
+/register @Ben	nickbot: {"v":1,"cmd":"register","ok":true,"query":"@Ben","nick":"@Ben","address":"BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN"}
+/register @Ben	nickbot: {"v":1,"cmd":"register","ok":true,"query":"@Ben","nick":"@Ben","address":"BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN","already":true}
+/register /benbot	nickbot: {"v":1,"cmd":"register","ok":true,"query":"/benbot","nick":"/benbot","address":"BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN"}
+/register @benny	nickbot: {"v":1,"cmd":"register","ok":true,"query":"@benny","nick":"@benny","address":"BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN","replaced":"@Ben"}
+/register @benny	nickbot: {"v":1,"cmd":"register","ok":false,"error":"taken","query":"@benny"}
+/register ben	nickbot: {"v":1,"cmd":"register","ok":false,"error":"syntax"}
+/address @BENNY	nickbot: {"v":1,"cmd":"address","ok":true,"query":"@BENNY","found":true,"nick":"@benny","address":"BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN"}
+/address @nobody	nickbot: {"v":1,"cmd":"address","ok":true,"query":"@nobody","found":false}
+/nickname BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN BM-2cUqyPSNiBCvTg51hztE4uWrxET3386Ezo	nickbot: {"v":1,"cmd":"nickname","ok":true,"results":[{"address":"BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN","nicks":["@benny","/benbot"]},{"address":"BM-2cUqyPSNiBCvTg51hztE4uWrxET3386Ezo","nicks":[]}]}
+/nickname BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN	nickbot: {"v":1,"cmd":"nickname","ok":true,"query":"BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN","results":[{"address":"BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN","nicks":["@benny","/benbot"]}]}
+/search benn	nickbot: {"v":1,"cmd":"search","ok":true,"query":"benn","results":[{"nick":"@benny","address":"BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN"}],"more":false}
+/search none1	nickbot: {"v":1,"cmd":"search","ok":true,"query":"none1","results":[],"more":false}
+/search be	nickbot: {"v":1,"cmd":"search","ok":false,"error":"too_short"}
+/whoami	nickbot: {"v":1,"cmd":"whoami","ok":true,"address":"BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN","nicks":["@benny","/benbot"]}
+/whoami	nickbot: {"v":1,"cmd":"whoami","ok":true,"address":"BM-2cUqyPSNiBCvTg51hztE4uWrxET3386Ezo","nicks":[]}
+/register @fresh	nickbot: {"v":1,"cmd":"register","ok":false,"error":"anonymous","query":"@fresh"}
+/unregister @benny	nickbot: {"v":1,"cmd":"unregister","ok":true,"query":"@benny","nick":"@benny"}
+/unregister @benny	nickbot: {"v":1,"cmd":"unregister","ok":false,"error":"not_found","query":"@benny"}
+/register #room	nickbot: {"v":1,"cmd":"register","ok":true,"query":"#room","nick":"#room","address":"BM-2DAV89w336ovy6BUJnfVRD5B9qipFbRgmr"}
+/register #room	nickbot: {"v":1,"cmd":"register","ok":false,"error":"not_chan","query":"#room"}
+/help	nickbot: {"v":1,"cmd":"help","ok":true}
+hello	nickbot: {"v":1,"cmd":"","ok":false,"error":"unknown_command"}

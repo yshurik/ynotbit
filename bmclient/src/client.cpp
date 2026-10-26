@@ -36,20 +36,37 @@ StepReport Client::step(int64_t now, bool online) {
     return report;
 }
 
-std::string Client::sendChat(const std::string &from, const std::string &peer,
-                             const std::string &body, int64_t now) {
-    require(mailbox_->isOpen(), "Open a mailbox first");
+namespace {
+// The checks of a chat and its queueing; a chan may send only if the caller says so.
+std::string queueChatChecked(Mailbox &mailbox, const Vault &vault, const std::string &from,
+                             const std::string &peer, const std::string &body, int64_t expires,
+                             bool chanMaySend) {
+    require(mailbox.isOpen(), "Open a mailbox first");
     bool own = false;
-    for (const auto &identity : vault_->identities())
-        if (!identity.chan && identity.address == from)
+    for (const auto &identity : vault.identities())
+        if ((chanMaySend || !identity.chan) && identity.address == from)
             own = true;
     require(own, "Choose a sender from this vault");
     require(Wire::validAddress(peer) && peer != from, "Enter a valid Bitmessage recipient address");
     require(!text::trim(body).empty() && body.size() <= size_t(kMaxChatBodyBytes),
             "Chat message must be between 1 and 8192 bytes");
-    const auto id = mailbox_->queueChat(from, peer, body, now + kChatTtlSeconds);
-    Delivery::rereadKept(*mailbox_); // the peer's key may already be kept
+    const auto id = mailbox.queueChat(from, peer, body, expires);
+    Delivery::rereadKept(mailbox); // the peer's key may already be kept
     return id;
+}
+} // namespace
+
+std::string Client::sendChat(const std::string &from, const std::string &peer,
+                             const std::string &body, int64_t now) {
+    return queueChatChecked(*mailbox_, *vault_, from, peer, body, now + kChatTtlSeconds, false);
+}
+
+std::string Client::sendServiceChat(const std::string &from, const std::string &peer,
+                                    const std::string &body, int64_t ttlSeconds, int64_t now) {
+    // The life is checked first, with the mailbox's own words for it, so that a caller cannot get a
+    // chat that outlives a day by way of this door.
+    require(ttlSeconds > 0 && ttlSeconds <= kChatTtlSeconds, "Invalid chat message or expiry");
+    return queueChatChecked(*mailbox_, *vault_, from, peer, body, now + ttlSeconds, true);
 }
 
 std::string Client::chatState(const std::string &id) const {

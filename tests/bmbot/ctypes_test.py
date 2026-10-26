@@ -42,6 +42,15 @@ def read(path):
 try:
     assert lib.bmbot_abi_version() == 1
 
+    # The address of a chan comes from its phrase alone (PyBitmessage's "general", version 4).
+    assert echo.chan_address(lib, "general") == "BM-2cW67GEKkHGonXKZLCzouLLxnLym3azS8r"
+    assert echo.chan_address(lib, "General") != echo.chan_address(lib, "general")
+    try:
+        echo.chan_address(lib, "")
+        raise AssertionError("an empty phrase made a chan")
+    except echo.BotError as e:
+        assert e.code == -1 and "empty" in str(e), e
+
     # A bad configuration is refused with a code and a reason, not a crash.
     try:
         echo.Bot({"data_dir": os.path.join(tmp, "x")}, lib)

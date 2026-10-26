@@ -3,6 +3,7 @@
 // which pins the same behaviour through the Qt veneer.
 #include "fake_node.h"
 #include <bmc/cache.h>
+#include <bmc/chat_format.h>
 #include <bmc/clock.h>
 #include <bmc/delivery.h>
 #include <bmc/mailbox.h>
@@ -14,6 +15,7 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <memory>
 #include <ntb-object-db.h>
 #include <thread>
@@ -183,4 +185,101 @@ TEST(a_broadcast_already_passed_is_found_by_the_catch_up) {
     CHECK_EQ(messages[0].subject, std::string("Late announcement"));
     CHECK_EQ(messages[0].folder, std::string("Broadcasts"));
     CHECK_EQ(b.mailbox.checkpoint(), int64_t(1));
+}
+
+TEST(a_message_to_a_service_address_is_filed_apart_and_counts_nowhere) {
+    Side a("alice", "Alice"), b("bob", "Bob");
+    // Two chans both sides have joined. To Bob, one of them is a service's: whatever comes to it is
+    // not mail.
+    const std::string service = a.vault.addChannel("the service chan of the delivery test", "", "");
+    const std::string ordinary =
+        a.vault.addChannel("an ordinary chan of the delivery test", "", "");
+    CHECK_EQ(b.vault.addChannel("the service chan of the delivery test", "", ""), service);
+    CHECK_EQ(b.vault.addChannel("an ordinary chan of the delivery test", "", ""), ordinary);
+    b.delivery->setServiceAddresses({service});
+
+    for (const auto &chan : {service, ordinary}) {
+        const auto id =
+            a.mailbox.saveDraft({}, a.identity, chan, "To the chan", "Everybody reads " + chan);
+        a.mailbox.queueDraft(id, "direct", kNow() + 3600);
+    }
+    CHECK(pump(a, b, [&] { return b.mailbox.messages().size() == 2; }));
+
+    std::map<std::string, std::string> folderOf; // by recipient
+    for (const auto &m : b.mailbox.messages())
+        folderOf[m.to] = m.folder;
+    CHECK_EQ(folderOf[service], std::string("Service"));
+    CHECK_EQ(folderOf[ordinary], std::string("Channels"));
+    // The service chan is nowhere a person looks: not among the chans, not in the unread counts.
+    CHECK_EQ(b.mailbox.channelAddresses("Channels"), std::vector<std::string>{ordinary});
+    const auto unread = b.mailbox.unreadByFolder();
+    CHECK_EQ(unread.size(), size_t(1));
+    CHECK_EQ(unread.count("Channels"), size_t(1));
+    CHECK_EQ(b.mailbox.unreadLetters(), 1);
+    CHECK_EQ(b.mailbox.incomingLetterCount(), uint64_t(0));
+
+    // A rescan stores nothing twice, with the setting or without it: the object is stored once, and
+    // where it was first filed it stays.
+    b.mailbox.advance(0);
+    b.delivery->setServiceAddresses({});
+    b.delivery->scan(*b.cache, b.mailbox, b.vault, kNow());
+    CHECK_EQ(b.mailbox.messages().size(), size_t(2));
+}
+
+TEST(the_service_folder_is_taken_out_oldest_first_and_in_one_go) {
+    Side b("bob", "Bob");
+    for (int i = 0; i < 5; ++i)
+        b.mailbox.store("service-" + std::to_string(i), "BM-sender", "BM-service", "",
+                        "body " + std::to_string(i), -1, "Service");
+    b.mailbox.store("mail", "BM-sender", b.identity, "hello", "mail", -1, "Inbox");
+    const auto first = b.mailbox.takeService(3);
+    CHECK_EQ(first.size(), size_t(3));
+    CHECK(first[0].body == "body 0" && first[1].body == "body 1" && first[2].body == "body 2");
+    CHECK_EQ(first[0].folder, std::string("Service"));
+    const auto rest = b.mailbox.takeService(10);
+    CHECK_EQ(rest.size(), size_t(2));
+    CHECK_EQ(rest[1].body, std::string("body 4"));
+    CHECK(b.mailbox.takeService(10).empty());
+    // What was taken is gone for good, and nothing else was touched.
+    CHECK_EQ(b.mailbox.messages().size(), size_t(1));
+    CHECK_EQ(b.mailbox.messages()[0].folder, std::string("Inbox"));
+    CHECK(b.mailbox.takeService(0).empty());
+}
+
+// The whole way of a lookup, as the app and a service make it: the app sends a chat from its
+// service chan, the service (which has no key of that chan) answers to the chan's address, and what
+// comes back is filed apart, not shown as a post of the chan.
+TEST(a_chat_from_a_service_chan_is_answered_to_the_chan_and_the_answer_is_filed_apart) {
+    Side app("app", "App"), service("service", "Service");
+    const std::string chan =
+        app.vault.addChannel("the chan of the lookups of the delivery test", "", "");
+    app.delivery->setServiceAddresses({chan});
+    app.mailbox.queueChat(chan, service.identity, "/address @ben", kNow() + 3600);
+    // The service reads the question as a chat from the chan's address.
+    CHECK(pump(app, service, [&] { return !service.mailbox.unreadChats(10).empty(); }));
+    const auto chats = service.mailbox.unreadChats(10);
+    CHECK_EQ(chats.size(), size_t(1));
+    CHECK_EQ(chats[0].peerAddress, chan);
+    CHECK_EQ(chats[0].localAddress, service.identity);
+    CHECK_EQ(chats[0].body, std::string("/address @ben"));
+    service.mailbox.markChatMessageRead(chats[0].id);
+    // It answers to the address it was written from.
+    service.mailbox.queueChat(service.identity, chan, "@ben is nobody.\nnickbot: {\"v\":1}",
+                              kNow() + 3600);
+    CHECK(pump(app, service, [&] { return !app.mailbox.messages().empty(); }));
+    const auto messages = app.mailbox.messages();
+    CHECK_EQ(messages.size(), size_t(1));
+    CHECK_EQ(messages[0].folder, std::string("Service"));
+    CHECK_EQ(messages[0].from, service.identity);
+    CHECK_EQ(messages[0].to, chan);
+    CHECK(app.mailbox.channelAddresses("Channels").empty());
+    CHECK(app.mailbox.unreadByFolder().empty());
+    // What the app does with it: the chat inside is the answer, and the folder is emptied.
+    const auto taken = app.mailbox.takeService(10);
+    CHECK_EQ(taken.size(), size_t(1));
+    bmc::ChatPayload payload;
+    CHECK(bmc::parseChatMessage(taken[0].subject, taken[0].body, &payload) ==
+          bmc::ChatParseResult::Chat);
+    CHECK_EQ(payload.body, std::string("@ben is nobody.\nnickbot: {\"v\":1}"));
+    CHECK(app.mailbox.messages().empty());
 }

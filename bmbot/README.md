@@ -8,7 +8,7 @@ cmake -S . -B build-core -DYNOTBIT_QT=OFF && cmake --build build-core --target b
 cmake --install build-core --prefix /usr/local     # libbmbot, bmbot.h, bmbot.pc, chat_responder, bmnode
 ```
 
-`bmbot.h` is the whole interface: ten functions, nothing but `bmbot *`, `int`, `const char *` and `char **` across it, no callback, no
+`bmbot.h` is the whole interface: eleven functions, nothing but `bmbot *`, `int`, `const char *` and `char **` across it, no callback, no
 thread-local state. A handle may be used from any thread; calls on one handle are serialised inside. Every function that can fail
 returns `0` ok, `1` timeout (`bmbot_next` only) or a negative code (`BMBOT_E_ARGUMENT`, `STATE`, `AUTH`, `IO`, `NETWORK`,
 `INTERNAL`), and takes an optional `char **error` with English text. Every string it returns is freed with `bmbot_free`.
@@ -41,9 +41,13 @@ for (;;) {
 - Limits on how much a bot answers are the bot's: `tools/chat_bot.h` is one (rates per peer and in all, a bounded queue, retries; a letter is answered with a letter, once a day to a sender), on
   top of this ABI.
 
-Examples: `bmbot/examples/echo.py` (a complete echo bot on ctypes, the library of `tests/bmbot/ctypes_test.py`) and
-`tools/chat_responder.cpp` (C++, the reference). Go: `import "C"` with `#cgo LDFLAGS: -lbmbot` and `#include <bmbot.h>` is all it takes;
-the ABI has nothing a cgo caller has to wrap.
+Examples: `bmbot/examples/echo.py` (a complete echo bot on ctypes, the library of `tests/bmbot/ctypes_test.py`),
+`tools/chat_responder.cpp` (C++, the reference) and [`nickbot/`](../nickbot/README.md) (Go, a nicknames service: its cgo layer is
+`nickbot/internal/bmbot`, about 200 lines, `import "C"` with `#cgo LDFLAGS: -lbmbot` and `#include <bmbot.h>`; the ABI has nothing a
+cgo caller has to wrap).
+
+`bmbot_chan_address(phrase)` is the one call that needs no handle: the address of the chan a phrase makes. A service that registers
+chan names uses it to check that a name comes from the chan's own address.
 
 Tests: `tests/bmbot/` (`bmbot_tests` for the runtime, the ABI and the chat bot; `responder_e2e_test.py` for two responders over two real
 nodes; `ctypes_test.py` for Python). POSIX only for now (the node supervisor and the data directory lock).

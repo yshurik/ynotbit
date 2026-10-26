@@ -89,6 +89,12 @@ BMBOT_API int bmbot_state(bmbot *bot, const char *id, char **state, char **error
  * watchdog_restarts}. */
 BMBOT_API int bmbot_status(bmbot *bot, char **status_json, char **error);
 
+/* The address of the chan whose passphrase is `phrase` (a version 4 address in stream 1, the one a
+ * chan joined by that phrase has). A function of the phrase alone: no handle, nothing is opened. It
+ * takes some tens of milliseconds, since the keys are searched for. *address is freed with
+ * bmbot_free. A service that registers chan names uses it to check who may. */
+BMBOT_API int bmbot_chan_address(const char *phrase, char **address, char **error);
+
 BMBOT_API void bmbot_free(void *ptr);
 
 #ifdef __cplusplus

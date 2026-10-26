@@ -1,0 +1,51 @@
+# The nickname syntax, one case a line: kind TAB input TAB canonical key.
+# Read by the Go tests (nickbot/internal/nick) and by the C++ core tests (tests/bmclient/nickbot_test.cpp):
+# the two implementations must agree on every line. "ok" lines have a key, "no" lines have none.
+# A person (@) and a bot (/) are case-insensitive: their key is lower case. A chan (#) is a passphrase and
+# keeps its case. The name is 3 to 32 characters, the first a letter, the rest letters, digits, _ and -.
+ok	@ben	@ben
+ok	@Ben	@ben
+ok	@BEN	@ben
+ok	/echobot	/echobot
+ok	/EchoBot	/echobot
+ok	#general	#general
+ok	#General	#General
+ok	@a_b-c	@a_b-c
+ok	@b2b	@b2b
+ok	@abc	@abc
+ok	@Quick_Otter_Of_Zeta	@quick_otter_of_zeta
+ok	@abcdefghijklmnopqrstuvwxyzabcdef	@abcdefghijklmnopqrstuvwxyzabcdef
+ok	@ben_	@ben_
+ok	@ben-	@ben-
+ok	@a--b	@a--b
+ok	#My-Chan_1	#My-Chan_1
+no	@abcdefghijklmnopqrstuvwxyzabcdefg
+no	@be
+no	@b
+no	@
+no	/
+no	#
+no	ben
+no	ben@
+no	@@ben
+no	@/ben
+no	!ben
+no	$ben
+no	@1ben
+no	@_ben
+no	@-ben
+no	@ben bob
+no	@ben 
+no	 @ben
+no	@ben.x
+no	@ben!
+no	@ben%
+no	@ben'
+no	@ben"
+no	@ben;
+no	@bén
+no	@ｂen
+no	#general chat
+no	@ben⁠
+no	@ben​
+no	@ben‮
