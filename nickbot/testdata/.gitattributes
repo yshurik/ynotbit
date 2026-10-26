@@ -1,0 +1,3 @@
+# The cases both the C++ and the Go tests read, byte for byte: a line ends with LF on every
+# checkout, whatever core.autocrlf says (the Windows runners set it to true).
+* text eol=lf
