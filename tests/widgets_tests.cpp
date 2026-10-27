@@ -3273,46 +3273,57 @@ static void testReaderHeader(const QTemporaryDir &temp) {
             "test sanity: a sender named by a subscription, who is not in the address book");
     const auto at = [&](QWidget *w) { return w->mapTo(&window, QPoint()); };
     // The address is on one line when its row has the room for it, and wrapped within the room when
-    // the row has not. The room is not the same everywhere: the fonts of Windows are wider than
-    // those of macOS, and a window is no wider than its screen. Only a clear case is judged.
+    // the row has not. The room is not the same everywhere: the fonts of a Windows runner are far
+    // wider than macOS's (an address wants 455 px there), and a window is no wider than its screen.
+    // Only a clear case is judged, and "one line" is the height the label has when it has all the
+    // room there is: a label that can be selected is laid out as a document, a plain one as a
+    // string, and the two do not always agree on the height of a line (Monaco at 40 px: 54 and 50).
     int roomy = 0, cramped = 0;
     bool wide = false; // the window reached a width that has the room on any platform
     QString seen;
+    const QFontInfo info(address->font());
+    const auto fontNote =
+        QString(" [the font is %1 at %2 px, its line is %3 px; the address has %4 characters; the "
+                "window is scaled %5 times]")
+            .arg(info.family())
+            .arg(info.pixelSize())
+            .arg(address->fontMetrics().height())
+            .arg(address->text().size())
+            .arg(window.devicePixelRatioF());
     for (const int width : {1600, 1400, 1160, 1024, 900}) {
         window.resize(width, 780);
         QCoreApplication::processEvents();
         wide = wide || window.width() >= 1400;
-        QLabel oneLine(address->text()); // the text on one line, as Qt measures it
-        oneLine.setFont(address->font());
-        oneLine.setTextFormat(Qt::PlainText);
-        const auto wanted = oneLine.sizeHint();
+        const int wanted = address->sizeHint().width();
+        const int line = address->heightForWidth(100000);
         const auto host = address->parentWidget();
         const int room = host->width() - address->x() - add->width() - 4;
         const auto where = QString(" (a window %1 px wide: the row has %2 px, the address wants %3 "
-                                   "and is %4 wide and %5 high, a line is %6)")
+                                   "and is %4 wide, %5 high for that, a line is %6)")
                                .arg(window.width())
                                .arg(room)
-                               .arg(wanted.width())
+                               .arg(wanted)
                                .arg(address->width())
-                               .arg(address->height())
-                               .arg(wanted.height());
+                               .arg(address->heightForWidth(address->width()))
+                               .arg(line);
         seen += where;
-        if (room >= wanted.width() + 24) {
+        if (room >= wanted + 24) {
             ++roomy;
-            require(address->width() >= wanted.width() &&
-                        address->heightForWidth(address->width()) <= wanted.height(),
+            require(address->width() >= wanted && address->heightForWidth(address->width()) <= line,
                     qPrintable("the sender's address is on one line when the pane has the room "
                                "for it" +
-                               where));
-        } else if (room + 24 <= wanted.width()) {
+                               where + fontNote));
+        } else if (room + 24 <= wanted) {
             ++cramped;
             require(address->width() <= host->width() - address->x() &&
-                        address->heightForWidth(address->width()) > wanted.height(),
-                    qPrintable("and is wrapped, within the room, when the pane has not" + where));
+                        address->heightForWidth(address->width()) > line,
+                    qPrintable("and is wrapped, within the room, when the pane has not" + where +
+                               fontNote));
         }
     }
-    require(!wide || roomy > 0,
-            qPrintable("test sanity: a wide window has the room for the address" + seen));
+    require(
+        !wide || roomy > 0,
+        qPrintable("test sanity: a wide window has the room for the address" + seen + fontNote));
     window.resize(1160, 780);
     QCoreApplication::processEvents();
     require(at(add).x() - (at(address).x() + address->width()) <= 8 &&
