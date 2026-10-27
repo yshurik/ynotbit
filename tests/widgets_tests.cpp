@@ -3273,14 +3273,15 @@ static void testReaderHeader(const QTemporaryDir &temp) {
             "test sanity: a sender named by a subscription, who is not in the address book");
     const auto at = [&](QWidget *w) { return w->mapTo(&window, QPoint()); };
     // The address is on one line when its row has the room for it, and wrapped within the room when
-    // the row has not. A window is no wider than its screen, and the screen of a Windows runner is
-    // 1024 px wide, so the room is not the same everywhere; only a clear case is judged.
+    // the row has not. The room is not the same everywhere: the fonts of Windows are wider than
+    // those of macOS, and a window is no wider than its screen. Only a clear case is judged.
     int roomy = 0, cramped = 0;
-    bool wide = false; // the window reached the width it was asked for
-    for (const int width : {1160, 1024, 900, 800}) {
+    bool wide = false; // the window reached a width that has the room on any platform
+    QString seen;
+    for (const int width : {1600, 1400, 1160, 1024, 900}) {
         window.resize(width, 780);
         QCoreApplication::processEvents();
-        wide = wide || window.width() >= 1160;
+        wide = wide || window.width() >= 1400;
         QLabel oneLine(address->text()); // the text on one line, as Qt measures it
         oneLine.setFont(address->font());
         oneLine.setTextFormat(Qt::PlainText);
@@ -3295,6 +3296,7 @@ static void testReaderHeader(const QTemporaryDir &temp) {
                                .arg(address->width())
                                .arg(address->height())
                                .arg(wanted.height());
+        seen += where;
         if (room >= wanted.width() + 24) {
             ++roomy;
             require(address->width() >= wanted.width() &&
@@ -3309,7 +3311,8 @@ static void testReaderHeader(const QTemporaryDir &temp) {
                     qPrintable("and is wrapped, within the room, when the pane has not" + where));
         }
     }
-    require(!wide || roomy > 0, "test sanity: a wide window has the room for the address");
+    require(!wide || roomy > 0,
+            qPrintable("test sanity: a wide window has the room for the address" + seen));
     window.resize(1160, 780);
     QCoreApplication::processEvents();
     require(at(add).x() - (at(address).x() + address->width()) <= 8 &&
