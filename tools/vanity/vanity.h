@@ -19,6 +19,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <openssl/bn.h>
 #include <openssl/crypto.h>
 #include <openssl/ec.h>
@@ -28,6 +29,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include "avx512.h"
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -376,6 +379,16 @@ class Curve {
         BN_clear_free(k);
         return ok;
     }
+    // The order less a key, for a key from 1 to the order less 1: the key whose public key is the
+    // negative of this one's, with the same x and the y that is p less this y.
+    void negate(const std::uint8_t key[32], std::uint8_t out[32]) const {
+        BIGNUM *k = BN_bin2bn(key, 32, nullptr);
+        BIGNUM *r = BN_new();
+        BN_sub(r, order_, k);
+        BN_bn2binpad(r, out, 32);
+        BN_free(r);
+        BN_clear_free(k);
+    }
     // (base + delta) mod the order.
     void add(const std::uint8_t base[32], std::uint64_t delta, std::uint8_t out[32]) const {
         BIGNUM *k = BN_bin2bn(base, 32, nullptr);
@@ -492,6 +505,10 @@ class Pattern {
     }
     const std::string &word() const {
         return word_;
+    }
+    // For each letter of the word, a bit for each base 58 digit it may be.
+    const u64 *letters() const {
+        return mask_.data();
     }
     int posMin() const {
         return posMin_;
@@ -641,34 +658,102 @@ class PairHasher {
 // at a time, and says which of them have the word in their address.
 class Walker {
   public:
-    static constexpr int kWidth = Stepper::kWidth;
+    static constexpr int kWidth = Stepper::kWidth; // the points a call to next() steps through
+    // And its keys: every point is the public key of two keys, k and the order less k, whose public
+    // keys have the same x and negative y's. The second costs a subtraction, not a point.
+    static constexpr int kKeys = 2 * kWidth;
 
+    // wide: use the AVX-512 hashes when this processor has them and the word's place is one they
+    // can filter for; the scalar ones otherwise (and always when it is false).
     Walker(const Pattern &pattern, const Stepper &stepper, const std::uint8_t signing[32],
-           const std::uint8_t start[32])
+           const std::uint8_t start[32], bool wide = true)
         : pattern_(pattern), stepper_(stepper), hasher_(publicOf(signing).data()) {
         std::uint8_t centre[32];
         ec::curve().add(start, Stepper::kHalf, centre);
         const auto pub = publicOf(centre);
         centre_ = {feFromBytes(pub.data() + 1), feFromBytes(pub.data() + 33)};
+        if (wide && avx512::supported() && pattern.posMax() < avx512::kFilterDigits)
+            batch_ = std::make_unique<avx512::BatchHasher>(publicOf(signing).data());
     }
 
-    // The next kWidth keys. hit(delta, place) for each whose address has the word: delta is how
-    // far its encryption key is above the start.
+    // Whether the hashes are the wide ones.
+    bool wide() const {
+        return batch_ != nullptr;
+    }
+
+    // The next kKeys keys. hit(delta, negative, place) for each whose address has the word: its
+    // encryption key is start + delta, or the order less that when negative.
     template <class Hit> void next(Hit &&hit) {
-        stepper_.window(centre_, [&](int j, const Fe &x, const Fe &y) {
-            std::uint8_t ripe[20];
-            hasher_.ripe(x, y, ripe);
-            if (ripe[0] == 0)
-                return; // an address of another length, whose digits these are not
-            const int place = pattern_.match(ripe);
-            if (place >= 0)
-                hit(centreAt_ + std::uint64_t(std::int64_t(j)), place);
-        });
+        if (batch_)
+            nextWide(hit);
+        else
+            nextScalar(hit);
         centre_ = stepper_.advance(centre_);
         centreAt_ += kWidth;
     }
 
   private:
+    template <class Hit> void nextScalar(Hit &hit) {
+        stepper_.window(centre_, [&](int j, const Fe &x, const Fe &y) {
+            const std::uint64_t delta = centreAt_ + std::uint64_t(std::int64_t(j));
+            std::uint8_t ripe[20];
+            hasher_.ripe(x, y, ripe);
+            if (ripe[0] != 0) // else an address of another length, whose digits these are not
+                if (const int place = pattern_.match(ripe); place >= 0)
+                    hit(delta, false, place);
+            hasher_.ripe(x, feNeg(y), ripe);
+            if (ripe[0] != 0)
+                if (const int place = pattern_.match(ripe); place >= 0)
+                    hit(delta, true, place);
+        });
+    }
+
+    // The keys go sixteen at a time to the wide hashes, which also say which of them may have the
+    // word; those are looked at the scalar way, so that a hit is what the scalar search finds.
+    template <class Hit> void nextWide(Hit &hit) {
+        constexpr int lanes = avx512::kLanes;
+        alignas(64) std::uint64_t xs[4][lanes], ys[4][lanes];
+        alignas(64) std::uint32_t words[4][lanes];
+        int offset[lanes];
+        bool negative[lanes];
+        int filled = 0;
+        const auto flush = [&] {
+            if (!filled)
+                return;
+            batch_->hash(xs, ys, words);
+            auto pass = batch_->candidates(words, pattern_.posMin(), pattern_.posMax(),
+                                           pattern_.letters(), int(pattern_.word().size()));
+            pass &= std::uint16_t((1u << filled) - 1); // lanes left over from the last batch
+            for (int lane = 0; pass; ++lane, pass >>= 1) {
+                if (!(pass & 1))
+                    continue;
+                std::uint8_t ripe[20] = {0}; // the first 16 bytes: all that matching reads
+                for (int w = 0; w < 4; ++w)
+                    for (int b = 0; b < 4; ++b)
+                        ripe[4 * w + b] = std::uint8_t(words[w][lane] >> (8 * b));
+                if (const int place = pattern_.match(ripe); place >= 0)
+                    hit(centreAt_ + std::uint64_t(std::int64_t(offset[lane])), negative[lane],
+                        place);
+            }
+            filled = 0;
+        };
+        const auto push = [&](int j, const Fe &x, const Fe &y, bool minus) {
+            for (int k = 0; k < 4; ++k) {
+                xs[k][filled] = x.v[k];
+                ys[k][filled] = y.v[k];
+            }
+            offset[filled] = j;
+            negative[filled] = minus;
+            if (++filled == lanes)
+                flush();
+        };
+        stepper_.window(centre_, [&](int j, const Fe &x, const Fe &y) {
+            push(j, x, y, false);
+            push(j, x, feNeg(y), true);
+        });
+        flush();
+    }
+
     static std::array<std::uint8_t, 65> publicOf(const std::uint8_t priv[32]) {
         std::array<std::uint8_t, 65> pub;
         if (!ec::curve().publicKey(priv, pub.data()))
@@ -679,6 +764,7 @@ class Walker {
     const Pattern &pattern_;
     const Stepper &stepper_;
     PairHasher hasher_;
+    std::unique_ptr<avx512::BatchHasher> batch_; // the wide hashes, when they are in use
     Affine centre_;
     std::uint64_t centreAt_ = Stepper::kHalf; // the centre's key is start + this
 };

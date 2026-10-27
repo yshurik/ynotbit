@@ -3,7 +3,7 @@
 // file of hits, and a few commands for what comes after a search.
 //
 //   bm_vanity --word WORD [-o hits.txt] [-j THREADS] [--pos-min 2] [--pos-max 5] [--exact]
-//             [--min-exact N] [--hits N] [--seconds S]
+//             [--min-exact N] [--hits N] [--seconds S] [--no-avx512]
 //   bm_vanity --export ADDRESS -f HITS -o KEYS_FILE
 //   bm_vanity --address-of KEYS_FILE
 //   bm_vanity --selftest
@@ -88,6 +88,7 @@ struct Search {
     Pattern pattern;
     std::string output = "hits.txt";
     int minExact = 0;
+    bool wide = true; // the AVX-512 hashes, where the processor has them
     std::uint64_t maxHits = 0;
     double maxSeconds = 0;
     std::atomic<std::uint64_t> done{0}, hits{0}, mismatches{0};
@@ -97,9 +98,11 @@ struct Search {
 
     // A match is made in full by OpenSSL's code and has to show the word where the fast way said.
     void record(const std::uint8_t sign[32], const std::uint8_t start[32], std::uint64_t delta,
-                int place) {
+                bool negative, int place) {
         std::uint8_t enc[32];
         ec::curve().add(start, delta, enc);
+        if (negative)
+            ec::curve().negate(enc, enc);
         std::string address;
         if (!ec::address(sign, enc, address) || pattern.find(address) != place) {
             ++mismatches;
@@ -128,10 +131,12 @@ struct Search {
         std::uint8_t sign[32], start[32];
         randomKey(sign);
         randomKey(start);
-        Walker walker(pattern, stepper, sign, start);
+        Walker walker(pattern, stepper, sign, start, wide);
         while (!stop) {
-            walker.next([&](std::uint64_t delta, int place) { record(sign, start, delta, place); });
-            done += Walker::kWidth;
+            walker.next([&](std::uint64_t delta, bool negative, int place) {
+                record(sign, start, delta, negative, place);
+            });
+            done += Walker::kKeys;
         }
         OPENSSL_cleanse(sign, sizeof sign);
         OPENSSL_cleanse(start, sizeof start);
@@ -142,7 +147,7 @@ void usage() {
     std::fprintf(
         stderr,
         "usage: bm_vanity --word WORD [-o hits.txt] [-j THREADS] [--pos-min 2] [--pos-max 5]\n"
-        "                 [--exact] [--min-exact N] [--hits N] [--seconds S]\n"
+        "                 [--exact] [--min-exact N] [--hits N] [--seconds S] [--no-avx512]\n"
         "       bm_vanity --export ADDRESS -f HITS -o KEYS_FILE\n"
         "       bm_vanity --address-of KEYS_FILE\n"
         "       bm_vanity --selftest\n"
@@ -223,50 +228,121 @@ int exportKeys(const std::string &address, const std::string &hits, const std::s
     return 1;
 }
 
-// The method against OpenSSL on this machine, built as it is: the easy word's hits in two
-// windows are the ones found key by key, and one thread's speed at the real thing.
-int selftest() {
-    const Stepper stepper;
+// One thread's walk of the easy word against the same keys looked at one by one with OpenSSL.
+bool walkAgrees(const Stepper &stepper, bool wide, std::size_t *hits) {
     Pattern easy;
     easy.set("a", 2, 5, false, nullptr);
     std::uint8_t sign[32], start[32];
     randomKey(sign);
     randomKey(start);
-    Walker walker(easy, stepper, sign, start);
-    std::map<std::uint64_t, int> found, want;
+    Walker walker(easy, stepper, sign, start, wide);
+    if (wide && !walker.wide())
+        return true; // this processor has no wide hashes: nothing to compare
+    std::map<std::uint64_t, int> found, want; // by delta * 2, and 1 more for the negative's key
     const int windows = 2;
     for (int w = 0; w < windows; ++w)
-        walker.next([&](std::uint64_t delta, int place) { found[delta] = place; });
-    for (std::uint64_t delta = 0; delta < std::uint64_t(windows) * Walker::kWidth; ++delta) {
-        std::uint8_t enc[32];
-        std::string address;
-        ec::curve().add(start, delta, enc);
-        if (!ec::address(sign, enc, address) || address.size() < 38)
-            continue; // a RIPE with a zero byte first is an address of another length
-        const int place = easy.find(address);
-        if (place >= 0)
-            want[delta] = place;
+        walker.next([&](std::uint64_t delta, bool negative, int place) {
+            found[delta * 2 + (negative ? 1 : 0)] = place;
+        });
+    for (std::uint64_t delta = 0; delta < std::uint64_t(windows) * Walker::kWidth; ++delta)
+        for (int negative = 0; negative < 2; ++negative) {
+            std::uint8_t enc[32];
+            std::string address;
+            ec::curve().add(start, delta, enc);
+            if (negative)
+                ec::curve().negate(enc, enc);
+            if (!ec::address(sign, enc, address) || address.size() < 38)
+                continue; // a RIPE with a zero byte first is an address of another length
+            const int place = easy.find(address);
+            if (place >= 0)
+                want[delta * 2 + negative] = place;
+        }
+    if (hits)
+        *hits = want.size();
+    return found == want && !want.empty();
+}
+
+// The wide hashes against the scalar ones, on limbs that are not even keys: what a hash is given
+// is any 32 bytes.
+bool hashesAgree() {
+    if (!avx512::supported())
+        return true;
+    for (int round = 0; round < 300; ++round) {
+        std::uint8_t sign[32];
+        randomKey(sign);
+        std::uint8_t pub[65];
+        ec::curve().publicKey(sign, pub);
+        avx512::BatchHasher wide(pub);
+        PairHasher scalar(pub);
+        alignas(64) std::uint64_t xs[4][avx512::kLanes], ys[4][avx512::kLanes];
+        alignas(64) std::uint32_t words[4][avx512::kLanes];
+        RAND_bytes(reinterpret_cast<unsigned char *>(xs), sizeof xs);
+        RAND_bytes(reinterpret_cast<unsigned char *>(ys), sizeof ys);
+        if (round % 3 == 1) // limbs with all their bits set or none, where carries and shifts are
+            for (int k = 0; k < 4; ++k)
+                for (int lane = 0; lane < avx512::kLanes; ++lane) {
+                    xs[k][lane] = (lane & 1) ? ~0ULL : 0;
+                    ys[k][lane] = (lane & 2) ? ~0ULL : 0;
+                }
+        wide.hash(xs, ys, words);
+        for (int lane = 0; lane < avx512::kLanes; ++lane) {
+            std::uint8_t ripe[20];
+            scalar.ripe(Fe{{xs[0][lane], xs[1][lane], xs[2][lane], xs[3][lane]}},
+                        Fe{{ys[0][lane], ys[1][lane], ys[2][lane], ys[3][lane]}}, ripe);
+            for (int w = 0; w < 4; ++w)
+                for (int b = 0; b < 4; ++b)
+                    if (ripe[4 * w + b] != std::uint8_t(words[w][lane] >> (8 * b)))
+                        return false;
+        }
     }
-    if (found != want || want.empty()) {
-        std::printf("selftest FAILED: %zu hits found, %zu expected\n", found.size(), want.size());
-        return 1;
-    }
+    return true;
+}
+
+// Addresses a second, in millions, for one thread looking for the real word.
+double speed(const Stepper &stepper, bool wide) {
     Pattern real;
     real.set("nickbot", 2, 5, false, nullptr);
+    std::uint8_t sign[32], start[32];
     randomKey(sign);
     randomKey(start);
-    Walker timed(real, stepper, sign, start);
+    Walker timed(real, stepper, sign, start, wide);
     std::uint64_t looked = 0;
     const auto began = std::chrono::steady_clock::now();
     double seconds = 0;
     while (seconds < 0.5) {
-        timed.next([](std::uint64_t, int) {});
-        looked += Walker::kWidth;
+        timed.next([](std::uint64_t, bool, int) {});
+        looked += Walker::kKeys;
         seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
     }
+    return double(looked) / seconds / 1e6;
+}
+
+// The method against OpenSSL on this machine, built as it is: the easy word's hits in two windows
+// are the ones found key by key, with the scalar hashes and with the wide ones, the wide hashes are
+// the scalar ones, and one thread's speed at the real thing.
+int selftest() {
+    const Stepper stepper;
+    std::size_t hits = 0;
+    if (!walkAgrees(stepper, false, &hits)) {
+        std::printf(
+            "selftest FAILED: the walk with the scalar hashes finds other hits than OpenSSL\n");
+        return 1;
+    }
+    if (!hashesAgree()) {
+        std::printf("selftest FAILED: the AVX-512 hashes differ from the scalar ones\n");
+        return 1;
+    }
+    if (!walkAgrees(stepper, true, nullptr)) {
+        std::printf(
+            "selftest FAILED: the walk with the AVX-512 hashes finds other hits than OpenSSL\n");
+        return 1;
+    }
     std::printf("selftest ok: %zu hits of an easy word agree with OpenSSL; one thread looks at "
-                "%.2f M addresses/s\n",
-                want.size(), double(looked) / seconds / 1e6);
+                "%.2f M addresses/s",
+                hits, speed(stepper, false));
+    if (avx512::supported())
+        std::printf(", with AVX-512 %.2f M/s", speed(stepper, true));
+    std::printf("\n");
     return 0;
 }
 } // namespace
@@ -303,6 +379,8 @@ int main(int argc, char **argv) {
                 posMax = std::stoi(next());
             else if (a == "--exact")
                 exact = true;
+            else if (a == "--no-avx512")
+                s.wide = false;
             else if (a == "--min-exact")
                 s.minExact = std::stoi(next());
             else if (a == "--hits")
@@ -359,6 +437,10 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "searching on %u threads: '%s' (%s) at char %d..%d after BM-  -> %s\n",
                      threads, word.c_str(), exact ? "exact case" : "any case", posMin, posMax,
                      s.output.c_str());
+        std::fprintf(stderr, "hashes: %s\n",
+                     s.wide && avx512::supported() && posMax < avx512::kFilterDigits
+                         ? "AVX-512"
+                         : "scalar (OpenSSL's)");
         std::vector<std::thread> pool;
         for (unsigned t = 0; t < threads; ++t)
             pool.emplace_back([&] { s.work(stepper); });

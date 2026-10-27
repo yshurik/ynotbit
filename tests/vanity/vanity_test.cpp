@@ -179,6 +179,18 @@ int naiveFind(const std::string &address, const std::string &word, int posMin, i
     return -1;
 }
 
+// The key whose public key is the negative of this one's: the order less the key.
+Key negated(const Key &k) {
+    Key out;
+    ec::curve().negate(k.data(), out.data());
+    return out;
+}
+// A walk's hits, by the key's offset and which of its two keys it is: delta * 2, plus 1 for the
+// negative's.
+uint64_t hitKey(uint64_t delta, bool negative) {
+    return delta * 2 + (negative ? 1 : 0);
+}
+
 Pattern patternFor(const std::string &word, int posMin, int posMax, bool exact) {
     Pattern p;
     std::string problem;
@@ -305,6 +317,23 @@ TEST(only_numbers_from_1_to_the_order_less_1_are_private_keys) {
     Key three{};
     three[31] = 3;
     CHECK(sum == three);
+    // The negative of a key is the order less the key, and back.
+    Key minusOne;
+    ec::curve().negate(one.data(), minusOne.data());
+    CHECK(minusOne == below);
+    ec::curve().negate(below.data(), minusOne.data());
+    CHECK(minusOne == one);
+    Rng rng(12);
+    for (int i = 0; i < 200; ++i) {
+        const Key k = rng.key();
+        const Key n = negated(k);
+        uint8_t a[65], b[65], minusY[32];
+        CHECK(ec::curve().publicKey(k.data(), a) && ec::curve().publicKey(n.data(), b));
+        // The same x, and the y that is p less the first one: the point and its negative.
+        feToBytes(feNeg(feFromBytes(a + 33)), minusY);
+        CHECK(std::memcmp(a + 1, b + 1, 32) == 0 && std::memcmp(minusY, b + 33, 32) == 0);
+        CHECK(negated(n) == k);
+    }
 }
 
 TEST(a_window_that_would_add_a_point_to_its_own_negative_is_refused) {
@@ -493,40 +522,183 @@ TEST(a_walker_reports_the_keys_that_have_the_word_and_no_others) {
     std::map<uint64_t, int> found;
     const int windows = 6;
     for (int w = 0; w < windows; ++w)
-        walker.next([&](uint64_t delta, int place) {
-            CHECK(!found.count(delta));
-            found[delta] = place;
+        walker.next([&](uint64_t delta, bool negative, int place) {
+            CHECK(!found.count(hitKey(delta, negative)));
+            found[hitKey(delta, negative)] = place;
         });
 
-    // The same keys, one by one, through OpenSSL and the core.
+    // The same keys, one by one, through OpenSSL and the core: each point's key and its negative.
     std::map<uint64_t, int> want;
     int zeroFirst = 0;
-    for (uint64_t delta = 0; delta < uint64_t(windows) * Stepper::kWidth; ++delta) {
-        const Key enc = plus(start, delta);
-        std::string address;
-        CHECK(ec::address(sign.data(), enc.data(), address));
-        if (address.size() < 38) { // a RIPE with a zero byte first: another kind of address
-            ++zeroFirst;
-            continue;
+    for (uint64_t delta = 0; delta < uint64_t(windows) * Stepper::kWidth; ++delta)
+        for (const bool negative : {false, true}) {
+            const Key enc = negative ? negated(plus(start, delta)) : plus(start, delta);
+            std::string address;
+            CHECK(ec::address(sign.data(), enc.data(), address));
+            if (address.size() < 38) { // a RIPE with a zero byte first: another kind of address
+                ++zeroFirst;
+                continue;
+            }
+            const int place = naiveFind(address, word, 2, 5, false);
+            if (place >= 0) {
+                want[hitKey(delta, negative)] = place;
+                CHECK_EQ(address, bmc::phrase::fromKeys(sign.data(), enc.data()).address);
+            }
         }
-        const int place = naiveFind(address, word, 2, 5, false);
-        if (place >= 0) {
-            want[delta] = place;
-            CHECK_EQ(address, bmc::phrase::fromKeys(sign.data(), enc.data()).address);
-        }
-    }
-    CHECK(want.size() > 100);
+    CHECK(want.size() > 200);
     CHECK(zeroFirst > 0); // the walker was held to leaving those out
     CHECK(found == want);
+}
+
+// --- the wide hashes (AVX-512), on a processor that has them ----------------------------------
+
+namespace {
+// Limbs for sixteen keys, as anything a hash can be given: random, or all bits set or none, or one
+// bit, where carries and shifts go wrong.
+void fillLimbs(Rng &rng, int style, uint64_t limbs[4][avx512::kLanes]) {
+    for (int k = 0; k < 4; ++k)
+        for (int lane = 0; lane < avx512::kLanes; ++lane) {
+            switch (style % 4) {
+            case 0:
+                limbs[k][lane] = rng.next();
+                break;
+            case 1:
+                limbs[k][lane] = ((lane + k) & 1) ? ~0ULL : 0;
+                break;
+            case 2:
+                limbs[k][lane] = 1ULL << ((lane * 4 + k * 17) % 64);
+                break;
+            default:
+                limbs[k][lane] = ~(1ULL << ((lane * 4 + k * 17) % 64));
+                break;
+            }
+        }
+}
+} // namespace
+
+TEST(the_wide_hashes_are_the_scalar_ones) {
+    if (!avx512::supported())
+        return; // this processor has no AVX-512
+    Rng rng(8);
+    for (int round = 0; round < 400; ++round) {
+        const Key sign = rng.key();
+        const auto signPub = publicOf(sign);
+        avx512::BatchHasher wide(signPub.data());
+        PairHasher scalar(signPub.data());
+        alignas(64) uint64_t xs[4][avx512::kLanes], ys[4][avx512::kLanes];
+        alignas(64) uint32_t words[4][avx512::kLanes];
+        fillLimbs(rng, round, xs);
+        fillLimbs(rng, round / 4 + round, ys);
+        wide.hash(xs, ys, words);
+        for (int lane = 0; lane < avx512::kLanes; ++lane) {
+            uint8_t ripe[20];
+            scalar.ripe(Fe{{xs[0][lane], xs[1][lane], xs[2][lane], xs[3][lane]}},
+                        Fe{{ys[0][lane], ys[1][lane], ys[2][lane], ys[3][lane]}}, ripe);
+            uint8_t got[16];
+            for (int w = 0; w < 4; ++w)
+                for (int b = 0; b < 4; ++b)
+                    got[4 * w + b] = uint8_t(words[w][lane] >> (8 * b));
+            CHECK_EQ(bmc::hex(bmc::ByteView(got, 16)), bmc::hex(bmc::ByteView(ripe, 16)));
+        }
+    }
+}
+
+TEST(the_filter_of_the_wide_hashes_drops_no_match_and_most_of_what_is_not) {
+    if (!avx512::supported())
+        return;
+    Rng rng(10);
+    struct Case {
+        const char *word;
+        int posMin, posMax;
+        bool exact;
+        double most; // the share of lanes that may pass: the filter does filter
+    };
+    const Case cases[] = {{"a", 2, 5, false, 0.3},        {"ab", 2, 5, false, 0.05},
+                          {"z", 2, 5, true, 0.2},         {"nickbot", 2, 5, false, 0.01},
+                          {"nickbot", 2, 2, true, 0.001}, {"k", 3, 6, false, 0.3}};
+    for (const auto &c : cases) {
+        const auto pattern = patternFor(c.word, c.posMin, c.posMax, c.exact);
+        const Key sign = rng.key();
+        const auto signPub = publicOf(sign);
+        avx512::BatchHasher wide(signPub.data());
+        long passed = 0, lanes = 0, matches = 0;
+        for (int batch = 0; batch < 4000; ++batch) {
+            alignas(64) uint64_t xs[4][avx512::kLanes], ys[4][avx512::kLanes];
+            alignas(64) uint32_t words[4][avx512::kLanes];
+            fillLimbs(rng, 0, xs);
+            fillLimbs(rng, 0, ys);
+            wide.hash(xs, ys, words);
+            const auto mask = wide.candidates(words, pattern.posMin(), pattern.posMax(),
+                                              pattern.letters(), int(pattern.word().size()));
+            for (int lane = 0; lane < avx512::kLanes; ++lane) {
+                uint8_t ripe[20] = {0};
+                for (int w = 0; w < 4; ++w)
+                    for (int b = 0; b < 4; ++b)
+                        ripe[4 * w + b] = uint8_t(words[w][lane] >> (8 * b));
+                const bool may = (mask >> lane) & 1;
+                if (ripe[0] != 0 && pattern.match(ripe) >= 0) {
+                    ++matches;
+                    CHECK(may); // a match is never dropped
+                }
+                if (ripe[0] == 0)
+                    CHECK(!may); // an address of another length is not for this search
+                passed += may;
+                ++lanes;
+            }
+        }
+        CHECK(double(passed) < c.most * double(lanes));
+        CHECK(matches > 0 || std::string(c.word) == "nickbot");
+    }
+}
+
+TEST(the_wide_walker_finds_what_the_scalar_one_does) {
+    if (!avx512::supported())
+        return;
+    const Stepper stepper;
+    Rng rng(11);
+    struct Case {
+        const char *word;
+        int posMin, posMax;
+        bool exact;
+    };
+    const Case cases[] = {{"a", 2, 5, false},
+                          {"ab", 2, 5, false},
+                          {"n", 2, 2, true},
+                          {"z", 3, 6, false},
+                          {"Zq", 2, 4, true}};
+    for (const auto &c : cases) {
+        const auto pattern = patternFor(c.word, c.posMin, c.posMax, c.exact);
+        const Key sign = rng.key(), start = rng.key();
+        Walker scalar(pattern, stepper, sign.data(), start.data(), false);
+        Walker wide(pattern, stepper, sign.data(), start.data(), true);
+        CHECK(!scalar.wide() && wide.wide());
+        std::map<uint64_t, int> a, b;
+        for (int w = 0; w < 6; ++w) {
+            scalar.next([&](uint64_t delta, bool negative, int place) {
+                a[hitKey(delta, negative)] = place;
+            });
+            wide.next([&](uint64_t delta, bool negative, int place) {
+                b[hitKey(delta, negative)] = place;
+            });
+        }
+        CHECK(a == b);
+        if (std::string(c.word) == "a" || std::string(c.word) == "n")
+            CHECK(a.size() > 40);
+    }
+    // A place the filter does not reach is looked for the scalar way.
+    const auto far = patternFor("a", 2, 7, false);
+    const Key sign = rng.key(), start = rng.key();
+    CHECK(!Walker(far, stepper, sign.data(), start.data(), true).wide());
 }
 
 // --- the program --------------------------------------------------------------------------------
 
 namespace {
 // Runs a command and returns what it printed.
-std::string output(const std::string &command, int *status = nullptr) {
+std::string output(const std::string &command, int *status = nullptr,
+                   const std::string &errors = "/dev/null") {
     std::string out;
-    FILE *p = popen((command + " 2>/dev/null").c_str(), "r");
+    FILE *p = popen((command + " 2>" + errors).c_str(), "r");
     CHECK(p != nullptr);
     char buffer[512];
     while (size_t n = fread(buffer, 1, sizeof buffer, p))
@@ -560,9 +732,15 @@ TEST(the_program_finds_hits_that_are_the_addresses_of_their_keys) {
     const auto dir = bmc::test::tempDir();
     const auto hits = dir + "/hits.txt";
     int status = 0;
-    output(bin + " -j 2 --word a --pos-min 2 --pos-max 3 --hits 6 --seconds 20 -o " + hits,
-           &status);
+    const auto log = dir + "/log.txt";
+    output(bin + " -j 2 --word a --pos-min 2 --pos-max 3 --hits 30 --seconds 20 -o " + hits,
+           &status, log);
     CHECK_EQ(status, 0);
+    // The program checks every match with OpenSSL before it writes it, and drops and counts the
+    // ones that do not check out: none may, so a key made wrongly is not hidden by being dropped.
+    const auto said = bmc::stringOf(bmc::test::readFile(log));
+    CHECK(said.find("did not check out") == std::string::npos);
+    CHECK(said.find("stopped after looking at") != std::string::npos);
     CHECK_EQ(modeOf(hits), 0600); // the keys of a hit are secrets
     const auto text = bmc::stringOf(bmc::test::readFile(hits));
     std::vector<std::string> lines;
@@ -571,7 +749,7 @@ TEST(the_program_finds_hits_that_are_the_addresses_of_their_keys) {
         lines.push_back(text.substr(at, end - at));
         at = end + 1;
     }
-    CHECK(lines.size() >= 6);
+    CHECK(lines.size() >= 30);
     for (const auto &line : lines) {
         // address place letters-in-case signing-key encryption-key
         const auto f = fieldsOf(line);
@@ -635,6 +813,32 @@ TEST(the_program_keeps_only_the_hits_with_enough_letters_in_the_case_typed) {
         at = end + 1;
     }
     CHECK(lines >= 3);
+}
+
+TEST(the_program_with_the_scalar_hashes_finds_hits_that_check_out) {
+    const std::string bin = BM_VANITY_BIN;
+    const auto dir = bmc::test::tempDir();
+    const auto hits = dir + "/hits.txt", log = dir + "/log.txt";
+    int status = 0;
+    output(bin + " -j 2 --no-avx512 --word a --pos-min 2 --pos-max 3 --hits 20 --seconds 20 -o " +
+               hits,
+           &status, log);
+    CHECK_EQ(status, 0);
+    const auto said = bmc::stringOf(bmc::test::readFile(log));
+    CHECK(said.find("hashes: scalar") != std::string::npos);
+    CHECK(said.find("did not check out") == std::string::npos);
+    const auto text = bmc::stringOf(bmc::test::readFile(hits));
+    int lines = 0;
+    for (size_t at = 0; at < text.size();) {
+        const auto end = text.find('\n', at);
+        const auto f = fieldsOf(text.substr(at, end - at));
+        CHECK_EQ(int(f.size()), 5);
+        const auto sign = bmc::unhex(f[3]), enc = bmc::unhex(f[4]);
+        CHECK_EQ(bmc::phrase::fromKeys(sign.data(), enc.data()).address, f[0]);
+        ++lines;
+        at = end + 1;
+    }
+    CHECK(lines >= 20);
 }
 
 TEST(the_program_checks_itself) {

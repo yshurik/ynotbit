@@ -12,6 +12,7 @@ bm_vanity --word nickbot --min-exact 6                              # at least 6
 bm_vanity --export BM-87... -f hits.txt -o nickbot.keys             # the two keys of one hit, to a new file
 bm_vanity --address-of nickbot.keys                                 # the address of a keys file, made with OpenSSL alone
 bm_vanity --selftest                                                # the method against OpenSSL on this machine, and its speed
+bm_vanity --word nickbot --no-avx512                                # the hashes of OpenSSL's, where AVX-512 would be used
 ```
 
 ## Build
@@ -20,10 +21,12 @@ It is part of the Unix builds (`cmake --build build --target bm_vanity`, tests i
 only. To search on a machine, build it there, for that machine's processor:
 
 ```
-g++ -O3 -march=native -std=c++17 -pthread -Wno-deprecated-declarations -o bm_vanity bm_vanity.cpp -lcrypto
+g++ -O3 -march=native -std=c++17 -pthread -Wno-deprecated-declarations -o bm_vanity bm_vanity.cpp avx512.cpp -lcrypto
 ```
 
-(`vanity.h` has the method, `bm_vanity.cpp` the threads and the files.) Run it with `nice`: it takes every core it is given.
+(`vanity.h` has the method, `avx512.cpp` the hashes for processors with AVX-512, `bm_vanity.cpp` the threads and the files.) Run it
+with `nice`: it takes every core it is given. On a processor without AVX-512, and in any build for another kind of processor,
+`avx512.cpp` is an empty stand-in and OpenSSL's hashes are used; the program says which on its second line.
 
 ## How it is fast
 
@@ -32,18 +35,32 @@ random signing key and starts the encryption key at a random number, then steps 
 last one plus G, a single point addition, and 1025 additions share one field inversion (Montgomery's trick). The field arithmetic is
 its own, for secp256k1, four 64-bit limbs.
 
+Every point is two keys. The public key of the encryption key `k` is `(x, y)`, and that of the key `n - k` (n the order of the
+curve) is `(x, p - y)`: the second key costs a subtraction, not a point, so a step through 1025 points looks at 2050 keys.
+
 An address is not made to look at it either. The address is a number: `04 01`, the 20 bytes of the RIPE and a 4-byte checksum, in base
 58. Its first characters depend on its top 128 bits, `04 01` and the first 14 bytes of the RIPE, so one multiplication by a constant
-and twelve digit steps give them, and the word is looked for in those digits. What is left per address is the two hashes
-(SHA-512 of the 130 bytes of the two public keys, then RIPEMD-160), which are OpenSSL's block functions called with nothing around
-them. On a 28 core Xeon Gold at 2.2 GHz that is 21 million addresses a second (the search from a phrase did 0.48); an Apple
-M-series core does 1.6 million a second by itself.
+and twelve digit steps give them, and the word is looked for in those digits. What is left per key is the two hashes (SHA-512 of the
+130 bytes of the two public keys, then RIPEMD-160), which were OpenSSL's block functions called with nothing around them: 1.1
+microseconds a key on a Xeon Gold at 2.2 GHz, two thirds of the time of a search.
+
+On a processor with AVX-512 (`avx512.cpp`) they are done sixteen keys at a time: SHA-512 on the eight 64-bit lanes of a register (twice)
+and RIPEMD-160 on sixteen 32-bit lanes, 130 nanoseconds a key. The first characters of the addresses are read off the RIPEs in the
+registers too, in floating point, which tells in about 8 nanoseconds a key which keys may have the word (one in a hundred thousand
+matches might be lost by it, and the ones it lets through are looked at again with the exact integers). Only those reach the scalar
+code. The wide hashes are chosen when the program starts, by what the processor says, and `--no-avx512` turns them off.
+
+On a 28 core Xeon Gold at 2.2 GHz the search from a phrase did 0.48 million keys a second; the first version of this one, with
+OpenSSL's hashes, 21 million; with the wide hashes 70 million, and with the second key of every point 99 million (3.6 million on a
+single thread). An Apple M-series core does 1.7 million by itself, with no wide hashes.
 
 Only a match is made in full, and made with `namespace ec`, which is OpenSSL's code and shares nothing with the search: its keys
 are turned into the address by `EC_POINT_mul`, `SHA512`, `RIPEMD160` and a plain base 58, and the word has to be where the fast way
 said. A match that fails that is dropped and counted (a warning at the end); none ever should. The tests check the field against
-OpenSSL's big numbers, the points against `EC_POINT_mul`, the digits against the full address of tens of thousands of RIPEs, and a
-whole walk against the same keys looked at one by one.
+OpenSSL's big numbers, the points against `EC_POINT_mul`, the digits against the full address of tens of thousands of RIPEs, the
+wide hashes against the scalar ones on any limbs (also the filter: it may let a lane through that has no word, never drop one that
+has), and a whole walk, with either hashes, against the same keys looked at one by one. The tests of the wide hashes run where the
+processor has AVX-512 and are skipped elsewhere.
 
 ## What to expect
 
@@ -58,8 +75,9 @@ The exact odds per address:
 | one to three characters later | 1 in 7e10 each | 1 in 2.2e12 each |
 | any of the four places | 1 in 1.6e10 | 1 in 4.0e11 |
 
-At 21 million addresses a second that is a hit about every 13 minutes for any case at any place; `BM-87nickbot` in any case every 44
-minutes, and in lower case every 12 hours. A search has no memory: it is never "due".
+At 99 million keys a second (the Xeon above) that is a hit about every 3 minutes for any case at any place; `BM-87nickbot` in any
+case every 9 minutes, in lower case every 2.5 hours (every 68 minutes at any of the four places). A search has no memory: it is never
+"due".
 
 ## Secrecy
 
