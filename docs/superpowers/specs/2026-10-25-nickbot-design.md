@@ -117,7 +117,7 @@ PRAGMA user_version = 1; every change is a numbered migration
 - `nickbot admin -db FILE stats|export|remove <nick>|reserve <nick>|history <address>` works on the database while the service runs (`docker exec`). That is the whole moderation story for now.
 - A daily snapshot (`VACUUM INTO`) to `/data/backup/`, seven kept.
 - Its address and node are separate from the echo bot's: another phrase, another published port.
-- The address of the default nickbot is a constant in the client. **(my call)** Until the maintainer picks a vanity address (the echo bot's `BM-87echo...` was searched with `bm-vanity`), the repository carries the address of a development phrase kept outside the repository, and replacing it is one line.
+- The address of the default nickbot is a constant in the client: the vanity address `BM-87nickbot3AwHg3ZfcuZaRpHiCH9Kdk4Z5z`, found with `tools/vanity` on 2026-10-27 (the echo bot's `BM-87echo...` was searched with the first `bm-vanity`). The service runs from the address's two keys (`--keys-file`), which the maintainer keeps outside the repository, and replacing the address is one line. Until then the repository carried the address of a development phrase.
 
 ## 4. Privacy
 

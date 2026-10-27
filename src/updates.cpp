@@ -6,7 +6,7 @@
 
 namespace bm::updates {
 namespace {
-const QString kDefaultNickbotAddress = "BM-87VUnxPR6LxNzDw21trpJH9Q7meWUmAMpFT";
+const QString kDefaultNickbotAddress = "BM-87nickbot3AwHg3ZfcuZaRpHiCH9Kdk4Z5z";
 QList<DefaultSubscription> &defaults() {
     static QList<DefaultSubscription> list{
         // Weekly news of the network: chans, tools, subscriptions worth following.
@@ -19,9 +19,9 @@ QList<DefaultContact> &contactDefaults() {
         // The chat responder run for ynotbit, a vanity address (BM-87echo...): it answers a chat
         // with what it was sent.
         {"BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8", "/echobot", "/echobot"},
-        // The nicknames service run for ynotbit (docs/nickbot.md). This is the address of a
-        // development phrase until the maintainer chooses the real one; replacing it is this line,
-        // the one below and nickbot/seed.example.txt.
+        // The nicknames service run for ynotbit (docs/nickbot.md), a vanity address (BM-87nickbot...)
+        // found with tools/vanity: it runs from the address's two keys, not from a phrase. Replacing
+        // it is this line, the one below and nickbot/seed.example.txt.
         {kDefaultNickbotAddress, "/nickbot", "/nickbot"},
     };
     return list;
