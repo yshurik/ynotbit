@@ -4,6 +4,7 @@
 #include <bmc/identity.h>
 #include <bmc/text.h>
 #include <bmc/wire.h>
+#include <set>
 
 namespace bmc {
 Client::Client(std::shared_ptr<Vault> vault, std::shared_ptr<Mailbox> mailbox, std::string root)
@@ -58,7 +59,10 @@ std::string queueChatChecked(Mailbox &mailbox, const Vault &vault, const std::st
 
 std::string Client::sendChat(const std::string &from, const std::string &peer,
                              const std::string &body, int64_t now) {
-    return queueChatChecked(*mailbox_, *vault_, from, peer, body, now + kChatTtlSeconds, false);
+    const auto id =
+        queueChatChecked(*mailbox_, *vault_, from, peer, body, now + kChatTtlSeconds, false);
+    watchPerson(peer);
+    return id;
 }
 
 std::string Client::sendServiceChat(const std::string &from, const std::string &peer,
@@ -115,6 +119,37 @@ void Client::sendLetter(const std::string &id, int64_t now) {
     // The caller has its own, friendlier wording for an oversized letter; this is the backstop.
     require(letterTextBytes(m.subject, m.body) <= kMaxLetterText, "Letter is too large");
     mailbox_->queueDraft(id, kind, now + 4 * 86400);
+    if (kind != "broadcast")
+        watchPerson(m.to);
     Delivery::rereadKept(*mailbox_); // the recipient's key may already be kept
+}
+
+bool Client::watchPerson(const std::string &address) {
+    try {
+        return mailbox_->isOpen() && Delivery::watchPerson(*mailbox_, *vault_, address);
+    } catch (const std::exception &) {
+        return false;
+    }
+}
+
+int Client::watchKnownPeople() {
+    require(mailbox_->isOpen(), "Open a mailbox first");
+    std::set<std::string> people;
+    for (const auto &c : mailbox_->contacts())
+        people.insert(c.address);
+    for (const char *folder : {"Inbox", "Archive"})
+        for (auto &address : mailbox_->senders(folder))
+            people.insert(std::move(address));
+    for (auto &address : mailbox_->recipients("Sent"))
+        people.insert(std::move(address));
+    for (auto &address : mailbox_->chatPeers())
+        people.insert(std::move(address));
+    int made = 0;
+    Mailbox::Batch batch(*mailbox_); // one commit, however many are made
+    for (const auto &address : people)
+        if (Delivery::watchPerson(*mailbox_, *vault_, address))
+            ++made;
+    batch.commit();
+    return made;
 }
 } // namespace bmc

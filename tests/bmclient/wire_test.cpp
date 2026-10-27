@@ -73,6 +73,38 @@ TEST(wire_largest_letter_fits_one_object) {
     CHECK(cast.size() <= size_t(bmc::kMaxObjectBytes));
 }
 
+// The scan tells a broadcast's address from its tag, as the thousands of addresses a mailbox may
+// listen for are too many to try one by one.
+TEST(a_broadcast_is_told_from_its_address_by_its_tag) {
+    for (int v = 2; v <= 4; ++v) {
+        const auto i = fixed(1, 2, v), other = fixed(3, 4, v);
+        const auto &fixture = v == 2   ? referenceBroadcast2
+                              : v == 3 ? referenceBroadcast3
+                                       : referenceBroadcast4;
+        const auto broadcast = Wire::encodeBroadcast(i, "News", "Body", 1700000000);
+        const auto mine = Wire::tagOfAddress(i.address);
+        CHECK(mine.has_value());
+        if (v < 4) {
+            // Before version 4 an address's broadcasts are version 4 objects, which carry no tag.
+            CHECK(mine->empty());
+            CHECK(Wire::tagOfBroadcast(broadcast).empty());
+            CHECK(Wire::tagOfBroadcast(fixture).empty());
+        } else {
+            CHECK_EQ(mine->size(), size_t(32));
+            CHECK(Wire::tagOfBroadcast(broadcast) == *mine);
+            CHECK(Wire::tagOfBroadcast(fixture) == *mine); // the independent Python broadcast
+            CHECK(*Wire::tagOfAddress(other.address) != *mine);
+        }
+    }
+    CHECK(!Wire::tagOfAddress("BM-garbage").has_value());
+    CHECK(!Wire::tagOfAddress("").has_value());
+    CHECK(Wire::tagOfBroadcast(referenceMessage).empty());    // an object, but not a broadcast
+    CHECK(Wire::tagOfBroadcast(bmc::Bytes{1, 2, 3}).empty()); // no object at all
+    auto cut = Wire::encodeBroadcast(fixed(1, 2, 4), "News", "Body", 1700000000);
+    cut.resize(30); // a broadcast with no room for its tag
+    CHECK(Wire::tagOfBroadcast(cut).empty());
+}
+
 TEST(wire_and_the_simple_protocol_read_each_other) {
     const auto sender = fixed(1, 2, 3), recipient = fixed(3, 4, 4);
     const auto message = Wire::encodeMessage(sender, Wire::publicIdentity(recipient), "Hello", "x",

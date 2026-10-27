@@ -1434,8 +1434,22 @@ static void testPyBitmessageImportAddsPeople(const QTemporaryDir &temp) {
         return Dialog::tr("Contacts added from the letters: %1").arg(n);
     };
 
+    const auto watched = [&](const std::string &address) {
+        const auto all = own.coreMailbox().watched();
+        return std::find(all.begin(), all.end(), address) != all.end();
+    };
+    require(!watched(ann) && !watched(ben), "test sanity: nobody is watched before the import");
     auto expected = book(); // what a mailbox starts with
     const auto first = importFrom(sourceDir);
+    require(watched(ann) && watched(ben) && watched(dee) && !watched(cy) && !watched(me.address),
+            "after an import the people it brought are watched for broadcasts, with no "
+            "subscription listed: not the identity that came in, nor one whose letter was "
+            "deleted over there");
+    bool listed = false; // the one PyBitmessage keeps by default is a subscription of its own
+    for (const auto &sub : own.subscriptions())
+        listed = listed ||
+                 QStringList({q(ann), q(ben), q(dee)}).contains(sub.toMap()["address"].toString());
+    require(!listed, "and none of them is listed as a subscription");
     expected[q(ann)] = bm::addressTitle(q(ann));
     expected[q(ben)] = bm::addressTitle(q(ben));
     expected[q(dee)] = "Dee from PyBitmessage";
@@ -1458,6 +1472,7 @@ static void testPyBitmessageImportAddsPeople(const QTemporaryDir &temp) {
     const auto third = importFrom(sourceDir);
     require(own.isContact(q(eve)) && !own.isContact(q(ann)) && third.contains(line(1)),
             "a later import brings the sender of its new letters, and no one else");
+    require(watched(eve), "and the sender of its new letters is watched too");
 
     // A stopped import has stored letters, and their people join the book all the same.
     pybmfix::Folder many;
@@ -1481,6 +1496,7 @@ static void testPyBitmessageImportAddsPeople(const QTemporaryDir &temp) {
     require(own.isContact(q(fay)) &&
                 slow.findChild<QLabel *>("pybmResultText")->text().contains(line(1)),
             "what a stopped import stored brings its people, and the result says so");
+    require(watched(fay), "and they are watched for broadcasts as well");
 }
 // The nickbots of a mailbox: the list, the hidden chan that lookups go out from, the lookups, the
 // answers that come back, the registration of a nickname, and the nicknames the address book keeps.
@@ -3280,6 +3296,227 @@ static void testReaderHeader(const QTemporaryDir &temp) {
     require(name->isVisible() && name->text().contains(bm::Session::tr("ynotbit updates")) &&
                 add->isVisible() && name->toolTip().isEmpty(),
             "a name that no subscription gave has no such tip");
+}
+// The people the user deals with are listened to for broadcasts, and listed as subscriptions only
+// when they post (a pending subscription): the address book, the letters and chats they wrote or
+// were written, caught up once for a mailbox from before and for what an import brings. The
+// Subscriptions page lists the newest poster first.
+static void testPendingSubscriptions(const QTemporaryDir &temp) {
+    // The built-in contacts, subscriptions and nickbots would add addresses of their own.
+    bm::updates::setDefaultContactsForTesting({});
+    bm::updates::setDefaultSubscriptionsForTesting({});
+    bm::updates::setDefaultNickbotsForTesting({});
+    const auto vaultFile = temp.filePath("pending.bmvault");
+    const auto oldFile = temp.filePath("pending-old.bmmail");
+    const auto laterFile = temp.filePath("pending-later.bmmail");
+    const auto person = [](const char *who) { return bm::Protocol::identity(who).address; };
+    const auto contact = person("pending contact"), writer = person("pending writer"),
+               archived = person("pending archived"), trashed = person("pending trashed"),
+               poster = person("pending chan poster"), written = person("pending written to"),
+               chatty = person("pending chatty"), declined = person("pending declined"),
+               formerly = person("pending formerly followed"),
+               subscribed = person("pending subscribed"), late = person("pending late writer"),
+               added = person("pending added by hand"), newest = person("pending newest poster"),
+               middle = person("pending middle poster"), oldest = person("pending oldest poster"),
+               silent = person("pending silent subscription"), twice = person("pending twice");
+    constexpr qint64 base = 1700000000;
+    bm::Vault made;
+    made.create(vaultFile, "test password");
+    const auto mine = made.addIdentity("Mine");
+    const auto chan = made.addChannel("pending chan", "Pending chan");
+    {
+        // A mailbox from before pending subscriptions.
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(oldFile, key, made.mailboxKey(key));
+        box.saveContact(contact, "Contact");
+        box.store("i1", writer, mine, "From the writer", "hi", 1, "Inbox");
+        box.store("a1", archived, mine, "Archived", "hi", 2, "Archive");
+        box.store("t1", trashed, mine, "Deleted", "hi", 3, "Trash");
+        box.store("c1", poster, chan, "In the chan", "hi", 4, "Channels");
+        box.store("s1", mine, written, "Hello", "hi", 5, "Sent");
+        box.store("s2", mine, chan, "To the chan", "hi", 6, "Sent");
+        box.store("s3", mine, mine, "A note to self", "hi", 7, "Inbox");
+        box.storeChat("chat-1", chatty, mine, 8, "hello", QDateTime::currentSecsSinceEpoch() + 3600,
+                      false);
+        box.store("i2", declined, mine, "From one unsubscribed from", "hi", 9, "Inbox");
+        box.subscribe(declined, "Declined");
+        box.unsubscribe(declined);
+        box.store("i3", subscribed, mine, "From a subscription", "hi", 10, "Inbox");
+        box.subscribe(subscribed, "My subscription");
+        box.store("i4", formerly, mine, "From one followed once", "hi", 11, "Inbox");
+        // Subscriptions with posts at different times, one with none, and one whose subscription
+        // is gone but whose posts stay.
+        box.subscribe(newest, "Newest");
+        box.subscribe(middle, "Middle");
+        box.subscribe(oldest, "Oldest");
+        box.subscribe(silent, "Silent one");
+        const auto post = [&](const char *id, const std::string &who, qint64 at) {
+            bmc::ImportedLetter l;
+            l.id = id;
+            l.sender = l.recipient = who;
+            l.subject = "A post";
+            l.body = "hi";
+            l.folder = "Broadcasts";
+            l.received = at;
+            return l;
+        };
+        box.core().importLetters({post("p1", newest.toStdString(), base + 300),
+                                  post("p2", formerly.toStdString(), base + 250),
+                                  post("p3", middle.toStdString(), base + 200),
+                                  post("p4", oldest.toStdString(), base + 100),
+                                  post("p5", oldest.toStdString(), base + 50)});
+    }
+    {
+        // One whose address-book catch-ups were done by an earlier release, and this one's not.
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(laterFile, key, made.mailboxKey(key));
+        box.setSetting("migrated:sent-recipients", "1");
+        box.setSetting("migrated:inbox-senders", "1");
+        box.store("i1", late, mine, "From the late writer", "hi", 1, "Inbox");
+    }
+    made.lock();
+    QDir().mkpath(temp.filePath("pending-node"));
+    {
+        QSettings config(temp.filePath("pending-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", oldFile);
+    }
+    bm::Session session(temp.filePath("pending-node"), true);
+    bm::DesktopWindow window(session, temp.filePath("sounds-pending"));
+    window.show();
+    QCoreApplication::processEvents();
+    session.beginVaultUnlock();
+    session.submitVaultPassword("test password");
+    require(session.unlocked() && session.mailboxOpen(), "the mailbox from before opens");
+
+    const auto watched = [&] {
+        QSet<QString> all;
+        for (const auto &address : session.coreMailbox().watched())
+            all << QString::fromStdString(address);
+        return all;
+    };
+    const auto listed = [&] {
+        QSet<QString> all;
+        for (const auto &s : session.subscriptions())
+            all << s.toMap()["address"].toString();
+        return all;
+    };
+    const QSet<QString> onPurpose{subscribed, newest, middle, oldest, silent};
+    require(watched() == QSet<QString>{contact, writer, archived, written, chatty} + onPurpose,
+            "opening makes a pending subscription to everyone the user deals with: the address "
+            "book, who wrote to the Inbox or the Archive, who was written to, who chats; not the "
+            "trash, a chan's posts, a chan, oneself, one unsubscribed from, or one followed once");
+    require(listed() == onPurpose,
+            "and the list keeps only the subscriptions made on purpose: the pending are not shown");
+    require(!session.coreMailbox().setting("migrated:pending-subscriptions").empty(),
+            "the catch-up is marked done");
+
+    // The Subscriptions page: the newest poster first, then those that never posted by name; the
+    // pending ones are not on it.
+    // (Without ynotbit's own announcements, which come with notices on and never post here.)
+    const auto chips = [&] {
+        QList<QPair<int, QString>> found;
+        for (auto chip : window.findChildren<QPushButton *>("channelChip"))
+            if (chip->isVisible() &&
+                chip->property("address").toString() != bm::updates::publisherAddress())
+                found << qMakePair(chip->mapTo(&window, QPoint(0, 0)).y(),
+                                   chip->property("address").toString());
+        std::sort(found.begin(), found.end());
+        QStringList addresses;
+        for (const auto &entry : found)
+            addresses << entry.second;
+        return addresses;
+    };
+    window.findChild<QToolButton *>("folderIcon_Broadcasts")->click();
+    QTest::qWait(50);
+    require(chips() == QStringList({newest, formerly, middle, oldest, subscribed, silent}),
+            "the Subscriptions page lists the source that posted last first, and those with no "
+            "post after them, in order of name; no pending subscription is on it");
+    QStringList sources;
+    for (const auto &s : session.broadcastSources())
+        if (s.toMap()["address"].toString() != bm::updates::publisherAddress())
+            sources << s.toMap()["address"].toString();
+    require(sources == chips(), "and the session's sources are in that order");
+
+    // A contact added by hand is a person the user deals with.
+    require(session.addContact(added, "Added by hand"), "a contact is added");
+    require(watched().contains(added) && listed() == onPurpose,
+            "a contact added makes a pending subscription, not a listed one");
+
+    // A pending subscription is listed once its address posts, with the newest post first.
+    session.coreMailbox().store("first-post", writer.toStdString(), writer.toStdString(),
+                                "First post", "hi", -1, "Broadcasts");
+    session.coreMailbox().reveal(writer.toStdString());
+    emit session.changed();
+    QTest::qWait(50);
+    require(listed() == onPurpose + QSet<QString>{writer} &&
+                chips() ==
+                    QStringList({writer, newest, formerly, middle, oldest, subscribed, silent}),
+            "a pending subscription whose address posts is listed, and its post is the newest");
+    QString shownName;
+    for (const auto &source : session.broadcastSources())
+        if (source.toMap()["address"].toString() == writer)
+            shownName = source.toMap()["label"].toString();
+    require(shownName == bm::addressTitle(writer),
+            "it has no name of its own, so the page shows the address book's name for it");
+
+    // Unsubscribing sticks: a letter from the address does not bring the subscription back.
+    session.unsubscribe(writer);
+    require(!session.coreClient().watchPerson(writer.toStdString()) && !watched().contains(writer),
+            "an address the user unsubscribed from is not watched again");
+
+    // Once: what comes to a mailbox after its catch-up is not caught up by opening it again.
+    const auto offline = [&](const QString &file, const std::function<void(bm::Mailbox &)> &write) {
+        bm::Vault peek;
+        peek.unlock(vaultFile, "test password");
+        bm::Mailbox box;
+        for (const auto &id : peek.mailboxIds()) {
+            try {
+                box.open(file, peek.mailboxKey(id));
+                break;
+            } catch (...) {
+            }
+        }
+        require(box.isOpen(), "the mailbox opens with one of the vault's keys");
+        write(box);
+    };
+    session.closeMailbox();
+    offline(oldFile, [&](bm::Mailbox &box) {
+        box.store("i9", late, mine, "From a later writer", "hi", 20, "Inbox");
+    });
+    session.openMailboxAt(oldFile);
+    require(session.mailboxOpen() && !watched().contains(late),
+            "a person who wrote after the catch-up is not caught up by opening the mailbox again");
+
+    // Each catch-up has a flag of its own: a mailbox with the address-book ones done gets this one.
+    session.openMailboxAt(laterFile);
+    require(session.mailboxOpen() && watched() == QSet<QString>{late} &&
+                session.contacts().isEmpty(),
+            "a mailbox whose address-book catch-ups were done is caught up for pending "
+            "subscriptions only, and is not given contacts");
+
+    // A mailbox made now has nothing to catch up on.
+    const auto madeNow = temp.filePath("pending-made-now.bmmail");
+    auto answer = new QTimer(&window);
+    QObject::connect(answer, &QTimer::timeout, &window, [&, answer] {
+        if (auto d = qobject_cast<QFileDialog *>(QApplication::activeModalWidget())) {
+            answer->stop();
+            chooseFile(d, madeNow);
+        }
+    });
+    answer->start(10);
+    session.createMailbox();
+    answer->deleteLater();
+    require(session.mailboxOpen() && session.mailPath() == madeNow, "a new mailbox is made");
+    session.closeMailbox();
+    offline(madeNow, [&](bm::Mailbox &box) {
+        box.store("n1", twice, mine, "From a writer", "hi", 1, "Inbox");
+    });
+    session.openMailboxAt(madeNow);
+    require(session.mailboxOpen() && watched().isEmpty(),
+            "a mailbox made now is not caught up when it is next opened");
 }
 // Contacts > Find people: the question asked from what is typed, the answer in the table, and what
 // is added to the address book.
@@ -9025,6 +9262,7 @@ int main(int argc, char **argv) {
         testCheckNicknames(temp);
         testContactChats(temp);
         testFindPeople(temp);
+        testPendingSubscriptions(temp);
         testNewIdentityRegisters(temp);
         require(session.portMapper().state() == bm::PortMapper::State::Off,
                 "an offline session never talks to the router");

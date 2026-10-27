@@ -3018,7 +3018,11 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
         QStringList labels, addresses;
         for (auto v : session_.subscriptions()) {
             auto m = v.toMap();
-            labels << m["label"].toString() + " · " + m["address"].toString();
+            // A subscription made plain by a post may have no name of its own.
+            const auto name = m["label"].toString().trimmed().isEmpty()
+                                  ? session_.nameFor(m["address"].toString())
+                                  : m["label"].toString();
+            labels << (name.isEmpty() ? QString() : name + " · ") + m["address"].toString();
             addresses << m["address"].toString();
         }
         bool ok;

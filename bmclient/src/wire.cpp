@@ -615,6 +615,24 @@ std::optional<DecodedEnvelope> Wire::decodeBroadcast(ByteView object, std::strin
     }
 }
 
+std::optional<Bytes> Wire::tagOfAddress(std::string_view subscribed) {
+    try {
+        const auto a = address(subscribed);
+        if (a.version < 4)
+            return Bytes{};
+        return Derived(a, true).tag;
+    } catch (const std::exception &) {
+        return std::nullopt;
+    }
+}
+
+Bytes Wire::tagOfBroadcast(ByteView object) {
+    const auto h = header(object);
+    if (!h || h->type != 3 || h->version != 5 || object.size() < size_t(h->headerSize) + 32)
+        return {};
+    return bytesOf(object.subspan(size_t(h->headerSize), 32));
+}
+
 Bytes Wire::frame(ByteView object) {
     check(header(object).has_value());
     Bytes b;

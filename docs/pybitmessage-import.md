@@ -63,6 +63,13 @@ broadcasts, deleted letters, drafts, chats and letters that were here already ad
 running the import again adds no one, and a contact the user deleted since does not come back; a
 run that was stopped adds the people of what it stored. The result page says how many joined.
 
+Then the catch-up of pending subscriptions runs (`Session::watchKnownPeople`): everyone the mailbox
+deals with (the address book, the senders of the Inbox and the Archive, whom Sent went to, the
+peers of chats) is listened to for broadcasts without being listed under Subscriptions until they
+post. Unlike the address book it is not limited to the people of what was stored: it reads the
+whole mailbox, and is safe to run again, as it adds only what is not there, nobody the user
+unsubscribed from, and no one who has posts here already.
+
 ## No duplicates
 
 Adding identities makes the scan read the node's retained objects again (90 days by default), so

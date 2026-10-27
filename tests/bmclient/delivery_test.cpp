@@ -20,6 +20,9 @@
 #include <ntb-object-db.h>
 #include <thread>
 #include <vector>
+extern "C" {
+#include <ntb-address.h>
+}
 
 namespace {
 // One simulated instant for the whole test: the proof of work needs real time, the protocol does
@@ -52,6 +55,21 @@ struct Side {
         mailbox.bindCache(cache->id());
     }
 };
+
+// A valid address of version 4 in stream 1 for each number: nobody holds its keys, which is all a
+// subscription to it needs.
+std::string anAddress(uint32_t n) {
+    ntb_address a{};
+    a.version = 4;
+    a.stream = 1;
+    a.ripe[0] = 0x11; // not a null byte, which an address leaves out
+    for (int i = 0; i < 4; ++i)
+        a.ripe[1 + i] = uint8_t(n >> (8 * i));
+    a.ripe[19] = 0x7f;
+    char text[NTB_ADDRESS_MAX_LENGTH + 1] = {};
+    ntb_address_encode(&a, text);
+    return text;
+}
 
 // Turns both ends until `done`; the proof of work runs on its own threads, so the wall clock is the
 // only deadline.
@@ -185,6 +203,123 @@ TEST(a_broadcast_already_passed_is_found_by_the_catch_up) {
     CHECK_EQ(messages[0].subject, std::string("Late announcement"));
     CHECK_EQ(messages[0].folder, std::string("Broadcasts"));
     CHECK_EQ(b.mailbox.checkpoint(), int64_t(1));
+}
+
+// A pending subscription listens without being listed: the first broadcast of its address is what
+// makes it a subscription the user sees.
+TEST(the_first_broadcast_of_a_pending_subscription_is_stored_and_lists_it) {
+    Side a("alice", "Alice"), b("bob", "Bob");
+    CHECK(b.mailbox.watch(a.identity));
+    CHECK(b.mailbox.subscriptions().empty());
+    fake::cacheObject(b.root, bmc::Wire::encodeBroadcast(a.vault.identities()[0], "News", "Hello",
+                                                         kNow() + 3600));
+
+    b.delivery->scan(*b.cache, b.mailbox, b.vault, kNow());
+    bool found = false;
+    for (const auto &m : b.mailbox.messages())
+        if (m.folder == "Broadcasts" && m.subject == "News")
+            found = true;
+    CHECK(found);
+    const auto listed = b.mailbox.subscriptions();
+    CHECK_EQ(listed.size(), size_t(1));
+    CHECK_EQ(listed[0].address, a.identity);
+    CHECK_EQ(listed[0].label, std::string()); // no name of its own: the address book names it
+    CHECK_EQ(b.mailbox.watched(), std::vector<std::string>{a.identity});
+}
+
+TEST(a_pending_subscription_that_has_not_posted_stays_unlisted) {
+    Side a("alice", "Alice"), b("bob", "Bob"), c("carol", "Carol");
+    CHECK(b.mailbox.watch(a.identity));
+    // Somebody else's broadcast, and a letter: neither is Alice's.
+    fake::cacheObject(b.root, bmc::Wire::encodeBroadcast(c.vault.identities()[0], "News", "Hello",
+                                                         kNow() + 3600));
+    b.delivery->scan(*b.cache, b.mailbox, b.vault, kNow());
+    CHECK(b.mailbox.messages().empty());
+    CHECK(b.mailbox.subscriptions().empty());
+    CHECK_EQ(b.mailbox.watched(), std::vector<std::string>{a.identity});
+}
+
+TEST(a_broadcast_already_passed_lists_a_pending_subscription_through_the_catch_up) {
+    Side a("alice", "Alice"), b("bob", "Bob");
+    fake::cacheObject(b.root, bmc::Wire::encodeBroadcast(a.vault.identities()[0], "Late news",
+                                                         "Hello", kNow() + 3600));
+    b.delivery->scan(*b.cache, b.mailbox, b.vault, kNow());
+    CHECK_EQ(b.mailbox.checkpoint(), int64_t(1));
+    CHECK(b.mailbox.messages().empty());
+
+    // The person writes: the address is watched, and the kept broadcasts are read again.
+    CHECK(b.mailbox.watch(a.identity));
+    b.delivery->scan(*b.cache, b.mailbox, b.vault, kNow());
+    const auto messages = b.mailbox.messages();
+    CHECK_EQ(messages.size(), size_t(1));
+    CHECK_EQ(messages[0].subject, std::string("Late news"));
+    CHECK_EQ(messages[0].folder, std::string("Broadcasts"));
+    CHECK_EQ(b.mailbox.subscriptions().size(), size_t(1));
+    CHECK_EQ(b.mailbox.checkpoint(), int64_t(1));
+}
+
+// Every person the user deals with is watched, so a mailbox may listen for thousands of addresses:
+// a broadcast is matched to its address by its tag, and not tried against each one.
+TEST(a_broadcast_is_found_among_thousands_of_watched_addresses) {
+    Side a("alice", "Alice"), b("bob", "Bob");
+    {
+        bmc::Mailbox::Batch batch(b.mailbox);
+        for (uint32_t n = 0; n < 8000; ++n)
+            b.mailbox.watch(anAddress(n));
+        batch.commit();
+    }
+    CHECK(b.mailbox.watch(a.identity));
+    constexpr int kPosts = 100;
+    for (int i = 0; i < kPosts; ++i)
+        fake::cacheObject(b.root, bmc::Wire::encodeBroadcast(a.vault.identities()[0],
+                                                             "Post " + std::to_string(i), "Hello",
+                                                             kNow() + 3600));
+
+    const auto began = std::chrono::steady_clock::now();
+    while (b.mailbox.checkpoint() < kPosts)
+        b.delivery->scan(*b.cache, b.mailbox, b.vault, kNow(), kPosts);
+    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - began)
+                          .count();
+    size_t posts = 0;
+    for (const auto &m : b.mailbox.messages())
+        if (m.folder == "Broadcasts")
+            ++posts;
+    CHECK_EQ(posts, size_t(kPosts));
+    CHECK_EQ(b.mailbox.subscriptions().size(), size_t(1));
+    // Trying each of 8,000 addresses for each of the 100 broadcasts took half a minute.
+    CHECK(took < 5000);
+}
+
+TEST(the_watch_follows_the_subscriptions_as_they_come_and_go) {
+    Side a("alice", "Alice"), b("bob", "Bob"), c("carol", "Carol");
+    const auto post = [&](Side &from, const char *subject) {
+        fake::cacheObject(b.root, bmc::Wire::encodeBroadcast(from.vault.identities()[0], subject,
+                                                             "Hello", kNow() + 3600));
+        b.delivery->scan(*b.cache, b.mailbox, b.vault, kNow());
+    };
+    const auto stored = [&](const char *subject) {
+        for (const auto &m : b.mailbox.messages())
+            if (m.folder == "Broadcasts" && m.subject == subject)
+                return true;
+        return false;
+    };
+    b.mailbox.watch(a.identity);
+    post(a, "One");
+    CHECK(stored("One"));
+    post(c, "Two"); // Carol is nobody's concern yet
+    CHECK(!stored("Two"));
+    // Carol joins the set, which Alice stays in: both are read.
+    b.mailbox.watch(c.identity);
+    post(c, "Three");
+    post(a, "Four");
+    CHECK(stored("Three") && stored("Four"));
+    // Alice leaves it: only Carol is read.
+    b.mailbox.unsubscribe(a.identity);
+    post(a, "Five");
+    post(c, "Six");
+    CHECK(!stored("Five"));
+    CHECK(stored("Six"));
 }
 
 TEST(a_message_to_a_service_address_is_filed_apart_and_counts_nowhere) {

@@ -321,9 +321,11 @@ class Session : public QObject {
     bool channelUnread(QString address) const {
         return mailboxOpen() && mailbox_.channelUnread(address);
     }
-    // The Broadcasts page's sources: subscriptions, ynotbit's release
-    // announcements while notices are on, and any other sender whose broadcasts
-    // are still kept. Each: address, label, subscribed, updates (the built-in one).
+    // The Broadcasts page's sources: subscriptions (not the pending ones, which have not posted),
+    // ynotbit's release announcements while notices are on, and any other sender whose broadcasts
+    // are still kept. Each: address, label, subscribed, updates (the built-in one), lastPost (the
+    // time of its newest post, 0 for none). The newest poster is first, then those with no post
+    // in order of name.
     QVariantList broadcastSources() const;
     // The built-in subscriptions (updates.h), once per mailbox.
     void seedSubscriptions();
@@ -344,6 +346,13 @@ class Session : public QObject {
     // its address, unless it is in the book already, is one of the vault's own or is no address.
     // How many were added.
     int addToAddressBook(const QStringList &addresses);
+    // Everyone the user has dealt with (the address book, the letters and chats received and sent)
+    // is listened to for broadcasts without being listed as a subscription until they post: a
+    // pending subscription (bmc::Client::watchKnownPeople). Run once for a mailbox from before,
+    // which is marked as caught up, and a mailbox made now starts marked; again, with no mark, for
+    // the people an import has brought. How many were made pending.
+    int watchKnownPeople();
+    void watchKnownPeopleOnce();
     // Where the window opens after a mailbox opens, once per opening: the
     // Subscriptions page on the Bitmessage digest.
     QString takeWelcomeSource() {

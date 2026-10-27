@@ -53,6 +53,12 @@ class Wire {
                                  std::string_view body, int64_t expires);
     static std::optional<DecodedEnvelope> decodeBroadcast(ByteView object,
                                                           std::string_view address);
+    // The tag that the broadcasts of an address carry in the clear, which tells whose they are
+    // before anything is decrypted: 32 bytes for an address of version 4 or later, none (empty)
+    // for an older one, whose broadcasts carry no tag; nothing at all for what is no address.
+    static std::optional<Bytes> tagOfAddress(std::string_view address);
+    // The tag of a broadcast object; empty when the object is no version 5 broadcast.
+    static Bytes tagOfBroadcast(ByteView object);
     static Bytes frame(ByteView object);
 };
 } // namespace bmc

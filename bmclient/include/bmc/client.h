@@ -71,5 +71,13 @@ class Client {
     // Queues a draft as an outgoing letter; the recipient's key may already be kept, so the kept
     // broadcasts and keys are read again.
     void sendLetter(const std::string &id, int64_t now);
+    // Listens for the broadcasts of a person the user deals with (Delivery::watchPerson). Nothing
+    // is thrown: a person not watched is no reason to refuse what the user was doing.
+    bool watchPerson(const std::string &address);
+    // The same for the people the user dealt with before pending subscriptions: the address book,
+    // the senders of the Inbox and the Archive, those written to (Sent) and the peers of chats; not
+    // the vault's own addresses, nor one the user unsubscribed from. How many were made pending;
+    // again, it makes none that it has made.
+    int watchKnownPeople();
 };
 } // namespace bmc

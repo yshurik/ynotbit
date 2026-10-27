@@ -16,6 +16,7 @@
 #include <ntb-object-db.h>
 #include <optional>
 #include <sodium.h>
+#include <unordered_set>
 
 namespace bmc {
 namespace {
@@ -100,15 +101,56 @@ std::optional<json::Value> readReceipt(const std::string &file) {
     std::fclose(f);
     return json::parse(std::string_view(buffer, size_t(read)));
 }
-// A broadcast from a subscription, ynotbit's release address, or (chans, when given) a chan's own
-// Anonymous-mode post.
-std::optional<DecodedEnvelope> decodeBroadcast(ByteView data, const Mailbox &m,
+// Brings the watch to these addresses: the ones of version 4 and up by their tag, the older ones
+// apart. Only the addresses that came or went are worked out, as a new correspondent is a change
+// in a set that may hold thousands.
+void updateWatch(BroadcastWatch &watch, const std::vector<std::string> &addresses,
+                 std::string fingerprint) {
+    const std::unordered_set<std::string> now(addresses.begin(), addresses.end());
+    for (auto it = watch.tagOf.begin(); it != watch.tagOf.end();) {
+        if (now.count(it->first)) {
+            ++it;
+            continue;
+        }
+        if (it->second && !it->second->empty())
+            watch.byTag.erase(*it->second);
+        it = watch.tagOf.erase(it);
+    }
+    for (const auto &address : addresses) {
+        if (watch.tagOf.count(address))
+            continue;
+        const auto tag = Wire::tagOfAddress(address); // none: no address at all, nothing of it
+        std::optional<std::string> mark;              // can be a broadcast
+        if (tag)
+            mark = std::string(tag->begin(), tag->end());
+        if (mark && !mark->empty())
+            watch.byTag.emplace(*mark, address);
+        watch.tagOf.emplace(address, std::move(mark));
+    }
+    watch.untagged.clear();
+    for (const auto &[address, tag] : watch.tagOf)
+        if (tag && tag->empty())
+            watch.untagged.push_back(address);
+    watch.fingerprint = std::move(fingerprint);
+}
+// A broadcast from a watched address, ynotbit's release address, or (chans, when given) a chan's
+// own Anonymous-mode post. A broadcast of version 5 says in the clear whose it is, so only the
+// address with its tag is tried; one of version 4 carries no tag, and is tried against the
+// addresses old enough to have such broadcasts.
+std::optional<DecodedEnvelope> decodeBroadcast(ByteView data, const BroadcastWatch &watch,
                                                const std::string &publisher, const Vault *chansOf,
                                                bool *chanBroadcast) {
     *chanBroadcast = false;
-    for (const auto &sub : m.subscriptions())
-        if (auto decoded = Wire::decodeBroadcast(data, sub.address))
-            return decoded;
+    if (const auto tag = Wire::tagOfBroadcast(data); !tag.empty()) {
+        if (const auto it = watch.byTag.find(std::string(tag.begin(), tag.end()));
+            it != watch.byTag.end())
+            if (auto decoded = Wire::decodeBroadcast(data, it->second))
+                return decoded;
+    } else {
+        for (const auto &address : watch.untagged)
+            if (auto decoded = Wire::decodeBroadcast(data, address))
+                return decoded;
+    }
     // ynotbit's own release announcements, heard without subscribing.
     if (!publisher.empty())
         if (auto decoded = Wire::decodeBroadcast(data, publisher))
@@ -361,6 +403,15 @@ void Delivery::tick(Mailbox &m, const Vault &v, bool online, int64_t time) {
     m.endChatDeliveries(time);
 }
 
+bool Delivery::watchPerson(Mailbox &m, const Vault &v, const std::string &address) {
+    if (!v.unlocked() || !Wire::validAddress(address))
+        return false;
+    for (const auto &i : v.identities())
+        if (i.address == address)
+            return false;
+    return m.watch(address);
+}
+
 void Delivery::rereadKept(Mailbox &m) {
     if (m.checkpoint() <= 0)
         return; // the main scan has everything still ahead of it
@@ -406,10 +457,11 @@ int Delivery::catchUpBroadcasts(Cache &cache, Mailbox &m, const std::string &pub
             if (!h || h->type != 3)
                 continue;
             bool chanBroadcast = false;
-            if (auto decoded = decodeBroadcast(data, m, publisher, nullptr, &chanBroadcast)) {
+            if (auto decoded = decodeBroadcast(data, watch_, publisher, nullptr, &chanBroadcast)) {
                 const auto &d = *decoded;
                 saveKey(m, d.sender, time + 28 * 86400);
                 noteRelease(m, d, publisher);
+                m.reveal(d.sender.address); // a post: a pending subscription is listed now
                 m.store(o.hash, d.message.from, d.message.to, d.message.subject, d.message.body, -1,
                         "Broadcasts");
                 ++count;
@@ -432,8 +484,10 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int64_t time, int l
     std::vector<std::string> identities, subscriptions;
     for (const auto &i : v.identities())
         identities.push_back(i.address);
-    for (const auto &s : m.subscriptions())
-        subscriptions.push_back("subscription:" + s.address);
+    // The subscriptions and the pending ones: all of them are listened for.
+    const auto watched = m.watched();
+    for (const auto &address : watched)
+        subscriptions.push_back("subscription:" + address);
     const auto publisher =
         m.setting(updates::kNotifySetting) == "off" ? std::string() : updates::publisherAddress();
     if (!publisher.empty())
@@ -448,6 +502,8 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int64_t time, int l
     const bool identitiesChanged = m.boundIdentities() != identitiesNow;
     m.bindIdentities(identitiesNow); // a different set starts over from the first object
     const auto subscriptionsNow = fingerprint(subscriptions);
+    if (watch_.fingerprint != subscriptionsNow)
+        updateWatch(watch_, watched, subscriptionsNow);
     if (m.setting(kSubscriptionsSetting) != subscriptionsNow) {
         // A full rescan reads everything anyway; otherwise only broadcasts
         // already passed need reading again.
@@ -508,7 +564,7 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int64_t time, int l
                     break;
             }
         if (h->type == 3)
-            decoded = decodeBroadcast(data, m, publisher, &v, &chanBroadcast);
+            decoded = decodeBroadcast(data, watch_, publisher, &v, &chanBroadcast);
         if (decoded) {
             auto &d = *decoded;
             auto ackToken = Wire::acknowledgmentToken(d.acknowledgment);
@@ -521,14 +577,20 @@ int Delivery::scan(Cache &cache, Mailbox &m, const Vault &v, int64_t time, int l
                 addJob(m, {}, "incoming-ack", Protocol::inventoryHash(d.acknowledgment),
                        d.acknowledgment, 1000, 1000, "ready");
             noteRelease(m, d, publisher);
+            if (d.broadcast && !chanBroadcast)
+                m.reveal(d.sender.address); // a post: a pending subscription is listed now
             const bool service =
                 !d.broadcast && !chanBroadcast && serviceAddresses_.count(d.message.to);
-            m.storeRouted(
-                id, d.message.from, d.message.to, d.message.subject, d.message.body, o.sequence,
+            const std::string folder =
                 service ? "Service"
                         : (chanBroadcast ? "Channels"
-                                         : (d.broadcast ? "Broadcasts" : d.message.folder)),
-                h->expires, o.hash);
+                                         : (d.broadcast ? "Broadcasts" : d.message.folder));
+            m.storeRouted(id, d.message.from, d.message.to, d.message.subject, d.message.body,
+                          o.sequence, folder, h->expires, o.hash);
+            // A letter or a chat from a person, not a chan's post, a service's or a broadcast: the
+            // sender is dealt with, so their broadcasts are listened for.
+            if (folder == "Inbox")
+                watchPerson(m, v, d.message.from);
             ++count;
             passed = 0; // store() moved the checkpoint past this object
         } else

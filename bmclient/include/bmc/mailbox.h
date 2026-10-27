@@ -173,6 +173,10 @@ class Mailbox {
     // The addresses the letters of a folder came from, each once, in order of address; a letter
     // with no sender adds none.
     std::vector<std::string> senders(const std::string &folder) const;
+    // The same for the addresses the letters of a folder were written to (Sent: the people written
+    // to), and the addresses the user has chats with.
+    std::vector<std::string> recipients(const std::string &folder) const;
+    std::vector<std::string> chatPeers() const;
     // The messages the scan filed under "Service" (Delivery::setServiceAddresses), oldest first, at
     // most limit: returned and deleted together, in one transaction. Nothing else is touched.
     std::vector<Message> takeService(int limit);
@@ -212,8 +216,25 @@ class Mailbox {
     void removeJob(const std::string &id);
     void savePublicKey(const StoredPublicKey &key);
     std::optional<StoredPublicKey> publicKey(const std::string &address, int64_t now) const;
+    // The subscriptions the user sees: made on purpose, or made plain by a post (reveal).
     std::vector<Subscription> subscriptions() const;
+    // The addresses whose broadcasts are listened for, in order of address: the subscriptions and
+    // the pending ones.
+    std::vector<std::string> watched() const;
+    // Listens for the broadcasts of an address the user deals with (a letter, a chat, the address
+    // book) without listing it as a subscription until it posts. An address that is subscribed or
+    // pending, that the user unsubscribed from, or that has posts here and no subscription (one
+    // unsubscribed from before pending subscriptions existed) is left as it is. Whether it was
+    // made pending.
+    bool watch(const std::string &address);
+    // A post came from the address: a pending subscription is a listed one now, with no name of
+    // its own. Nothing happens for an address that is not pending.
+    void reveal(const std::string &address);
+    // The time of the newest post of each address that has posts (the folder Broadcasts).
+    std::map<std::string, int64_t> lastPosts() const;
+    // On purpose: lists the address, a pending one included.
     void subscribe(const std::string &address, const std::string &label);
+    // Takes the address off the list, and keeps it from being made pending again.
     void unsubscribe(const std::string &address);
     // The address book: private names for correspondents, ordered by name.
     std::vector<Contact> contacts() const;

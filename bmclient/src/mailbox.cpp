@@ -358,6 +358,18 @@ std::vector<std::string> Mailbox::senders(const std::string &folder) const {
     return result;
 }
 
+std::vector<std::string> Mailbox::recipients(const std::string &folder) const {
+    return channelAddresses(folder); // the same query, under the name that says what it is for
+}
+
+std::vector<std::string> Mailbox::chatPeers() const {
+    Statement s(db_, "SELECT DISTINCT peer_address FROM chat_messages ORDER BY peer_address");
+    std::vector<std::string> result;
+    while (s.row())
+        result.push_back(s.text(0));
+    return result;
+}
+
 bool Mailbox::channelUnread(const std::string &recipient, const std::string &folder) const {
     Statement s(db_, "SELECT 1 FROM messages WHERE folder=? AND recipient=? AND unread<>0 LIMIT 1");
     s.text(1, folder);
@@ -469,6 +481,7 @@ void Mailbox::migrate() {
         "NULL,encryption BLOB NOT NULL,trials INTEGER NOT NULL,extra INTEGER NOT NULL,behaviors "
         "INTEGER NOT NULL,expires INTEGER NOT NULL);"
         "CREATE TABLE IF NOT EXISTS subscriptions(address TEXT PRIMARY KEY,label TEXT NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS pending_subscriptions(address TEXT PRIMARY KEY);"
         "CREATE TABLE IF NOT EXISTS contacts(address TEXT PRIMARY KEY,label TEXT NOT NULL,added "
         "INTEGER NOT NULL);"
         "CREATE TABLE IF NOT EXISTS settings(name TEXT PRIMARY KEY,value TEXT NOT NULL);"
@@ -859,23 +872,98 @@ std::vector<Subscription> Mailbox::subscriptions() const {
     return r;
 }
 
+namespace {
+// The setting that says the user took an address off the list (Mailbox::unsubscribe): a letter
+// from it must not make it pending again.
+const std::string kUnsubscribed = "unsubscribed:";
+} // namespace
+
 void Mailbox::subscribe(const std::string &address, const std::string &label) {
     require(!address.empty(), "Enter a broadcast address");
     Transaction t(db_);
-    Statement s(db_, "INSERT INTO subscriptions VALUES(?,?) ON CONFLICT(address) DO UPDATE SET "
-                     "label=excluded.label");
-    s.text(1, address);
-    s.text(2, label);
-    s.row();
+    {
+        Statement s(db_, "INSERT INTO subscriptions VALUES(?,?) ON CONFLICT(address) DO UPDATE SET "
+                         "label=excluded.label");
+        s.text(1, address);
+        s.text(2, label);
+        s.row();
+    }
+    // On purpose: listed, so no longer pending.
+    {
+        Statement s(db_, "DELETE FROM pending_subscriptions WHERE address=?");
+        s.text(1, address);
+        s.row();
+    }
     // No rescan from here: the scan notices the new subscription and reads the
     // kept broadcasts again on its own (Delivery::catchUpBroadcasts).
     t.commit();
 }
 
 void Mailbox::unsubscribe(const std::string &address) {
-    Statement s(db_, "DELETE FROM subscriptions WHERE address=?");
+    if (address.empty())
+        return;
+    Transaction t(db_);
+    for (const auto *table : {"subscriptions", "pending_subscriptions"}) {
+        Statement s(db_, (std::string("DELETE FROM ") + table + " WHERE address=?").c_str());
+        s.text(1, address);
+        s.row();
+    }
+    setSetting(kUnsubscribed + address, "1");
+    t.commit();
+}
+
+std::vector<std::string> Mailbox::watched() const {
+    Statement s(db_, "SELECT address FROM subscriptions UNION SELECT address FROM "
+                     "pending_subscriptions ORDER BY address");
+    std::vector<std::string> r;
+    while (s.row())
+        r.push_back(s.text(0));
+    return r;
+}
+
+bool Mailbox::watch(const std::string &address) {
+    require(!address.empty(), "Enter a broadcast address");
+    if (!setting(kUnsubscribed + address).empty())
+        return false;
+    {
+        // Subscribed, pending, or with posts here and no subscription: left as it is.
+        Statement known(db_, "SELECT 1 FROM subscriptions WHERE address=?1 UNION ALL SELECT 1 FROM "
+                             "pending_subscriptions WHERE address=?1 UNION ALL SELECT 1 FROM "
+                             "messages WHERE folder='Broadcasts' AND recipient=?1");
+        known.text(1, address);
+        if (known.row())
+            return false;
+    }
+    Statement s(db_, "INSERT INTO pending_subscriptions VALUES(?)");
     s.text(1, address);
     s.row();
+    return true;
+}
+
+void Mailbox::reveal(const std::string &address) {
+    Transaction t(db_);
+    bool pending = false;
+    {
+        Statement s(db_, "DELETE FROM pending_subscriptions WHERE address=?");
+        s.text(1, address);
+        s.row();
+        pending = sqlite3_changes(db_) > 0;
+    }
+    if (pending) {
+        Statement s(db_, "INSERT OR IGNORE INTO subscriptions(address,label) VALUES(?,'')");
+        s.text(1, address);
+        s.row();
+    }
+    t.commit();
+}
+
+std::map<std::string, int64_t> Mailbox::lastPosts() const {
+    Statement s(db_, "SELECT recipient,MAX(received) FROM messages WHERE folder='Broadcasts' AND "
+                     "recipient<>'' GROUP BY recipient");
+    std::map<std::string, int64_t> r;
+    while (s.row())
+        r[s.text(0)] = s.number(1);
+    return r;
 }
 
 std::vector<Contact> Mailbox::contacts() const {
@@ -1141,9 +1229,14 @@ int Mailbox::importSubscriptions(const std::vector<Subscription> &subscriptions)
     Transaction t(db_);
     {
         Statement s(db_, "INSERT OR IGNORE INTO subscriptions(address,label) VALUES(?,?)");
+        Statement pending(db_, "DELETE FROM pending_subscriptions WHERE address=?");
         for (const auto &c : subscriptions) {
             if (c.address.empty())
                 continue;
+            // On purpose, as another client had it: listed, so no longer pending.
+            pending.reset();
+            pending.text(1, c.address);
+            pending.row();
             s.reset();
             s.text(1, c.address);
             s.text(2, c.label);

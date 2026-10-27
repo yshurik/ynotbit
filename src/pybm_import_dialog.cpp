@@ -535,6 +535,9 @@ void PyBitmessageImportDialog::finish() {
     for (const auto &address : r.people)
         people << bridge::fromStd(address);
     peopleAdded_ = session_.addToAddressBook(people);
+    // And listened to for broadcasts, with no subscription listed until they post: the same people
+    // and the book as it is, as for a mailbox that was filled before pending subscriptions.
+    session_.watchKnownPeople();
     line(tr("Contacts added from the letters: %1"), peopleAdded_);
     line(tr("Subscriptions added: %1"), r.subscriptions.added);
     line(tr("Unsent letters kept as drafts: %1"), r.drafts.added);

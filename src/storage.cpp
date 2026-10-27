@@ -199,6 +199,12 @@ QStringList Mailbox::senders(const QString &folder) const {
         addresses << bridge::fromStd(a);
     return addresses;
 }
+QMap<QString, qint64> Mailbox::lastPosts() const {
+    QMap<QString, qint64> times;
+    for (const auto &[address, time] : core_->lastPosts())
+        times[bridge::fromStd(address)] = time;
+    return times;
+}
 bool Mailbox::channelUnread(const QString &recipient, const QString &folder) const {
     return core_->channelUnread(bridge::toStd(recipient), bridge::toStd(folder));
 }

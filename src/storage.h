@@ -195,6 +195,8 @@ class Mailbox {
     bool channelUnread(const QString &recipient, const QString &folder = "Channels") const;
     // The addresses the letters of a folder came from, each once, in order of address.
     QStringList senders(const QString &folder) const;
+    // The time of the newest post of each address that has posts (the folder Broadcasts).
+    QMap<QString, qint64> lastPosts() const;
     // Changes affecting the desktop message snapshot, excluding scan checkpoints/jobs.
     quint64 messageRevision() const {
         return core_->messageRevision();

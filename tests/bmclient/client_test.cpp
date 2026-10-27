@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <set>
 #include <sqlcipher/sqlite3.h>
 #include <string>
 #include <vector>
@@ -276,4 +277,116 @@ TEST(a_letter_is_checked_before_it_is_queued) {
     f.mailbox->setSetting("draftkind:" + news, "broadcast");
     f.client->sendLetter(news, now);
     CHECK_EQ(f.mailbox->outgoing(news).kind, std::string("broadcast"));
+}
+
+// A person the user deals with is listened to for broadcasts, with no subscription listed until
+// they post (Mailbox::watch): a letter or a chat from them, and one to them, is such dealing.
+TEST(a_letter_from_a_person_makes_a_pending_subscription_to_them) {
+    Fixture f;
+    fake::cacheObject(f.root, f.incoming("Hello", "From the peer", bmc::now() + 3600));
+    f.client->step(bmc::now(), false);
+    CHECK_EQ(f.mailbox->messages().size(), size_t(1));
+    CHECK_EQ(f.mailbox->watched(), std::vector<std::string>{f.peer});
+    CHECK(f.mailbox->subscriptions().empty()); // not listed until the person posts
+}
+
+TEST(a_chat_from_a_person_makes_one_too) {
+    Fixture f;
+    fake::cacheObject(
+        f.root, f.incoming("", bmc::chatMessageBody(1700000000123, "hello"), bmc::now() + 3600));
+    f.client->step(bmc::now(), false);
+    CHECK_EQ(f.client->unreadChats(10).size(), size_t(1));
+    CHECK(f.mailbox->messages().empty()); // a chat is no letter
+    CHECK_EQ(f.mailbox->watched(), std::vector<std::string>{f.peer});
+}
+
+TEST(a_post_to_a_chan_and_a_letter_to_oneself_make_no_pending_subscription) {
+    Fixture f;
+    const auto expires = bmc::now() + 3600;
+    const bmc::Identity *chan = nullptr;
+    for (const auto &i : f.vault->identities())
+        if (i.address == f.chan)
+            chan = &i;
+    CHECK(chan != nullptr);
+    const auto &me = f.vault->identities()[0];
+    // The peer posts to the chan, and the user writes a note to themselves.
+    fake::cacheObject(f.root,
+                      bmc::Wire::encodeMessage(bmc::IdentityRef(f.peerVault.identities()[0]),
+                                               bmc::Wire::publicIdentity(bmc::IdentityRef(*chan)),
+                                               "To the chan", "Everybody", expires));
+    fake::cacheObject(f.root,
+                      bmc::Wire::encodeMessage(bmc::IdentityRef(me),
+                                               bmc::Wire::publicIdentity(bmc::IdentityRef(me)),
+                                               "Note", "To myself", expires));
+    f.client->step(bmc::now(), false);
+    CHECK_EQ(f.mailbox->messages().size(), size_t(2)); // both were read
+    CHECK(f.mailbox->watched().empty());
+}
+
+TEST(writing_to_a_person_makes_a_pending_subscription_to_them) {
+    Fixture f;
+    const auto now = bmc::now();
+    const auto draft = f.mailbox->saveDraft({}, f.me, f.peer, "Subject", "Body");
+    f.mailbox->setSetting("draftkind:" + draft, "direct");
+    CHECK(f.mailbox->watched().empty()); // a draft is not a letter sent
+    f.client->sendLetter(draft, now);
+    CHECK_EQ(f.mailbox->watched(), std::vector<std::string>{f.peer});
+    CHECK(f.mailbox->subscriptions().empty());
+
+    const auto second = f.peerVault.addIdentity("Second");
+    f.client->sendChat(f.me, second, "hello", now);
+    CHECK_EQ(f.mailbox->watched().size(), size_t(2));
+
+    // Not a chan, nor a broadcast, nor a chat that is for a service.
+    const auto toChan = f.mailbox->saveDraft({}, f.me, f.chan, "To the chan", "Body");
+    f.mailbox->setSetting("draftkind:" + toChan, "direct");
+    f.client->sendLetter(toChan, now);
+    const auto news = f.mailbox->saveDraft({}, f.me, {}, "News", "Everyone");
+    f.mailbox->setSetting("draftkind:" + news, "broadcast");
+    f.client->sendLetter(news, now);
+    const auto third = f.peerVault.addIdentity("Third");
+    f.client->sendServiceChat(f.chan, third, "/address @ben", 3600, now);
+    CHECK_EQ(f.mailbox->watched().size(), size_t(2));
+}
+
+TEST(the_people_the_user_already_deals_with_are_watched_by_the_migration) {
+    Fixture f;
+    const auto person = [&](const char *label) { return f.peerVault.addIdentity(label); };
+    const auto contact = person("Contact"), writer = person("Writer"),
+               archived = person("Archived"), trashed = person("Trashed"),
+               poster = person("Poster"), written = person("Written"), chatty = person("Chatty"),
+               declined = person("Declined"), formerly = person("Formerly"),
+               subscribed = person("Subscribed");
+    f.mailbox->saveContact(contact, "Contact");
+    f.mailbox->store("in-1", writer, f.me, "S", "B", -1, "Inbox");
+    f.mailbox->store("ar-1", archived, f.me, "S", "B", -1, "Archive");
+    f.mailbox->store("se-1", f.me, written, "S", "B", -1, "Sent");
+    f.mailbox->storeChat("chat-1", chatty, f.me, 1700000000123, "hello", bmc::now() + 3600);
+    // Not people the user deals with: a trashed letter, a post in a chan, a post by a subscription,
+    // a chan, a broadcast, oneself.
+    f.mailbox->store("tr-1", trashed, f.me, "S", "B", -1, "Trash");
+    f.mailbox->store("ch-1", poster, f.chan, "S", "B", -1, "Channels");
+    f.mailbox->store("se-2", f.me, f.chan, "To the chan", "B", -1, "Sent");
+    f.mailbox->store("se-3", f.me, "[Broadcast subscribers]", "News", "B", -1, "Sent");
+    f.mailbox->store("self-1", f.me, f.me, "Note", "B", -1, "Inbox");
+    // Left out on purpose: the user unsubscribed from one, subscribes to one, and one was followed
+    // once (its posts are still here).
+    f.mailbox->store("in-2", declined, f.me, "S", "B", -1, "Inbox");
+    f.mailbox->subscribe(declined, "Declined");
+    f.mailbox->unsubscribe(declined);
+    f.mailbox->store("in-3", subscribed, f.me, "S", "B", -1, "Inbox");
+    f.mailbox->subscribe(subscribed, "Subscribed");
+    f.mailbox->store("in-4", formerly, f.me, "S", "B", -1, "Inbox");
+    f.mailbox->store("post-1", formerly, formerly, "Post", "B", -1, "Broadcasts");
+
+    CHECK_EQ(f.client->watchKnownPeople(), 5);
+    const auto watched = f.mailbox->watched();
+    CHECK(std::set<std::string>(watched.begin(), watched.end()) ==
+          (std::set<std::string>{contact, writer, archived, written, chatty, subscribed}));
+    CHECK_EQ(f.mailbox->subscriptions().size(), size_t(1)); // only the one on purpose
+    // Again: nobody new. Somebody who has come into the book since is caught by the next run.
+    CHECK_EQ(f.client->watchKnownPeople(), 0);
+    const auto late = person("Late");
+    f.mailbox->saveContact(late, "Late");
+    CHECK_EQ(f.client->watchKnownPeople(), 1);
 }

@@ -68,6 +68,12 @@ To follow a sender's broadcasts, open **Subscriptions** and choose **+ Subscribe
 (or **Identity → Subscribe to broadcasts…**); their posts appear as a feed. New
 mailboxes already follow the Bitmessage digest, and ynotbit's own update notices.
 
+ynotbit also listens, quietly, for the broadcasts of everyone you deal with: your contacts, and
+whoever you write to, chat with or hear from (chans excepted). Such a sender is not listed under
+**Subscriptions** until they have posted one, or until you subscribe on purpose; the list puts the
+sender who posted last at the top. A mailbox from before is caught up once, and so is whatever a
+PyBitmessage import brings.
+
 To add a picture to a letter, use the **+** button in the composer, the
 right-click menu, or drop image files on the letter.
 

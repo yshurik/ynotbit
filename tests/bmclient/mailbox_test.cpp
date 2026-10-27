@@ -4,6 +4,7 @@
 #include <bmc/random.h>
 #include <bmc/test.h>
 #include <filesystem>
+#include <map>
 #include <sqlcipher/sqlite3.h>
 
 using bmc::Mailbox;
@@ -210,6 +211,23 @@ TEST(the_unread_count_is_served_by_an_index_not_by_reading_the_letters) {
     CHECK(plan.find("messages_unread") != std::string::npos);
 }
 
+TEST(the_newest_post_of_each_source_is_served_by_an_index_not_by_reading_the_letters) {
+    // The window asks for the sources of the Subscriptions page after every change of the mailbox.
+    const auto path = aNewMailbox();
+    auto key = key32();
+    {
+        Mailbox m;
+        m.create(path, "key-1", key);
+        m.store("post-1", "BM-2cA", "BM-2cA", "Post", "body", -1, "Broadcasts");
+        m.close();
+    }
+    const auto plan =
+        queryPlan(path, key,
+                  "EXPLAIN QUERY PLAN SELECT recipient,MAX(received) FROM messages WHERE "
+                  "folder='Broadcasts' AND recipient<>'' GROUP BY recipient");
+    CHECK(plan.find("COVERING INDEX messages_channel_received") != std::string::npos);
+}
+
 TEST(arrivals_are_counted_once_each_from_the_last_open) {
     // What the desktop watches to play a sound: a new incoming row, once. A replay, a broadcast and
     // our own outgoing chat are not arrivals.
@@ -338,6 +356,139 @@ TEST(subscriptions_contacts_and_settings_round_trip) {
     CHECK_EQ(m.setting("theme", "dark"), std::string("dark"));
     m.setSetting("theme", "light");
     CHECK_EQ(m.setting("theme"), std::string("light"));
+    m.close();
+}
+
+// A pending subscription listens for an address's broadcasts without listing the address: the
+// user deals with the person (a letter, a chat, the address book), and what they announce, if ever,
+// is heard.
+TEST(a_pending_subscription_is_listened_to_and_not_listed) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    CHECK_THROWS(m.watch("")); // "Enter a broadcast address"
+    CHECK(m.watch("BM-2cPerson"));
+    CHECK(!m.watch("BM-2cPerson")); // pending already
+    CHECK_EQ(m.subscriptions().size(), size_t(0));
+    CHECK_EQ(m.watched(), std::vector<std::string>{"BM-2cPerson"});
+    // A listed subscription is listened to as well, once; asking for one that is listed does
+    // nothing.
+    m.subscribe("BM-2cNews", "News");
+    CHECK(!m.watch("BM-2cNews"));
+    CHECK_EQ(m.watched(), (std::vector<std::string>{"BM-2cNews", "BM-2cPerson"}));
+    CHECK_EQ(m.subscriptions().size(), size_t(1));
+    m.close();
+}
+
+TEST(a_pending_subscription_is_listed_when_its_address_posts_or_is_subscribed_to) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    m.watch("BM-2cA");
+    m.watch("BM-2cB");
+    m.reveal("BM-2cA"); // a post came from it: a subscription, with no name of its own
+    auto subscriptions = m.subscriptions();
+    CHECK_EQ(subscriptions.size(), size_t(1));
+    CHECK_EQ(subscriptions[0].address, std::string("BM-2cA"));
+    CHECK_EQ(subscriptions[0].label, std::string());
+    CHECK_EQ(m.watched().size(), size_t(2)); // still listened to, once each
+    m.reveal("BM-2cA");                      // again, or for one that is not pending: nothing
+    m.reveal("BM-2cNobody");
+    CHECK_EQ(m.subscriptions().size(), size_t(1));
+    CHECK_EQ(m.watched().size(), size_t(2));
+    // A subscription with a name of its own keeps it when it posts.
+    m.subscribe("BM-2cC", "Named");
+    m.reveal("BM-2cC");
+    // Subscribing on purpose lists a pending one, with the name given, though it has not posted.
+    m.subscribe("BM-2cB", "Bee");
+    std::map<std::string, std::string> names;
+    for (const auto &s : m.subscriptions())
+        names[s.address] = s.label;
+    CHECK_EQ(names.size(), size_t(3));
+    CHECK_EQ(names["BM-2cB"], std::string("Bee"));
+    CHECK_EQ(names["BM-2cC"], std::string("Named"));
+    CHECK_EQ(m.watched().size(), size_t(3));
+    m.close();
+}
+
+TEST(an_address_the_user_unsubscribed_from_is_not_watched_again) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    m.subscribe("BM-2cA", "A");
+    m.unsubscribe("BM-2cA");
+    CHECK(!m.watch("BM-2cA")); // a letter from it must not bring the subscription back
+    CHECK(m.watched().empty());
+    // A pending one that is dropped is not made again either.
+    CHECK(m.watch("BM-2cB"));
+    m.unsubscribe("BM-2cB");
+    CHECK(!m.watch("BM-2cB"));
+    CHECK(m.watched().empty());
+    // Subscribing on purpose is what lets it back.
+    m.subscribe("BM-2cA", "A again");
+    CHECK_EQ(m.subscriptions().size(), size_t(1));
+    m.unsubscribe("BM-2cA");
+    m.subscribe("BM-2cA", "A once more");
+    CHECK_EQ(m.subscriptions().size(), size_t(1));
+    m.close();
+}
+
+TEST(an_address_with_posts_and_no_subscription_was_unsubscribed_from_and_is_not_watched) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    // Its posts stay when the subscription goes (nothing is deleted for the user), which is how an
+    // unsubscription from before pending subscriptions shows.
+    m.store("post-1", "BM-2cA", "BM-2cA", "Post", "Body", -1, "Broadcasts");
+    CHECK(!m.watch("BM-2cA"));
+    CHECK(m.watch("BM-2cB"));
+    m.close();
+}
+
+TEST(importing_a_subscription_lists_a_pending_one) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    m.watch("BM-2cA");
+    CHECK_EQ(m.importSubscriptions({{"BM-2cA", "PyBitmessage's name"}, {"BM-2cB", "Other"}}), 2);
+    std::map<std::string, std::string> names;
+    for (const auto &s : m.subscriptions())
+        names[s.address] = s.label;
+    CHECK_EQ(names.size(), size_t(2));
+    CHECK_EQ(names["BM-2cA"], std::string("PyBitmessage's name"));
+    CHECK_EQ(m.watched().size(), size_t(2));
+    m.close();
+}
+
+TEST(the_time_of_the_newest_post_of_each_source_is_known) {
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    const auto letter = [](const char *id, const char *who, const char *folder, int64_t at) {
+        bmc::ImportedLetter l;
+        l.id = id;
+        l.sender = who;
+        l.recipient = who;
+        l.subject = "Subject";
+        l.body = "Body";
+        l.folder = folder;
+        l.received = at;
+        return l;
+    };
+    m.importLetters({letter("p1", "BM-2cA", "Broadcasts", 100),
+                     letter("p2", "BM-2cA", "Broadcasts", 300),
+                     letter("p3", "BM-2cB", "Broadcasts", 200),
+                     letter("l1", "BM-2cC", "Inbox", 999)}); // a letter is no post
+    const auto last = m.lastPosts();
+    CHECK_EQ(last.size(), size_t(2));
+    CHECK_EQ(last.at("BM-2cA"), int64_t(300));
+    CHECK_EQ(last.at("BM-2cB"), int64_t(200));
     m.close();
 }
 

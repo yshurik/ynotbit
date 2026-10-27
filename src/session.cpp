@@ -90,6 +90,8 @@ static QString documentsPath() {
 static const QString kSentRecipientsSetting = "migrated:sent-recipients";
 // The same for the senders of the Inbox (addInboxSenders).
 static const QString kInboxSendersSetting = "migrated:inbox-senders";
+// The same for the people the user deals with, listened to for broadcasts (watchKnownPeople).
+static const QString kPendingSubscriptionsSetting = "migrated:pending-subscriptions";
 // The mailbox setting that says the import of PyBitmessage's data has been dealt with: an import
 // finished, or the user asked not to be offered it again. While it is not there, the import is
 // offered each time the mailbox opens.
@@ -428,6 +430,7 @@ void Session::createMailbox() {
             mailbox_.create(p, id, vault_.mailboxKey(id));
             mailbox_.setSetting(kSentRecipientsSetting, "1"); // nothing was sent yet to add
             mailbox_.setSetting(kInboxSendersSetting, "1");   // nor received
+            mailbox_.setSetting(kPendingSubscriptionsSetting, "1"); // nobody dealt with yet
             // A new mailbox starts with the built-in subscriptions and contacts, not at its next
             // opening.
             try {
@@ -489,6 +492,12 @@ void Session::openMailboxPath(const QString &p) {
                 addInboxSenders();
             } catch (...) {
                 // Nor are the people who wrote; the next opening tries again.
+            }
+            // After the two above, which fill the address book that this one reads too.
+            try {
+                watchKnownPeopleOnce();
+            } catch (...) {
+                // Nor are the people dealt with; the next opening tries again.
             }
             // ynotbit opens on the first built-in subscription: the digest.
             if (const auto defaults = updates::defaultSubscriptions(); !defaults.isEmpty())
@@ -1186,6 +1195,21 @@ void Session::addInboxSenders() {
     mailbox_.setSetting(kInboxSendersSetting, "1");
     batch.commit();
 }
+void Session::watchKnownPeopleOnce() {
+    if (!mailbox_.setting(kPendingSubscriptionsSetting).isEmpty())
+        return;
+    client_->watchKnownPeople();
+    mailbox_.setSetting(kPendingSubscriptionsSetting, "1");
+}
+int Session::watchKnownPeople() {
+    if (!mailboxOpen())
+        return 0;
+    try {
+        return client_->watchKnownPeople();
+    } catch (...) {
+        return 0; // nothing was kept; the next run (the next import) tries again
+    }
+}
 int Session::addToAddressBook(const QStringList &addresses) {
     if (!mailboxOpen())
         return 0;
@@ -1217,15 +1241,27 @@ QVariantList Session::broadcastSources() const {
                                                 {"subscribed", true},
                                                 {"updates", true}};
     for (const auto &s : mailbox_.subscriptions())
-        sources[s.address] = {
-            {"address", s.address},
-            {"label", s.label.trimmed().isEmpty() ? s.address : s.label.trimmed()},
-            {"subscribed", true},
-            {"updates", s.address == updates::publisherAddress()}};
+        sources[s.address] = {{"address", s.address},
+                              // A subscription a post made plain has no name of its own: the
+                              // address book's, or else the address.
+                              {"label", s.label.trimmed().isEmpty()
+                                            ? names.value(s.address, s.address)
+                                            : s.label.trimmed()},
+                              {"subscribed", true},
+                              {"updates", s.address == updates::publisherAddress()}};
+    // The newest poster first; those with no post (a subscription that has not posted yet) after
+    // them, in order of name.
+    const auto lastPosts = mailbox_.lastPosts();
     QVariantList result;
-    for (const auto &v : sources)
+    for (auto v : sources) {
+        v["lastPost"] = lastPosts.value(v["address"].toString());
         result << v;
+    }
     std::stable_sort(result.begin(), result.end(), [](const QVariant &a, const QVariant &b) {
+        const auto newer = a.toMap()["lastPost"].toLongLong(),
+                   older = b.toMap()["lastPost"].toLongLong();
+        if (newer != older)
+            return newer > older;
         return a.toMap()["label"].toString().compare(b.toMap()["label"].toString(),
                                                      Qt::CaseInsensitive) < 0;
     });
@@ -1305,6 +1341,7 @@ bool Session::addContact(QString address, QString label) {
             throw std::runtime_error(problem.toStdString());
         label = label.trimmed();
         mailbox_.saveContact(address, label.isEmpty() ? address : label);
+        client_->watchPerson(bridge::toStd(address)); // a person the user deals with
         messageModel()->reload(); // list rows carry correspondents' names
         activity_ = tr("Contact saved.");
     });
