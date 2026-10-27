@@ -141,7 +141,7 @@ The phrase `anonymous` makes a chan (everybody who knows it has its keys). ynotb
 
 | Leak | Mitigation |
 |---|---|
-| Timing: a registration at 12:00:01 and a lookup at 12:00:05 look like one person | lookups are queued and sent after a random delay (3 to 30 seconds), never within 2 minutes after an identified message to the same bot, and in batches |
+| Timing: a registration at 12:00:01 and a lookup at 12:00:05 look like one person | accepted. *Revised 2026-10-27, at the user's word, for speed: the first design queued a lookup for a random 3 to 30 seconds and kept it 2 minutes away from an identified message to the same bot; both are gone, and a lookup goes at the next tick.* Lookups still go in batches |
 | A burst of lookups reads as one client | `/nickname` carries up to 8 addresses, and the messages of a check of the whole address book go ten seconds apart |
 | The bot's network neighbours see where a message first appeared | out of scope: Tor (the proxy setting) covers it |
 | What a user looks up | the query is in the clear to chan members; nothing links it to the user. Nothing is looked up unless the user asks (Find people, Check nicknames): the app sends no message of its own accord |
@@ -168,11 +168,11 @@ The user's own nicknames are not on this page: they are on the Identities page (
 
 ### 5.3 Lookups
 
-`Session` owns one queue per nickbot. A lookup is a request to be sent later, not now: the user's click only queues it, the scheduler sends it after the delay of 4.2, and the answer, minutes later, updates the cache and tells the window. Every function that asks is asynchronous and says so in the UI ("Asked @nickbot; answers take a few minutes").
+`Session` owns one queue per nickbot. A lookup is a request to be sent by the scheduler, not by the click: the click only queues it, the scheduler sends it at the next tick (under a second; a random delay of 3 to 30 seconds and a separation of 2 minutes from a message that names the user stood here until 2026-10-27), and the answer, minutes later, updates the cache and tells the window. Every function that asks is asynchronous and says so in the UI ("Asked @nickbot; answers take a few minutes").
 
 The cache is the address book: a contact's nickname is the setting `nickname:<address>` that already exists (it holds `/echobot` for the echo bot today); beside it `nickbot:<address>` says which nickbot said so (it picks the colour) and nothing more. A nickname typed or seeded by hand has no nickbot and no colour. Addresses that are not contacts (search results, other people's answers) are cached in memory only.
 
-**Checking the address book, when the user asks.** *Revised 2026-10-26: the first design refreshed the contacts' nicknames on its own, in the background (on by default, with a switch); the user decided against anything the app does without being asked.* Contacts gets a button, **Check nicknames**: it asks the default nickbot for the nicknames of every contact, eight to a message (`/nickname`), the first after the usual random wait and each next one ten seconds behind the one before, so that a long address book is no burst on the shared chan or the bot's limits. While it is under way the button waits and a line under the filter says so; when the last message is answered (or has timed out) the line says that it is over. The answers fill the Nickname column as they come, as any answer does (5.6); a nickname a nickbot vouched for earlier and the nickbot no longer has is taken away. The setting `nickchecked:<address>` and the automatic switch are gone. A second press while a check is under way does nothing (the button is grey).
+**Checking the address book, when the user asks.** *Revised 2026-10-26: the first design refreshed the contacts' nicknames on its own, in the background (on by default, with a switch); the user decided against anything the app does without being asked.* Contacts gets a button, **Check nicknames**: it asks the default nickbot for the nicknames of every contact, eight to a message (`/nickname`), the first at the next tick and each next one ten seconds behind the one before, so that a long address book is no burst on the shared chan or the bot's limits. While it is under way the button waits and a line under the filter says so; when the last message is answered (or has timed out) the line says that it is over. The answers fill the Nickname column as they come, as any answer does (5.6); a nickname a nickbot vouched for earlier and the nickbot no longer has is taken away. The setting `nickchecked:<address>` and the automatic switch are gone. A second press while a check is under way does nothing (the button is grey).
 
 ### 5.4 Registering
 
@@ -215,7 +215,7 @@ The dialog that makes an identity (alone, or with a new vault) has a checkbox **
 | The shared address as a way to spam every client | the chan is machine traffic: diverted, processed, deleted, never shown |
 | A takeover of a nickbot | answers are re-validated; plain-text rendering; only configured nickbots are believed |
 | A repeated event after a crash | `handled` table in the same transaction |
-| Timing correlation | queued, delayed, batched, one message per bot per 2 minutes |
+| Timing correlation | accepted since 2026-10-27, at the user's word: nothing is held back; lookups go in batches |
 | Latency (minutes) | every lookup is asynchronous in the UI; pending state is persisted for registration |
 | A nickname as a recipient in the To field | not in this slice; `Find people` and the address book cover it. Follow-up |
 | Language of the bot's answers | English; the client translates from the codes |
@@ -235,7 +235,7 @@ The dialog that makes an identity (alone, or with a new vault) has a checkbox **
 
 ## 8. Decisions that are mine
 
-Name length 3 to 32 (the sigil is not counted); case rules; reserved names and the seed file; quarantine of 30 days; batch lookups; the `nickbot:` trailer instead of a JSON-only protocol; the 1-hour life of a request and the 2-minute pacing; opportunistic caching from other people's answers; the master and the contacts-refresh switches; pure-Go SQLite; the development address until a vanity one is chosen; the fifth colour (coral); the Service folder; leaving a user's own `anonymous` chan alone; a short delay for a lookup somebody waits for; the chat list shows a nickname as text, not coloured; a nickbot's last line is hidden in the chats; a nickname set by hand is confirmed, never replaced; contacts are looked up at most once every ten minutes and again after a week.
+Name length 3 to 32 (the sigil is not counted); case rules; reserved names and the seed file; quarantine of 30 days; batch lookups; the `nickbot:` trailer instead of a JSON-only protocol; the 1-hour life of a request (the 2-minute pacing was dropped on 2026-10-27, at the user's word); opportunistic caching from other people's answers; the master and the contacts-refresh switches; pure-Go SQLite; the development address until a vanity one is chosen; the fifth colour (coral); the Service folder; leaving a user's own `anonymous` chan alone; a short delay for a lookup somebody waits for (dropped on 2026-10-27, at the user's word); the chat list shows a nickname as text, not coloured; a nickbot's last line is hidden in the chats; a nickname set by hand is confirmed, never replaced; contacts are looked up at most once every ten minutes and again after a week.
 
 ## 9. Follow-ups, not in this slice
 

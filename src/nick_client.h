@@ -131,9 +131,8 @@ class NickClient : public QObject {
     // text as it is when that line is not a good one.
     static QString withoutTrailer(const QString &text);
 
-    // Tests move time and chance.
+    // Tests move time.
     void setClockForTesting(std::function<qint64()> now);
-    void setDelayForTesting(std::function<int(int low, int high)> pick);
 
   signals:
     // kind: address, nickname or search. result: for address {found, nick, address}, for nickname
@@ -153,16 +152,13 @@ class NickClient : public QObject {
     };
     Session &session_;
     QList<Pending> queue_, waiting_;
-    QHash<QString, qint64> lastIdentified_;     // by nickbot, in seconds
     QList<QPair<QString, QString>> toRegister_; // identity, nickname
     bool flushRegistrations_ = false;
     std::function<qint64()> clock_;
-    std::function<int(int, int)> pick_;
 
     qint64 now() const;
-    int delay() const;
     QString problemWith(const QString &bot, QString *resolved);
-    // Queues a question for later, and `later` seconds on top of the random wait.
+    // Queues a question: it goes at the next tick, or `later` seconds after now.
     QString ask(Pending pending, int later = 0);
     void sendDue();
     void expire();

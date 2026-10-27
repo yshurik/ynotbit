@@ -33,5 +33,7 @@ class FindPeopleDialog : public QDialog {
     void showRow(const QString &nick, const QString &address, int botIndex);
     void updateButtons();
     void addSelected();
+    QString ownKind(const QString &address) const;
+    QString relation(const QString &address) const;
 };
 } // namespace bm

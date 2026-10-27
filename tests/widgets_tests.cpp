@@ -1,3 +1,4 @@
+#include "address_delegate.h"
 #include "address_label.h"
 #include "ellipsis_label.h"
 #include "app_badge.h"
@@ -101,6 +102,31 @@ static void composeAndWait(bm::DesktopWindow &window, QVariantMap letter = {}, b
 static bool boldAndWhole(QPushButton *button) {
     return button->font().weight() >= QFont::DemiBold &&
            QFontMetrics(button->font()).horizontalAdvance(button->text()) + 18 <= button->width();
+}
+// A form as macOS has it: the fields stay at their size hint. Set on a dialog, this shows on any
+// platform what a form that does not say otherwise (QFormLayout::setFieldGrowthPolicy) comes to
+// there.
+struct FieldsAtHint : QProxyStyle {
+    int styleHint(StyleHint hint, const QStyleOption *option, const QWidget *widget,
+                  QStyleHintReturn *data) const override {
+        if (hint == SH_FormLayoutFieldGrowthPolicy)
+            return QFormLayout::FieldsStayAtSizeHint;
+        return QProxyStyle::styleHint(hint, option, widget, data);
+    }
+};
+// Whether the text of a combo, after its icon, is all inside the field the style draws it in (what
+// is past that is cut off, as the "t" of "nickbot" was).
+static bool showsWhole(QComboBox *combo) {
+    QStyleOptionComboBox option;
+    option.initFrom(combo);
+    option.subControls = QStyle::SC_All;
+    option.frame = combo->hasFrame();
+    const auto field = combo->style()->subControlRect(QStyle::CC_ComboBox, &option,
+                                                      QStyle::SC_ComboBoxEditField, combo);
+    const int icon =
+        combo->itemIcon(combo->currentIndex()).isNull() ? 0 : combo->iconSize().width() + 4;
+    return QFontMetrics(combo->font()).horizontalAdvance(combo->currentText()) + icon + 2 <=
+           field.width();
 }
 static void require(bool ok, const char *message) {
     if (!ok) {
@@ -1537,7 +1563,6 @@ static void testNickbots(const QTemporaryDir &temp) {
     auto &nick = s.nicks();
     qint64 now = QDateTime::currentSecsSinceEpoch();
     nick.setClockForTesting([&] { return now; });
-    nick.setDelayForTesting([](int low, int) { return low; }); // no chance in a test
     const auto me = s.identities().first().toMap()["address"].toString();
 
     // --- the list ------------------------------------------------------------------------------
@@ -1617,7 +1642,8 @@ static void testNickbots(const QTemporaryDir &temp) {
                 std::set<std::string>{lane.toStdString()},
             "a mailbox that opens tells it again");
 
-    // --- a lookup goes out late, from the chan, short-lived --------------------------------------
+    // --- a lookup goes out at the next tick, from the chan, short-lived
+    // ---------------------------
     QSignalSpy finished(&nick, &bm::NickClient::lookupFinished);
     const auto sentFrom = [&](const QString &from, const QString &to) {
         QStringList texts;
@@ -1626,16 +1652,11 @@ static void testNickbots(const QTemporaryDir &temp) {
                 texts << QString::fromStdString(m.body);
         return texts;
     };
-    require(nick.lookupAddress("@ben").isEmpty(), "a lookup is queued");
-    nick.tick();
-    require(sentFrom(lane, bot).isEmpty(), "and not sent at once");
-    now += 2;
-    nick.tick();
-    require(sentFrom(lane, bot).isEmpty(), "nor before its delay is over");
-    now += 2;
+    require(nick.lookupAddress("@ben").isEmpty() && sentFrom(lane, bot).isEmpty(),
+            "a lookup is queued by the call, not sent in it");
     nick.tick();
     require(sentFrom(lane, bot) == QStringList{"/address @ben"},
-            "after the delay it goes, from the lane, to the nickbot, as the command");
+            "at the next tick it goes, from the lane, to the nickbot, as the command");
     const auto lookupChat =
         s.coreMailbox().chatMessages(lane.toStdString(), bot.toStdString()).front();
     require(lookupChat.expires <= QDateTime::currentSecsSinceEpoch() + 3601 &&
@@ -1695,7 +1716,6 @@ static void testNickbots(const QTemporaryDir &temp) {
     // --- a failed lookup says why; a lookup nobody answers times out
     // -------------------------------
     require(nick.lookupAddress("@nobody").isEmpty(), "test sanity: another lookup");
-    now += 4;
     nick.tick();
     answer(bot, R"({"v":1,"cmd":"","ok":false,"error":"rate_limited"})");
     nick.tick();
@@ -1723,7 +1743,6 @@ static void testNickbots(const QTemporaryDir &temp) {
     require(nick.nicknameOf(ann).text.isEmpty(),
             "what a stranger says about a contact is not taken");
     require(nick.lookupNicknames({ann, ben}, {}).isEmpty(), "test sanity: a batch lookup");
-    now += 4;
     nick.tick();
     require(sentFrom(lane, bot).size() == 3 &&
                 sentFrom(lane, bot)[2] == "/nickname " + ann + " " + ben,
@@ -1794,7 +1813,6 @@ static void testNickbots(const QTemporaryDir &temp) {
     {
         nick.setBots({{bot, "nickbot"}, {second, "second"}});
         require(nick.lookupAddress("@zeta", bot).isEmpty(), "test sanity: a question to the first");
-        now += 4;
         nick.tick();
         finished.clear();
         answer(
@@ -1849,7 +1867,6 @@ static void testNickbots(const QTemporaryDir &temp) {
     finished.clear();
     const auto before = sentFrom(lane, bot).size();
     require(nick.search("BENN").isEmpty(), "a search is queued");
-    now += 4;
     nick.tick();
     require(sentFrom(lane, bot).size() == before + 1 &&
                 sentFrom(lane, bot).last() == "/search benn",
@@ -1916,19 +1933,13 @@ static void testNickbots(const QTemporaryDir &temp) {
     now += 24 * 3600;
     nick.tick();
     require(nick.registration(me)["state"].toString() == "noanswer", "a day and more is");
-    // A lookup is held back from a registration for a while: the two must not line up.
+    // Nothing holds a lookup back from a registration: it goes at the next tick all the same.
+    const auto lanes = sentFrom(lane, bot).size();
     nick.registerNickname(me, "@mine4");
     nick.lookupAddress("@ben");
-    now += 4;
     nick.tick();
-    const auto lanes = sentFrom(lane, bot).size();
-    now += 100;
-    nick.tick();
-    require(sentFrom(lane, bot).size() == lanes,
-            "a lookup is not sent within two minutes of a message that names the user");
-    now += 30;
-    nick.tick();
-    require(sentFrom(lane, bot).size() == lanes + 1, "and goes after");
+    require(sentFrom(lane, bot).size() == lanes + 1,
+            "a lookup goes at the next tick, also just after a message that names the user");
 
     nick.setBots({{bot, "nickbot"}, {second, "second"}});
     require(nick.registerNickname(me, "@second_one", second).isEmpty() &&
@@ -1980,7 +1991,6 @@ static void testNickbots(const QTemporaryDir &temp) {
             }
             return R"({"v":1,"cmd":"nickname","ok":true,"results":[)" + entries.join(',') + "]}";
         };
-        now += 200; // clear of the registration above
         finished.clear();
         const auto start = sentFrom(lane, bot).size();
         // Nothing is asked about the contacts on its own, however long the time.
@@ -2006,15 +2016,12 @@ static void testNickbots(const QTemporaryDir &temp) {
                     problem == bm::NickClient::tr("A check is already under way"),
                 "and is not started a second time while it is under way");
         QSignalSpy changes(&nick, &bm::NickClient::changed);
-        now += 2;
-        nick.tick();
         require(sentFrom(lane, bot).size() == start,
-                "nothing goes out at once: the first message waits its random time");
-        now += 1;
+                "the call only queues the messages of a check");
         nick.tick();
         require(sentFrom(lane, bot).size() == start + 1 &&
                     sentFrom(lane, bot).last().split(' ').size() == 1 + 8,
-                "then the first goes, eight addresses to a message");
+                "the first goes at the next tick, eight addresses to a message");
         now += 9;
         nick.tick();
         require(sentFrom(lane, bot).size() == start + 1,
@@ -2057,7 +2064,6 @@ static void testNickbots(const QTemporaryDir &temp) {
                 "with the last answer it is over, and the client says so");
         // One that is never answered ends too, by the time the answer is overdue.
         require(nick.checkContacts() == contacts, "test sanity: a second check");
-        now += 3;
         nick.tick();
         require(nick.checking(), "test sanity: it is under way");
         for (int i = 1; i < batches; ++i) {
@@ -3526,6 +3532,7 @@ static void testFindPeople(const QTemporaryDir &temp) {
         bm::Vault made;
         made.create(vaultFile, "test password");
         made.addIdentity("Mine");
+        made.addChannel("find people chan", "Find chan");
         const auto key = made.addMailboxKey();
         bm::Mailbox box;
         box.create(boxFile, key, made.mailboxKey(key));
@@ -3555,7 +3562,6 @@ static void testFindPeople(const QTemporaryDir &temp) {
     auto &nick = s.nicks();
     qint64 now = QDateTime::currentSecsSinceEpoch();
     nick.setClockForTesting([&] { return now; });
-    nick.setDelayForTesting([](int low, int) { return low; });
     int serial = 0;
     const auto answer = [&](const QString &json) {
         const auto text = "Words.\nnickbot: " + json.toStdString();
@@ -3589,17 +3595,23 @@ static void testFindPeople(const QTemporaryDir &temp) {
     // A word is searched for.
     field->setText("benn");
     search->click();
-    now += 4;
     nick.tick();
-    require(sent() == QStringList{"/search benn"} && status->text().contains("nickbot"),
-            "a word is searched for, and the dialog says whom it asked");
+    require(sent() == QStringList{"/search benn"} &&
+                status->text() ==
+                    bm::FindPeopleDialog::tr("Asked %1. The answer takes a few minutes.")
+                        .arg("nickbot"),
+            "a word is searched for, and the dialog says whom it asked, by its name");
     answer(
         R"({"v":1,"cmd":"search","ok":true,"query":"benn","results":[{"nick":"@benny","address":")" +
         benny + R"("},{"nick":"@bennett","address":")" + ben + R"("}],"more":false})");
-    require(results->topLevelItemCount() == 2 && results->topLevelItem(0)->text(0) == "@benny" &&
-                results->topLevelItem(0)->text(1) == benny &&
-                results->topLevelItem(0)->foreground(0).color() == bm::nickbotColor(0),
-            "the hits fill the table, in the nickbot's colour");
+    require(results->topLevelItemCount() == 2 && results->topLevelItem(0)->text(1) == "@benny" &&
+                results->topLevelItem(0)->text(0) == benny &&
+                results->topLevelItem(0)->foreground(1).color() == bm::nickbotColor(0),
+            "the hits fill the table: the address, then the nickname in the nickbot's colour");
+    require(!results->topLevelItem(0)->icon(0).isNull() &&
+                results->topLevelItem(0)->icon(0).cacheKey() !=
+                    results->topLevelItem(1)->icon(0).cacheKey(),
+            "each address has its identicon, as in the address book");
     require(!add->isEnabled(), "nothing is added until something is chosen");
     results->topLevelItem(0)->setSelected(true);
     require(add->isEnabled(), "a chosen row can be added");
@@ -3617,37 +3629,35 @@ static void testFindPeople(const QTemporaryDir &temp) {
     // A whole nickname is asked for its address, an address for its nicknames.
     field->setText("@Ben");
     search->click();
-    now += 4;
     nick.tick();
     require(sent().last() == "/address @Ben", "a nickname is asked for its address");
     answer(
         R"({"v":1,"cmd":"address","ok":true,"query":"@Ben","found":true,"nick":"@Ben","address":")" +
         ben + R"("})");
-    require(results->topLevelItemCount() == 1 && results->topLevelItem(0)->text(1) == ben &&
+    require(results->topLevelItemCount() == 1 && results->topLevelItem(0)->text(0) == ben &&
                 results->currentItem() == results->topLevelItem(0),
             "the one it found is chosen already");
     field->setText(benny);
     search->click();
-    now += 4;
     nick.tick();
     require(sent().last() == "/nickname " + benny, "an address is asked for its nicknames");
     answer(R"({"v":1,"cmd":"nickname","ok":true,"query":")" + benny +
            R"(","results":[{"address":")" + benny + R"(","nicks":["@benny","/bennybot"]}]})");
-    require(results->topLevelItemCount() == 2 && results->topLevelItem(1)->text(0) == "/bennybot",
+    require(results->topLevelItemCount() == 2 && results->topLevelItem(1)->text(1) == "/bennybot",
             "one row for each of its nicknames");
     // Nobody by that name.
     field->setText("@nobody");
     search->click();
-    now += 4;
     nick.tick();
     answer(R"({"v":1,"cmd":"address","ok":true,"query":"@nobody","found":false})");
-    require(results->topLevelItemCount() == 0 && status->text().contains("nickbot"),
-            "an empty answer says that the nickbot knows no one by that");
+    require(results->topLevelItemCount() == 0 &&
+                status->text() ==
+                    bm::FindPeopleDialog::tr("%1 knows no one by that.").arg("nickbot"),
+            "an empty answer says that the nickbot, by its name, knows no one by that");
     // An answer to somebody else's question, of the same kind, does not fill the table.
     require(nick.lookupAddress("@other").isEmpty(), "test sanity: another asker's question");
     field->setText("@later");
     search->click();
-    now += 4;
     nick.tick();
     answer(
         R"({"v":1,"cmd":"address","ok":true,"query":"@other","found":true,"nick":"@other","address":")" +
@@ -3657,8 +3667,53 @@ static void testFindPeople(const QTemporaryDir &temp) {
     answer(
         R"({"v":1,"cmd":"address","ok":true,"query":"@later","found":true,"nick":"@later","address":")" +
         benny + R"("})");
-    require(results->topLevelItemCount() == 1 && results->topLevelItem(0)->text(0) == "@later",
+    require(results->topLevelItemCount() == 1 && results->topLevelItem(0)->text(1) == "@later",
             "the answer to this one is");
+    // What the user's own addresses are: not people to add. The column of contacts says so.
+    QString mine, myChan;
+    for (const auto &v : s.identities())
+        (v.toMap()["chan"].toBool() ? myChan : mine) = v.toMap()["address"].toString();
+    require(!mine.isEmpty() && !myChan.isEmpty(),
+            "test sanity: an identity and a chan of the user");
+    const auto stranger = addressOf("Stranger found");
+    field->setText("mine");
+    search->click();
+    nick.tick();
+    answer(
+        R"({"v":1,"cmd":"search","ok":true,"query":"mine","results":[{"nick":"@mine","address":")" +
+        mine + R"("},{"nick":"#findchan","address":")" + myChan +
+        R"("},{"nick":"@benny","address":")" + benny + R"("},{"nick":"@stranger","address":")" +
+        stranger + R"("},{"nick":"/chanbot","address":")" + myChan + R"("}],"more":false})");
+    require(results->topLevelItemCount() == 5 &&
+                results->topLevelItem(0)->text(2) == bm::FindPeopleDialog::tr("Your identity") &&
+                results->topLevelItem(1)->text(2) == bm::FindPeopleDialog::tr("Your chan") &&
+                results->topLevelItem(2)->text(2) == bm::FindPeopleDialog::tr("yes") &&
+                results->topLevelItem(3)->text(2).isEmpty(),
+            "the column says what each address is to the user: their own identity or chan, a "
+            "contact already, or nothing");
+    const auto choose = [&](const QList<int> &rows) {
+        results->clearSelection();
+        for (int row : rows)
+            results->topLevelItem(row)->setSelected(true);
+    };
+    choose({0});
+    require(!add->isEnabled(), "the user's own identity is not added to the contacts");
+    choose({1});
+    require(!add->isEnabled(), "nor is their own chan");
+    choose({2});
+    require(add->isEnabled(), "a contact's row can be, to keep its nickname as the nickbot's");
+    choose({3});
+    require(add->isEnabled(), "a stranger can be");
+    choose({0, 1, 2, 3, 4});
+    require(add->isEnabled(), "and is among the rest");
+    add->click();
+    require(s.isContact(stranger) && !s.isContact(mine) && !s.isContact(myChan) &&
+                status->text() == bm::FindPeopleDialog::tr("Added to your contacts: %1.").arg(2) &&
+                results->topLevelItem(3)->text(2) == bm::FindPeopleDialog::tr("yes") &&
+                results->topLevelItem(0)->text(2) == bm::FindPeopleDialog::tr("Your identity") &&
+                s.error().isEmpty(),
+            "of a choice of all four the stranger joins and the contact is kept; the user's own "
+            "are left out, with no complaint that they are not contacts");
     // Nickbots off: it says so.
     nick.setEnabled(false);
     field->setText("@ben");
@@ -3666,6 +3721,79 @@ static void testFindPeople(const QTemporaryDir &temp) {
     require(status->text() == bm::NickClient::tr("Nicknames are turned off in Settings"),
             "with nickbots off the dialog says why nothing is asked");
     nick.setEnabled(true);
+
+    // The look, under the window's style sheet, in English and in Russian, where forms keep their
+    // fields at the size hint (macOS): the nickbot and the search button reach the right edge, the
+    // combo says which nickbot it is by its name and its address and shows all of that, and an
+    // address that is typed shows whole.
+    {
+        bm::Session looks(temp.filePath("find-looks-node"), true);
+        bm::DesktopWindow window(looks, temp.filePath("sounds-find-looks"));
+        FieldsAtHint fieldsAtHint;
+        QStringList faults;
+        for (const QString language : {"en", "ru"}) {
+            QTranslator translator;
+            if (language != "en")
+                require(translator.load(":/i18n/ynotbit_" + language) &&
+                            QCoreApplication::installTranslator(&translator),
+                        "load a translation");
+            bm::FindPeopleDialog look(s, &window);
+            look.setStyle(&fieldsAtHint);
+            look.show();
+            QCoreApplication::processEvents();
+            auto combo = look.findChild<QComboBox *>("findPeopleBot");
+            auto typed = look.findChild<QLineEdit *>("findPeopleField");
+            const int edge = look.width() - look.layout()->contentsMargins().right();
+            for (auto name : {"findPeopleBot", "findPeopleSearchButton"})
+                if (auto w = look.findChild<QWidget *>(name);
+                    w->mapTo(&look, QPoint(w->width(), 0)).x() < edge - 1)
+                    faults << language + ": " + name + " short of the right edge";
+            if (!combo->currentText().contains("nickbot") || !combo->currentText().contains(bot))
+                faults << language + ": the combo does not say the nickbot's name and address: " +
+                              combo->currentText();
+            if (!showsWhole(combo))
+                faults << language + ": the combo's text is cut: " + combo->currentText();
+            // The clear button of the field, the padding and frame, and the field's margins.
+            typed->setText(bot);
+            if (QFontMetrics(typed->font()).horizontalAdvance(bot) + 48 > typed->width())
+                faults << language + QString(": an address does not show whole in the field, %1 "
+                                             "px wide")
+                                         .arg(typed->width());
+            // The results are drawn as the address book is: an identicon of its size, the address
+            // in the address font at the size of the text, rows as high, and the last column whole.
+            typed->setText("mine");
+            look.findChild<QPushButton *>("findPeopleSearchButton")->click();
+            nick.tick();
+            answer(
+                R"({"v":1,"cmd":"search","ok":true,"query":"mine","results":[{"nick":"@mine","address":")" +
+                mine + R"("},{"nick":"@benny","address":")" + benny + R"("}],"more":false})");
+            auto list = look.findChild<QTreeWidget *>("findPeopleResults");
+            if (list->topLevelItemCount() != 2) {
+                faults << language + ": the results were not shown";
+            } else {
+                auto row = list->topLevelItem(0);
+                if (list->iconSize() != QSize(24, 24) || row->icon(0).isNull())
+                    faults << language + ": no identicon of the address book's size";
+                if (!dynamic_cast<bm::AddressDelegate *>(list->itemDelegate()))
+                    faults << language + ": addresses are not drawn as the address book does";
+                QFont inAddressFont = list->font();
+                inAddressFont.setFamilies(bm::addressFont().families());
+                if (list->columnWidth(0) <
+                    QFontMetrics(inAddressFont).horizontalAdvance(mine) + list->iconSize().width())
+                    faults << language + ": an address does not show whole in the address font";
+                if (list->visualItemRect(row).height() < 34)
+                    faults << language + QString(": the rows are %1 px high, the address book's "
+                                                 "are 34")
+                                             .arg(list->visualItemRect(row).height());
+                if (list->columnWidth(2) <
+                    QFontMetrics(list->font()).horizontalAdvance(row->text(2)) + 12)
+                    faults << language + ": the last column cuts " + row->text(2);
+                if (row->foreground(1).color() != bm::nickbotColor(0))
+                    faults << language + ": the nickname is not in the nickbot's colour";
+            }
+        }
+        require(faults.isEmpty(), qPrintable(faults.join("; ")));
+    }
 }
 // Contacts > Check nicknames: the whole address book is asked about when the user says so, the page
 // says that it is under way and when it is over, and the answers fill the Nickname column.
@@ -3702,7 +3830,6 @@ static void testCheckNicknames(const QTemporaryDir &temp) {
     require(s.mailboxOpen(), "test sanity: the mailbox opens");
     qint64 now = QDateTime::currentSecsSinceEpoch();
     s.nicks().setClockForTesting([&] { return now; });
-    s.nicks().setDelayForTesting([](int low, int) { return low; });
     // An address book with nobody in it (the built-in contacts too).
     for (const auto &c : s.coreMailbox().contacts())
         s.removeContact(QString::fromStdString(c.address));
@@ -3767,9 +3894,8 @@ static void testCheckNicknames(const QTemporaryDir &temp) {
                                           "The answers take a few minutes.") &&
                 !note->styleSheet().contains("#d93025"),
             "a check is under way: the page says so, and the button waits");
-    now += 3;
     s.nicks().tick();
-    require(sent() == 1, "the first message goes after its random wait");
+    require(sent() == 1, "the first message goes at the next tick");
     now += 10;
     s.nicks().tick();
     require(sent() == 2, "and the second ten seconds after");
@@ -8806,14 +8932,7 @@ int main(int argc, char **argv) {
             // field reaches the right edge, also where forms keep fields at their
             // size hint (macOS); nothing is squeezed or cut as rows appear, in
             // English or Russian; rows stay put while the phrase is typed.
-            struct FieldsAtHint : QProxyStyle {
-                int styleHint(StyleHint hint, const QStyleOption *option, const QWidget *widget,
-                              QStyleHintReturn *data) const override {
-                    if (hint == SH_FormLayoutFieldGrowthPolicy)
-                        return QFormLayout::FieldsStayAtSizeHint;
-                    return QProxyStyle::styleHint(hint, option, widget, data);
-                }
-            } fieldsAtHint;
+            FieldsAtHint fieldsAtHint;
             bm::Session looks(temp.filePath("looks-node"), true);
             bm::DesktopWindow lookWindow(looks, temp.filePath("sounds-looks"));
             lookWindow.show();

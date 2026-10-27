@@ -2520,6 +2520,14 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
         <source>Added to your contacts: %1.</source>
         <translation>已添加到联系人：%1。</translation>
     </message>
+    <message>
+        <source>Your identity</source>
+        <translation>你的身份</translation>
+    </message>
+    <message>
+        <source>Your chan</source>
+        <translation>你的频道</translation>
+    </message>
 </context>
 <context>
     <name>bm::NickbotsPage</name>

@@ -8,7 +8,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPair>
-#include <QRandomGenerator>
 #include <QSet>
 #include <bmc/chat_format.h>
 #include <bmc/clock.h>
@@ -20,11 +19,8 @@
 namespace bm {
 namespace {
 namespace nb = bmc::nickbot;
-// Seconds. A lookup goes out some time in the next half minute, so that it does not line up with
-// what the user did, and never within two minutes of a message with the user's name on it
-// (docs/nickbot.md, "Privacy"). The messages of a check of the whole book are ten seconds apart.
-constexpr int kLookupDelay[2] = {3, 30};
-constexpr qint64 kAfterIdentified = 120;
+// Seconds. A lookup goes out at the next tick. The messages of a check of the whole book are ten
+// seconds apart, so that a long address book is no burst.
 constexpr qint64 kCheckSpacing = 10;
 constexpr qint64 kAnswerWait = nb::kLookupTtlSeconds + 300;
 constexpr qint64 kRegistrationWait = bmc::kChatTtlSeconds;
@@ -95,13 +91,6 @@ qint64 NickClient::now() const {
 }
 void NickClient::setClockForTesting(std::function<qint64()> now) {
     clock_ = std::move(now);
-}
-void NickClient::setDelayForTesting(std::function<int(int, int)> pick) {
-    pick_ = std::move(pick);
-}
-int NickClient::delay() const {
-    return pick_ ? pick_(kLookupDelay[0], kLookupDelay[1])
-                 : QRandomGenerator::global()->bounded(kLookupDelay[0], kLookupDelay[1] + 1);
 }
 QString NickClient::setting(const QString &name) const {
     return session_.mailboxOpen() ? q(session_.coreMailbox().setting(st(name))) : QString();
@@ -254,7 +243,7 @@ QString NickClient::ask(Pending pending, int later) {
         for (const auto &p : *list)
             if (p.bot == pending.bot && p.key == pending.key)
                 return {}; // the same question is already out
-    pending.due = now() + delay() + later;
+    pending.due = now() + later;
     queue_.push_back(std::move(pending));
     return {};
 }
@@ -333,9 +322,7 @@ void NickClient::sendDue() {
     const auto t = now();
     for (int i = 0; i < queue_.size();) {
         const auto p = queue_[i];
-        const bool held =
-            t < lastIdentified_.value(p.bot, -kAfterIdentified * 10) + kAfterIdentified;
-        if (p.due > t || held) {
+        if (p.due > t) {
             ++i;
             continue;
         }
@@ -519,7 +506,6 @@ QString NickClient::registerNickname(const QString &identity, const QString &tex
     } catch (const std::exception &e) {
         return Session::errorText(e);
     }
-    lastIdentified_[resolved] = now();
     QJsonObject state{{"bot", resolved},      {"nick", q(n->text())}, {"state", "waiting"},
                       {"error", ""},          {"chat", id},           {"after", after},
                       {"sent", double(now())}};
@@ -802,7 +788,6 @@ void NickClient::tick() {
 void NickClient::mailboxOpened() {
     queue_.clear();
     waiting_.clear();
-    lastIdentified_.clear();
     setLaneInDelivery();
     // Opening a mailbox happens inside Session::attempt, which refuses a nested one, and sending a
     // chat is one: the registrations asked for before the mailbox existed go on the next tick.

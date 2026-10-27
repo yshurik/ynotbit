@@ -85,6 +85,10 @@ second one; the label is how ynotbit tells it from a chan `anonymous` the user j
 The bot keeps no record of lookups: its log says counts and errors, never a query. The shared address may look up and may not
 register, unregister or ask `/whoami`.
 
+Nothing is held back to hide the time of a lookup: it goes out at once. The bot cannot tell who asked, but a lookup that comes
+a moment after a registration can be matched to it by the time. (ynotbit once waited a random 3 to 30 seconds, and two minutes
+after a registration; that was dropped for speed on 2026-10-27.)
+
 ## In ynotbit
 
 - **Settings → Nickbots** lists up to five nickbots. The first is the default; each has a colour (the first four are the colours of
@@ -99,8 +103,10 @@ register, unregister or ask `/whoami`.
   nickname as it stands, in its nickbot's colour; while a try waits for its answer it is muted, and a try that was refused or
   went unanswered is red, with the reason in the tip. A chan has no nickname to ask for here.
 - **Contacts → Find people…** asks a nickbot: a whole nickname (`@ben`) for its address, an address for its nicknames, any other
-  word of four letters or more is searched for. The answer takes minutes (the window can be closed), the table shows it in the
-  nickbot's colour, and *Add to contacts* names each contact by its nickname.
+  word of four letters or more is searched for. The answer takes minutes (the window can be closed). The table is the address
+  book's: an identicon and the address, then the nickname in the nickbot's colour, then what the address is to you (*Your
+  identity* or *Your chan* for your own, *yes* for a contact). *Add to contacts* names each contact by its nickname and leaves
+  your own addresses out.
 - **Contacts → Check nicknames** asks the default nickbot for the nicknames of every contact, eight to a message and the messages
   ten seconds apart, so that a long address book is no burst. The page says that the check is under way (the button waits) and
   when it is over; what the nickbot has appears in the Nickname column as the answers come, and a nickname the nickbot vouched for
@@ -115,8 +121,8 @@ register, unregister or ask `/whoami`.
   confirmed; one a nickbot vouched for goes when the nickbot says the address has none.
 - **What goes out, and when.** A registration is a chat from the identity to the nickbot (the user can read it and the answer in the
   Chats page, without the last line, which is for programs). A lookup is a chat of the chan `anonymous` to the nickbot, with an
-  hour to live, sent 3 to 30 seconds after the click (the messages of a check of the address book ten seconds apart), and never within
-  two minutes of a message that names the user. Only the user's own action sends one. What comes back to that chan is filed under
+  hour to live, sent at once, within a second of the click (the messages of a check of the address book ten seconds apart). Only
+  the user's own action sends one. What comes back to that chan is filed under
   a hidden folder (`Service`), read once, and deleted; only a listed nickbot's answers are believed, and each is checked again
   for a bad nickname or address before anything is kept.
 - A chan the user joined by hand under the phrase `anonymous` is not taken over: lookups then say why they are off.

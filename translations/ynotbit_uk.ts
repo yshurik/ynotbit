@@ -2520,6 +2520,14 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
         <source>Added to your contacts: %1.</source>
         <translation>Додано до контактів: %1.</translation>
     </message>
+    <message>
+        <source>Your identity</source>
+        <translation>Ваша ідентичність</translation>
+    </message>
+    <message>
+        <source>Your chan</source>
+        <translation>Ваш канал</translation>
+    </message>
 </context>
 <context>
     <name>bm::NickbotsPage</name>

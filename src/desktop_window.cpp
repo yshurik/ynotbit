@@ -1,3 +1,4 @@
+#include "address_delegate.h"
 #include "address_label.h"
 #include "ellipsis_label.h"
 #include "desktop_window.h"
@@ -1481,23 +1482,6 @@ class ElidedLabel : public QLabel {
         QLabel::setText(fontMetrics().elidedText(full_, Qt::ElideMiddle, width()));
     }
     QString full_;
-};
-// Draws a view's addresses in the address font, at the size of the view's own text:
-// addressFont() alone has the platform's fixed-font size (10 px on macOS, beside text of 13), and
-// a model's font keeps its size when the style sheet changes the view's. The first column holds
-// addresses; any other cell that is one (a contact named by its address) gets it too.
-class AddressDelegate : public QStyledItemDelegate {
-  public:
-    using QStyledItemDelegate::QStyledItemDelegate;
-
-  protected:
-    void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override {
-        QStyledItemDelegate::initStyleOption(option, index);
-        if (index.column() == 0 || index.data().toString().contains("BM-")) {
-            option->font.setFamilies(addressFont().families());
-            option->fontMetrics = QFontMetrics(option->font);
-        }
-    }
 };
 // The identities table's cells: the local name carries a pill for what the identity is (the default
 // one, a chan), and a nickname cell that is empty says what it is for.
@@ -3154,9 +3138,11 @@ void DesktopWindow::updateTheme() {
             "QListWidget::item{padding:10px;} QListWidget::item:selected{background:%5;color:%6;} "
             // A transparent ground on every item: only a drawn item (the selected one) gets its
             // padding, and the rows would shift when selected.
-            "QTreeView#contactsTree{border:0;} "
-            "QTreeView#contactsTree::item{padding:5px 6px;background:transparent;} "
-            "QTreeView#contactsTree::item:selected{background:%5;color:%6;} "
+            "QTreeView#contactsTree,QTreeView#findPeopleResults{border:0;} "
+            "QTreeView#contactsTree::item,QTreeView#findPeopleResults::item{padding:5px 6px;"
+            "background:transparent;} "
+            "QTreeView#contactsTree::item:selected,QTreeView#findPeopleResults::item:selected{"
+            "background:%5;color:%6;} "
             "QToolBar{border:0;spacing:3px;} "
             // No bold on :default either: default buttons are bold by their own
             // font (makeDefault), and any dialog button is :default while focused.
@@ -3212,7 +3198,8 @@ void DesktopWindow::updateTheme() {
             "QToolButton[addressAction=\"true\"]{border:1px solid %4;border-radius:6px;"
             "background:transparent;padding:0;} "
             "QToolButton[addressAction=\"true\"]:hover{background:%3;} "
-            "QWidget[viewSwitch=\"true\"]{border:1px solid %4;border-radius:7px;background:transparent;} "
+            "QWidget[viewSwitch=\"true\"]{border:1px solid "
+            "%4;border-radius:7px;background:transparent;} "
             "QWidget[viewSwitch=\"true\"] QToolButton{border:0;border-radius:0;"
             "background:transparent;padding:0;} "
             "QWidget[viewSwitch=\"true\"] QToolButton:hover{background:%3;} "
