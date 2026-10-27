@@ -66,7 +66,7 @@ VOLUME /data
 EXPOSE 8444
 STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
-  CMD ["nickbot", "--check", "/data/status.json", "--max-age", "90", "--peers", "1"]
+  CMD ["nickbot", "--check", "/data/status.json", "--max-age", "90s", "--peers", "1"]
 ENTRYPOINT ["tini", "--", "nickbot"]
 CMD ["--data-dir", "/data", "--phrase-file", "/run/secrets/phrase", "--listen", "--port", "8444", \
      "--retention-mb", "512", "--retention-days", "4"]

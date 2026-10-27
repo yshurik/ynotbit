@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,5 +142,50 @@ func TestRunCheckAndAdminExitCodes(t *testing.T) {
 	out.Reset()
 	if code := run([]string{"admin", "-db", db, "stats"}, &out, &errOut); code != 0 || !strings.Contains(out.String(), fmt.Sprintf("names: %d", 3)) {
 		t.Errorf("admin stats = %d: %s", code, out.String())
+	}
+}
+
+// The image starts the service, and Docker asks it whether it is well, with the flags the Dockerfile
+// names; a flag the service does not take (a duration with no unit, once) is a container that runs
+// and is called unhealthy for good.
+func TestTheImagesNickbotStageUsesFlagsTheServiceTakes(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "docker", "Dockerfile"))
+	if err != nil {
+		t.Skip("no Dockerfile beside the module: ", err)
+	}
+	text := strings.ReplaceAll(string(raw), "\\\n", " ")
+	const stageStart = "FROM base AS nickbot"
+	at := strings.Index(text, stageStart)
+	if at < 0 {
+		t.Fatal("the Dockerfile has no nickbot stage")
+	}
+	stage := text[at+len(stageStart):]
+	if next := strings.Index(stage, "\nFROM "); next >= 0 {
+		stage = stage[:next]
+	}
+	var commands [][]string // the health check's, then the default command's
+	for _, line := range strings.Split(stage, "\n") {
+		i := strings.Index(line, "CMD [")
+		if i < 0 {
+			continue
+		}
+		var args []string
+		if err := json.Unmarshal([]byte(strings.TrimSpace(line[i+len("CMD "):])), &args); err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		commands = append(commands, args)
+	}
+	if len(commands) != 2 || len(commands[0]) < 2 || commands[0][0] != "nickbot" {
+		t.Fatalf("expected a health check that runs nickbot, then a default command; got %v", commands)
+	}
+	for _, flags := range [][]string{commands[0][1:], commands[1]} {
+		if _, err := parseFlags(flags, io.Discard); err != nil {
+			t.Errorf("the Dockerfile's %v: %v", flags, err)
+		}
+	}
+	// And the check itself is the one the service has: --check takes the status file.
+	o, _ := parseFlags(commands[0][1:], io.Discard)
+	if o == nil || o.check != "/data/status.json" || o.maxAge <= 0 || o.minPeers < 1 {
+		t.Errorf("the health check is %+v", o)
 	}
 }
