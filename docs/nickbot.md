@@ -45,8 +45,10 @@ anywhere, and ynotbit sends them from a shared address so that the bot cannot te
 
 ## Answers
 
-An answer goes back the way the command came. To a letter it is a letter (`Re: ...`) of plain words. To a chat it is plain words
-followed by one last line for programs, which starts with `nickbot: ` and holds one line of JSON:
+An answer goes back the way the command came. To a letter it is a letter (`Re: ...`) of plain words. To a chat it is words
+followed by one last line for programs, which starts with `nickbot: ` and holds one line of JSON. A chat is shown as Markdown, in
+which a newline alone does not start a line, so the lines of the words end in two spaces (Markdown's line break) and `/help` is a
+list:
 
 ```
 @ben is BM-2cT...

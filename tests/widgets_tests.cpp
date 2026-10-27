@@ -4567,6 +4567,25 @@ int main(int argc, char **argv) {
             expect(checked == 4 * texts.size() && unequal == 0,
                    "a message's label is as tall as QLabel makes it, for any text and width");
         }
+        // A chat is shown as Markdown, where two spaces before a newline end the line. That is how
+        // a bot puts several lines in one answer (the nickbot: nickbot/internal/service/reply.go).
+        {
+            bm::ChatsPane pane;
+            pane.show();
+            pane.setConversation(personal, "Personal", chatAddress, "Enter contact", false);
+            pane.setMessages({QVariantMap{{"id", "bot-lines"},
+                                          {"body", "one  \ntwo  \nthree"},
+                                          {"outgoing", false},
+                                          {"seqno", 1},
+                                          {"received", 1700000000},
+                                          {"expires", 1700086400},
+                                          {"state", "received"}}});
+            auto body = pane.findChild<QLabel *>("chatBody");
+            QTextDocument shown;
+            shown.setHtml(body ? body->text() : QString());
+            expect(body && shown.toPlainText() == "one\ntwo\nthree",
+                   "a line that ends in two spaces ends there in a bubble");
+        }
         // Enter sends, and Shift+Enter starts a new line; an empty composer ignores Enter.
         {
             bm::ChatsPane pane;

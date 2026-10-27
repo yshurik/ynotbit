@@ -87,6 +87,12 @@ func trailerLine(p payload) string {
 	return "nickbot: " + strings.TrimSuffix(buf.String(), "\n")
 }
 
+// hardBreak ends a line of a chat's words. A chat is shown as Markdown, in which a newline alone only
+// continues the paragraph, so a reply of several lines would be shown as one. Two spaces before the
+// newline make it a line break; where a block ends (before a blank line or a list item) they do
+// nothing.
+const hardBreak = "  \n"
+
 // reply puts an outcome into words for the way the request came. Nothing a sender wrote goes into
 // it unless the command has checked it first.
 func (o outcome) reply(req Request) Reply {
@@ -95,7 +101,7 @@ func (o outcome) reply(req Request) Reply {
 	case o.ready != "":
 		r.Text = o.ready
 	case req.Transport == Chat:
-		r.Text = strings.Join(o.lines, "\n") + "\n" + trailerLine(o.p)
+		r.Text = strings.Join(o.lines, hardBreak) + "\n" + trailerLine(o.p)
 	default:
 		r.Text = strings.Join(o.lines, "\n")
 	}

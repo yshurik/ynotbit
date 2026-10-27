@@ -156,16 +156,19 @@ func usage(cmd, line string) outcome {
 const syntaxHelp = "That is not a valid nickname. A nickname is @, / or # followed by a name of 3 to " +
 	"32 characters: a letter, then letters, digits, _ or -."
 
+// help is a list: it reads as one in a letter's plain text and is one in a chat's Markdown, where
+// padding to line up columns would only show as uneven gaps.
 func (s *Service) help() outcome {
 	return outcome{
 		lines: []string{
 			"This is nickbot (protocol 1): nicknames for Bitmessage addresses.",
-			"/register @nick     give your address a nickname (@person, /bot, #chan)",
-			"/unregister @nick   give it up",
-			"/address @nick      the address of a nickname",
-			"/nickname BM-...    the nicknames of an address (up to 8 addresses)",
-			"/search term        names that contain the term (4 characters or more)",
-			"/whoami             your own nicknames",
+			"",
+			"- /register @nick: give your address a nickname (@person, /bot, #chan)",
+			"- /unregister @nick: give it up",
+			"- /address @nick: the address of a nickname",
+			"- /nickname BM-...: the nicknames of an address (up to 8 addresses)",
+			"- /search term: names that contain the term (4 characters or more)",
+			"- /whoami: your own nicknames",
 		},
 		p: payload{Cmd: "help", Ok: true},
 	}

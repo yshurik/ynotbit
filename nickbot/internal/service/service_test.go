@@ -87,7 +87,10 @@ func trailer(t *testing.T, r Reply) map[string]any {
 	return m
 }
 
-func firstLine(r Reply) string { return strings.SplitN(r.Text, "\n", 2)[0] }
+// firstLine is what a person reads on the first line: the two spaces of a hard line break are not shown.
+func firstLine(r Reply) string {
+	return strings.TrimSuffix(strings.SplitN(r.Text, "\n", 2)[0], "  ")
+}
 
 func TestHelpListsTheCommands(t *testing.T) {
 	f := newFixture(t)
@@ -101,6 +104,70 @@ func TestHelpListsTheCommands(t *testing.T) {
 		m := trailer(t, r)
 		if m["cmd"] != "help" || m["ok"] != true {
 			t.Errorf("trailer = %v", m)
+		}
+	}
+}
+
+func TestHelpIsAListWithAnItemForEachCommand(t *testing.T) {
+	f := newFixture(t)
+	for name, r := range map[string]Reply{"chat": f.chat(addrA, "/help"), "letter": f.letter(addrA, "help", "/help")} {
+		for _, want := range []string{"/register", "/unregister", "/address", "/nickname", "/search", "/whoami"} {
+			if !strings.Contains(r.Text, "\n- "+want) {
+				t.Errorf("%s: no list item starts with %s:\n%s", name, want, r.Text)
+			}
+		}
+	}
+}
+
+// markdownJoined lists the lines that Markdown runs into the line before them. A chat is shown as
+// Markdown, and there a newline alone does not start a line: the words of a reply would come out as
+// one paragraph. The bot writes paragraphs, hard line breaks (two spaces ending a line) and "- " list
+// items, so that is all this knows of Markdown.
+func markdownJoined(text string) []string {
+	lines := strings.Split(text, "\n")
+	var joined []string
+	for i := 1; i < len(lines); i++ {
+		prev, line := lines[i-1], lines[i]
+		if strings.TrimSpace(prev) == "" || strings.TrimSpace(line) == "" ||
+			strings.HasPrefix(line, "- ") || strings.HasSuffix(prev, "  ") {
+			continue
+		}
+		joined = append(joined, line)
+	}
+	return joined
+}
+
+func TestAChatReplyKeepsEveryLineWhenShownAsMarkdown(t *testing.T) {
+	f := newFixture(t)
+	f.chat(addrA, "/register @benny")
+	f.chat(addrB, "/register @bennie")
+	for _, text := range []string{
+		"/help",
+		fmt.Sprintf("/nickname %s %s %s", addrA, addrB, addrC),
+		"/search benn",
+	} {
+		r := f.chat(addrC, text)
+		words := r.Text[:strings.LastIndex(r.Text, "\nnickbot: ")]
+		if !strings.Contains(words, "\n") {
+			t.Fatalf("%q: the answer is one line, so it says nothing about lines:\n%s", text, r.Text)
+		}
+		if joined := markdownJoined(words); len(joined) > 0 {
+			t.Errorf("%q: Markdown runs these lines into the one before:\n%s\nin\n%s", text, strings.Join(joined, "\n"), words)
+		}
+	}
+}
+
+func TestALetterReplyIsPlainWords(t *testing.T) {
+	f := newFixture(t)
+	f.letter(addrA, "name", "/register @benny")
+	f.letter(addrB, "name", "/register @bennie")
+	for _, text := range []string{"/help", "/search benn"} {
+		r := f.letter(addrC, "hi", text)
+		if strings.Contains(r.Text, "  \n") || strings.Contains(r.Text, "\\\n") {
+			t.Errorf("%q: a letter went out with Markdown line breaks: %q", text, r.Text)
+		}
+		if strings.Count(r.Text, "\n") < 2 {
+			t.Errorf("%q: the answer has no lines to keep apart: %q", text, r.Text)
 		}
 	}
 }
