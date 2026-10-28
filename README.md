@@ -3,7 +3,7 @@
 **English** | [日本語](README.ja.md) | [한국어](README.ko.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [Русский](README.ru.md) | [Українська](README.uk.md)
 
 A compact desktop Bitmessage client based on [notbit](https://github.com/bpeel/notbit),
-by [yshurik](https://github.com/yshurik). **Current release: 0.7.1.**
+by [yshurik](https://github.com/yshurik). **Current release: 0.8.0.**
 
 ynotbit keeps identity keys in a password-protected vault and correspondence in a
 separate encrypted mailbox document. Its keyless relay continues collecting
@@ -22,7 +22,7 @@ and saves matching letters to the mailbox.
 
 ## Download
 
-[**v0.7.1 release**](https://github.com/yshurik/ynotbit/releases/tag/v0.7.1) — prebuilt,
+[**v0.8.0 release**](https://github.com/yshurik/ynotbit/releases/tag/v0.8.0) — prebuilt,
 CI-tested downloads for Linux (x86_64), macOS (Apple Silicon), and Windows (x86_64).
 See [Current boundaries](#current-boundaries) below for what each build does and doesn't
 guarantee.
