@@ -4,7 +4,7 @@
 # comment; "#room" (no space) is the name of a chan.
 
 # The echo bot that ynotbit's own contacts name.
-/echobot  BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8
+/echobot  BM-87echobot2V7955n6oVWkBn3R9bAN69Kgsr
 
 # This nickbot's own name: its address, which is on the first line of its log ("Address:").
 /nickbot  BM-87nickbot3AwHg3ZfcuZaRpHiCH9Kdk4Z5z

@@ -8909,7 +8909,7 @@ int main(int argc, char **argv) {
         {
             // The echo bot is every mailbox's first contact, once: /echobot by nickname and by
             // name. The default nickbot is the second, /nickbot by nickname and by name.
-            const QString echo = "BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8";
+            const QString echo = "BM-87echobot2V7955n6oVWkBn3R9bAN69Kgsr";
             require(builtInContacts.size() == 2 && builtInContacts[0].address == echo &&
                         builtInContacts[0].nickname == "/echobot" &&
                         builtInContacts[0].label == "/echobot",

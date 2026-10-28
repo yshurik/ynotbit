@@ -16,12 +16,14 @@ QList<DefaultSubscription> &defaults() {
 }
 QList<DefaultContact> &contactDefaults() {
     static QList<DefaultContact> list{
-        // The chat responder run for ynotbit, a vanity address (BM-87echo...): it answers a chat
-        // with what it was sent.
-        {"BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8", "/echobot", "/echobot"},
-        // The nicknames service run for ynotbit (docs/nickbot.md), a vanity address (BM-87nickbot...)
-        // found with tools/vanity: it runs from the address's two keys, not from a phrase. Replacing
-        // it is this line, the one below and nickbot/seed.example.txt.
+        // The chat responder run for ynotbit, a vanity address (BM-87echobot...) found with
+        // tools/vanity: it runs from the address's two keys (chat_responder --keys-file), and
+        // answers a chat with what it was sent. Replacing it is this line and
+        // nickbot/seed.example.txt.
+        {"BM-87echobot2V7955n6oVWkBn3R9bAN69Kgsr", "/echobot", "/echobot"},
+        // The nicknames service run for ynotbit (docs/nickbot.md), a vanity address
+        // (BM-87nickbot...) found with tools/vanity: it runs from the address's two keys, not
+        // from a phrase. Replacing it is this line, the one below and nickbot/seed.example.txt.
         {kDefaultNickbotAddress, "/nickbot", "/nickbot"},
     };
     return list;
