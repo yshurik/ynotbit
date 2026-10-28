@@ -97,9 +97,13 @@ FindPeopleDialog::FindPeopleDialog(Session &session, QWidget *parent)
     results_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     results_->setUniformRowHeights(true);
     results_->setAllColumnsShowFocus(true);
+    // The address and the last column are as wide as what they say; the nickname between them has
+    // what is left. (The last column used to have it, and an address in a wide font left it too
+    // little for its words.)
+    results_->header()->setStretchLastSection(false);
     results_->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    results_->header()->resizeSection(1, 150);
-    results_->header()->setStretchLastSection(true);
+    results_->header()->setSectionResizeMode(1, QHeaderView::Stretch);
+    results_->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     column->addWidget(results_, 1);
     auto buttons = new QHBoxLayout;
     add_ = new QPushButton(tr("Add to contacts"));

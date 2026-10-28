@@ -3834,6 +3834,25 @@ static void testFindPeople(const QTemporaryDir &temp) {
                 if (list->columnWidth(2) <
                     QFontMetrics(list->font()).horizontalAdvance(row->text(2)) + 12)
                     faults << language + ": the last column cuts " + row->text(2);
+                // Where the address is wide (a larger text, or a fixed pitch font that is wide, as
+                // on a Windows runner: 12 px for each character), the last column still says its
+                // words whole: the address has what it needs, and the nickname gives way. (The
+                // window's style sheet sets the size of every text, so a larger one is a rule of
+                // the table's own.)
+                list->setStyleSheet(QString("font-size:%1px;")
+                                        .arg(qRound(QFontInfo(list->font()).pixelSize() * 1.7)));
+                QCoreApplication::processEvents();
+                const auto wide =
+                    QString(" (%1 px for %2, the address has %3 px)")
+                        .arg(list->columnWidth(2))
+                        .arg(QFontMetrics(list->font()).horizontalAdvance(row->text(2)))
+                        .arg(list->columnWidth(0));
+                if (list->columnWidth(2) <
+                    QFontMetrics(list->font()).horizontalAdvance(row->text(2)) + 12)
+                    faults << language + ": in a larger text the last column cuts " + row->text(2) +
+                                  wide;
+                list->setStyleSheet(QString());
+                QCoreApplication::processEvents();
                 if (row->foreground(1).color() != bm::nickbotColor(0))
                     faults << language + ": the nickname is not in the nickbot's colour";
             }
