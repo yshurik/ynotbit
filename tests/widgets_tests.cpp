@@ -3481,11 +3481,19 @@ static void testPendingSubscriptions(const QTemporaryDir &temp) {
             addresses << entry.second;
         return addresses;
     };
+    // The rail is drawn again a moment later, and on a slow machine (a Windows runner) the chips
+    // are made, styled and laid out in more than 50 ms.
+    const auto railShows = [&](const QStringList &expected) {
+        for (int waited = 0; waited < 5000 && chips() != expected; waited += 20)
+            QTest::qWait(20);
+        return chips() == expected;
+    };
     window.findChild<QToolButton *>("folderIcon_Broadcasts")->click();
-    QTest::qWait(50);
-    require(chips() == QStringList({newest, formerly, middle, oldest, subscribed, silent}),
-            "the Subscriptions page lists the source that posted last first, and those with no "
-            "post after them, in order of name; no pending subscription is on it");
+    require(railShows({newest, formerly, middle, oldest, subscribed, silent}),
+            qPrintable("the Subscriptions page lists the source that posted last first, and those "
+                       "with no post after them, in order of name; no pending subscription is on "
+                       "it; on the page: " +
+                       chips().join(" ")));
     QStringList sources;
     for (const auto &s : session.broadcastSources())
         if (s.toMap()["address"].toString() != bm::updates::publisherAddress())
@@ -3502,11 +3510,16 @@ static void testPendingSubscriptions(const QTemporaryDir &temp) {
                                 "First post", "hi", -1, "Broadcasts");
     session.coreMailbox().reveal(writer.toStdString());
     emit session.changed();
-    QTest::qWait(50);
-    require(listed() == onPurpose + QSet<QString>{writer} &&
-                chips() ==
-                    QStringList({writer, newest, formerly, middle, oldest, subscribed, silent}),
-            "a pending subscription whose address posts is listed, and its post is the newest");
+    const bool newestFirst =
+        railShows({writer, newest, formerly, middle, oldest, subscribed, silent});
+    QStringList listedNow;
+    for (const auto &address : listed())
+        listedNow << address;
+    listedNow.sort();
+    require(listed() == onPurpose + QSet<QString>{writer} && newestFirst,
+            qPrintable("a pending subscription whose address posts is listed, and its post is the "
+                       "newest; listed: " +
+                       listedNow.join(" ") + "; on the page: " + chips().join(" ")));
     QString shownName;
     for (const auto &source : session.broadcastSources())
         if (source.toMap()["address"].toString() == writer)
