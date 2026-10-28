@@ -27,6 +27,10 @@
 //   --phrase-file <file>  the phrase from a file, or from $YNOTBIT_RESPONDER_PHRASE: not in the
 //                         process list, and the vault's password comes from it, so what is on the
 //                         disk is of no use without it
+//   --keys-file <file>    instead of a phrase: the two private keys the address is made of
+//                         (signing, then encryption, one to a line; hex or wallet import format),
+//                         which is how a vanity address is kept, as no phrase makes it. They make
+//                         the vault's password too. Needs --data-dir, and no phrase with it
 //   --peer <ip:port>      the node to link to (default 127.0.0.1:8444, ynotbit's); "" for none
 //   --public              also join the public network, not only the peer, with more peers
 //   --listen              accept incoming connections (with --public); --port <n> for a port
@@ -375,7 +379,8 @@ int main(int argc, char **argv) {
     const Args args(argc, argv);
     if (args.has("--help") || args.has("-h")) {
         std::cout
-            << "usage: chat_responder [--phrase <text> | --phrase-file <file>] [--peer <ip:port>]\n"
+            << "usage: chat_responder [--phrase <text> | --phrase-file <file>\n"
+               "                      | --keys-file <file>] [--peer <ip:port>]\n"
                "                      [--public] [--listen] [--port <n>] [--max-outgoing <n>]\n"
                "                      [--max-incoming <n>] [--watchdog <minutes>] [--hang "
                "<seconds>]\n"
@@ -410,9 +415,19 @@ int main(int argc, char **argv) {
     };
 
     // The phrase an address comes from: a file or the environment keep it out of the process list.
+    // Or the two keys it is made of: a vanity address has no phrase.
     std::string phrase = "ynotbit chat responder", phraseFile;
+    const auto keysFile = args.value("--keys-file");
     bool secret = false;
-    if (const auto file = args.value("--phrase-file"); !file.empty()) {
+    if (args.has("--keys-file") && keysFile.empty())
+        return fail("--keys-file takes a file");
+    if (!keysFile.empty() && (args.has("--phrase") || args.has("--phrase-file") ||
+                              std::getenv("YNOTBIT_RESPONDER_PHRASE")))
+        return fail("give --keys-file, or a phrase (--phrase, --phrase-file or "
+                    "$YNOTBIT_RESPONDER_PHRASE), not both");
+    if (!keysFile.empty()) {
+        secret = true; // the keys make the vault's password
+    } else if (const auto file = args.value("--phrase-file"); !file.empty()) {
         bool ok = false;
         phrase = firstLine(file, ok);
         if (!ok)
@@ -457,6 +472,8 @@ int main(int argc, char **argv) {
     // Where its files are kept: as given, or a folder for each phrase under the user's data
     // directory (named by a hash of the phrase, as the first responder did).
     std::string root = args.value("--data-dir");
+    if (root.empty() && !keysFile.empty())
+        return fail("--keys-file needs --data-dir: the default folder is named for a phrase");
     if (root.empty()) {
         const auto digest = bmc::hex(bmc::hash(bmc::Digest::Sha256, bmc::view(phrase)));
         root = defaultDataDir() + "/" + digest.substr(0, 8);
@@ -472,7 +489,9 @@ int main(int argc, char **argv) {
 
     std::string config = "{\"data_dir\":" + bmc::json::quote(root) +
                          ",\"label\":\"Chat responder\",\"hang_seconds\":" + std::to_string(hang);
-    if (!phraseFile.empty())
+    if (!keysFile.empty())
+        config += ",\"keys_file\":" + bmc::json::quote(keysFile);
+    else if (!phraseFile.empty())
         config += ",\"phrase_file\":" + bmc::json::quote(phraseFile);
     else
         config += ",\"phrase\":" + bmc::json::quote(phrase) +

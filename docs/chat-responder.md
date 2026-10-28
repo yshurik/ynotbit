@@ -67,6 +67,14 @@ The phrase is the first line of the file, as it is; the address is the first key
 phrase can therefore be searched for an address with a word in it (a phrase `<secret>:<number>`, the number the search's): the responder
 needs nothing to know.
 
+A vanity address (one with a word in it, found with `tools/vanity`) is made of two private keys, not of a phrase, and `--keys-file
+<file>` takes them in place of a phrase: the signing key, then the encryption key, one to a line (64 hex digits, or the wallet import
+format). `bm_vanity --export ADDRESS -f hits.txt -o echobot.keys` writes such a file (mode 600) from a hit, and `bm_vanity --address-of
+echobot.keys` prints the address it makes. The keys make the vault's password as a phrase does, so what is on the disk is of no use
+without the file, and the file is the address: keep a copy. `--data-dir` is required with it (the default folder is named for a
+phrase), and a phrase (`--phrase`, `--phrase-file`, `$YNOTBIT_RESPONDER_PHRASE`) is refused beside it. The keys are never written to the
+log or to the output.
+
 `--data-dir <dir>` is the folder as it is given. With none, a folder for each phrase (named by a hash of it) is made under
 `~/.local/share/YnotbitTools/chat_responder` (`~/Library/Application Support/...` on a Mac), as it always was. A folder of the first
 `chat_responder` (`responder.bmvault` in it) opens as it was.
@@ -126,6 +134,15 @@ docker run -d --name responder --restart unless-stopped --stop-timeout 30 \
   --log-opt max-size=10m --log-opt max-file=3 -p 8444:8444 \
   -v "$PWD/data:/data" -v "$PWD/phrase:/run/secrets/phrase:ro" ynotbit-bmbot:dev
 docker logs responder | head                    # "Address:  BM-..." is on the first lines
+```
+
+For an address made of keys (above), mount the keys file in place of the phrase and name it; the image's command names the phrase, so
+it is given whole:
+
+```
+docker run -d --name responder ... -v "$PWD/data:/data" -v "$PWD/echobot.keys:/run/secrets/keys:ro" ynotbit-bmbot:dev \
+  --public --peer "" --listen --port 8444 --retention-mb 512 --retention-days 4 --data-dir /data/state \
+  --keys-file /run/secrets/keys --log /data/responder.log --status-file /data/status.json
 ```
 
 The `memlock` limit is not for show: SQLCipher locks the memory its keys are in, and under a small limit (64 KiB on some hosts)
