@@ -25,12 +25,18 @@ extern "C" {
 }
 
 namespace {
-// One simulated instant for the whole test: the proof of work needs real time, the protocol does
+// One simulated instant for a whole test: the proof of work needs real time, the protocol does
 // not need the clock to move. It is anchored on the real clock, because the mailbox's own expiry
-// checks read bmc::now().
-int64_t kNow() {
-    static const int64_t value = bmc::now();
+// checks read bmc::now(), and so does the solver, which works out its target from the time that is
+// left to the object. An instant that is minutes old would ask of the object a harder target than
+// the one it was solved for, and about one object in a few hundred would fail the check of the
+// relay. So each test takes a new instant as it begins (when its first side is made).
+int64_t &instant() {
+    static int64_t value = bmc::now();
     return value;
+}
+int64_t kNow() {
+    return instant();
 }
 
 // One end of the conversation: a vault with one identity, its mailbox, the node's object store and
@@ -43,6 +49,7 @@ struct Side {
     std::unique_ptr<bmc::Delivery> delivery;
 
     Side(const std::string &name, const char *label) : root(bmc::test::tempDir() + "/" + name) {
+        instant() = bmc::now();
         std::filesystem::create_directories(bmc::path(root));
         vaultPath = root + "/v.bmvault";
         mailPath = root + "/m.bmmail";
