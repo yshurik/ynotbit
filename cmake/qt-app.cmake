@@ -179,6 +179,7 @@ foreach(tool announce_release post_digest)
   tools/publish_broadcast.cpp tools/publish_broadcast.h
   src/i18n.cpp src/session.cpp src/session.h src/message_model.cpp src/message_model.h
   src/nick_client.cpp src/nick_client.h src/appearance.cpp src/appearance.h src/relay_bridge.cpp)
+ add_coolname(${tool}) # session.cpp names addresses
  target_include_directories(${tool} PRIVATE tools)
  target_link_libraries(${tool} PRIVATE bmcore notbit_engine Qt6::Widgets Qt6::Network)
  target_compile_definitions(${tool} PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
