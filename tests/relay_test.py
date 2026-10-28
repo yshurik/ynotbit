@@ -35,6 +35,17 @@ def receive(sock):
     return header[4:16].rstrip(b"\0"),read(struct.unpack(">I",header[16:20])[0])
 
 
+def read_json(path):
+    """A file the relay writes by replacing it. Windows refuses to open it at the moment of the
+    replacement; the next try reads the new one."""
+    for _ in range(200):
+        try:
+            return json.loads(path.read_text())
+        except PermissionError:
+            time.sleep(.01)
+    return json.loads(path.read_text())
+
+
 def wait_file(path):
     deadline=time.monotonic()+8
     while time.monotonic()<deadline:
@@ -116,7 +127,7 @@ with tempfile.TemporaryDirectory() as temporary:
         pending_deadline=time.monotonic()+8
         pending=0
         while time.monotonic()<pending_deadline:
-            pending=json.loads((root/"status.json").read_text()).get("pending",0)
+            pending=read_json(root/"status.json").get("pending",0)
             if pending>=1:
                 break
             time.sleep(.05)
@@ -126,7 +137,7 @@ with tempfile.TemporaryDirectory() as temporary:
         status={}
         stats_deadline=time.monotonic()+8
         while time.monotonic()<stats_deadline:
-            status=json.loads((root/"status.json").read_text())
+            status=read_json(root/"status.json")
             if status.get("objects",0)>=1:
                 break
             time.sleep(.05)
@@ -135,7 +146,7 @@ with tempfile.TemporaryDirectory() as temporary:
         settle_deadline=time.monotonic()+8
         pending=1
         while time.monotonic()<settle_deadline:
-            pending=json.loads((root/"status.json").read_text()).get("pending",1)
+            pending=read_json(root/"status.json").get("pending",1)
             if pending==0:
                 break
             time.sleep(.05)
@@ -148,7 +159,7 @@ with tempfile.TemporaryDirectory() as temporary:
         spool.write_bytes(payload)
         receipt=root/"receipts"/(job+".json")
         wait_file(receipt)
-        result=json.loads(receipt.read_text())
+        result=read_json(receipt)
         if len(sys.argv)==2:
             assert result["state"]=="accepted",result
             assert spool.exists(),"No peer yet: keep ciphertext queued"
@@ -156,7 +167,7 @@ with tempfile.TemporaryDirectory() as temporary:
             deadline=time.monotonic()+8
             while result["state"]!="offered" and time.monotonic()<deadline:
                 time.sleep(.05)
-                result=json.loads(receipt.read_text())
+                result=read_json(receipt)
         assert result["state"]=="offered",result
         assert result["hash"]==object_hash.hex(),result
         peer.sendall(frame("getdata",b"\x01"+object_hash))
@@ -170,11 +181,11 @@ with tempfile.TemporaryDirectory() as temporary:
         (root/"publish"/(rejected+".object")).write_bytes(b"invalid")
         rejected_receipt=root/"receipts"/(rejected+".json")
         wait_file(rejected_receipt)
-        assert json.loads(rejected_receipt.read_text())["state"]=="rejected"
+        assert read_json(rejected_receipt)["state"]=="rejected"
         # Two spool entries the bridge refuses to look at: a name that is not a job id, and a
         # symlink, even one pointing at a real object. Both carry a valid object, so the only
         # thing that can refuse them is the rule being tested.
-        before=json.loads((root/"status.json").read_text())["time"]
+        before=read_json(root/"status.json")["time"]
         bad_name=root/"publish"/("A"*36+".object")  # A job id's length, none of its alphabet.
         bad_name.write_bytes(payload)
         target=root/"symlink-target.object"  # A real object, out of the spool's reach.
@@ -182,7 +193,7 @@ with tempfile.TemporaryDirectory() as temporary:
         link=root/"publish"/(str(uuid.uuid4())+".object")
         os.symlink(target,link)
         tick_deadline=time.monotonic()+8
-        while json.loads((root/"status.json").read_text())["time"]<before+2:
+        while read_json(root/"status.json")["time"]<before+2:
             assert time.monotonic()<tick_deadline,"the relay stopped ticking"
             time.sleep(.05)
         assert not (root/"receipts"/(bad_name.stem+".json")).exists(),\
@@ -190,7 +201,7 @@ with tempfile.TemporaryDirectory() as temporary:
         assert not (root/"receipts"/(link.stem+".json")).exists(),\
             "a symlinked spool entry is not followed, whatever it points at"
         assert bad_name.exists() and link.is_symlink(),"refused entries are left where they are"
-        assert json.loads((root/"status.json").read_text())["peers"]==1
+        assert read_json(root/"status.json")["peers"]==1
         assert not list(root.rglob("keys.dat"))
         assert not list(root.rglob("maildir"))
         print("PASS: real loopback handshake, proof-of-work validation, keyless object storage, publication, peer fetch, rejected malformed job, refused spool names and symlinks, pending-download status, active getaddr")
