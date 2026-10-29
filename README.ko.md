@@ -3,7 +3,7 @@
 [English](README.md) | [日本語](README.ja.md) | **한국어** | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [Русский](README.ru.md) | [Українська](README.uk.md)
 
 [notbit](https://github.com/bpeel/notbit)을 기반으로 한 작고 가벼운 데스크톱 Bitmessage
-클라이언트입니다. 만든 사람은 [yshurik](https://github.com/yshurik)입니다. **현재 릴리스: 0.8.0**
+클라이언트입니다. 만든 사람은 [yshurik](https://github.com/yshurik)입니다. **현재 릴리스: 0.8.1**
 
 ynotbit은 신원 키를 비밀번호로 보호되는 보관함에, 주고받은 편지는 별도의 암호화된 메일함
 문서에 저장합니다. 키를 갖지 않는 릴레이는 보관함이 잠겨 있는 동안에도 네트워크 객체를 계속
@@ -21,7 +21,7 @@ ynotbit은 신원 키를 비밀번호로 보호되는 보관함에, 주고받은
 
 ## 다운로드
 
-[**v0.8.0 릴리스**](https://github.com/yshurik/ynotbit/releases/tag/v0.8.0) — Linux (x86_64),
+[**v0.8.1 릴리스**](https://github.com/yshurik/ynotbit/releases/tag/v0.8.1) — Linux (x86_64),
 macOS (Apple Silicon), Windows (x86_64)용으로 미리 빌드하고 CI에서 테스트한 패키지입니다.
 각 빌드가 보장하는 것과 보장하지 않는 것은 아래 [현재의 한계](#현재의-한계)를 참고하세요.
 

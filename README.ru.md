@@ -3,7 +3,7 @@
 [English](README.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | **Русский** | [Українська](README.uk.md)
 
 Компактный настольный клиент Bitmessage на основе [notbit](https://github.com/bpeel/notbit).
-Автор — [yshurik](https://github.com/yshurik). **Текущая версия: 0.8.0.**
+Автор — [yshurik](https://github.com/yshurik). **Текущая версия: 0.8.1.**
 
 ynotbit хранит ключи идентичностей в защищённом паролем хранилище, а переписку — в отдельном
 зашифрованном документе почтового ящика. Его ретранслятор без ключей продолжает собирать сетевые
@@ -22,7 +22,7 @@ ynotbit хранит ключи идентичностей в защищённо
 
 ## Скачать
 
-[**Релиз v0.8.0**](https://github.com/yshurik/ynotbit/releases/tag/v0.8.0) — готовые сборки,
+[**Релиз v0.8.1**](https://github.com/yshurik/ynotbit/releases/tag/v0.8.1) — готовые сборки,
 проверенные в CI, для Linux (x86_64), macOS (Apple Silicon) и Windows (x86_64).
 Что каждая сборка гарантирует, а что нет, — в разделе [Текущие ограничения](#текущие-ограничения) ниже.
 

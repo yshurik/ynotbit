@@ -3,7 +3,7 @@
 [English](README.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | **简体中文** | [繁體中文](README.zh-TW.md) | [Русский](README.ru.md) | [Українська](README.uk.md)
 
 一个基于 [notbit](https://github.com/bpeel/notbit) 的小巧桌面 Bitmessage 客户端，
-作者 [yshurik](https://github.com/yshurik)。**当前版本：0.8.0**
+作者 [yshurik](https://github.com/yshurik)。**当前版本：0.8.1**
 
 ynotbit 把身份密钥保存在受密码保护的保险库中，把往来信件保存在另一个加密的邮箱文档中。
 不持有密钥的中继在保险库锁定时也会继续收集网络对象。解锁后，它会检查保留下来的对象，
@@ -21,7 +21,7 @@ ynotbit 把身份密钥保存在受密码保护的保险库中，把往来信件
 
 ## 下载
 
-[**v0.8.0 版本**](https://github.com/yshurik/ynotbit/releases/tag/v0.8.0)：适用于 Linux（x86_64）、
+[**v0.8.1 版本**](https://github.com/yshurik/ynotbit/releases/tag/v0.8.1)：适用于 Linux（x86_64）、
 macOS（Apple Silicon）和 Windows（x86_64）的预编译安装包，均经过 CI 测试。
 各个版本能保证什么、不能保证什么，请参阅下方的[当前的局限](#当前的局限)。
 

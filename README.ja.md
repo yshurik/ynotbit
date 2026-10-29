@@ -3,7 +3,7 @@
 [English](README.md) | **日本語** | [한국어](README.ko.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [Русский](README.ru.md) | [Українська](README.uk.md)
 
 [notbit](https://github.com/bpeel/notbit) をベースにした、コンパクトなデスクトップ版 Bitmessage
-クライアントです。作者は [yshurik](https://github.com/yshurik)。**現在のリリース: 0.8.0**
+クライアントです。作者は [yshurik](https://github.com/yshurik)。**現在のリリース: 0.8.1**
 
 ynotbit は ID の鍵をパスワードで保護された保管庫に、やり取りしたメールを別の暗号化された
 メールボックスに保存します。鍵を持たないリレーは、保管庫がロックされている間もネットワーク
@@ -22,7 +22,7 @@ ynotbit は ID の鍵をパスワードで保護された保管庫に、やり�
 
 ## ダウンロード
 
-[**v0.8.0 リリース**](https://github.com/yshurik/ynotbit/releases/tag/v0.8.0) — Linux (x86_64)、
+[**v0.8.1 リリース**](https://github.com/yshurik/ynotbit/releases/tag/v0.8.1) — Linux (x86_64)、
 macOS (Apple Silicon)、Windows (x86_64) 向けの、ビルド済みで CI テスト済みのパッケージです。
 各ビルドが保証すること・しないことは、下の[現在の制限](#現在の制限)を参照してください。
 
