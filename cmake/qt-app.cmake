@@ -105,6 +105,10 @@ set_tests_properties(second-launch PROPERTIES TIMEOUT 90)
 endif()
 add_test(NAME gui-smoke COMMAND ynotbit --offline --data-dir ${CMAKE_CURRENT_BINARY_DIR}/smoke-node --smoke-test)
 set_tests_properties(gui-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+# With the network on, the app starts its node (itself, with --node) and the smoke test waits for
+# it to be up: the whole of the app's way to a node, which 0.8.0 could not walk on Windows.
+add_test(NAME node-smoke COMMAND ynotbit --data-dir ${CMAKE_CURRENT_BINARY_DIR}/node-smoke-data --smoke-test)
+set_tests_properties(node-smoke PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 90)
 # A zero or non-numeric retention limit must stop the node, not delete everything.
 add_test(NAME node-rejects-bad-retention COMMAND ynotbit --node -D ${CMAKE_CURRENT_BINARY_DIR}/bad-retention-node -R 0)
 add_test(NAME node-rejects-bad-age COMMAND ynotbit --node -D ${CMAKE_CURRENT_BINARY_DIR}/bad-retention-node -A x)

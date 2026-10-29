@@ -189,6 +189,8 @@ bmc::NodeConfig Session::nodeConfig() const {
     node.maxIncoming = config.value("maxIncoming").toInt();
     node.port = config.value("listenPort").toInt();
     node.peer = bridge::toStd(config.value("peer").toString());
+    // Not in the settings page: the smoke test of a build links its node to its peer alone.
+    node.linkOnly = config.value("linkOnly").toBool();
     node.proxy = bridge::toStd(proxy());
     return node;
 }

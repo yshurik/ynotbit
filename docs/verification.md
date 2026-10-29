@@ -25,6 +25,9 @@ The CTest suite covers:
   disk persistence, local ciphertext publication, peer fetch, rejected malformed
   jobs, peer status, and absence of keys.dat/Maildir.
 - **gui-smoke:** Qt Widgets application startup in offline mode.
+- **node-smoke:** the same with the network on: the app starts its node and the test waits for it to be up
+  (`ynotbit --smoke-test`, which exits 3 and says why when it is not up in 30 seconds). The packaged app
+  on Windows is started the same way by the workflow.
 - **desktop:** an encrypted 1,500-message mailbox (10 KB per body), scrolling to
   distant rows, a three-page cache bound, folder search, full-body selection,
   visual Markdown rendering, blocked local image resources, composing through

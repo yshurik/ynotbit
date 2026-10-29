@@ -6,6 +6,8 @@
 #include "single_instance.h"
 #include <QApplication>
 #include <QDir>
+#include <QFileInfo>
+#include <QSettings>
 #include <QStandardPaths>
 #include "data_migration.h"
 #include "desktop_entry.h"
@@ -77,6 +79,18 @@ int main(int argc, char **argv) {
         const auto instanceKey = bm::SingleInstance::keyFor(root);
         if (bm::SingleInstance::wake(instanceKey))
             return 0;
+        // A smoke test with the network on starts the node and nothing else, in a folder of its
+        // own: no port opened, no router asked, no bootstrap, no DNS, no peer but a closed port
+        // here.
+        if (args.contains("--smoke-test") && !args.contains("--offline") &&
+            args.contains("--data-dir")) {
+            QDir().mkpath(root);
+            QSettings config(root + "/desktop.ini", QSettings::IniFormat);
+            config.setValue("listen", false);
+            config.setValue("upnp", false);
+            config.setValue("peer", "127.0.0.1:9");
+            config.setValue("linkOnly", true);
+        }
         bm::Session session(root, args.contains("--offline"));
         bm::DesktopWindow window(session);
         bm::SingleInstance instance(instanceKey);
@@ -95,8 +109,28 @@ int main(int argc, char **argv) {
                 app.quit();
             });
         }
-        if (args.contains("--smoke-test"))
-            QTimer::singleShot(1500, &app, &QCoreApplication::quit);
+        if (args.contains("--smoke-test")) {
+            if (args.contains("--offline")) {
+                QTimer::singleShot(1500, &app, &QCoreApplication::quit);
+            } else {
+                // With the network on the start is done when the node is up, which is when its
+                // status.json is there (the session removed the last one): a window with no node
+                // is what 0.8.0 was on Windows. Exit 3, and why, when it is not up in 30 s.
+                auto *waiting = new QTimer(&app);
+                QObject::connect(
+                    waiting, &QTimer::timeout, &app, [&app, &root, &session, waited = 0]() mutable {
+                        if (QFileInfo::exists(root + "/status.json")) {
+                            app.exit(0);
+                        } else if ((waited += 250) >= 30000) {
+                            std::cerr
+                                << "the node did not come up: " << session.error().toStdString()
+                                << " | " << session.status().toStdString() << '\n';
+                            app.exit(3);
+                        }
+                    });
+                waiting->start(250);
+            }
+        }
         return app.exec();
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n';
