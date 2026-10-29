@@ -8,6 +8,7 @@
 #ifdef _WIN32
 #include <bmc/node_supervisor.h>
 #define NOMINMAX
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <windows.h>
@@ -113,6 +114,8 @@ struct NodeSupervisor::Impl {
                 break;
             arrived.append(buffer, size_t(got));
         }
+        // A line ends with CR LF here and with LF alone everywhere else, in what the app shows.
+        arrived.erase(std::remove(arrived.begin(), arrived.end(), '\r'), arrived.end());
         const std::string text = trimmed(arrived);
         if (text.empty())
             return;
@@ -187,9 +190,13 @@ bool NodeSupervisor::start() {
     start.hStdOutput = nullDevice != INVALID_HANDLE_VALUE ? nullDevice : writeEnd;
     start.hStdError = writeEnd;
     PROCESS_INFORMATION process{};
-    const BOOL started = CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, TRUE,
-                                        CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP,
-                                        environment.data(), nullptr, &start, &process);
+    // CREATE_UNICODE_ENVIRONMENT because the block is UTF-16: without the flag Windows reads it as
+    // ANSI and answers ERROR_INVALID_PARAMETER, "The parameter is incorrect." -- which is what
+    // 0.8.0 showed on every Windows machine instead of starting its node.
+    const BOOL started =
+        CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, TRUE,
+                       CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_UNICODE_ENVIRONMENT,
+                       environment.data(), nullptr, &start, &process);
     const std::string failure = started ? std::string() : lastErrorText();
     CloseHandle(writeEnd);
     if (nullDevice != INVALID_HANDLE_VALUE)

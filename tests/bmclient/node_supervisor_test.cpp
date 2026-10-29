@@ -1,17 +1,19 @@
 // The node process: started, noticed when it goes, asked what it said, and stopped. The children
-// are shell scripts of the test's own — no node binary, no port and no network are involved.
+// are shell scripts of the test's own on POSIX and node_child.exe on Windows, which has none: no
+// node binary, no port and no network are involved. The last test of the first part starts the real
+// node, bmnode, on every system, with no peer but a closed port.
 #include <bmc/node_supervisor.h>
 #include <bmc/test.h>
-#ifndef _WIN32
-#include <cerrno>
 #include <chrono>
-#include <csignal>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <string>
-#include <sys/resource.h>
 #include <thread>
+#ifndef _WIN32
+#include <cerrno>
+#include <csignal>
+#include <sys/resource.h>
 #include <unistd.h>
 
 namespace {
@@ -262,3 +264,241 @@ TEST(a_child_that_cannot_be_started_is_reported) {
     CHECK(!node.poll());
 }
 #endif // !_WIN32
+
+namespace {
+// The caller polls once a tick; the tests wait for the news the way it arrives.
+bool waitFor(const std::function<bool()> &done, int milliseconds) {
+    for (int waited = 0; waited < milliseconds; waited += 20) {
+        if (done())
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return done();
+}
+} // namespace
+
+#ifdef BMC_TEST_NODE
+// The node binary itself, started as the app starts its node: --node and the flags its settings
+// make. On Windows this is CreateProcess with an environment block; 0.8.0 passed it without
+// CREATE_UNICODE_ENVIRONMENT, Windows answered "The parameter is incorrect", the app showed that
+// and no node ever started -- and nothing in CI started a node through the supervisor there.
+TEST(a_node_comes_up_when_the_supervisor_starts_it) {
+    bmc::NodeConfig config;
+    config.bin = BMC_TEST_NODE;
+    config.root = bmc::test::tempDir() + "/node";
+    config.maildir = config.root + "/unused-maildir";
+    std::filesystem::create_directories(config.root);
+    config.listen = false;
+    config.retentionMB = 64;
+    config.retentionDays = 1;
+    // Linked to a closed port and nothing else: no bootstrap, no DNS, no public peer.
+    config.peer = "127.0.0.1:9";
+    config.linkOnly = true;
+    bmc::NodeSupervisor node(config);
+    CHECK(node.start());
+    CHECK(node.lastError().empty());
+    CHECK(node.running());
+    // status.json is made by a node that runs.
+    const auto status = std::filesystem::path(config.root) / "status.json";
+    CHECK(waitFor(
+        [&] {
+            node.poll();
+            return std::filesystem::exists(status);
+        },
+        30000));
+    CHECK(node.running());
+    CHECK(node.standardError().empty());
+    // And it stays: the node leaves by itself when it finds its parent gone (YNOTBIT_PARENT_PID),
+    // which on Windows is a handle opened on the pid and waited on, once a second.
+    CHECK(!waitFor(
+        [&] {
+            node.poll();
+            return !node.running();
+        },
+        3500));
+    node.stop();
+    CHECK(!node.running());
+}
+#endif // BMC_TEST_NODE
+
+#if defined(_WIN32) && defined(BMC_TEST_CHILD)
+#define NOMINMAX
+#include <windows.h>
+
+namespace {
+bmc::NodeConfig childConfig() {
+    bmc::NodeConfig config;
+    config.bin = BMC_TEST_CHILD;
+    config.root = bmc::test::tempDir();
+    config.maildir = config.root + "/unused-maildir";
+    return config;
+}
+// What the child does, for the next start: it inherits the environment.
+void plan(const std::string &actions) {
+    SetEnvironmentVariableA("NODE_CHILD", actions.c_str());
+}
+std::string fileText(const std::string &path) {
+    const auto bytes = bmc::test::readFile(path);
+    return std::string(bytes.begin(), bytes.end());
+}
+bool processAlive(DWORD pid) {
+    HANDLE handle = OpenProcess(SYNCHRONIZE, FALSE, pid);
+    if (!handle)
+        return false;
+    const bool alive = WaitForSingleObject(handle, 0) == WAIT_TIMEOUT;
+    CloseHandle(handle);
+    return alive;
+}
+bool saidIt(bmc::NodeSupervisor &node, const std::string &text) {
+    return waitFor(
+        [&] {
+            node.poll();
+            return node.standardError() == text;
+        },
+        10000);
+}
+} // namespace
+
+TEST(the_supervisor_notices_a_child_that_exits) {
+    plan("exit=3");
+    bmc::NodeSupervisor node(childConfig());
+    CHECK(node.start());
+    CHECK(node.lastError().empty());
+    CHECK(waitFor([&] { return node.poll(); }, 10000)); // the first poll after the exit is the news
+    CHECK(!node.running());
+    CHECK_EQ(node.pid(), int64_t(0));
+    CHECK(node.exited());
+    CHECK(!node.crashed());
+    CHECK_EQ(node.exitCode(), 3);
+    CHECK(!node.poll()); // an exit is news once, not every tick
+}
+
+// Windows has no signal: what the system ends a program with is an NTSTATUS exit code.
+TEST(the_supervisor_calls_an_ntstatus_exit_a_crash) {
+    plan("crash");
+    bmc::NodeSupervisor node(childConfig());
+    CHECK(node.start());
+    CHECK(waitFor([&] { return node.poll(); }, 10000));
+    CHECK(node.exited());
+    CHECK(node.crashed());
+}
+
+TEST(the_supervisor_keeps_what_the_child_wrote_to_stderr) {
+    plan("err=one;err=two;wait");
+    bmc::NodeSupervisor node(childConfig());
+    CHECK(node.start());
+    CHECK(saidIt(node, "two"));
+    CHECK_EQ(node.standardError(), std::string("two"));           // the last line
+    CHECK_EQ(node.standardErrorChunk(), std::string("one\ntwo")); // and the chunk it came in
+    node.stop();
+    CHECK(!node.running());
+}
+
+// The node logs to stdout and the app never showed a word of it: it goes to the null device, so
+// the complaint is what the child "said", and a log of any length cannot block the child.
+TEST(the_supervisor_drops_what_the_child_logs) {
+    plan("err=cannot bind the port;out=[2026] loading saved object store;outspam=4000;"
+         "err=done logging;wait");
+    bmc::NodeSupervisor node(childConfig());
+    CHECK(node.start());
+    CHECK(saidIt(node, "done logging"));
+    CHECK_EQ(node.standardErrorChunk().find("loading"), std::string::npos);
+    node.stop();
+    CHECK(!node.running());
+}
+
+TEST(the_supervisor_restarts_a_child_and_the_stop_is_not_news) {
+    plan("wait");
+    bmc::NodeSupervisor node(childConfig());
+    CHECK(node.start());
+    const int64_t first = node.pid();
+    CHECK(first > 0);
+    CHECK(node.restart());
+    CHECK(node.running());
+    CHECK(node.pid() > 0);
+    CHECK(node.pid() != first);
+    CHECK(!node.poll()); // a stop this side asked for is not an exit to report
+    node.stop();
+    CHECK(!node.running());
+}
+
+// The new child starts with nothing said: Session::startNode() clears what it shows, and the
+// supervisor has to clear what it read, or the dead child's last line is read as the new one's.
+TEST(the_supervisor_forgets_what_the_last_child_said) {
+    plan("err=the first child complained;wait");
+    bmc::NodeSupervisor node(childConfig());
+    CHECK(node.start());
+    CHECK(saidIt(node, "the first child complained"));
+    plan("wait");
+    CHECK(node.restart());
+    CHECK(node.standardError().empty());
+    CHECK(node.standardErrorChunk().empty());
+    node.stop();
+    CHECK(!node.running());
+}
+
+// There is no SIGTERM to give it three seconds with: a stop is a kill, and quick.
+TEST(the_supervisor_stops_a_child_at_once) {
+    plan("wait");
+    bmc::NodeSupervisor node(childConfig());
+    CHECK(node.start());
+    const auto pid = DWORD(node.pid());
+    CHECK(pid > 0);
+    const auto began = std::chrono::steady_clock::now();
+    node.stop();
+    const auto spent = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - began)
+                           .count();
+    CHECK(!node.running());
+    CHECK(spent < 2500);
+    CHECK(!processAlive(pid));
+}
+
+TEST(the_supervisor_takes_the_childs_own_children_with_it) {
+    const auto pidFile = bmc::test::tempDir() + "/grandchild.pid";
+    plan("grandchild=" + pidFile + ";wait");
+    bmc::NodeSupervisor node(childConfig());
+    CHECK(node.start());
+    CHECK(waitFor([&] { return !fileText(pidFile).empty(); }, 10000));
+    const auto grandchild = DWORD(std::stoul(fileText(pidFile)));
+    CHECK(processAlive(grandchild));
+    node.stop();
+    CHECK(waitFor([&] { return !processAlive(grandchild); }, 5000)); // the job went together
+}
+
+TEST(the_supervisor_tells_the_child_which_process_is_its_parent) {
+    const auto pidFile = bmc::test::tempDir() + "/parent.pid";
+    plan("parentpid=" + pidFile + ";wait");
+    bmc::NodeSupervisor node(childConfig());
+    CHECK(node.start());
+    CHECK(waitFor([&] { return !fileText(pidFile).empty(); }, 10000));
+    CHECK_EQ(std::stoul(fileText(pidFile)), std::stoul(std::to_string(GetCurrentProcessId())));
+    node.stop();
+}
+
+TEST(the_supervisor_can_stop_what_is_not_running) {
+    plan("wait");
+    bmc::NodeSupervisor node(childConfig());
+    node.stop(); // never started
+    node.stop();
+    CHECK(!node.running());
+    CHECK(!node.poll());
+    CHECK(node.start());
+    CHECK(node.running());
+    node.stop();
+    node.stop(); // and twice after a real one
+    CHECK(!node.running());
+}
+
+TEST(the_supervisor_reports_a_child_that_cannot_be_started) {
+    plan("wait");
+    auto config = childConfig();
+    config.bin = (std::filesystem::path(config.root) / "no-such-node.exe").string();
+    bmc::NodeSupervisor node(config);
+    CHECK(!node.start());
+    CHECK(!node.running());
+    CHECK_EQ(node.pid(), int64_t(0));
+    CHECK(!node.lastError().empty());
+    CHECK(!node.poll());
+}
+#endif // _WIN32 && BMC_TEST_CHILD

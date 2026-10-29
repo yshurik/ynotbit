@@ -8,6 +8,15 @@ add_executable(bmclient_tests main.cpp foundation_test.cpp text_test.cpp json_te
 target_link_libraries(bmclient_tests PRIVATE bmclient ntb_object_db)
 target_compile_definitions(bmclient_tests PRIVATE BMC_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/golden"
     BMC_NICKBOT_TESTDATA="${CMAKE_SOURCE_DIR}/nickbot/testdata")
+# The supervisor's tests start the real node (bmnode, defined after this directory) on every system,
+# and on Windows, which has no shell scripts, a child of their own.
+add_dependencies(bmclient_tests bmnode)
+target_compile_definitions(bmclient_tests PRIVATE BMC_TEST_NODE="$<TARGET_FILE:bmnode>")
+if(WIN32)
+ add_executable(node_child node_child.cpp)
+ add_dependencies(bmclient_tests node_child)
+ target_compile_definitions(bmclient_tests PRIVATE BMC_TEST_CHILD="$<TARGET_FILE:node_child>")
+endif()
 add_test(NAME bmclient COMMAND bmclient_tests)
 # The Qt-free half of scripts/compat-check.sh: it writes a vault and a mailbox for the previous
 # release to open, and prints a report of what it reads for the two to be compared.
