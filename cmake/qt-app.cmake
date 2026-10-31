@@ -172,8 +172,8 @@ target_link_libraries(pow_bench PRIVATE bmcore)
 # built only on request. Dry run unless --send:
 #   cmake --build build --target announce_release
 #   build/announce_release --keys release_key.dat --version 0.5.1 --notes notes.md --send
-# Bitmessage digest issue (the digest address, footer appended); built only on
-# request. Dry run unless --send:
+# Bitmessage digest issue (the digest address, footer appended; with --chan <phrase> a
+# letter to that chan instead, without the footer); built only on request. Dry run unless --send:
 #   cmake --build build --target post_digest
 #   build/post_digest --keys digest_keys.dat --issue issue.md --send
 # (chat_responder, a chat peer to try the chats against, has no Qt and is built by the top-level
@@ -188,6 +188,11 @@ foreach(tool announce_release post_digest)
  target_link_libraries(${tool} PRIVATE bmcore notbit_engine Qt6::Widgets Qt6::Network)
  target_compile_definitions(${tool} PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
 endforeach()
+# The footer of a digest issue belongs to a broadcast, not to a letter to chans.
+qt_add_executable(digest_body_tests tests/digest_body_tests.cpp tools/digest_body.h)
+target_include_directories(digest_body_tests PRIVATE tools)
+target_link_libraries(digest_body_tests PRIVATE Qt6::Core)
+add_test(NAME digest-body COMMAND digest_body_tests)
 add_executable(outbox_tests tests/outbox_tests.cpp)
 target_link_libraries(outbox_tests PRIVATE bmcore)
 add_test(NAME outbox COMMAND outbox_tests)

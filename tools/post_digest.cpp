@@ -1,31 +1,20 @@
 // Publishes an issue of the Bitmessage digest: a broadcast from the digest
 // address, which every ynotbit mailbox is subscribed to by default. The issue
-// is a Markdown file; the footer asking for submissions is always appended.
+// is a Markdown file; the footer asking for submissions is appended to it.
 //
 //   build/post_digest --keys digest_keys.dat --issue issue.md [--subject "…"]
 //
 // Without --send it stays offline and only prints the letter it would publish.
+// With --chan <phrase> (repeatable) the issue goes to those chans, from the
+// digest address, instead of being broadcast, and without the footer, which
+// speaks of replying to a broadcast.
+#include "digest_body.h"
 #include "publish_broadcast.h"
 #include "updates.h"
 #include <QApplication>
 #include <QDate>
 #include <QFile>
 #include <QLocale>
-namespace {
-// Every issue ends with this, so readers always know how to contribute.
-QString footer(const QString &address) {
-    return QString(
-               "---\n\n"
-               "**Bitmessage digest** is a weekly round-up from the Bitmessage network.\n\n"
-               "Want something in the next issue? Reply privately to this broadcast, or write "
-               "to `%1`, and send:\n\n"
-               "- broadcast addresses you want promoted: yours, or ones worth following\n"
-               "- news, offers, updates, new chans and tools\n\n"
-               "Follow the digest: ynotbit subscribes to it by default. In PyBitmessage, add a "
-               "subscription to `%1`.")
-        .arg(address);
-}
-} // namespace
 int main(int argc, char **argv) {
     // Session runs its network node as this same executable with --node.
     if (argc > 1 && std::string(argv[1]) == "--node")
@@ -42,7 +31,8 @@ int main(int argc, char **argv) {
     const auto issue = tools::option(args, "--issue");
     if (b.keys.isEmpty() || issue.isEmpty())
         return tools::fail(b.tool, "usage: post_digest --keys <keys.dat> --issue <file.md> "
-                                   "[--subject <text>] [--send] [--linger <minutes>]");
+                                   "[--subject <text>] [--chan <phrase>]... [--send] "
+                                   "[--linger <minutes>]");
     QFile issueFile(issue);
     if (!issueFile.open(QIODevice::ReadOnly))
         return tools::fail(b.tool, "cannot read " + issue);
@@ -50,9 +40,8 @@ int main(int argc, char **argv) {
     if (text.isEmpty())
         return tools::fail(b.tool, issue + " is empty");
     b.from = bm::updates::digestAddress();
-    const auto end = footer(b.from);
-    // An issue drafted from the last one may carry its footer already.
-    b.body = text.endsWith(end) ? text : text + "\n\n" + end;
+    b.chans = tools::options(args, "--chan");
+    b.body = tools::digestBody(text, b.from, !b.chans.isEmpty());
     b.subject = tools::option(args, "--subject");
     if (b.subject.isEmpty())
         b.subject = "Bitmessage digest · " +
