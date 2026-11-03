@@ -82,6 +82,9 @@ class NickClient : public QObject {
     QString lookupAddress(const QString &nick, const QString &bot = {});
     QString lookupNicknames(const QStringList &addresses, const QString &bot = {});
     QString search(const QString &term, const QString &bot = {});
+    // The nicknames of this address are being asked for: a lookup of them is queued or sent, and
+    // not yet answered or timed out.
+    bool asking(const QString &address) const;
 
     // --- checking the address book: only when the user asks -------------------------------------
     // Asks the default nickbot for the nicknames of every contact, eight to a message and the

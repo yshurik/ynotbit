@@ -260,6 +260,61 @@ TEST(arrivals_are_counted_once_each_from_the_last_open) {
     m.close();
 }
 
+TEST(the_senders_of_arrivals_are_taken_once_each_from_the_last_open) {
+    // The desktop puts the people who write in the address book: the senders of the letters and chats
+    // that were counted as arrivals, each once and in order of address, until they are taken.
+    const auto path = aNewMailbox();
+    auto key = key32();
+    const auto joined = [](const std::vector<std::string> &list) { // an empty one would show
+        std::string text;
+        for (const auto &a : list)
+            text += a + ";";
+        return text;
+    };
+    Mailbox m;
+    m.create(path, "key-1", key);
+    CHECK(m.takeArrivalSenders().empty());
+    const auto expiry = bmc::now() + 86400;
+    m.store("letter-1", "BM-bob", "BM-local", "hi", "body", -1, "Inbox");
+    m.store("letter-1", "BM-bob", "BM-local", "hi", "body", -1, "Inbox");   // the same letter again
+    m.store("letter-2", "BM-bob", "BM-local", "again", "body", -1, "Inbox"); // the same sender again
+    m.storeChat("chat-1", "BM-amy", "BM-local", 1, "hello", expiry, false);
+    // No arrival from a person: a broadcast, a chan's post, a letter with no sender, our own chat.
+    m.store("post-1", "BM-news", "BM-news", "hi", "body", -1, "Broadcasts");
+    m.store("chan-1", "BM-chatter", "BM-chan", "hi", "body", -1, "Channels");
+    m.store("letter-3", "", "BM-local", "hi", "body", -1, "Inbox");
+    m.storeChat("chat-2", "BM-local", "BM-zed", 2, "mine", expiry, true);
+    CHECK_EQ(joined(m.takeArrivalSenders()), std::string("BM-amy;BM-bob;"));
+    CHECK(m.takeArrivalSenders().empty()); // taken: gone
+    m.store("letter-4", "BM-cat", "BM-local", "hi", "body", -1, "Inbox");
+    m.store("letter-1", "BM-bob", "BM-local", "hi", "body", -1, "Inbox"); // seen before, not new
+    CHECK_EQ(joined(m.takeArrivalSenders()), std::string("BM-cat;"));
+    // Counted from the last open, like the arrivals: what is not taken is not carried over.
+    m.store("letter-5", "BM-dan", "BM-local", "hi", "body", -1, "Inbox");
+    m.close();
+    m.open(path, key);
+    CHECK(m.takeArrivalSenders().empty());
+    m.close();
+}
+
+TEST(the_senders_of_arrivals_that_nobody_takes_stop_at_a_limit) {
+    // A service never takes them, and must not grow with every stranger who writes to it.
+    const auto path = aNewMailbox();
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    {
+        Mailbox::Batch batch(m);
+        for (int i = 0; i < 4200; ++i)
+            m.store("letter-" + std::to_string(i), "BM-writer-" + std::to_string(i), "BM-local",
+                    "hi", "body", -1, "Inbox");
+        batch.commit();
+    }
+    CHECK_EQ(m.incomingLetterCount(), uint64_t(4200)); // every one is an arrival
+    CHECK_EQ(m.takeArrivalSenders().size(), size_t(4096)); // but not every sender is kept
+    m.close();
+}
+
 TEST(a_letter_moves_between_folders_and_is_deleted_from_trash) {
     const auto path = aNewMailbox();
     auto key = key32();

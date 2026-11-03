@@ -51,6 +51,18 @@
         <source>Select a chat, or start a new one</source>
         <translation>选择一个聊天，或开始新的聊天</translation>
     </message>
+    <message>
+        <source>Add to contacts</source>
+        <translation>添加到联系人</translation>
+    </message>
+    <message>
+        <source>Ask a nickbot for this person's nickname</source>
+        <translation>向昵称机器人询问此人的昵称</translation>
+    </message>
+    <message>
+        <source>Asked a nickbot. The answer takes a few minutes.</source>
+        <translation>已询问昵称机器人。回复需要几分钟。</translation>
+    </message>
 </context>
 <context>
     <name>bm::DesktopWindow</name>
@@ -2229,6 +2241,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
     <message>
         <source>port %1 is taken, listening on %2</source>
         <translation>端口 %1 已被占用，正在监听 %2</translation>
+    </message>
+    <message>
+        <source>Asked the nickbot for a nickname. The answer takes a few minutes.</source>
+        <translation>已向昵称机器人询问昵称。回复需要几分钟。</translation>
     </message>
 </context>
 <context>

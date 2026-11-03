@@ -307,6 +307,14 @@ QString NickClient::search(const QString &text, const QString &bot) {
                 0});
 }
 
+bool NickClient::asking(const QString &address) const {
+    for (const auto *list : {&queue_, &waiting_})
+        for (const auto &p : *list)
+            if (p.kind == "nickname" && p.addresses.contains(address))
+                return true;
+    return false;
+}
+
 void NickClient::finish(const Pending &p, const QVariantMap &result) {
     emit lookupFinished(p.kind, p.key, p.bot, result);
     // The last message of a check: the pages that show it are told, as they are of any other

@@ -112,6 +112,11 @@ after a registration; that was dropped for speed on 2026-10-27.)
   when it is over; what the nickbot has appears in the Nickname column as the answers come, and a nickname the nickbot vouched for
   earlier and no longer has is taken away. **Nothing is asked about the contacts unless the user presses it**: there is no
   setting that does it on its own.
+- **The ? beside an address** asks the default nickbot for the nickname of one contact who has none. It sits beside the sender
+  and the recipient in the header of a letter and beside the address at the top of a chat, where the person-plus button is for
+  somebody who is not in the address book yet (a nickname is kept with a contact, so a stranger is offered the adding first).
+  It is one lookup of one address, sent from the same chan as any other; the button waits while the question is out, and the
+  answer, which takes minutes, goes to the contact like any other. It is pressed by the user and nothing asks on its own.
 - **New identity** has *Register with the nickbot as*, on, with the nickname made from the Nickname field (`Quick Otter of Zeta`
   becomes `@quick_otter_of_zeta`) unless you write one. With a new vault, which has no mailbox yet, the registration goes out when
   the first mailbox opens.

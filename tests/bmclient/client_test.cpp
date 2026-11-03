@@ -300,6 +300,45 @@ TEST(a_chat_from_a_person_makes_one_too) {
     CHECK_EQ(f.mailbox->watched(), std::vector<std::string>{f.peer});
 }
 
+// The desktop puts the people who write in the address book from what the scan stores
+// (Mailbox::takeArrivalSenders): a letter or a chat from a person is an arrival from them.
+TEST(the_scan_stores_a_letter_and_a_chat_as_arrivals_from_their_sender) {
+    Fixture f;
+    const auto expires = bmc::now() + 3600;
+    fake::cacheObject(f.root, f.incoming("Hello", "From the peer", expires));
+    f.client->step(bmc::now(), false);
+    CHECK_EQ(f.mailbox->takeArrivalSenders(), std::vector<std::string>{f.peer});
+    CHECK(f.mailbox->takeArrivalSenders().empty());
+    fake::cacheObject(f.root,
+                      f.incoming("", bmc::chatMessageBody(1700000000123, "hello"), expires));
+    f.client->step(bmc::now(), false);
+    CHECK_EQ(f.mailbox->takeArrivalSenders(), std::vector<std::string>{f.peer});
+}
+
+// A chan's post is no arrival from a person; a note to oneself is one from oneself, which the
+// desktop leaves out of the address book as it does the vault's own addresses.
+TEST(a_post_to_a_chan_is_no_arrival_and_a_note_to_oneself_is_one_from_oneself) {
+    Fixture f;
+    const auto expires = bmc::now() + 3600;
+    const bmc::Identity *chan = nullptr;
+    for (const auto &i : f.vault->identities())
+        if (i.address == f.chan)
+            chan = &i;
+    CHECK(chan != nullptr);
+    const auto &me = f.vault->identities()[0];
+    fake::cacheObject(f.root,
+                      bmc::Wire::encodeMessage(bmc::IdentityRef(f.peerVault.identities()[0]),
+                                               bmc::Wire::publicIdentity(bmc::IdentityRef(*chan)),
+                                               "To the chan", "Everybody", expires));
+    fake::cacheObject(f.root,
+                      bmc::Wire::encodeMessage(bmc::IdentityRef(me),
+                                               bmc::Wire::publicIdentity(bmc::IdentityRef(me)),
+                                               "Note", "To myself", expires));
+    f.client->step(bmc::now(), false);
+    CHECK_EQ(f.mailbox->messages().size(), size_t(2)); // both were read
+    CHECK_EQ(f.mailbox->takeArrivalSenders(), std::vector<std::string>{f.me});
+}
+
 TEST(a_post_to_a_chan_and_a_letter_to_oneself_make_no_pending_subscription) {
     Fixture f;
     const auto expires = bmc::now() + 3600;

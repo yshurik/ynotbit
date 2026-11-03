@@ -51,6 +51,18 @@
         <source>Select a chat, or start a new one</source>
         <translation>チャットを選択するか、新しく始めてください</translation>
     </message>
+    <message>
+        <source>Add to contacts</source>
+        <translation>連絡先に追加</translation>
+    </message>
+    <message>
+        <source>Ask a nickbot for this person's nickname</source>
+        <translation>この人のニックネームをニックボットに尋ねる</translation>
+    </message>
+    <message>
+        <source>Asked a nickbot. The answer takes a few minutes.</source>
+        <translation>ニックボットに尋ねました。答えが届くまで数分かかります。</translation>
+    </message>
 </context>
 <context>
     <name>bm::DesktopWindow</name>
@@ -2229,6 +2241,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
     <message>
         <source>port %1 is taken, listening on %2</source>
         <translation>ポート %1 は使用中、%2 で待ち受け中</translation>
+    </message>
+    <message>
+        <source>Asked the nickbot for a nickname. The answer takes a few minutes.</source>
+        <translation>ニックボットにニックネームを尋ねました。答えが届くまで数分かかります。</translation>
     </message>
 </context>
 <context>

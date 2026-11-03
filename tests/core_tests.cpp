@@ -754,6 +754,9 @@ int main(int argc, char **argv) {
             require(arrivals.incomingChatCount() == 1, "the same chat again is not one");
             arrivals.storeChat("chat-2", "BM-local", "BM-peer", 2, "mine", expiry, true);
             require(arrivals.incomingChatCount() == 1, "our own outgoing chat is not an arrival");
+            require(arrivals.takeArrivalSenders() == QStringList{"BM-peer"},
+                    "the senders of the arrivals are taken, each once");
+            require(arrivals.takeArrivalSenders().isEmpty(), "and are gone once taken");
         }
         std::cout << "PASS: vault, password rotation, SQLCipher, deduplication, backup, chan "
                      "fixture, authenticated message codec, sound themes\n";

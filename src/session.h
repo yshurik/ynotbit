@@ -339,13 +339,23 @@ class Session : public QObject {
     // marked, so whom it writes to later stays out until the user adds them.
     void addSentRecipients();
     // The same for everyone who wrote a letter in the Inbox: the user knows them. Once per
-    // mailbox, and a mailbox made now starts marked too, so whoever writes to it later stays out
-    // until the user adds them.
+    // mailbox, and a mailbox made now starts marked too: whoever writes to it later is added as
+    // their letter comes in (addArrivedPeople), not by looking through the Inbox.
     void addInboxSenders();
     // The same, now, for people met in letters that have just come in (an import): each named from
     // its address, unless it is in the book already, is one of the vault's own or is no address.
     // How many were added.
     int addToAddressBook(const QStringList &addresses);
+    // The people whose letters and chats have come in since the last look join the address book,
+    // named from their addresses, as the mail arrives (the session does it at every look): a letter
+    // to one of the identities or a chat, new to the mailbox; not a broadcast or a chan's post.
+    // Not those in the book already, the vault's own, what is no address, or whom the user took
+    // out of the book (removeContact; adding them again by hand lifts that). How many were added.
+    int addArrivedPeople();
+    // Asks the default nickbot for the nickname of an address (the "?" beside it); the answer comes
+    // minutes later and is kept with the contact. False, with error() saying why, when nothing can
+    // be asked: no mailbox, nickbots off, none listed.
+    bool askNickname(QString address);
     // Everyone the user has dealt with (the address book, the letters and chats received and sent)
     // is listened to for broadcasts without being listed as a subscription until they post: a
     // pending subscription (bmc::Client::watchKnownPeople). Run once for a mailbox from before,

@@ -51,9 +51,13 @@ sudo xattr -cr /Applications/ynotbit.app
 6. Lock the vault when finished. Preparation pauses, the mailbox closes, and
    the relay continues handling already submitted encrypted network objects.
 
-To name someone, click the person-plus button beside their address in a letter,
-or use **Contacts → Add contact…**. Names then appear in the message list, the
-reader and the composer, always next to the full address.
+People who write to you, with a letter to one of your identities or a chat, join the address
+book on their own as their mail arrives, each named from their address (a name like Noble Llama
+of Discourse, which you can change in **Contacts**). A broadcast or a chan's post brings no one.
+Take someone out of the book and they stay out, however often they write; add them again by hand
+and they are back to being added. To name anyone else, click the person-plus button beside their
+address in a letter or at the top of a chat, or use **Contacts → Add contact…**. Names then appear in
+the message list, the reader and the composer, always next to the full address.
 
 To chat, open **Chats** in the rail and choose **New chat**: type a contact's name or a
 BM-address, and pick the identity to chat as when you have several. Messages are
@@ -109,7 +113,9 @@ person, `/echobot` for a bot, `#general` for a chan. **Settings → Nickbots** l
 (the first is the default; each has a colour, taken from the quote levels of a letter, and a nickname
 is shown in the colour of the nickbot that vouches for it). **Contacts → Find people…** asks a nickbot
 for a nickname, a name or an address and adds what it finds to the address book, and the New identity
-dialog registers the new identity's nickname with the default nickbot unless you turn that off. Lookups
+dialog registers the new identity's nickname with the default nickbot unless you turn that off. The
+**?** button beside the address of a contact who has no nickname, in a letter or at the top of a
+chat, asks the default nickbot for it. Lookups
 are sent from a chan that every ynotbit has, so the nickbot cannot tell who asks; they take a few
 minutes. The service itself is `nickbot/` (Go): see [docs/nickbot.md](docs/nickbot.md).
 
@@ -129,7 +135,8 @@ minutes. The service itself is `nickbot/` (Go): see [docs/nickbot.md](docs/nickb
   automatic expiry retries; manual retry and cancellation; reply using the
   authenticated sender key. Cancellation cannot recall objects already relayed.
 - Address book: contacts with local, private names, kept in the encrypted
-  mailbox and never sent. One-click add from any letter; names in the list,
+  mailbox and never sent. People who write to you are added as their mail arrives,
+  and one click adds anyone from a letter or a chat; names in the list,
   reader and composer (completion by name and a contacts picker); the full
   address always stays visible beside a name.
 - Channels are named `#<name>`. A public channel's name is its shared phrase

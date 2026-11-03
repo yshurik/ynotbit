@@ -199,6 +199,12 @@ QStringList Mailbox::senders(const QString &folder) const {
         addresses << bridge::fromStd(a);
     return addresses;
 }
+QStringList Mailbox::takeArrivalSenders() {
+    QStringList addresses;
+    for (const auto &a : core_->takeArrivalSenders())
+        addresses << bridge::fromStd(a);
+    return addresses;
+}
 QMap<QString, qint64> Mailbox::lastPosts() const {
     QMap<QString, qint64> times;
     for (const auto &[address, time] : core_->lastPosts())

@@ -1881,6 +1881,24 @@ class LetterPane : public KindFrame {
                     updateCorrespondents();
             });
             (addressRow == 0 ? addFromContact_ : addToContact_) = add;
+            // For a contact with no nickname: the default nickbot is asked, and the answer, which
+            // takes minutes, is kept with the contact.
+            auto ask = new QToolButton;
+            ask->setObjectName(addressRow == 0 ? "askSenderNickname" : "askRecipientNickname");
+            ask->setProperty("addressAction", true);
+            ask->setFixedSize(22, 22);
+            ask->setIcon(materialIcon("question", iconColor(dark_)));
+            ask->setIconSize(QSize(14, 14));
+            ask->setAutoRaise(true);
+            ask->setCursor(Qt::PointingHandCursor);
+            ask->setToolTip(ChatsPane::askNicknameTip(false));
+            ask->setAccessibleName(ask->toolTip());
+            ask->hide();
+            connect(ask, &QToolButton::clicked, this, [this, field] {
+                session_.askNickname(field->text());
+                updateCorrespondents();
+            });
+            (addressRow == 0 ? askFromNickname_ : askToNickname_) = ask;
             auto label = new QLabel(addressRow == 0 ? DesktopWindow::tr("From") : DesktopWindow::tr("To"));
             if (addressRow == 1) {
                 label->setObjectName("toLabel");
@@ -1893,6 +1911,7 @@ class LetterPane : public KindFrame {
             addressCell->setSpacing(4);
             addressCell->addWidget(field);
             addressCell->addWidget(add, 0, Qt::AlignTop);
+            addressCell->addWidget(ask, 0, Qt::AlignTop);
             addressCell->addStretch();
             metadata->addLayout(addressCell, addressRow++, 2);
         }
@@ -1925,6 +1944,10 @@ class LetterPane : public KindFrame {
         connect(body_, &QTextBrowser::anchorClicked, this,
                 [this](QUrl url) { openLinkAfterAsking(this, url); });
         clear(DesktopWindow::tr("No letter selected"));
+        // A question to a nickbot is over, answered or not: the ask buttons that wait for it are
+        // ready again, or gone.
+        connect(&session_.nicks(), &NickClient::lookupFinished, this,
+                [this] { updateCorrespondents(); });
     }
     const QVariantMap &letter() const {
         return letter_;
@@ -2034,8 +2057,9 @@ class LetterPane : public KindFrame {
         updateDeliveryStatus();
     }
     void updateCorrespondents() {
-        for (auto [name, field, add] : {std::tuple{fromName_, fromAddress_, addFromContact_},
-                                        {toName_, toAddress_, addToContact_}}) {
+        for (auto [name, field, add, ask] :
+             {std::tuple{fromName_, fromAddress_, addFromContact_, askFromNickname_},
+              {toName_, toAddress_, addToContact_, askToNickname_}}) {
             const auto address = field->text();
             // The user's name for it and the nickname it goes by, the nickname in its colour.
             const auto shown =
@@ -2047,6 +2071,17 @@ class LetterPane : public KindFrame {
             const bool offered = !address.isEmpty() && session_.contactProblem(address).isEmpty() &&
                                  !session_.isContact(address);
             add->setVisible(offered);
+            // A contact with no nickname can be asked about: a nickbot's answer is kept with a
+            // contact, and dropped for anyone else.
+            auto &nicks = session_.nicks();
+            const bool askable = !address.isEmpty() && session_.isContact(address) &&
+                                 nicks.nicknameOf(address).text.isEmpty() &&
+                                 nicks.registrationProblem().isEmpty();
+            const bool asking = askable && nicks.asking(address);
+            ask->setVisible(askable);
+            ask->setEnabled(!asking);
+            ask->setToolTip(ChatsPane::askNicknameTip(asking));
+            ask->setAccessibleName(ask->toolTip());
             // A name that is not in the address book comes from a subscription, which the tip says:
             // a name beside a button that adds the address looks like a contact that is added.
             QStringList tip;
@@ -2065,6 +2100,8 @@ class LetterPane : public KindFrame {
         viewSwitch_->setIconColor(color);
         for (auto add : {addFromContact_, addToContact_})
             add->setIcon(materialIcon("personAdd", color));
+        for (auto ask : {askFromNickname_, askToNickname_})
+            ask->setIcon(materialIcon("question", color));
         updateDeliveryStatus();
     }
 
@@ -2109,7 +2146,7 @@ class LetterPane : public KindFrame {
     QTextEdit *subject_;
     QLabel *fromAddress_, *toAddress_, *fromName_, *toName_, *toLabel_;
     QLabel *deliveryStatus_, *deliveryError_, *timeline_;
-    QToolButton *addFromContact_, *addToContact_;
+    QToolButton *addFromContact_, *addToContact_, *askFromNickname_, *askToNickname_;
     QTextBrowser *body_;
 };
 namespace {
@@ -2498,6 +2535,17 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
             });
     connect(chats_, &ChatsPane::linkClicked, this,
             [this](const QUrl &url) { openLinkAfterAsking(this, url); });
+    connect(chats_, &ChatsPane::addContactRequested, this, [this](const QString &peer) {
+        if (editContact(peer))
+            updateChatOffers();
+    });
+    connect(chats_, &ChatsPane::askNicknameRequested, this, [this](const QString &peer) {
+        session_.askNickname(peer);
+        updateChatOffers();
+    });
+    // A question to a nickbot is over, answered or not: the button that waits for it is ready, or
+    // gone.
+    connect(&session_.nicks(), &NickClient::lookupFinished, this, [this] { updateChatOffers(); });
     // The reader has scrolled up to the top of what is shown: a page more of older messages.
     connect(chats_, &ChatsPane::olderRequested, this, [this] {
         chatWindow_ += kChatPage;
@@ -3371,6 +3419,7 @@ void DesktopWindow::updateState() {
         const auto thread = chatThread(nullptr);
         if (QVariantList{session_.chatConversations(), thread} != shownChats_)
             refreshChannels();
+        updateChatOffers(); // nickbots turned on or off, a nickname set elsewhere
     }
     updateRailBadges();
     // Identities, Contacts and Settings are whole-pane pages: no letter list, no
@@ -3429,6 +3478,20 @@ void DesktopWindow::updateState() {
                       .arg(session_.objectCount())
                       .arg(session_.cacheBytes() / 1048576.0, 0, 'f', 1) +
                   "\n" + session_.activity());
+}
+void DesktopWindow::updateChatOffers() {
+    const auto peer = Session::chatPeer(activeChatKey_);
+    if (peer.isEmpty() || !session_.mailboxOpen()) {
+        chats_->setPeerOffers(false, false);
+        return;
+    }
+    auto &nicks = session_.nicks();
+    const bool contact = session_.isContact(peer);
+    // The nickname a nickbot gives is kept with a contact: for anyone else the answer is dropped.
+    const bool ask =
+        contact && nicks.nicknameOf(peer).text.isEmpty() && nicks.registrationProblem().isEmpty();
+    chats_->setPeerOffers(!contact && session_.contactProblem(peer).isEmpty(), ask,
+                          ask && nicks.asking(peer));
 }
 // A chat shows a window of its newest messages: kChatWindow, and a page more for each time the
 // reader has scrolled up to the top of what is shown. Another chat starts afresh.
@@ -3667,6 +3730,7 @@ void DesktopWindow::refreshChannels() {
             }
         const auto local = Session::chatLocal(active), peer = Session::chatPeer(active);
         chats_->setConversation(local, localLabel, peer, label, severalIdentities);
+        updateChatOffers();
         bool older = false;
         const auto thread = chatThread(&older);
         chats_->setMessages(thread, older);

@@ -801,6 +801,13 @@ QIcon materialIcon(const QString &name, QColor color) {
         font.setWeight(QFont::DemiBold);
         p.setFont(font);
         p.drawText(QRectF(0, -1, 40, 40), Qt::AlignCenter, "@");
+    } else if (name == "question") {
+        // A ?, for asking who somebody is.
+        auto font = QApplication::font();
+        font.setPixelSize(30);
+        font.setWeight(QFont::DemiBold);
+        p.setFont(font);
+        p.drawText(QRectF(0, -1, 40, 40), Qt::AlignCenter, "?");
     } else if (name == "search") {
         // A magnifying glass: the lens and its handle.
         p.drawEllipse(QPointF(18, 18), 9.5, 9.5);

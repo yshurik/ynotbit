@@ -51,6 +51,18 @@
         <source>Select a chat, or start a new one</source>
         <translation>Виберіть чат або почніть новий</translation>
     </message>
+    <message>
+        <source>Add to contacts</source>
+        <translation>Додати до контактів</translation>
+    </message>
+    <message>
+        <source>Ask a nickbot for this person's nickname</source>
+        <translation>Запитати в нікбота псевдонім цієї людини</translation>
+    </message>
+    <message>
+        <source>Asked a nickbot. The answer takes a few minutes.</source>
+        <translation>Запитали в нікбота. Відповідь надійде через кілька хвилин.</translation>
+    </message>
 </context>
 <context>
     <name>bm::DesktopWindow</name>
@@ -2229,6 +2241,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
     <message>
         <source>port %1 is taken, listening on %2</source>
         <translation>порт %1 зайнятий, слухаю на %2</translation>
+    </message>
+    <message>
+        <source>Asked the nickbot for a nickname. The answer takes a few minutes.</source>
+        <translation>Запитали в нікбота псевдонім. Відповідь надійде через кілька хвилин.</translation>
     </message>
 </context>
 <context>

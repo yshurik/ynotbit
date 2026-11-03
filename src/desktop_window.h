@@ -171,6 +171,9 @@ class DesktopWindow : public QMainWindow {
     void updateContactsCheck(); // the check's button and note follow the nickbot client
     void setContactsNote(const QString &text, bool problem);
     void refreshChannels();
+    // The open chat's header offers what can be done about the peer: adding them to the address
+    // book when they are not in it, asking a nickbot for the nickname of a contact who has none.
+    void updateChatOffers();
     // The open chat's messages: a window of its newest ones; *older says more are kept.
     QVariantList chatThread(bool *older);
     void updateRailTexts(); // the rail's width, heading and buttons for its page

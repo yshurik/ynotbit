@@ -160,8 +160,10 @@ void Mailbox::storeChat(const std::string &id, const std::string &sender,
     s.number(8, expires);
     s.number(9, outgoing ? 0 : 1);
     s.row();
-    if (!outgoing && sqlite3_changes(db_) > 0)
+    if (!outgoing && sqlite3_changes(db_) > 0) {
         ++incomingChats_;
+        noteArrival(sender);
+    }
 }
 
 ImportCounts Mailbox::importChats(const std::vector<ImportedChat> &chats) {

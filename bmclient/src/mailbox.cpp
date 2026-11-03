@@ -74,6 +74,7 @@ void Mailbox::connect(const std::string &path, const Secret &key, bool create) {
     if (key.size() != 32)
         throw Error(Code::Argument, "Invalid mailbox key");
     incomingLetters_ = incomingChats_ = 0;
+    arrivalSenders_.clear();
     const auto file = bmc::path(path);
     if (create)
         reserveFile(file);
@@ -211,8 +212,21 @@ void Mailbox::store(const std::string &hash, const std::string &from, const std:
             advance(c);
     }
     t.commit();
-    if (inserted && folder == "Inbox")
+    if (inserted && folder == "Inbox") {
         ++incomingLetters_;
+        noteArrival(from);
+    }
+}
+
+void Mailbox::noteArrival(const std::string &sender) {
+    if (!sender.empty() && arrivalSenders_.size() < kMaxArrivalSenders)
+        arrivalSenders_.insert(sender);
+}
+
+std::vector<std::string> Mailbox::takeArrivalSenders() {
+    std::vector<std::string> taken(arrivalSenders_.begin(), arrivalSenders_.end());
+    arrivalSenders_.clear();
+    return taken;
 }
 
 std::vector<Message> Mailbox::messages() const {

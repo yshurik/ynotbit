@@ -132,6 +132,15 @@ QPixmap addressPixmap(const QString &address, int size, qreal ratio) {
     pixmap.setDevicePixelRatio(ratio);
     return pixmap;
 }
+// The peer's address on one line: as wide as its text when the header has the room, so that the
+// buttons beside it are beside its end, and clipped when it has not, where they keep theirs.
+class HeaderAddress : public QLabel {
+  public:
+    using QLabel::QLabel;
+    QSize minimumSizeHint() const override {
+        return {0, QLabel::minimumSizeHint().height()};
+    }
+};
 // A message's text. QLabel sizes rich text by laying it out again and again (for its hint, its
 // minimum, and its height at a width), several times what one layout takes, and a window of
 // bubbles is that many times over. This label answers its size from one layout of the same
@@ -383,12 +392,38 @@ ChatsPane::ChatsPane(QWidget *parent) : QWidget(parent) {
     title_->setTextFormat(Qt::PlainText);
     title_->setStyleSheet("font-size:15px;font-weight:600;");
     names->addWidget(title_);
-    address_ = new QLabel;
+    // The address, and beside its end what can be done about the peer (setPeerOffers): add them to
+    // the address book, ask a nickbot for their nickname.
+    auto addressRow = new QHBoxLayout;
+    addressRow->setContentsMargins(0, 0, 0, 0);
+    addressRow->setSpacing(4);
+    address_ = new HeaderAddress;
+    address_->setObjectName("chatAddress");
     address_->setTextFormat(Qt::PlainText);
-    address_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     address_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     address_->setStyleSheet("color:palette(placeholder-text);font-size:12px;");
-    names->addWidget(address_);
+    addressRow->addWidget(address_);
+    const auto peerButton = [&](const char *name, const QString &tip) {
+        auto button = new QToolButton;
+        button->setObjectName(name);
+        button->setProperty("addressAction", true); // drawn as the window's address buttons
+        button->setFixedSize(22, 22);
+        button->setIconSize(QSize(14, 14));
+        button->setAutoRaise(true);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setToolTip(tip);
+        button->setAccessibleName(tip);
+        button->hide();
+        addressRow->addWidget(button, 0, Qt::AlignVCenter);
+        return button;
+    };
+    addContact_ = peerButton("addChatContact", tr("Add to contacts"));
+    askNickname_ = peerButton("askChatNickname", askNicknameTip(false));
+    connect(addContact_, &QToolButton::clicked, this, [this] { emit addContactRequested(contact_); });
+    connect(askNickname_, &QToolButton::clicked, this,
+            [this] { emit askNicknameRequested(contact_); });
+    addressRow->addStretch();
+    names->addLayout(addressRow);
     head->addLayout(names, 1);
     identityChip_ = new QFrame;
     identityChip_->setObjectName("chatIdentity");
@@ -507,7 +542,20 @@ void ChatsPane::setConversation(const QString &identity, const QString &identity
                                           : tr("No chat messages yet"));
     composeBar_->setVisible(!peer.isEmpty());
     card_->setEnabled(!identity.isEmpty());
+    setPeerOffers(false, false); // the last peer's were for them: the window says again
     updateSend();
+}
+void ChatsPane::setPeerOffers(bool add, bool ask, bool asking) {
+    const bool peer = !contact_.isEmpty();
+    addContact_->setVisible(peer && add);
+    askNickname_->setVisible(peer && ask);
+    askNickname_->setEnabled(!asking);
+    askNickname_->setToolTip(askNicknameTip(asking));
+    askNickname_->setAccessibleName(askNickname_->toolTip());
+}
+QString ChatsPane::askNicknameTip(bool asking) {
+    return asking ? tr("Asked a nickbot. The answer takes a few minutes.")
+                  : tr("Ask a nickbot for this person's nickname");
 }
 QString ChatsPane::contact() const {
     return contact_;
@@ -786,6 +834,8 @@ void ChatsPane::applyTheme() {
     icon.addPixmap(glyph(t.window), QIcon::Normal);
     icon.addPixmap(glyph(t.muted), QIcon::Disabled);
     send_->setIcon(icon);
+    addContact_->setIcon(materialIcon("personAdd", iconColor(dark_)));
+    askNickname_->setIcon(materialIcon("question", iconColor(dark_)));
 }
 void ChatsPane::setDark(bool dark) {
     const bool changed = dark != dark_;

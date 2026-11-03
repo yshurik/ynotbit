@@ -1742,17 +1742,23 @@ static void testNickbots(const QTemporaryDir &temp) {
     nick.tick();
     require(nick.nicknameOf(ann).text.isEmpty(),
             "what a stranger says about a contact is not taken");
+    require(!nick.asking(ann) && !nick.asking(ben), "test sanity: nobody is asked about yet");
     require(nick.lookupNicknames({ann, ben}, {}).isEmpty(), "test sanity: a batch lookup");
+    require(nick.asking(ann) && nick.asking(ben) && !nick.asking(cy),
+            "the addresses of a nickname lookup are asked about from the call");
     nick.tick();
     require(sentFrom(lane, bot).size() == 3 &&
                 sentFrom(lane, bot)[2] == "/nickname " + ann + " " + ben,
             "two addresses go in one message");
+    require(nick.asking(ann) && nick.asking(ben),
+            "and still are when the message has gone, until the answer");
     QSignalSpy changed(&nick, &bm::NickClient::changed);
     answer(bot, R"({"v":1,"cmd":"nickname","ok":true,"results":[{"address":")" + ann +
                     R"(","nicks":["@ann","/annbot"]},{"address":")" + ben + R"(","nicks":[]}]})");
     nick.tick();
     require(finished.size() == 1 && !changed.isEmpty(),
             "the batch answer finishes the lookup and changes the book");
+    require(!nick.asking(ann) && !nick.asking(ben), "which ends the asking");
     auto info = nick.nicknameOf(ann);
     require(info.text == "@ann" && info.color == 0 && info.bot == "nickbot" &&
                 s.nickname(ann) == "@ann" && nick.nicknameOf(ben).text.isEmpty(),
@@ -1807,6 +1813,42 @@ static void testNickbots(const QTemporaryDir &temp) {
     const auto all = nick.nicknames();
     require(all.contains(ben) && all[ben].text == "@Ben" && all.contains(cy) && !all.contains(ann),
             "nicknames() lists every address that has one");
+
+    // --- asking for one contact's nickname: the "?" beside an address
+    // ---------------------------------
+    {
+        const auto fay = addressOf("Fay who is asked about"),
+                   gus = addressOf("Gus who never answers");
+        s.addContact(fay, "Fay");
+        s.addContact(gus, "Gus");
+        require(s.askNickname(fay) && s.error().isEmpty() && nick.asking(fay),
+                "asking for a nickname puts the question to the default nickbot");
+        require(s.activity() ==
+                    bm::Session::tr("Asked the nickbot for a nickname. The answer takes a few "
+                                    "minutes."),
+                "and tells the user it takes minutes");
+        nick.tick();
+        require(sentFrom(lane, bot).last() == "/nickname " + fay,
+                "it goes as the batch lookup of one address");
+        answer(bot, R"({"v":1,"cmd":"nickname","ok":true,"results":[{"address":")" + fay +
+                        R"(","nicks":["@fay"]}]})");
+        nick.tick();
+        require(!nick.asking(fay) && nick.nicknameOf(fay).text == "@fay",
+                "the answer ends the asking and the contact has the nickname");
+        // A question that is never answered is over after its hour, like any lookup.
+        require(s.askNickname(gus) && nick.asking(gus), "test sanity: a question to wait for");
+        nick.tick();
+        now += 3950;
+        nick.tick();
+        require(!nick.asking(gus), "a question nobody answers ends when its time is over");
+        // What is in the way is said, and nothing is asked.
+        nick.setEnabled(false);
+        require(!s.askNickname(gus) && !s.error().isEmpty() && !nick.asking(gus),
+                "with nickbots off asking says why, and asks nothing");
+        nick.setEnabled(true);
+        finished.clear();
+        s.clearError();
+    }
 
     // --- two nickbots: an answer from one does not finish a question put to the other
     // -----------------------
@@ -3196,6 +3238,89 @@ static void testEllipsisLabel() {
                 button->width() >= button->sizeHint().width(),
             "with less the label ends in an ellipsis, and the button keeps its room");
 }
+// Something is drawn in the icon, not a blank.
+static bool drawnIcon(const QIcon &icon) {
+    const auto image = icon.pixmap(QSize(80, 80)).toImage().convertToFormat(QImage::Format_ARGB32);
+    for (int y = 0; y < image.height(); ++y)
+        for (int x = 0; x < image.width(); ++x)
+            if (qAlpha(image.pixel(x, y)) > 128)
+                return true;
+    return false;
+}
+// The header of a chat can offer, beside the peer's address, to add them to the address book ("+")
+// and to ask a nickbot for their nickname ("?"). Which it offers is the window's to say; the header
+// shows it, and tells the window when a button is pressed.
+static void testChatHeaderOffers() {
+    const auto addressOf = [](const char *who) {
+        return QString::fromStdString(bmc::Protocol::identity(who).address);
+    };
+    const auto mine = addressOf("a header offers identity"), peer = addressOf("a header offers peer"),
+               other = addressOf("another header offers peer");
+    bm::ChatsPane pane;
+    pane.resize(720, 420);
+    pane.show();
+    auto add = pane.findChild<QToolButton *>("addChatContact");
+    auto ask = pane.findChild<QToolButton *>("askChatNickname");
+    auto address = pane.findChild<QLabel *>("chatAddress");
+    require(add && ask && address, "the header has an add button, an ask button and the address");
+    pane.setConversation(mine, "Mine", peer, "A peer", false);
+    require(address->text() == peer && !add->isVisible() && !ask->isVisible(),
+            "nothing is offered until the window says what can be done about the peer");
+    QStringList added, asked;
+    QObject::connect(&pane, &bm::ChatsPane::addContactRequested,
+                     [&](const QString &who) { added << who; });
+    QObject::connect(&pane, &bm::ChatsPane::askNicknameRequested,
+                     [&](const QString &who) { asked << who; });
+    pane.setPeerOffers(true, true);
+    QCoreApplication::processEvents();
+    require(add->isVisible() && add->isEnabled() && ask->isVisible() && ask->isEnabled(),
+            "both buttons show when both are offered");
+    add->click();
+    require(added == QStringList{peer} && asked.isEmpty(), "the add button asks to add the peer");
+    ask->click();
+    require(added == QStringList{peer} && asked == QStringList{peer},
+            "the ask button asks for the peer's nickname");
+
+    // Each is an icon with a tip and a name, like the buttons beside an address in a letter.
+    require(drawnIcon(add->icon()) && drawnIcon(ask->icon()), "each button's icon is drawn");
+    require(add->toolTip() == bm::ChatsPane::tr("Add to contacts") &&
+                ask->toolTip() == bm::ChatsPane::askNicknameTip(false) &&
+                !add->accessibleName().isEmpty() && !ask->accessibleName().isEmpty() &&
+                add->toolTip() != ask->toolTip(),
+            "and says what it does");
+    // They sit beside the end of the address, not at the far edge of a wide header.
+    const auto at = [&](QWidget *w) { return w->mapTo(&pane, QPoint()); };
+    const int textWidth = address->fontMetrics().horizontalAdvance(peer);
+    require(address->width() <= textWidth + 8 &&
+                at(add).x() - (at(address).x() + address->width()) <= 8 &&
+                at(ask).x() > at(add).x() && at(ask).x() - (at(add).x() + add->width()) <= 8,
+            "the buttons are beside the end of the address, the ask one after the add one");
+    // A narrow header gives the address less room, and keeps the buttons.
+    pane.resize(300, 420);
+    QCoreApplication::processEvents();
+    require(add->isVisible() && at(ask).x() + ask->width() <= pane.width(),
+            "a narrow header keeps its buttons in view, and clips the address");
+    pane.resize(720, 420);
+    QCoreApplication::processEvents();
+
+    // A question that is out waits for its answer.
+    const auto tip = ask->toolTip();
+    pane.setPeerOffers(false, true, true);
+    require(!add->isVisible() && ask->isVisible() && !ask->isEnabled() && ask->toolTip() != tip &&
+                ask->toolTip() == bm::ChatsPane::askNicknameTip(true),
+            "while the nickbot is asked the ask button waits, and its tip says so");
+    pane.setPeerOffers(false, false);
+    require(!add->isVisible() && !ask->isVisible(), "nothing offered, nothing shown");
+
+    // The offers are for the peer shown: another conversation, or none, takes them away.
+    pane.setPeerOffers(true, true);
+    pane.setConversation(mine, "Mine", other, "Another peer", false);
+    require(!add->isVisible() && !ask->isVisible(),
+            "a conversation that opens does not inherit the last one's offers");
+    pane.setConversation(mine, "Mine", {}, {}, false);
+    pane.setPeerOffers(true, true);
+    require(!add->isVisible() && !ask->isVisible(), "with no peer there is nothing to offer");
+}
 // The letter's header: the sender's address whole on one line beside its name and the button, and a
 // name that does not come from the address book saying where it does.
 static void testReaderHeader(const QTemporaryDir &temp) {
@@ -4302,6 +4427,288 @@ static void testContactChats(const QTemporaryDir &temp) {
     driver.stop();
 }
 
+// In the window, the header of a chat offers what can be done about the peer: "+" for somebody who
+// is not in the address book (the Add contact dialog, with the name made from the address), "?" for
+// a contact with no nickname (the default nickbot is asked, and the button waits for the answer).
+static void testChatHeaderInWindow(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("hdroffers.bmvault"),
+               boxFile = temp.filePath("hdroffers.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("hdroffers-node"));
+    {
+        QSettings config(temp.filePath("hdroffers-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    const auto addressOf = [](const char *who) {
+        return QString::fromStdString(bmc::Protocol::identity(who).address);
+    };
+    const auto bot = addressOf("the header offers nickbot"),
+               stranger = addressOf("a stranger in a chat header");
+    bm::updates::setDefaultNickbotsForTesting({{bot, "nickbot"}});
+    struct Restore {
+        ~Restore() {
+            bm::updates::setDefaultNickbotsForTesting({});
+        }
+    } restore;
+    bm::Session s(temp.filePath("hdroffers-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen(), "test sanity: the mailbox opens");
+    auto &nick = s.nicks();
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+    nick.setClockForTesting([&] { return now; });
+    for (const auto &c : s.coreMailbox().contacts())
+        s.coreMailbox().removeContact(c.address); // the built-in ones: an empty book to start
+    QString mine;
+    for (const auto &v : s.identities())
+        if (!v.toMap()["chan"].toBool())
+            mine = v.toMap()["address"].toString();
+    bm::DesktopWindow window(s, temp.filePath("sounds-hdroffers"));
+    window.resize(1160, 780);
+    window.show();
+    // The stranger chats; as the chat comes in they join the address book, named from the address.
+    s.coreMailbox().storeChat("hdr-1", stranger.toStdString(), mine.toStdString(), 1, "hello",
+                              bmc::now() + 3600);
+    require(QTest::qWaitFor([&] { return s.isContact(stranger); }, 8000),
+            "test sanity: a chat that comes in makes its writer a contact");
+    window.startChat(mine, stranger);
+    QCoreApplication::processEvents();
+    auto add = window.findChild<QToolButton *>("addChatContact");
+    auto ask = window.findChild<QToolButton *>("askChatNickname");
+    require(add && ask, "the window's chat header has both buttons");
+    require(ask->isVisible() && ask->isEnabled() && !add->isVisible(),
+            "a contact with no nickname is offered the question, not the adding");
+
+    // The question: the default nickbot is asked, and the button waits for the answer.
+    ask->click();
+    require(nick.asking(stranger) && !ask->isEnabled() &&
+                s.activity() ==
+                    bm::Session::tr("Asked the nickbot for a nickname. The answer takes a few "
+                                    "minutes."),
+            "pressing it asks the nickbot, and says the answer takes minutes");
+    // One never answered is over after its hour, and can be asked again.
+    nick.tick();
+    now += 3950;
+    nick.tick();
+    QCoreApplication::processEvents();
+    require(!nick.asking(stranger) && ask->isVisible() && ask->isEnabled(),
+            "a question that is not answered ends, and the button is ready again");
+    // With a nickname there is nothing to ask.
+    nick.adopt(stranger, "@strange", bot);
+    QCoreApplication::processEvents();
+    require(!ask->isVisible() && !add->isVisible(),
+            "a contact with a nickname is offered neither the question nor the adding");
+    s.setNickname(stranger, {});
+    nick.setEnabled(false);
+    s.removeContact(stranger);
+    QCoreApplication::processEvents();
+    require(add->isVisible() && !ask->isVisible(),
+            "somebody not in the address book is offered the adding, and not the question");
+    nick.setEnabled(true);
+
+    // The adding: the Add contact dialog, with the address and the name made from it.
+    QString dialogAddress, dialogName;
+    QTimer::singleShot(100, &window, [&] {
+        if (auto dialog = window.findChild<QDialog *>("contactDialog")) {
+            dialogAddress = dialog->findChild<QLineEdit *>("contactAddressField")->text();
+            dialogName = dialog->findChild<QLineEdit *>("contactNameField")->text();
+            dialog->findChild<QPushButton *>("contactSaveButton")->click();
+        }
+    });
+    add->click();
+    QCoreApplication::processEvents();
+    require(dialogAddress == stranger && dialogName == bm::addressTitle(stranger),
+            "the + opens the Add contact dialog with the peer's address and the name made from it");
+    require(s.isContact(stranger) && !add->isVisible() && ask->isVisible(),
+            "once saved the peer is a contact: the adding is gone, the question is offered");
+}
+// In the reader, the addresses of a letter offer the same: "+" for somebody who is not in the
+// address book, "?" for a contact with no nickname.
+static void testReaderAsksForNicknames(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("readerasks.bmvault"),
+               boxFile = temp.filePath("readerasks.bmmail");
+    const auto addressOf = [](const char *who) {
+        return QString::fromStdString(bmc::Protocol::identity(who).address);
+    };
+    const auto bot = addressOf("the reader asks nickbot"),
+               stranger = addressOf("a stranger who wrote a letter"),
+               friendly = addressOf("a contact who wrote a letter");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        const auto me = made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        // Whoever wrote before was put in the address book when the mailbox first opened.
+        box.setSetting("migrated:sent-recipients", "1");
+        box.setSetting("migrated:inbox-senders", "1");
+        box.store("ask-1", stranger, me, "From a stranger", "Body", 1800, "Inbox");
+        box.store("ask-2", friendly, me, "From a friend", "Body", 1801, "Inbox");
+        box.saveContact(friendly, "Friend");
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("readerasks-node"));
+    {
+        QSettings config(temp.filePath("readerasks-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    bm::updates::setDefaultNickbotsForTesting({{bot, "nickbot"}});
+    struct Restore {
+        ~Restore() {
+            bm::updates::setDefaultNickbotsForTesting({});
+        }
+    } restore;
+    bm::Session s(temp.filePath("readerasks-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen() && s.isContact(friendly) && !s.isContact(stranger),
+            "test sanity: a mailbox with a contact who wrote and a stranger who wrote");
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+    s.nicks().setClockForTesting([&] { return now; });
+    bm::DesktopWindow window(s, temp.filePath("sounds-readerasks"));
+    window.resize(1160, 780);
+    window.show();
+    window.findChild<QToolButton *>("folderIcon_Inbox")->click();
+    window.selectMessage("ask-1");
+    QCoreApplication::processEvents();
+    auto add = window.findChild<QToolButton *>("addSenderContact");
+    auto ask = window.findChild<QToolButton *>("askSenderNickname");
+    require(add && ask, "the reader has an add button and an ask button beside the sender");
+    require(add->isVisible() && !ask->isVisible(),
+            "a stranger who wrote is offered the adding, not the question");
+    window.selectMessage("ask-2");
+    QCoreApplication::processEvents();
+    require(!add->isVisible() && ask->isVisible() && ask->isEnabled(),
+            "a contact with no nickname is offered the question, not the adding");
+    require(drawnIcon(ask->icon()) &&
+                ask->toolTip() == bm::ChatsPane::askNicknameTip(false) &&
+                !ask->accessibleName().isEmpty(),
+            "the question is an icon with a tip and a name");
+    ask->click();
+    QCoreApplication::processEvents();
+    require(s.nicks().asking(friendly) && ask->isVisible() && !ask->isEnabled() &&
+                ask->toolTip() == bm::ChatsPane::askNicknameTip(true),
+            "pressing it asks the nickbot, and the button waits for the answer");
+    s.nicks().tick();
+    now += 3950;
+    s.nicks().tick();
+    QCoreApplication::processEvents();
+    require(!s.nicks().asking(friendly) && ask->isVisible() && ask->isEnabled() &&
+                ask->toolTip() == bm::ChatsPane::askNicknameTip(false),
+            "a question that is not answered ends, and the button is ready again");
+    s.nicks().adopt(friendly, "@friendly", bot);
+    QCoreApplication::processEvents();
+    require(!ask->isVisible() && !add->isVisible(),
+            "with the nickname there is nothing to ask");
+}
+// The people who write to the user (a letter to one of their identities, a chat) join the address
+// book as it comes in, named from their addresses. A broadcast and a chan's post bring no one, and a
+// person the user took out of the book stays out.
+static void testPeopleWhoWriteJoinTheBook(const QTemporaryDir &temp) {
+    const auto vaultFile = temp.filePath("writers.bmvault"),
+               boxFile = temp.filePath("writers.bmmail");
+    {
+        bm::Vault made;
+        made.create(vaultFile, "test password");
+        made.addIdentity("Mine");
+        const auto key = made.addMailboxKey();
+        bm::Mailbox box;
+        box.create(boxFile, key, made.mailboxKey(key));
+        made.lock();
+    }
+    QDir().mkpath(temp.filePath("writers-node"));
+    {
+        QSettings config(temp.filePath("writers-node/desktop.ini"), QSettings::IniFormat);
+        config.setValue("vault", vaultFile);
+        config.setValue("mailbox", boxFile);
+    }
+    const auto addressOf = [](const std::string &who) {
+        return QString::fromStdString(bmc::Protocol::identity(who).address);
+    };
+    bm::Session s(temp.filePath("writers-node"), true);
+    s.beginVaultUnlock();
+    s.submitVaultPassword("test password");
+    require(s.mailboxOpen(), "test sanity: the mailbox opens");
+    for (const auto &c : s.coreMailbox().contacts())
+        s.coreMailbox().removeContact(c.address); // the built-in ones: an empty book to start
+    QString mine;
+    for (const auto &v : s.identities())
+        if (!v.toMap()["chan"].toBool())
+            mine = v.toMap()["address"].toString();
+    require(!mine.isEmpty() && s.contacts().isEmpty(), "test sanity: an identity, an empty book");
+    const auto labelOf = [&](const QString &address) {
+        for (const auto &c : s.contacts())
+            if (c.toMap()["address"].toString() == address)
+                return c.toMap()["label"].toString();
+        return QString();
+    };
+    const auto letterFrom = [&](const QString &who, const char *id) {
+        s.coreMailbox().store(id, who.toStdString(), mine.toStdString(), "Hello", "body", -1,
+                              "Inbox");
+    };
+    const auto chatFrom = [&](const QString &who, const char *id) {
+        s.coreMailbox().storeChat(id, who.toStdString(), mine.toStdString(), 1, "hello",
+                                  bmc::now() + 3600);
+    };
+    const auto ann = addressOf("a stranger who writes"), bea = addressOf("a stranger who chats"),
+               cat = addressOf("a stranger who posts"), dan = addressOf("a stranger in a chan"),
+               eve = addressOf("a stranger who writes while the app runs");
+
+    letterFrom(ann, "w-ann");
+    chatFrom(bea, "w-bea");
+    require(s.addArrivedPeople() == 2 && s.isContact(ann) && s.isContact(bea),
+            "whoever wrote a letter and whoever chatted are in the address book");
+    require(labelOf(ann) == bm::addressTitle(ann) && labelOf(bea) == bm::addressTitle(bea),
+            "each named from the address, like a contact the Add contact dialog suggests");
+    require(s.addArrivedPeople() == 0, "once: nothing is new the second time");
+
+    // Writers who are not writing to the user.
+    s.coreMailbox().store("w-post", cat.toStdString(), cat.toStdString(), "A post", "hi", -1,
+                          "Broadcasts");
+    s.coreMailbox().store("w-chan", dan.toStdString(), mine.toStdString(), "In a chan", "hi", -1,
+                          "Channels");
+    letterFrom(mine, "w-note");
+    s.coreMailbox().store("w-bad", "BM-nonsense", mine.toStdString(), "Hello", "body", -1, "Inbox");
+    require(s.addArrivedPeople() == 0 && !s.isContact(cat) && !s.isContact(dan) &&
+                !s.isContact(mine) && !s.isContact("BM-nonsense"),
+            "a broadcast, a chan's post, a note to oneself and what is no address bring no one");
+
+    // Whoever is in the book keeps the name they have there.
+    require(s.addContact(ann, "Ann"), "test sanity: the user names a contact");
+    letterFrom(ann, "w-ann-2");
+    require(s.addArrivedPeople() == 0 && labelOf(ann) == "Ann",
+            "a contact keeps the user's name when they write again");
+
+    // Taking someone out of the book sticks, until the user adds them again.
+    s.removeContact(ann);
+    letterFrom(ann, "w-ann-3");
+    require(s.addArrivedPeople() == 0 && !s.isContact(ann),
+            "a contact the user removed does not come back with the next letter");
+    chatFrom(ann, "w-ann-chat");
+    require(s.addArrivedPeople() == 0 && !s.isContact(ann), "nor with a chat");
+    require(s.addContact(ann, "Ann again"), "test sanity: the user adds them by hand");
+    s.coreMailbox().removeContact(ann.toStdString()); // gone by some other way than the user's remove
+    letterFrom(ann, "w-ann-4");
+    require(s.addArrivedPeople() == 1 && labelOf(ann) == bm::addressTitle(ann),
+            "adding by hand lifts the refusal, so a later letter brings them in again");
+
+    // Nobody has to ask: the session does it as the mail comes in.
+    letterFrom(eve, "w-eve");
+    require(QTest::qWaitFor([&] { return s.isContact(eve); }, 8000),
+            "a letter that comes in makes its writer a contact with no one asking");
+}
+
 static void testNewIdentityRegisters(const QTemporaryDir &temp) {
     const auto vaultFile = temp.filePath("newid.bmvault"), boxFile = temp.filePath("newid.bmmail");
     {
@@ -4483,6 +4890,7 @@ int main(int argc, char **argv) {
         testIdentitiesPage(temp);
         testAddressLabel();
         testEllipsisLabel();
+        testChatHeaderOffers();
         testReaderHeader(temp);
         for (const auto &icon : {bm::appLogo(), bm::windowLogo()}) {
             for (int size : {16, 20, 24, 32, 40, 48, 64, 96, 128, 256, 512, 1024}) {
@@ -9460,6 +9868,9 @@ int main(int argc, char **argv) {
         testContactChats(temp);
         testFindPeople(temp);
         testPendingSubscriptions(temp);
+        testPeopleWhoWriteJoinTheBook(temp);
+        testChatHeaderInWindow(temp);
+        testReaderAsksForNicknames(temp);
         testNewIdentityRegisters(temp);
         require(session.portMapper().state() == bm::PortMapper::State::Off,
                 "an offline session never talks to the router");

@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -56,6 +57,11 @@ class Mailbox {
     // arrivals are counted, and only once each: a catch-up or retention pass that meets a letter
     // again does not raise them.
     uint64_t incomingLetters_ = 0, incomingChats_ = 0;
+    // Who those came from, until takeArrivalSenders(). A service that never takes them (a bot)
+    // stops at kMaxArrivalSenders instead of growing without end.
+    std::set<std::string> arrivalSenders_;
+    static constexpr size_t kMaxArrivalSenders = 4096;
+    void noteArrival(const std::string &sender);
     void connect(const std::string &path, const Secret &key, bool create);
     void sql(const char *q);
     void migrate();
@@ -191,6 +197,10 @@ class Mailbox {
     uint64_t incomingChatCount() const {
         return incomingChats_;
     }
+    // Who the arrivals came from since the last call, or the last open: each address once, in order
+    // of address, returned and forgotten. For the desktop to put the people who write in the address
+    // book. A letter with no sender adds none.
+    std::vector<std::string> takeArrivalSenders();
     void backup(const std::string &path, const Secret &key);
     std::string saveDraft(const std::string &id, const std::string &from, const std::string &to,
                           const std::string &subject, const std::string &body);

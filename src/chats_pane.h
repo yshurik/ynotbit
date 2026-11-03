@@ -9,6 +9,7 @@ class QLabel;
 class QPlainTextEdit;
 class QVBoxLayout;
 class QScrollArea;
+class QToolButton;
 namespace bm {
 // A conversation is shown a window at a time: its newest messages, and a page more of the
 // older ones each time the reader scrolls up to the top of what is shown. A page is what
@@ -78,6 +79,13 @@ class ChatsPane : public QWidget {
     // The conversation's newest messages, oldest first: a window of it. hasOlder says that
     // more are kept further back, which olderRequested() asks for as the reader nears the top.
     void setMessages(const QVariantList &messages, bool hasOlder = false);
+    // What the header offers about the peer, beside their address: to add them to the address book
+    // (add), to ask a nickbot for their nickname (ask), and whether that question is out already
+    // (asking: the button waits for its answer). The window says it, after setConversation(),
+    // which takes the last peer's offers away.
+    void setPeerOffers(bool add, bool ask, bool asking = false);
+    // The tip of the button that asks for a nickname, here and beside an address in a letter.
+    static QString askNicknameTip(bool asking);
     void clearComposer();
     void focusComposer();
     QString contact() const;  // the peer
@@ -90,6 +98,9 @@ class ChatsPane : public QWidget {
     void olderRequested();
     // A link in a message was clicked. The window decides whether it opens.
     void linkClicked(const QUrl &url);
+    // The header's buttons were pressed, for the peer shown.
+    void addContactRequested(const QString &peer);
+    void askNicknameRequested(const QString &peer);
 
   protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -114,6 +125,7 @@ class ChatsPane : public QWidget {
     void rebuild(const QVariantList &messages);
     void checkOlder();
     QLabel *title_, *address_, *avatar_, *welcomeTitle_, *identityIcon_, *identityName_;
+    QToolButton *addContact_, *askNickname_; // beside the address: see setPeerOffers()
     QFrame *identityChip_, *card_;
     QWidget *composeBar_;
     QPlainTextEdit *input_;

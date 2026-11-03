@@ -209,6 +209,8 @@ class Mailbox {
     quint64 incomingChatCount() const {
         return core_->incomingChatCount();
     }
+    // Who the arrivals came from since the last call, each address once, in order of address.
+    QStringList takeArrivalSenders();
     void backup(const QString &, const Secret &);
     QString saveDraft(const QString &id, const QString &from, const QString &to,
                       const QString &subject, const QString &body);

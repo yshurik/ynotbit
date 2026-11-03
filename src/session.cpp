@@ -92,6 +92,9 @@ static const QString kSentRecipientsSetting = "migrated:sent-recipients";
 static const QString kInboxSendersSetting = "migrated:inbox-senders";
 // The same for the people the user deals with, listened to for broadcasts (watchKnownPeople).
 static const QString kPendingSubscriptionsSetting = "migrated:pending-subscriptions";
+// Followed by an address: the user took that person out of the address book, so writing does not
+// bring them back (addArrivedPeople). Adding them again by hand lifts it.
+static const QString kRemovedContactSetting = "removed-contact:";
 // The mailbox setting that says the import of PyBitmessage's data has been dealt with: an import
 // finished, or the user asked not to be offered it again. While it is not there, the import is
 // offered each time the mailbox opens.
@@ -748,6 +751,9 @@ void Session::checkArrivals() {
         arrivalsPrimed_ = false;
         return;
     }
+    // Also before the first look: what came in while the app was closed is read when the mailbox
+    // opens, and its writers are people too.
+    addArrivedPeople();
     const quint64 letters = mailbox_.incomingLetterCount();
     const quint64 chats = mailbox_.incomingChatCount();
     // The first look at a freshly opened mailbox is the starting point: what an
@@ -1227,6 +1233,36 @@ int Session::addToAddressBook(const QStringList &addresses) {
     }
     return added;
 }
+int Session::addArrivedPeople() {
+    if (!mailboxOpen())
+        return 0;
+    int added = 0;
+    try {
+        const auto senders = mailbox_.takeArrivalSenders();
+        if (senders.isEmpty())
+            return 0;
+        auto known = addressesNotToAdd(mailbox_, vault_);
+        Mailbox::Batch batch(mailbox_); // one commit, however many are added
+        for (const auto &address : senders)
+            if (mailbox_.setting(kRemovedContactSetting + address.trimmed()).isEmpty())
+                added += addToBook(mailbox_, known, address);
+        batch.commit();
+    } catch (...) {
+        return 0; // nothing was kept, and the people can be added by hand
+    }
+    if (added)
+        messageModel()->reload(); // list rows carry correspondents' names
+    return added;
+}
+bool Session::askNickname(QString address) {
+    attempt([&] {
+        check(mailboxOpen(), tr("Open a mailbox first"));
+        if (const auto problem = nicks_->lookupNicknames({address.trimmed()}); !problem.isEmpty())
+            throw std::runtime_error(problem.toStdString());
+        activity_ = tr("Asked the nickbot for a nickname. The answer takes a few minutes.");
+    });
+    return error_.isEmpty();
+}
 QVariantList Session::broadcastSources() const {
     QMap<QString, QVariantMap> sources;
     if (!mailboxOpen())
@@ -1343,6 +1379,7 @@ bool Session::addContact(QString address, QString label) {
             throw std::runtime_error(problem.toStdString());
         label = label.trimmed();
         mailbox_.saveContact(address, label.isEmpty() ? address : label);
+        mailbox_.setSetting(kRemovedContactSetting + address, {}); // wanted again
         client_->watchPerson(bridge::toStd(address)); // a person the user deals with
         messageModel()->reload(); // list rows carry correspondents' names
         activity_ = tr("Contact saved.");
@@ -1353,6 +1390,7 @@ void Session::removeContact(QString address) {
     attempt([&] {
         check(mailboxOpen(), tr("Open a mailbox first"));
         mailbox_.removeContact(address);
+        mailbox_.setSetting(kRemovedContactSetting + address.trimmed(), "1");
         messageModel()->reload();
     });
 }
