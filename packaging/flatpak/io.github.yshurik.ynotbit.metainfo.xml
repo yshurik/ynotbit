@@ -23,15 +23,15 @@
   <url type="bugtracker">https://github.com/yshurik/ynotbit/issues</url>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/yshurik/ynotbit/v0.8.1/docs/images/desktop.png</image>
+      <image>https://raw.githubusercontent.com/yshurik/ynotbit/v0.8.2/docs/images/desktop.png</image>
       <caption>Reading a Markdown letter from a named contact</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/yshurik/ynotbit/v0.8.1/docs/images/chats.png</image>
+      <image>https://raw.githubusercontent.com/yshurik/ynotbit/v0.8.2/docs/images/chats.png</image>
       <caption>Chats with delivery ticks</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/yshurik/ynotbit/v0.8.1/docs/images/composer.png</image>
+      <image>https://raw.githubusercontent.com/yshurik/ynotbit/v0.8.2/docs/images/composer.png</image>
       <caption>Writing to a contact</caption>
     </screenshot>
   </screenshots>
@@ -52,6 +52,7 @@
     <display_length compare="ge">768</display_length>
   </requires>
   <releases>
+    <release version="0.8.2" date="2026-11-03"/>
     <release version="0.8.1" date="2026-10-29"/>
   </releases>
 </component>
