@@ -168,7 +168,7 @@ func (s *Service) help() outcome {
 			"- /address @nick: the address of a nickname",
 			"- /nickname BM-...: the nicknames of an address (up to 8 addresses)",
 			"- /search term: names that contain the term (4 characters or more)",
-			"- /whoami: your own nicknames",
+			"- /whoami: your own nickname",
 		},
 		p: payload{Cmd: "help", Ok: true},
 	}
@@ -217,7 +217,7 @@ func (s *Service) register(c *call) outcome {
 			} else if all >= s.o.NewPerHour {
 				return "", errBusy
 			}
-			if grows, err := growsRegistry(r, from, n.Sigil); err != nil {
+			if grows, err := growsRegistry(r, from); err != nil {
 				return "", err
 			} else if grows {
 				if total, err := r.Total(); err != nil {
@@ -250,19 +250,14 @@ func (s *Service) register(c *call) outcome {
 	return replied(cmd, text)
 }
 
-// growsRegistry says whether registering a name of this sigil adds a name, rather than taking the
-// place of the address's own.
-func growsRegistry(r *store.Reg, address string, sigil nick.Sigil) (bool, error) {
+// growsRegistry says whether registering a name adds a name, rather than taking the place of the
+// address's own.
+func growsRegistry(r *store.Reg, address string) (bool, error) {
 	mine, err := r.ByAddress(address)
 	if err != nil {
 		return false, err
 	}
-	for _, e := range mine {
-		if strings.HasPrefix(e.Key, string(sigil)) {
-			return false, nil
-		}
-	}
-	return true, nil
+	return len(mine) == 0, nil
 }
 
 // replied wraps text that was already put into words (a stored reply), so that Handle can return it.

@@ -7,6 +7,7 @@ import (
 
 const (
 	seedBot  = "BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8"
+	seedNick = "BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN"
 	seedRoom = "BM-2DAV89w336ovy6BUJnfVRD5B9qipFbRgmr"
 )
 
@@ -15,7 +16,7 @@ func TestParseSeed(t *testing.T) {
 		"\r\n" +
 		"#\n" +
 		"/echobot " + seedBot + "\r\n" +
-		"  /nickbot\t" + seedBot + "  \n" +
+		"  /nickbot\t" + seedNick + "  \n" +
 		"@admin\n" +
 		"#general " + seedRoom + "\n"
 	entries, err := parseSeed(strings.NewReader(text))
@@ -25,7 +26,7 @@ func TestParseSeed(t *testing.T) {
 	if len(entries) != 4 {
 		t.Fatalf("%d entries: %+v", len(entries), entries)
 	}
-	want := []struct{ nick, address string }{{"/echobot", seedBot}, {"/nickbot", seedBot}, {"@admin", ""}, {"#general", seedRoom}}
+	want := []struct{ nick, address string }{{"/echobot", seedBot}, {"/nickbot", seedNick}, {"@admin", ""}, {"#general", seedRoom}}
 	for i, w := range want {
 		if entries[i].Nick.String() != w.nick || entries[i].Address != w.address {
 			t.Errorf("entry %d = %s %q, want %s %q", i, entries[i].Nick, entries[i].Address, w.nick, w.address)
@@ -48,6 +49,8 @@ func TestParseSeedRefusesWhatItCannotReadAndSaysWhere(t *testing.T) {
 		"three fields":    "/echobot " + seedBot + " extra\n",
 		"lower-case bm":   "/echobot bm-87echoAkzstiHuPGSN8PH88m4WPm4attre8\n",
 		"a repeated name": "/echobot " + seedBot + "\n/EchoBot " + seedBot + "\n",
+		// An address has one name, so the second line would take the first one's place.
+		"two names for an address": "/echobot " + seedBot + "\n/nickbot " + seedBot + "\n",
 	} {
 		_, err := parseSeed(strings.NewReader(text))
 		if err == nil {

@@ -51,8 +51,8 @@ func runAdmin(args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "names: %d\npeople: %d\nbots: %d\nchans: %d\naddresses: %d\nheld: %d\nreserved: %d\n",
-			s.Total, s.People, s.Bots, s.Chans, s.Addresses, s.Held, s.Reserved)
+		fmt.Fprintf(out, "names: %d\npeople: %d\nbots: %d\nchans: %d\naddresses: %d\nreserved: %d\n",
+			s.Total, s.People, s.Bots, s.Chans, s.Addresses, s.Reserved)
 	case "export":
 		list, err := st.Export()
 		if err != nil {

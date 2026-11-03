@@ -162,22 +162,24 @@ TEST(the_trailers_the_go_service_wrote_are_read) {
     CHECK(r[0].cmd == "register" && r[0].ok && r[0].nick == "@Ben" && r[0].address == A &&
           !r[0].already);
     CHECK(r[1].already && r[1].replaced.empty());
-    CHECK_EQ(r[3].replaced, "@Ben");
+    CHECK_EQ(r[2].replaced, "@Ben"); // an address has one name: a bot's name takes a person's place
+    CHECK_EQ(r[3].replaced, "/benbot");
     CHECK(!r[4].ok && r[4].error == "taken" && r[4].query == "@benny");
     CHECK(!r[5].ok && r[5].error == "syntax" && r[5].query.empty());
     CHECK(r[6].cmd == "address" && r[6].found.value_or(false) && r[6].nick == "@benny" &&
           r[6].address == A);
     CHECK(r[7].ok && r[7].found.has_value() && !*r[7].found && r[7].query == "@nobody");
     CHECK_EQ(r[8].byAddress.size(), size_t(2));
-    CHECK(r[8].byAddress[0].address == A && r[8].byAddress[0].nicks.size() == 2 &&
-          r[8].byAddress[0].nicks[1] == "/benbot");
+    CHECK(r[8].byAddress[0].address == A && r[8].byAddress[0].nicks.size() == 1 &&
+          r[8].byAddress[0].nicks[0] == "@benny");
     CHECK(r[8].byAddress[1].address == C && r[8].byAddress[1].nicks.empty());
     CHECK_EQ(r[9].query, A);
     CHECK(r[10].cmd == "search" && r[10].hits.size() == 1 && r[10].hits[0].nick == "@benny" &&
           r[10].hits[0].address == A && !r[10].more);
     CHECK(r[11].ok && r[11].hits.empty());
     CHECK(!r[12].ok && r[12].error == "too_short");
-    CHECK(r[13].cmd == "whoami" && r[13].nicks.size() == 2 && r[13].address == A);
+    CHECK(r[13].cmd == "whoami" && r[13].nicks.size() == 1 && r[13].nicks[0] == "@benny" &&
+          r[13].address == A);
     CHECK(r[14].ok && r[14].nicks.empty() && r[14].address == C);
     CHECK(!r[15].ok && r[15].error == "anonymous");
     CHECK(r[16].cmd == "unregister" && r[16].ok && r[16].nick == "@benny");
@@ -262,6 +264,20 @@ TEST(an_answer_with_anything_wrong_in_it_is_not_believed) {
     // Too much text is not read at all.
     CHECK(!parseTrailer(std::string(20000, 'x') + "\n" + line(R"({"v":1,"cmd":"help","ok":true})"))
                .has_value());
+}
+
+TEST(a_list_of_several_nicks_is_read_though_the_service_sends_one) {
+    // The service gives an address one name since 2026-11-03; the first version gave one of each
+    // sigil, and the format was always a list, so the reader stays a reader of lists.
+    const auto whoami = parseTrailer(
+        line(R"({"v":1,"cmd":"whoami","ok":true,"address":")" + A + R"(","nicks":["@ben","/benbot"]})"));
+    CHECK(whoami.has_value());
+    CHECK(whoami && whoami->nicks.size() == 2 && whoami->nicks[1] == "/benbot");
+    const auto nickname = parseTrailer(
+        line(R"({"v":1,"cmd":"nickname","ok":true,"results":[{"address":")" + A +
+             R"(","nicks":["@ben","/benbot"]}]})"));
+    CHECK(nickname.has_value());
+    CHECK(nickname && nickname->byAddress.size() == 1 && nickname->byAddress[0].nicks.size() == 2);
 }
 
 TEST(a_request_and_its_answer_share_a_key) {

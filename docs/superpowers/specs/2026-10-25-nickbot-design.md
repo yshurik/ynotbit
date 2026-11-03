@@ -49,11 +49,11 @@ The name after the sigil is a letter followed by letters, digits, `_` and `-`: `
 
 ### 3.2 Rules
 
-- **One nickname per sigil per address**, and one address per nickname. An address can be `@ben` and `/benbot`; it cannot be `@ben` and `@benny`.
-- **Register.** `/register @ben` from address A gives A the name if it is free. If A already has an `@` name, the new one replaces it. If A already has that name, the answer is "already yours" (idempotent: a command may be answered twice, see 3.5).
-- **Change and quarantine.** **(my call)** A name an address gives up (by changing or unregistering) is kept free for that address alone for 30 days. Without this, a client that cached `@ben -> A` would, a minute after A changed names, show `@ben` as someone else.
-- **Unregister.** `/unregister @ben` from the owner removes it. It does nothing to the owner's other names.
-- **Chans are static.** `/register #general` is accepted only when it comes from the address that the passphrase `general` makes. The bot derives that address itself (through the C library, the same code the client uses), so nobody can bind a chan name to another address. It is then permanent: it cannot be unregistered and cannot move (it could not move anyway, the address is the passphrase). The same goes for seeded names.
+- **One nickname per address**, and one address per nickname. *Revised 2026-11-03, at the user's word ("I do want just 1-to-1 mapping, no multiple nicks per address").* The first version allowed one name of each sigil, so an address could be `@ben` and `/benbot`. Now it is `@ben` or `/benbot`, never both, and the file itself refuses a second row for an address (migration 2).
+- **Register.** `/register @ben` from address A gives A the name if it is free. If A already has a name, of any sigil, the new one replaces it (the answer says which, `replaced`). If A already has that name, the answer is "already yours" (idempotent: a command may be answered twice, see 3.5).
+- **Change and release.** *Revised 2026-11-03, at the user's word.* A name an address gives up (by changing or unregistering) is free at once, for anyone. The first version held it for that address alone for 30 days (**(my call)**: a client that cached `@ben -> A` would, a minute after A changed names, show `@ben` as someone else). The user preferred a plain 1-to-1 registry with nothing held back, and the old name did look "still assigned" to the owner who wanted it for another address. That risk is accepted; migration 2 drops the table of holds.
+- **Unregister.** `/unregister @ben` from the owner removes it. The owner then has no name.
+- **Chans are static.** `/register #general` is accepted only when it comes from the address that the passphrase `general` makes. The bot derives that address itself (through the C library, the same code the client uses), so nobody can bind a chan name to another address. It is then permanent: it cannot be unregistered and cannot move (it could not move anyway, the address is the passphrase), and the chan's address can have no other name. The same goes for seeded names.
 - **The anonymous address cannot register.** The shared lookup address of 4.1 is a chan: everybody who knows its phrase can send from it, so a name registered from it would belong to everybody. `/register` and `/unregister` from it are refused (`anonymous`).
 - **An address whose key is shared is not safe to register.** Any chan address that is not `#` registered can be re-registered by every member. The bot cannot tell such addresses apart, so this is documented, not prevented.
 
@@ -103,12 +103,13 @@ Error codes: `usage`, `unknown_command`, `syntax`, `too_short`, `reserved`, `tak
 SQLite in WAL mode on the `/data` volume (`nickbot.sqlite`), through a pure-Go driver (`modernc.org/sqlite`). **(my call)** A C driver is out: the process also loads SQLCipher through libbmbot, and two copies of SQLite's symbols in one process interpose each other.
 
 ```
-nicks(nick_key PRIMARY KEY, nick, sigil, address, static, created, updated)   UNIQUE(address, sigil)
-released(nick_key PRIMARY KEY, address, until)     -- the 30-day hold
+nicks(nick_key PRIMARY KEY, nick, sigil, address, static, created, updated)   UNIQUE(address)
 reserved(nick_key PRIMARY KEY, note)               -- the seed file's names with no address
 handled(event_id PRIMARY KEY, at)                  -- 3.5; pruned after 7 days
 history(id, at, address, action, nick, detail)     -- who registered, changed, removed what
-PRAGMA user_version = 1; every change is a numbered migration
+PRAGMA user_version = 2; every change is a numbered migration
+-- 1 made the tables, with UNIQUE(address, sigil) and released(nick_key, address, until), the 30-day hold
+-- 2 (2026-11-03) dropped released and added the unique index on address
 ```
 
 ### 3.7 Operation
@@ -208,7 +209,7 @@ The dialog that makes an identity (alone, or with a new vault) has a checkbox **
 
 | Piece | Decision |
 |---|---|
-| A name changing hands under a cached copy | 30-day quarantine; clients re-check contacts every 7 days |
+| A name changing hands under a cached copy | accepted since 2026-11-03, at the user's word: a name is free at once (it had a 30-day quarantine); clients check contacts when the user asks |
 | Look-alike names | ASCII only; the colour and the tooltip say which nickbot; no more |
 | Squatting | per-address and global rate limits, seed file for known names; no more (the bot cannot know who is a person) |
 | A flood of lookups costing the bot proof of work | per-sender and global budgets; the shared sender has its own bucket so it cannot starve registration |
@@ -231,11 +232,11 @@ The dialog that makes an identity (alone, or with a new vault) has a checkbox **
 - End to end: the Go bot over a real `bmnode`, with a second bot (the ctypes client of `tests/bmbot`) sending commands and reading the trailers. Run in the `core-no-qt` CI job.
 - C++ core: the nickname syntax with the same cases as Go, the trailer parser, the Service folder, the chan sender.
 - Widgets: the Nickbots page, the Find people dialog, the identity dialog's checkbox, colours, the hidden chan and conversation, the Service folder processing with a canned answer, the nickname shown in the list.
-- Mutation checks on the rules that matter: ownership, quarantine, chan derivation, the anonymous refusal, the sender check on answers, the divert predicate.
+- Mutation checks on the rules that matter: ownership, one name per address, chan derivation, the anonymous refusal, the sender check on answers, the divert predicate.
 
 ## 8. Decisions that are mine
 
-Name length 3 to 32 (the sigil is not counted); case rules; reserved names and the seed file; quarantine of 30 days; batch lookups; the `nickbot:` trailer instead of a JSON-only protocol; the 1-hour life of a request (the 2-minute pacing was dropped on 2026-10-27, at the user's word); opportunistic caching from other people's answers; the master and the contacts-refresh switches; pure-Go SQLite; the development address until a vanity one is chosen; the fifth colour (coral); the Service folder; leaving a user's own `anonymous` chan alone; a short delay for a lookup somebody waits for (dropped on 2026-10-27, at the user's word); the chat list shows a nickname as text, not coloured; a nickbot's last line is hidden in the chats; a nickname set by hand is confirmed, never replaced; contacts are looked up at most once every ten minutes and again after a week.
+Name length 3 to 32 (the sigil is not counted); case rules; reserved names and the seed file; no quarantine and one name per address (a quarantine of 30 days and a name of each sigil until 2026-11-03, dropped at the user's word); batch lookups; the `nickbot:` trailer instead of a JSON-only protocol; the 1-hour life of a request (the 2-minute pacing was dropped on 2026-10-27, at the user's word); opportunistic caching from other people's answers; the master and the contacts-refresh switches; pure-Go SQLite; the development address until a vanity one is chosen; the fifth colour (coral); the Service folder; leaving a user's own `anonymous` chan alone; a short delay for a lookup somebody waits for (dropped on 2026-10-27, at the user's word); the chat list shows a nickname as text, not coloured; a nickbot's last line is hidden in the chats; a nickname set by hand is confirmed, never replaced; contacts are looked up at most once every ten minutes and again after a week.
 
 ## 9. Follow-ups, not in this slice
 

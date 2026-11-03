@@ -12,11 +12,13 @@ import (
 )
 
 // parseSeed reads the operator's seed file: one name a line, with an address to make it that
-// address's permanent name or without one to keep it free. A line that is empty, or begins with
-// "#" and a space (or is only "#"), is a comment: "#room" is a chan's name.
+// address's permanent name or without one to keep it free. An address has one name, so it is on
+// one line. A line that is empty, or begins with "#" and a space (or is only "#"), is a comment:
+// "#room" is a chan's name.
 func parseSeed(r io.Reader) ([]store.SeedEntry, error) {
 	var entries []store.SeedEntry
 	seen := map[string]int{}
+	seenAddress := map[string]int{}
 	scan := bufio.NewScanner(r)
 	for number := 1; scan.Scan(); number++ {
 		line := strings.TrimSpace(scan.Text())
@@ -45,6 +47,12 @@ func parseSeed(r io.Reader) ([]store.SeedEntry, error) {
 			return nil, fmt.Errorf("line %d: %s is already on line %d", number, n, first)
 		}
 		seen[n.Key()] = number
+		if entry.Address != "" {
+			if first, dup := seenAddress[entry.Address]; dup {
+				return nil, fmt.Errorf("line %d: %s has a name already, on line %d", number, entry.Address, first)
+			}
+			seenAddress[entry.Address] = number
+		}
 		entries = append(entries, entry)
 	}
 	return entries, scan.Err()

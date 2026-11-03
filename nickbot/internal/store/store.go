@@ -1,8 +1,9 @@
-// Package store is nickbot's registry: the nicknames, who holds them, the names being held for
-// their old owner, the events already handled, and the history, in one SQLite file.
+// Package store is nickbot's registry: the nicknames and who has them, the events already handled,
+// and the history, in one SQLite file.
 //
-// The rules of spec 3.2 live here, in one transaction each, so that two commands arriving together
-// cannot both win a name. The driver is pure Go (modernc.org/sqlite): the process also loads
+// A nickname belongs to one address and an address has one nickname: the file itself refuses a
+// second one. The rules of spec 3.2 live here, in one transaction each, so that two commands arriving
+// together cannot both win a name. The driver is pure Go (modernc.org/sqlite): the process also loads
 // SQLCipher through libbmbot, and two copies of SQLite's symbols in one process interpose.
 package store
 
@@ -21,8 +22,6 @@ import (
 )
 
 const (
-	// Quarantine is how long a name an address gave up is kept free for that address alone.
-	Quarantine = 30 * 24 * time.Hour
 	// HandledKeep is how long the id of a handled event is remembered.
 	HandledKeep = 7 * 24 * time.Hour
 	// HistoryKeep is how long history rows are kept.
@@ -74,6 +73,11 @@ var migrations = []string{
 	);
 	CREATE INDEX history_address_at ON history(address, at);
 	CREATE INDEX history_at ON history(at);`,
+	// 2: a name an address gives up is free at once (no more holds), and an address has one name.
+	// The index fails on a file that has an address with two names, which the first version let
+	// it have; the step is then undone and the file is left as it was.
+	`DROP TABLE released;
+	CREATE UNIQUE INDEX nicks_address ON nicks(address);`,
 }
 
 // Entry is one registered nickname.
@@ -252,7 +256,7 @@ type RegisterOptions struct {
 type RegisterResult struct {
 	Entry    Entry
 	Already  bool   // the address had this name already; nothing changed
-	Replaced string // the name of the same sigil that this one took the place of
+	Replaced string // the name of the address that this one took the place of
 }
 
 // ByNick finds a nickname's entry.
@@ -264,10 +268,9 @@ func (r *Reg) ByNick(n nick.Nick) (Entry, bool, error) {
 	return e, err == nil, err
 }
 
-// ByAddress lists an address's names: the person's, the bot's, the chan's.
+// ByAddress lists an address's names: none or the one.
 func (r *Reg) ByAddress(address string) ([]Entry, error) {
-	rows, err := r.reader().Query("SELECT "+entryColumns+" FROM nicks WHERE address=? "+
-		"ORDER BY CASE sigil WHEN '@' THEN 0 WHEN '/' THEN 1 ELSE 2 END", address)
+	rows, err := r.reader().Query("SELECT "+entryColumns+" FROM nicks WHERE address=?", address)
 	if err != nil {
 		return nil, err
 	}
@@ -283,9 +286,10 @@ func (r *Reg) ByAddress(address string) ([]Entry, error) {
 	return list, rows.Err()
 }
 
-// Register gives the address the name. See spec 3.2: a name another address holds is ErrTaken (also
-// while it is held for that address's old owner), a reserved one ErrReserved, and an address whose
-// name of that sigil is permanent ErrStatic. A name the address has already is not an error.
+// Register gives the address the name. See spec 3.2: a name another address has is ErrTaken, a
+// reserved one ErrReserved, and an address whose name is permanent ErrStatic. A name the address has
+// already is not an error. The address has one name, of any sigil: the one it had makes way and is
+// free at once, for anyone.
 func (r *Reg) Register(n nick.Nick, address string, o RegisterOptions) (RegisterResult, error) {
 	var result RegisterResult
 	err := r.atomically(func(q querier) error {
@@ -309,19 +313,8 @@ func (r *Reg) Register(n nick.Nick, address string, o RegisterOptions) (Register
 		case !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
-		var holder string
-		var until int64
-		err = q.QueryRow("SELECT address, until FROM released WHERE nick_key=?", key).Scan(&holder, &until)
-		switch {
-		case err == nil:
-			if holder != address && until > now {
-				return ErrTaken
-			}
-		case !errors.Is(err, sql.ErrNoRows):
-			return err
-		}
-		// The address's name of this sigil, if any, makes way.
-		old, err := scanEntry(q.QueryRow("SELECT "+entryColumns+" FROM nicks WHERE address=? AND sigil=?", address, string(n.Sigil)))
+		// The address's name, if any, makes way.
+		old, err := scanEntry(q.QueryRow("SELECT "+entryColumns+" FROM nicks WHERE address=?", address))
 		action := "register"
 		switch {
 		case err == nil:
@@ -329,10 +322,6 @@ func (r *Reg) Register(n nick.Nick, address string, o RegisterOptions) (Register
 				return ErrStatic
 			}
 			if _, err := q.Exec("DELETE FROM nicks WHERE nick_key=?", old.Key); err != nil {
-				return err
-			}
-			if _, err := q.Exec("INSERT OR REPLACE INTO released(nick_key, address, until) VALUES(?,?,?)",
-				old.Key, address, now+int64(Quarantine/time.Second)); err != nil {
 				return err
 			}
 			result.Replaced = old.Nick
@@ -348,9 +337,6 @@ func (r *Reg) Register(n nick.Nick, address string, o RegisterOptions) (Register
 			key, n.String(), string(n.Sigil), n.Lower(), address, static, now, now); err != nil {
 			return err
 		}
-		if _, err := q.Exec("DELETE FROM released WHERE nick_key=?", key); err != nil {
-			return err
-		}
 		if err := r.record(q, now, address, action, n.String(), result.Replaced); err != nil {
 			return err
 		}
@@ -363,7 +349,7 @@ func (r *Reg) Register(n nick.Nick, address string, o RegisterOptions) (Register
 	return result, nil
 }
 
-// Unregister takes the name from its owner and holds it for them.
+// Unregister takes the name from its owner. It is free at once.
 func (r *Reg) Unregister(n nick.Nick, address string) error {
 	return r.atomically(func(q querier) error {
 		now := unix(r.s.now())
@@ -381,10 +367,6 @@ func (r *Reg) Unregister(n nick.Nick, address string) error {
 			return ErrStatic
 		}
 		if _, err := q.Exec("DELETE FROM nicks WHERE nick_key=?", e.Key); err != nil {
-			return err
-		}
-		if _, err := q.Exec("INSERT OR REPLACE INTO released(nick_key, address, until) VALUES(?,?,?)",
-			e.Key, address, now+int64(Quarantine/time.Second)); err != nil {
 			return err
 		}
 		return r.record(q, now, address, "unregister", e.Nick, "")
@@ -476,11 +458,8 @@ func (s *Store) Seed(entries []SeedEntry) error {
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
-			// Whatever stood in the way goes: the name's holder and the address's name of this sigil.
-			if _, err := q.Exec("DELETE FROM nicks WHERE nick_key=? OR (address=? AND sigil=?)", key, e.Address, string(e.Nick.Sigil)); err != nil {
-				return err
-			}
-			if _, err := q.Exec("DELETE FROM released WHERE nick_key=?", key); err != nil {
+			// Whatever stood in the way goes: the name's holder and the address's own name.
+			if _, err := q.Exec("DELETE FROM nicks WHERE nick_key=? OR address=?", key, e.Address); err != nil {
 				return err
 			}
 			if _, err := q.Exec("INSERT INTO nicks(nick_key, nick, sigil, name_lc, address, static, created, updated) VALUES(?,?,?,?,?,1,?,?)",
@@ -507,9 +486,6 @@ func (r *Reg) reserve(q querier, now int64, n nick.Nick) error {
 			return err
 		}
 	case !errors.Is(err, sql.ErrNoRows):
-		return err
-	}
-	if _, err := q.Exec("DELETE FROM released WHERE nick_key=?", n.Key()); err != nil {
 		return err
 	}
 	_, err = q.Exec("INSERT OR IGNORE INTO reserved(nick_key) VALUES(?)", n.Key())
@@ -573,7 +549,7 @@ func (s *Store) History(address string, limit int) ([]HistoryRow, error) {
 
 // Stats counts the registry.
 type Stats struct {
-	Total, People, Bots, Chans, Addresses, Held, Reserved int
+	Total, People, Bots, Chans, Addresses, Reserved int
 }
 
 // Stats counts what is registered.
@@ -583,9 +559,6 @@ func (s *Store) Stats() (Stats, error) {
 		COALESCE(SUM(sigil='@'),0), COALESCE(SUM(sigil='/'),0), COALESCE(SUM(sigil='#'),0),
 		COUNT(DISTINCT address) FROM nicks`).Scan(&st.Total, &st.People, &st.Bots, &st.Chans, &st.Addresses)
 	if err != nil {
-		return st, err
-	}
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM released WHERE until>?", unix(s.now())).Scan(&st.Held); err != nil {
 		return st, err
 	}
 	err = s.db.QueryRow("SELECT COUNT(*) FROM reserved").Scan(&st.Reserved)
@@ -610,7 +583,7 @@ func (s *Store) Export() ([]Entry, error) {
 	return list, rows.Err()
 }
 
-// Prune forgets old handled events, ended holds and old history.
+// Prune forgets old handled events and old history.
 func (s *Store) Prune() error {
 	r := &Reg{s: s}
 	return r.atomically(func(q querier) error {
@@ -620,7 +593,6 @@ func (s *Store) Prune() error {
 			arg int64
 		}{
 			{"DELETE FROM handled WHERE at<?", unix(now.Add(-HandledKeep))},
-			{"DELETE FROM released WHERE until<=?", unix(now)},
 			{"DELETE FROM history WHERE at<?", unix(now.Add(-HistoryKeep))},
 		} {
 			if _, err := q.Exec(stmt.sql, stmt.arg); err != nil {

@@ -1,10 +1,12 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -101,6 +103,74 @@ func TestOpenRefusesADatabaseFromANewerVersion(t *testing.T) {
 	}
 }
 
+// databaseOfTheFirstSchema makes a file the way the first version of the schema did, and runs the
+// statements on it: what the service from before the change left behind.
+func databaseOfTheFirstSchema(t *testing.T, statements ...string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "n.sqlite")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, statement := range append([]string{migrations[0], "PRAGMA user_version = 1"}, statements...) {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("%s: %v", statement, err)
+		}
+	}
+	return path
+}
+
+func firstSchemaName(nickname, sigil, address string) string {
+	return fmt.Sprintf("INSERT INTO nicks(nick_key, nick, sigil, name_lc, address, static, created, updated) "+
+		"VALUES('%[1]s', '%[1]s', '%[2]s', '%[3]s', '%[4]s', 0, 1, 1)", nickname, sigil, nickname[1:], address)
+}
+
+func TestADatabaseOfTheFirstSchemaKeepsItsNamesAndLosesItsHolds(t *testing.T) {
+	path := databaseOfTheFirstSchema(t,
+		firstSchemaName("@ben", "@", addrA),
+		fmt.Sprintf("INSERT INTO released(nick_key, address, until) VALUES('@old', '%s', 4000000000)", addrB))
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if e, ok := lookup(t, s, "@ben"); !ok || e.Address != addrA {
+		t.Errorf("the name did not come through: %+v, %v", e, ok)
+	}
+	// B gave up @old, and the old rules kept it free for B for a month: now it is free for anyone.
+	register(t, s, "@old", addrC)
+	var tables int
+	s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='released'").Scan(&tables)
+	if tables != 0 {
+		t.Error("the table of holds is still there")
+	}
+}
+
+func TestADatabaseWithTwoNamesForOneAddressIsRefusedAndLeftAlone(t *testing.T) {
+	path := databaseOfTheFirstSchema(t, firstSchemaName("@ben", "@", addrA), firstSchemaName("/benbot", "/", addrA))
+	_, err := Open(path)
+	if err == nil {
+		t.Fatal("a database with two names for an address was opened")
+	}
+	if !strings.Contains(err.Error(), "migration 2") {
+		t.Errorf("the error does not say which step failed: %v", err)
+	}
+	// Nothing was changed, so the service from before can still read it.
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var version, names, tables int
+	db.QueryRow("PRAGMA user_version").Scan(&version)
+	db.QueryRow("SELECT COUNT(*) FROM nicks").Scan(&names)
+	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE name='released'").Scan(&tables)
+	if version != 1 || names != 2 || tables != 1 {
+		t.Errorf("version %d, %d names, %d hold tables; want 1, 2, 1", version, names, tables)
+	}
+}
+
 func TestRegisterGivesTheNameToTheAddress(t *testing.T) {
 	s, c := open(t)
 	r := register(t, s, "@Ben", addrA)
@@ -156,7 +226,7 @@ func TestANameOfAnotherAddressIsTaken(t *testing.T) {
 	}
 }
 
-func TestOneNamePerSigilPerAddress(t *testing.T) {
+func TestAnAddressHasOneName(t *testing.T) {
 	s, _ := open(t)
 	register(t, s, "@ben", addrA)
 	r := register(t, s, "@benny", addrA)
@@ -166,21 +236,23 @@ func TestOneNamePerSigilPerAddress(t *testing.T) {
 	if _, ok := lookup(t, s, "@ben"); ok {
 		t.Error("the old name is still there")
 	}
+	// A name of another sigil takes the place too: the address has one name, not one of each.
+	r = register(t, s, "/benbot", addrA)
+	if r.Replaced != "@benny" {
+		t.Errorf("Replaced = %q, want @benny", r.Replaced)
+	}
+	if _, ok := lookup(t, s, "@benny"); ok {
+		t.Error("the person's name stayed beside the bot's")
+	}
 	list, _ := s.Reg().ByAddress(addrA)
-	if len(list) != 1 || list[0].Nick != "@benny" {
+	if len(list) != 1 || list[0].Nick != "/benbot" {
 		t.Errorf("names = %+v", list)
 	}
 }
 
-func TestDifferentSigilsDoNotReplaceEachOther(t *testing.T) {
+func TestAPersonAndABotOfOneNameAreTwoNames(t *testing.T) {
 	s, _ := open(t)
 	register(t, s, "@ben", addrA)
-	register(t, s, "/benbot", addrA)
-	list, _ := s.Reg().ByAddress(addrA)
-	if len(list) != 2 || list[0].Nick != "@ben" || list[1].Nick != "/benbot" {
-		t.Errorf("names = %+v, want @ben then /benbot", list)
-	}
-	// A person and a bot of one name are two names.
 	register(t, s, "/ben", addrB)
 	if e, _ := lookup(t, s, "@ben"); e.Address != addrA {
 		t.Errorf("@ben moved to %s", e.Address)
@@ -190,20 +262,13 @@ func TestDifferentSigilsDoNotReplaceEachOther(t *testing.T) {
 	}
 }
 
-func TestNamesComeInTheOrderOfTheirSigils(t *testing.T) {
+func TestTheDatabaseItselfRefusesASecondNameForAnAddress(t *testing.T) {
 	s, _ := open(t)
-	r := s.Reg()
-	for _, tc := range []struct {
-		text   string
-		static bool
-	}{{"#room", true}, {"/zbot", false}, {"@zed", false}} {
-		if _, err := r.Register(must(t, tc.text), addrA, RegisterOptions{Static: tc.static}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	list, _ := r.ByAddress(addrA)
-	if len(list) != 3 || list[0].Nick != "@zed" || list[1].Nick != "/zbot" || list[2].Nick != "#room" {
-		t.Errorf("names = %+v, want @ then / then #", list)
+	register(t, s, "@ben", addrA)
+	_, err := s.db.Exec("INSERT INTO nicks(nick_key, nick, sigil, name_lc, address, static, created, updated) "+
+		"VALUES('/benbot', '/benbot', '/', 'benbot', ?, 0, 1, 1)", addrA)
+	if err == nil {
+		t.Error("a second name went in for one address")
 	}
 }
 
@@ -223,34 +288,26 @@ func TestChanNamesKeepTheirCase(t *testing.T) {
 	}
 }
 
-func TestAChangedNameIsHeldForItsOldOwner(t *testing.T) {
-	s, c := open(t)
+func TestAChangedNameIsFreeAtOnce(t *testing.T) {
+	s, _ := open(t)
 	register(t, s, "@ben", addrA)
 	register(t, s, "@benny", addrA)
-	if _, err := s.Reg().Register(must(t, "@ben"), addrB, RegisterOptions{}); !errors.Is(err, ErrTaken) {
-		t.Errorf("another address took a name in its hold: %v", err)
+	// Nobody keeps @ben for A: another address takes it now ...
+	register(t, s, "@ben", addrB)
+	// ... and A has no claim on it any more.
+	if _, err := s.Reg().Register(must(t, "@ben"), addrA, RegisterOptions{}); !errors.Is(err, ErrTaken) {
+		t.Errorf("the old owner took back a name another address has: %v", err)
 	}
-	c.advance(Quarantine - time.Second)
-	if _, err := s.Reg().Register(must(t, "@ben"), addrB, RegisterOptions{}); !errors.Is(err, ErrTaken) {
-		t.Errorf("the hold ended early: %v", err)
+	if e, _ := lookup(t, s, "@ben"); e.Address != addrB {
+		t.Errorf("@ben = %s", e.Address)
 	}
-	// The old owner may take it back at once.
-	r := register(t, s, "@ben", addrA)
-	if r.Replaced != "@benny" {
-		t.Errorf("Replaced = %q", r.Replaced)
-	}
-	// And now @benny is the one held, for the same address.
-	if _, err := s.Reg().Register(must(t, "@benny"), addrB, RegisterOptions{}); !errors.Is(err, ErrTaken) {
-		t.Errorf("@benny is free again: %v", err)
-	}
-	c.advance(Quarantine + time.Second)
-	if _, err := s.Reg().Register(must(t, "@benny"), addrB, RegisterOptions{}); err != nil {
-		t.Errorf("after the hold: %v", err)
+	if e, _ := lookup(t, s, "@benny"); e.Address != addrA {
+		t.Errorf("@benny = %s", e.Address)
 	}
 }
 
 func TestUnregister(t *testing.T) {
-	s, c := open(t)
+	s, _ := open(t)
 	register(t, s, "@ben", addrA)
 	if err := s.Reg().Unregister(must(t, "@ben"), addrB); !errors.Is(err, ErrNotYours) {
 		t.Errorf("Unregister by another address = %v, want ErrNotYours", err)
@@ -267,24 +324,8 @@ func TestUnregister(t *testing.T) {
 	if _, ok := lookup(t, s, "@ben"); ok {
 		t.Error("the name is still there")
 	}
-	// Held for the owner, like a change.
-	if _, err := s.Reg().Register(must(t, "@ben"), addrB, RegisterOptions{}); !errors.Is(err, ErrTaken) {
-		t.Errorf("another address took a name in its hold: %v", err)
-	}
-	c.advance(Quarantine + time.Second)
+	// Free at once, like the name of a change.
 	register(t, s, "@ben", addrB)
-}
-
-func TestUnregisterLeavesTheOtherNamesAlone(t *testing.T) {
-	s, _ := open(t)
-	register(t, s, "@ben", addrA)
-	register(t, s, "/benbot", addrA)
-	if err := s.Reg().Unregister(must(t, "@ben"), addrA); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := lookup(t, s, "/benbot"); !ok {
-		t.Error("the bot name went with the person name")
-	}
 }
 
 func TestStaticNamesNeverChange(t *testing.T) {
@@ -301,6 +342,9 @@ func TestStaticNamesNeverChange(t *testing.T) {
 	}
 	if _, err := r.Register(must(t, "#other"), addrA, RegisterOptions{Static: true}); !errors.Is(err, ErrStatic) {
 		t.Errorf("a second chan name for one address = %v, want ErrStatic", err)
+	}
+	if _, err := r.Register(must(t, "@person"), addrA, RegisterOptions{}); !errors.Is(err, ErrStatic) {
+		t.Errorf("a person's name for the address of a chan = %v, want ErrStatic", err)
 	}
 	if _, err := r.Register(must(t, "#room"), addrB, RegisterOptions{Static: true}); !errors.Is(err, ErrTaken) {
 		t.Errorf("another address took a chan name: %v", err)
@@ -346,6 +390,20 @@ func TestSeed(t *testing.T) {
 	}
 	if err := s.Reg().Unregister(must(t, "/echobot"), addrD); !errors.Is(err, ErrStatic) {
 		t.Errorf("a seeded name was unregistered: %v", err)
+	}
+}
+
+func TestSeedGivesAnAddressOneName(t *testing.T) {
+	s, _ := open(t)
+	register(t, s, "@ben", addrA)
+	if err := s.Seed([]SeedEntry{{Nick: must(t, "/echobot"), Address: addrA}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := lookup(t, s, "@ben"); ok {
+		t.Error("the address kept its old name beside the seeded one")
+	}
+	if list, _ := s.Reg().ByAddress(addrA); len(list) != 1 || list[0].Nick != "/echobot" {
+		t.Errorf("names = %+v", list)
 	}
 }
 
@@ -558,8 +616,6 @@ func TestPrune(t *testing.T) {
 	if _, _, err := s.Do("old", func(r *Reg) (string, error) { return "x", nil }); err != nil {
 		t.Fatal(err)
 	}
-	register(t, s, "@ben", addrA)
-	register(t, s, "@benny", addrA) // @ben is now held
 	c.advance(HandledKeep + time.Hour)
 	if _, _, err := s.Do("new", func(r *Reg) (string, error) { return "y", nil }); err != nil {
 		t.Fatal(err)
@@ -571,18 +627,6 @@ func TestPrune(t *testing.T) {
 	s.db.QueryRow("SELECT COUNT(*) FROM handled").Scan(&n)
 	if n != 1 {
 		t.Errorf("%d handled events left, want only the new one", n)
-	}
-	s.db.QueryRow("SELECT COUNT(*) FROM released").Scan(&n)
-	if n != 1 {
-		t.Errorf("%d holds left, want the one still running (%v < %v)", n, HandledKeep, Quarantine)
-	}
-	c.advance(Quarantine)
-	if err := s.Prune(); err != nil {
-		t.Fatal(err)
-	}
-	s.db.QueryRow("SELECT COUNT(*) FROM released").Scan(&n)
-	if n != 0 {
-		t.Errorf("%d holds left after they ended", n)
 	}
 }
 
@@ -613,12 +657,12 @@ func TestBackupIsASecondDatabase(t *testing.T) {
 func TestStatsExportAndAdminRemoval(t *testing.T) {
 	s, _ := open(t)
 	register(t, s, "@ben", addrA)
-	register(t, s, "/benbot", addrA)
-	if _, err := s.Reg().Register(must(t, "#room"), addrB, RegisterOptions{Static: true}); err != nil {
+	register(t, s, "/benbot", addrB)
+	if _, err := s.Reg().Register(must(t, "#room"), addrD, RegisterOptions{Static: true}); err != nil {
 		t.Fatal(err)
 	}
 	st, err := s.Stats()
-	if err != nil || st.Total != 3 || st.People != 1 || st.Bots != 1 || st.Chans != 1 || st.Addresses != 2 {
+	if err != nil || st.Total != 3 || st.People != 1 || st.Bots != 1 || st.Chans != 1 || st.Addresses != 3 {
 		t.Errorf("stats = %+v, %v", st, err)
 	}
 	all, err := s.Export()
@@ -677,7 +721,7 @@ func TestTotal(t *testing.T) {
 		t.Fatalf("empty: %d, %v", n, err)
 	}
 	register(t, s, "@ben", addrA)
-	register(t, s, "/benbot", addrA)
+	register(t, s, "/benbot", addrC)
 	register(t, s, "@zed", addrB)
 	if n, err := s.Reg().Total(); err != nil || n != 3 {
 		t.Errorf("Total = %d, %v; want 3", n, err)

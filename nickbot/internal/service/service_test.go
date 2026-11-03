@@ -215,6 +215,25 @@ func TestRegisterChangesTheName(t *testing.T) {
 	}
 }
 
+func TestRegisterReplacesTheNameWhateverItsSigil(t *testing.T) {
+	f := newFixture(t)
+	f.chat(addrA, "/register @ben")
+	r := f.chat(addrA, "/register /benbot")
+	if got := firstLine(r); got != "Registered /benbot for "+addrA+" (it replaces @ben)." {
+		t.Errorf("first line = %q", got)
+	}
+	if m := trailer(t, r); m["replaced"] != "@ben" || m["nick"] != "/benbot" {
+		t.Errorf("trailer = %v", m)
+	}
+	if e, ok, _ := f.store.Reg().ByNick(mustNick(t, "@ben")); ok {
+		t.Errorf("the old name is still registered: %+v", e)
+	}
+	// The old name is free for anyone, at once.
+	if r := f.chat(addrB, "/register @ben"); r.Code != "" {
+		t.Errorf("the name the address gave up: code %q", r.Code)
+	}
+}
+
 func TestTheSameEventIsAnsweredTheSameAndDoneOnce(t *testing.T) {
 	f := newFixture(t)
 	req := Request{EventID: "same", Transport: Chat, From: addrA, Text: "/register @ben"}
@@ -351,12 +370,8 @@ func TestUnregister(t *testing.T) {
 	if m := trailer(t, r); m["ok"] != true || m["cmd"] != "unregister" || m["nick"] != "@ben" {
 		t.Errorf("trailer = %v", m)
 	}
-	if r := f.chat(addrB, "/register @ben"); r.Code != "taken" {
-		t.Errorf("the name is held for its old owner: code %q", r.Code)
-	}
-	f.clock.advance(store.Quarantine + time.Second)
 	if r := f.chat(addrB, "/register @ben"); r.Code != "" {
-		t.Errorf("after the hold: code %q", r.Code)
+		t.Errorf("the name is free at once: code %q", r.Code)
 	}
 }
 
@@ -391,9 +406,8 @@ func TestAddress(t *testing.T) {
 func TestNickname(t *testing.T) {
 	f := newFixture(t)
 	f.chat(addrA, "/register @ben")
-	f.chat(addrA, "/register /benbot")
 	r := f.chat(addrB, "/nickname "+addrA)
-	if firstLine(r) != addrA+" is @ben /benbot." {
+	if firstLine(r) != addrA+" is @ben." {
 		t.Errorf("first line = %q", firstLine(r))
 	}
 	m := trailer(t, r)
@@ -403,7 +417,7 @@ func TestNickname(t *testing.T) {
 	}
 	one := results[0].(map[string]any)
 	nicks := one["nicks"].([]any)
-	if one["address"] != addrA || len(nicks) != 2 || nicks[0] != "@ben" || nicks[1] != "/benbot" {
+	if one["address"] != addrA || len(nicks) != 1 || nicks[0] != "@ben" {
 		t.Errorf("result = %v", one)
 	}
 	r = f.chat(addrB, "/nickname "+addrC)
@@ -559,14 +573,19 @@ func TestWhoami(t *testing.T) {
 		t.Errorf("nicks = %v", trailer(t, r)["nicks"])
 	}
 	f.chat(addrA, "/register @ben")
-	f.chat(addrA, "/register /benbot")
 	r = f.chat(addrA, "/whoami")
-	if firstLine(r) != "You are @ben /benbot." {
+	if firstLine(r) != "You are @ben." {
 		t.Errorf("first line = %q", firstLine(r))
 	}
 	m := trailer(t, r)
-	if m["address"] != addrA || len(m["nicks"].([]any)) != 2 {
+	if nicks := m["nicks"].([]any); m["address"] != addrA || len(nicks) != 1 || nicks[0] != "@ben" {
 		t.Errorf("trailer = %v", m)
+	}
+	// A name of another sigil takes its place: there is one name to be.
+	f.chat(addrA, "/register /benbot")
+	r = f.chat(addrA, "/whoami")
+	if firstLine(r) != "You are /benbot." || len(trailer(t, r)["nicks"].([]any)) != 1 {
+		t.Errorf("after a change of sigil: %q", r.Text)
 	}
 }
 
@@ -679,6 +698,9 @@ func TestGlobalBudgetAndCapacity(t *testing.T) {
 	}
 	if r := g.chat(addrA, "/register @zzz"); r.Code != "" {
 		t.Errorf("a change in a full registry adds no name: code %q", r.Code)
+	}
+	if r := g.chat(addrA, "/register /yyy"); r.Code != "" {
+		t.Errorf("a change of sigil in a full registry adds no name either: code %q", r.Code)
 	}
 }
 

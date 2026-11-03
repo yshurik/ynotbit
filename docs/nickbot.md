@@ -19,11 +19,12 @@ The name is 3 to 32 characters, ASCII only: a letter, then letters, digits, `_` 
 name for a person or a bot (the spelling registered is kept for show); `#Chan` and `#chan` are two chans, since a chan's name is
 its passphrase.
 
-- An address has at most one nickname of each sigil. Registering another of the same sigil replaces the first.
-- A name an address gives up, by changing or by `/unregister`, is kept free for that address for 30 days.
+- A nickname has one address and an address has one nickname, of any sigil. Registering another nickname replaces the first.
+- A name an address gives up, by changing or by `/unregister`, is free at once, for anyone. Nothing is held back for the old owner.
 - A chan registers its name from its own address: the bot makes the address from the passphrase `#name` and the command must come
-  from it. The name is then permanent.
-- The operator's *seed file* keeps names free or gives them to an address for good (`nickbot/seed.example.txt`).
+  from it. The name is then permanent, and the chan's address has no other name.
+- The operator's *seed file* keeps names free or gives them to an address for good, one name to an address
+  (`nickbot/seed.example.txt`).
 
 ## Commands
 
@@ -37,7 +38,7 @@ Commands are case-insensitive.
 | `/address @nick` | the address of a nickname |
 | `/nickname BM-... [BM-... ...]` | the nicknames of up to 8 addresses |
 | `/search term` | names that contain the term: 4 or more letters, digits, `_` or `-`, with an optional sigil in front that narrows it; at most 10 are returned |
-| `/whoami` | the sender's own nicknames |
+| `/whoami` | the sender's own nickname |
 | `/help` | the commands |
 
 Registering and unregistering must come from the address that owns the name. Lookups (`address`, `nickname`, `search`) come from
@@ -63,8 +64,8 @@ nickbot: {"v":1,"cmd":"address","ok":true,"query":"@ben","found":true,"nick":"@b
 | `error` | the error code, when not `ok` |
 | `query` | what was asked, only when it was valid (the bot never repeats text it has not checked) |
 | `found`, `nick`, `address` | the result of `address`; `nick` and `address` also in `register` and `unregister` |
-| `already`, `replaced` | for `register`: the name was the sender's already; the name it took the place of |
-| `nicks` | for `whoami` |
+| `already`, `replaced` | for `register`: the name was the sender's already; the name it took the place of (of any sigil) |
+| `nicks` | for `whoami`: a list with the sender's name, or with none (a program reads it as a list) |
 | `results` | for `nickname`: `[{"address","nicks":[...]}]` in the order asked; for `search`: `[{"nick","address"}]` |
 | `more` | for `search`: there were more than the 10 returned |
 
@@ -202,6 +203,11 @@ docker exec nickbot nickbot admin -db /data/nickbot.sqlite history BM-...
 
 An event the library hands out twice (after a crash) is answered with the same words and done once: the id of a handled event and
 its answer are kept for seven days in the same transaction as the change.
+
+A registry from before 2026-11-03 gets its second migration at the first start: the table of holds is dropped, so the names that
+were held are free, and an index makes the one-name rule the file's own. The first version let an address have a name of each sigil;
+if one has two, the step fails, nothing is changed and the service does not start. Remove all but one of them with the old
+version's `nickbot admin remove`, then start the new one.
 
 ## Tests
 

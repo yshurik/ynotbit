@@ -17,7 +17,7 @@ func adminRig(t *testing.T) (db string, st *store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, r := range []struct{ nick, address string }{{"@ben", seedBot}, {"/benbot", seedBot}, {"@zed", "BM-other"}} {
+	for _, r := range []struct{ nick, address string }{{"@ben", seedBot}, {"/benbot", seedNick}, {"@zed", "BM-other"}} {
 		n, _ := nick.Parse(r.nick)
 		if _, err := st.Reg().Register(n, r.address, store.RegisterOptions{}); err != nil {
 			t.Fatal(err)
@@ -40,10 +40,13 @@ func TestAdminStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"names: 3", "people: 2", "bots: 1", "chans: 0", "addresses: 2"} {
+	for _, want := range []string{"names: 3", "people: 2", "bots: 1", "chans: 0", "addresses: 3", "reserved: 0"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stats lack %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "held") {
+		t.Errorf("stats count names that are held, and nothing is:\n%s", out)
 	}
 }
 
@@ -55,7 +58,7 @@ func TestAdminExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 3 || lines[0] != "/benbot\t"+seedBot+"\tno" || lines[1] != "@ben\t"+seedBot+"\tno" {
+	if len(lines) != 3 || lines[0] != "/benbot\t"+seedNick+"\tno" || lines[1] != "@ben\t"+seedBot+"\tno" {
 		t.Errorf("export:\n%s", out)
 	}
 }
@@ -80,7 +83,7 @@ func TestAdminRemoveReserveAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"register", "remove", "@ben", "/benbot"} {
+	for _, want := range []string{"register", "remove", "@ben"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("history lacks %q:\n%s", want, out)
 		}
