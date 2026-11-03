@@ -39,7 +39,8 @@ int main(int argc, char **argv) {
     bm::adoptLegacySettings(kLegacyOrganization, kLegacyApplication);
     app.setApplicationDisplayName("ynotbit");
     app.setApplicationVersion(YNOTBIT_VERSION);
-    app.setDesktopFileName("ynotbit");
+    // Inside a Flatpak the desktop entry is named by the app ID.
+    app.setDesktopFileName(qEnvironmentVariable("FLATPAK_ID", "ynotbit"));
 #ifdef Q_OS_LINUX
     // A panel without a desktop entry for the app names it by its windows' class, which Qt takes
     // from the application name when the first window is made, and keeps. The name stays what
