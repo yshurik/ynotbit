@@ -125,9 +125,12 @@ class DesktopWindow : public QMainWindow {
     QLabel *identitiesEmpty_;                 // stands in for the table when no row is listed
     QToolButton *identityNickname_;
     QToolButton *identityCopy_, *identityQr_, *identityDefault_, *identityRename_, *identityDelete_;
-    QToolButton *identityJoin_, *identityNew_; // the page's own two: Join a channel, New identity
+    QToolButton *identitiesCheck_;             // asks the nickbot for every identity's nickname
+    QToolButton *identityJoin_, *identityNew_; // the page's other two: Join a channel, New identity
     QWidget *identityActions_;                 // the pill of the six for the selected row
-    QWidget *identityTools_;                   // the pill of the page's own two
+    QWidget *identityTools_;                   // the pill of the page's own three
+    QLabel *identitiesCheckNote_;              // says that a check is under way, or why it is not
+    bool identitiesChecking_ = false;          // a check this window asked for is under way
     // What the table was last drawn from: it is drawn again only when this is not what it would be
     // drawn from now, so that a tick that changes nothing does not cost the user the selection.
     QVariantList shownIdentities_;
@@ -170,6 +173,9 @@ class DesktopWindow : public QMainWindow {
     void checkContactNicknames();
     void updateContactsCheck(); // the check's button and note follow the nickbot client
     void setContactsNote(const QString &text, bool problem);
+    void checkIdentityNicknames();
+    void updateIdentitiesCheck(); // the same for the identities page
+    void setIdentitiesNote(const QString &text, bool problem);
     void refreshChannels();
     // The open chat's header offers what can be done about the peer: adding them to the address
     // book when they are not in it, asking a nickbot for the nickname of a contact who has none.

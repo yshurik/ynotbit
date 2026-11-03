@@ -616,6 +616,33 @@ void NickClient::checkRegistrations() {
 // --- checking the book ------------------------------------------------------------------------
 
 int NickClient::checkContacts(QString *problem) {
+    return check(
+        [this] {
+            QStringList addresses;
+            for (const auto &c : session_.coreMailbox().contacts())
+                addresses << q(c.address);
+            return addresses;
+        },
+        tr("There are no contacts to check"), true, problem);
+}
+
+// The chans are left out: a nickname for one is not asked for from here. An address to a message:
+// whoever reads the shared chan would see in a message of several that one person holds them all.
+int NickClient::checkIdentities(QString *problem) {
+    return check(
+        [this] {
+            QStringList addresses;
+            for (const auto &i : session_.coreVault().identities())
+                if (!i.chan)
+                    addresses << q(i.address);
+            return addresses;
+        },
+        tr("There are no identities to check"), false, problem);
+}
+
+// `whom` is called only when a check can be made: it needs the mailbox.
+int NickClient::check(const std::function<QStringList()> &whom, const QString &none, bool together,
+                      QString *problem) {
     const auto refuse = [&](const QString &why) {
         if (problem)
             *problem = why;
@@ -625,16 +652,25 @@ int NickClient::checkContacts(QString *problem) {
         return refuse(tr("A check is already under way"));
     if (const auto why = registrationProblem(); !why.isEmpty())
         return refuse(why);
-    std::vector<std::string> addresses;
-    for (const auto &c : session_.coreMailbox().contacts())
-        addresses.push_back(c.address);
-    if (addresses.empty())
-        return refuse(tr("There are no contacts to check"));
+    const auto addresses = whom();
+    if (addresses.isEmpty())
+        return refuse(none);
     QString resolved;
     if (const auto why = problemWith({}, &resolved); !why.isEmpty())
         return refuse(why);
+    std::vector<std::string> asked;
+    for (const auto &a : addresses)
+        asked.push_back(st(a));
+    auto batches = nb::nicknameBatches(asked);
+    if (!together) {
+        decltype(batches) alone;
+        for (const auto &batch : batches)
+            for (const auto &a : batch)
+                alone.push_back({a});
+        batches = std::move(alone);
+    }
     int later = 0;
-    for (const auto &batch : nb::nicknameBatches(addresses)) {
+    for (const auto &batch : batches) {
         QStringList list;
         for (const auto &a : batch)
             list << q(a);

@@ -86,6 +86,11 @@ second one; the label is how ynotbit tells it from a chan `anonymous` the user j
 The bot keeps no record of lookups: its log says counts and errors, never a query. The shared address may look up and may not
 register, unregister or ask `/whoami`.
 
+Checking your own identities names addresses that are all yours, so it asks about one in a message: a message that named two of
+them would tell everyone who reads the shared chan that one person holds both. The messages are ten seconds apart, so a watcher
+can still guess from the timing that they belong together; that is the same risk, accepted below, as a lookup right after a
+registration. (The address book's check, which asks about people you know, puts eight addresses in a message.)
+
 Nothing is held back to hide the time of a lookup: it goes out at once. The bot cannot tell who asked, but a lookup that comes
 a moment after a registration can be matched to it by the time. (ynotbit once waited a random 3 to 30 seconds, and two minutes
 after a registration; that was dropped for speed on 2026-10-27.)
@@ -98,11 +103,17 @@ after a registration; that was dropped for speed on 2026-10-27.)
   set one has the built-in default, `/nickbot`.
 - **The Identities page** is a table like the address book, with the columns *Address*, *Nickname* and *Local name* (the default
   identity and a chan carry a pill beside the name). The buttons for the selected row are in the toolbar: *Nickname…*, then
-  copy the address, show its QR code, make it the default, rename, delete, and *Join a channel…* and *New identity* beside
-  them; the right-click menu holds the same, and a double-click does what its cell is about (copy an address, ask for a
-  nickname, rename). *Nickname…* asks a nickbot, by a chat from the identity, to give it the nickname. The cell then shows the
-  nickname as it stands, in its nickbot's colour; while a try waits for its answer it is muted, and a try that was refused or
-  went unanswered is red, with the reason in the tip. A chan has no nickname to ask for here.
+  copy the address, show its QR code, make it the default, rename, delete, and *Check nicknames*, *Join a channel…* and *New
+  identity* beside them; the right-click menu holds the same, and a double-click does what its cell is about (copy an address,
+  ask for a nickname, rename). *Nickname…* asks a nickbot, by a chat from the identity, to give it the nickname. The cell then
+  shows the nickname as it stands, in its nickbot's colour; while a try waits for its answer it is muted, and a try that was
+  refused or went unanswered is red, with the reason in the tip. A chan has no nickname to ask for here.
+- **Identities → Check nicknames** (the @ in the pill with *Join a channel…* and *New identity*) is for a computer that has the
+  keys of your identities but not the nicknames they were given: another computer, or a second mailbox of the vault, which
+  knows only what it registered itself. It asks the default nickbot for the nicknames of all your identities (not the chans),
+  one address to a message and the messages ten seconds apart (see Privacy), and fills the Nickname column as the answers come.
+  A nickname the nickbot vouched for earlier and no longer has is taken away. One check runs at a time, of the contacts or of the
+  identities. **Nothing is asked unless the user presses it**: importing the keys does not do it.
 - **Contacts → Find people…** asks a nickbot: a whole nickname (`@ben`) for its address, an address for its nicknames, any other
   word of four letters or more is searched for. The answer takes minutes (the window can be closed). The table is the address
   book's: an identicon and the address, then the nickname in the nickbot's colour, then what the address is to you (*Your

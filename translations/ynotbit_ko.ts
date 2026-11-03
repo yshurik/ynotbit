@@ -1092,6 +1092,18 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
         <translation>연락처를 확인했습니다. 닉봇이 아는 별명은 표에 있습니다.</translation>
     </message>
     <message>
+        <source>Ask the nickbot for the nicknames of all your identities</source>
+        <translation>모든 신원의 별명을 닉봇에 묻기</translation>
+    </message>
+    <message>
+        <source>Asking the nickbot for the nicknames of your identities. The answers take a few minutes.</source>
+        <translation>신원의 별명을 닉봇에 묻는 중입니다. 답이 오기까지 몇 분이 걸립니다.</translation>
+    </message>
+    <message>
+        <source>Checked your identities. The nicknames the nickbot has are in the table.</source>
+        <translation>신원을 확인했습니다. 닉봇이 아는 별명은 표에 있습니다.</translation>
+    </message>
+    <message>
         <source>Chat</source>
         <translation>채팅</translation>
     </message>
@@ -2745,6 +2757,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
     <message>
         <source>There are no contacts to check</source>
         <translation>확인할 연락처가 없습니다</translation>
+    </message>
+    <message>
+        <source>There are no identities to check</source>
+        <translation>확인할 신원이 없습니다</translation>
     </message>
 </context>
 <context>

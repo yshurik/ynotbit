@@ -1092,6 +1092,18 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
         <translation>連絡先を確認しました。ニックボットが知っているニックネームは表に表示されます。</translation>
     </message>
     <message>
+        <source>Ask the nickbot for the nicknames of all your identities</source>
+        <translation>すべての ID のニックネームをニックボットに尋ねる</translation>
+    </message>
+    <message>
+        <source>Asking the nickbot for the nicknames of your identities. The answers take a few minutes.</source>
+        <translation>ID のニックネームをニックボットに尋ねています。答えが届くまで数分かかります。</translation>
+    </message>
+    <message>
+        <source>Checked your identities. The nicknames the nickbot has are in the table.</source>
+        <translation>ID を確認しました。ニックボットが知っているニックネームは表に表示されます。</translation>
+    </message>
+    <message>
         <source>Chat</source>
         <translation>チャット</translation>
     </message>
@@ -2745,6 +2757,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
     <message>
         <source>There are no contacts to check</source>
         <translation>確認する連絡先がありません</translation>
+    </message>
+    <message>
+        <source>There are no identities to check</source>
+        <translation>確認する ID がありません</translation>
     </message>
 </context>
 <context>

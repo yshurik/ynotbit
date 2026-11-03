@@ -2755,18 +2755,29 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
                                     identityRename_, identityDelete_},
                                    appearance_.dark());
     identitiesHeadRow->addWidget(identityActions_);
+    // For a computer that has only the keys of an identity: the nicknames it was given elsewhere
+    // are asked of the nickbot, as the address book's check does for the contacts.
+    identitiesCheck_ = named(
+        actionButton(
+            "checkIdentityNicknamesButton", "nickname",
+            "<b>" + tr("Check nicknames").toHtmlEscaped() + "</b><br>" +
+                tr("Ask the nickbot for the nicknames of all your identities").toHtmlEscaped(),
+            appearance_.dark()),
+        tr("Check nicknames"));
     identityJoin_ = named(
         actionButton("joinChannelButton", "channels", tr("Join a channel…"), appearance_.dark()),
         tr("Join a channel…"));
     identityNew_ = named(
         actionButton("newIdentityButton", "personAdd", tr("New identity"), appearance_.dark()),
         tr("New identity"));
+    connect(identitiesCheck_, &QToolButton::clicked, this, [this] { checkIdentityNicknames(); });
     connect(identityJoin_, &QToolButton::clicked, this, [this] {
         joinChannel();
         refreshIdentities();
     });
     connect(identityNew_, &QToolButton::clicked, this, [this] { newIdentity(); });
-    identityTools_ = cardActions({identityJoin_, identityNew_}, appearance_.dark());
+    identityTools_ =
+        cardActions({identitiesCheck_, identityJoin_, identityNew_}, appearance_.dark());
     identitiesHeadRow->addWidget(identityTools_);
     for (int i = 0; i < identitiesHeadRow->count(); ++i)
         if (auto item = identitiesHeadRow->itemAt(i); item->widget())
@@ -2778,6 +2789,11 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     identitiesFilter_->setClearButtonEnabled(true);
     connect(identitiesFilter_, &QLineEdit::textChanged, this, [this] { refreshIdentities(); });
     identitiesOuter->addWidget(identitiesFilter_);
+    identitiesCheckNote_ = new QLabel;
+    identitiesCheckNote_->setObjectName("identitiesCheckNote");
+    identitiesCheckNote_->setWordWrap(true);
+    identitiesCheckNote_->hide();
+    identitiesOuter->addWidget(identitiesCheckNote_);
     identitiesModel_ = new QStandardItemModel(this);
     identitiesModel_->setHorizontalHeaderLabels({tr("Address"), tr("Nickname"), tr("Local name")});
     identitiesSorted_ = new QSortFilterProxyModel(this);
@@ -3295,6 +3311,7 @@ void DesktopWindow::updateTheme() {
     identityDefault_->setIcon(materialIcon("star", color));
     identityRename_->setIcon(materialIcon("rename", color));
     identityDelete_->setIcon(materialIcon("delete", color));
+    identitiesCheck_->setIcon(materialIcon("nickname", color));
     identityJoin_->setIcon(materialIcon("channels", color));
     identityNew_->setIcon(materialIcon("personAdd", color));
     styleActionGroup(identityActions_, dark);
@@ -3400,6 +3417,7 @@ void DesktopWindow::updateState() {
         pane_->updateCorrespondents();
     }
     updateContactsCheck();
+    updateIdentitiesCheck();
     if (const auto contacts = session_.contacts(); contacts != shownContacts_) {
         shownContacts_ = contacts;
         pane_->updateCorrespondents();
@@ -4324,6 +4342,38 @@ void DesktopWindow::setContactsNote(const QString &text, bool problem) {
     contactsCheckNote_->setText(text);
     contactsCheckNote_->setStyleSheet(problem ? "color:#d93025;" : "color:palette(mid);");
     contactsCheckNote_->setVisible(!text.isEmpty());
+}
+// The same for the identities, and again only when the user presses the button.
+void DesktopWindow::checkIdentityNicknames() {
+    QString problem;
+    identitiesChecking_ = session_.nicks().checkIdentities(&problem) > 0;
+    if (identitiesChecking_)
+        setIdentitiesNote(tr("Asking the nickbot for the nicknames of your identities. The "
+                             "answers take a few minutes."),
+                          false);
+    else
+        setIdentitiesNote(problem, true);
+    updateIdentitiesCheck();
+}
+void DesktopWindow::updateIdentitiesCheck() {
+    if (!session_.mailboxOpen()) { // nothing of a check outlives its mailbox
+        identitiesChecking_ = false;
+        setIdentitiesNote({}, false);
+        identitiesCheck_->setEnabled(true);
+        return;
+    }
+    const bool checking = session_.nicks().checking();
+    identitiesCheck_->setEnabled(!checking);
+    if (identitiesChecking_ && !checking) {
+        identitiesChecking_ = false;
+        setIdentitiesNote(
+            tr("Checked your identities. The nicknames the nickbot has are in the table."), false);
+    }
+}
+void DesktopWindow::setIdentitiesNote(const QString &text, bool problem) {
+    identitiesCheckNote_->setText(text);
+    identitiesCheckNote_->setStyleSheet(problem ? "color:#d93025;" : "color:palette(mid);");
+    identitiesCheckNote_->setVisible(!text.isEmpty());
 }
 void DesktopWindow::updateContactActions() {
     const bool selected = !selectedContact(0).isEmpty();

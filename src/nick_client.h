@@ -92,6 +92,11 @@ class NickClient : public QObject {
     // (already translated), when it cannot: nickbots off or none listed, no contacts, or a check
     // that is under way. The answers come as the other lookups' do.
     int checkContacts(QString *problem = nullptr);
+    // The same for the user's own identities (not their chans), for a computer that has only the
+    // keys: the nicknames they were given elsewhere are not known to it. One address to a message,
+    // ten seconds apart: no message names two of the user's identities. One check at a time, of
+    // the contacts or of the identities.
+    int checkIdentities(QString *problem = nullptr);
     // A check was asked for and some of its messages are not answered yet (or timed out). The
     // client says changed() when that stops being so.
     bool checking() const;
@@ -171,6 +176,12 @@ class NickClient : public QObject {
     bool forget(const QString &address, const QString &bot);
     bool known(const QString &address) const;
     void checkRegistrations();
+    // A check of the addresses `whom` gives (called only when a check can be made): to the default
+    // nickbot, eight to a message (`together`) or one, and the messages ten seconds apart. Returns
+    // how many addresses it asks about; 0, with *problem, when it cannot: one is under way, nothing
+    // can be asked for, or there is nobody (`none` says so).
+    int check(const std::function<QStringList()> &whom, const QString &none, bool together,
+              QString *problem);
     void setLaneInDelivery();
     QString setting(const QString &name) const;
     void setSetting(const QString &name, const QString &value);

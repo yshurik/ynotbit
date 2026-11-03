@@ -1092,6 +1092,18 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
         <translation>已檢查聯絡人。暱稱機器人所知的暱稱已顯示在表格中。</translation>
     </message>
     <message>
+        <source>Ask the nickbot for the nicknames of all your identities</source>
+        <translation>向暱稱機器人詢問所有身分的暱稱</translation>
+    </message>
+    <message>
+        <source>Asking the nickbot for the nicknames of your identities. The answers take a few minutes.</source>
+        <translation>正在向暱稱機器人詢問您身分的暱稱。回覆需要幾分鐘。</translation>
+    </message>
+    <message>
+        <source>Checked your identities. The nicknames the nickbot has are in the table.</source>
+        <translation>已檢查身分。暱稱機器人所知的暱稱已顯示在表格中。</translation>
+    </message>
+    <message>
         <source>Chat</source>
         <translation>聊天</translation>
     </message>
@@ -2745,6 +2757,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
     <message>
         <source>There are no contacts to check</source>
         <translation>沒有可檢查的聯絡人</translation>
+    </message>
+    <message>
+        <source>There are no identities to check</source>
+        <translation>沒有可檢查的身分</translation>
     </message>
 </context>
 <context>

@@ -1092,6 +1092,18 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
         <translation>Контакти перевірено. Псевдоніми, які знає нікбот, — у таблиці.</translation>
     </message>
     <message>
+        <source>Ask the nickbot for the nicknames of all your identities</source>
+        <translation>Запитати в нікбота псевдоніми всіх ваших ідентичностей</translation>
+    </message>
+    <message>
+        <source>Asking the nickbot for the nicknames of your identities. The answers take a few minutes.</source>
+        <translation>Запитуємо в нікбота псевдоніми ваших ідентичностей. Відповіді надходять через кілька хвилин.</translation>
+    </message>
+    <message>
+        <source>Checked your identities. The nicknames the nickbot has are in the table.</source>
+        <translation>Ідентичності перевірено. Псевдоніми, які знає нікбот, — у таблиці.</translation>
+    </message>
+    <message>
         <source>Chat</source>
         <translation>Чат</translation>
     </message>
@@ -2745,6 +2757,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
     <message>
         <source>There are no contacts to check</source>
         <translation>Немає контактів для перевірки</translation>
+    </message>
+    <message>
+        <source>There are no identities to check</source>
+        <translation>Немає ідентичностей для перевірки</translation>
     </message>
 </context>
 <context>
