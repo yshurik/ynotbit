@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.yshurik.ynotbit</id>
+  <name>ynotbit</name>
+  <summary>Compact desktop Bitmessage client</summary>
+  <developer id="io.github.yshurik">
+    <name>yshurik</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>ynotbit is a compact desktop client for Bitmessage, the decentralised, encrypted messaging network. It is based on notbit.</p>
+    <p>Identity keys live in a password-protected vault and correspondence in a separate encrypted mailbox. A keyless relay keeps collecting network objects while the vault is locked.</p>
+    <ul>
+      <li>Letters with Markdown and pictures, replies that quote the letter</li>
+      <li>One-to-one chats with delivery ticks and unread counts</li>
+      <li>Channels, contacts and subscriptions shown as a feed</li>
+      <li>Proof of work on the CPU and, where available, the GPU</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.yshurik.ynotbit.desktop</launchable>
+  <url type="homepage">https://github.com/yshurik/ynotbit</url>
+  <url type="bugtracker">https://github.com/yshurik/ynotbit/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/yshurik/ynotbit/v0.8.1/docs/images/desktop.png</image>
+      <caption>Reading a Markdown letter from a named contact</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/yshurik/ynotbit/v0.8.1/docs/images/chats.png</image>
+      <caption>Chats with delivery ticks</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/yshurik/ynotbit/v0.8.1/docs/images/composer.png</image>
+      <caption>Writing to a contact</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-chat">intense</content_attribute>
+    <content_attribute id="social-info">mild</content_attribute>
+  </content_rating>
+  <categories>
+    <category>Network</category>
+    <category>Chat</category>
+    <category>Email</category>
+  </categories>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <releases>
+    <release version="0.8.1" date="2026-10-29"/>
+  </releases>
+</component>
