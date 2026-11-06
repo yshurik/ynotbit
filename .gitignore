@@ -17,3 +17,4 @@ ynotbit-data/
 .env
 *.obj
 *.o
+*.snap

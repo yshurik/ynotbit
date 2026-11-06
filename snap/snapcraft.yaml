@@ -1,0 +1,109 @@
+# Local build:  snapcraft            (LXD, from the repository root)
+# Try it:       sudo snap install --dangerous ./ynotbit_*.snap
+# Store build:  snapcraft remote-build
+name: ynotbit
+title: ynotbit
+adopt-info: ynotbit
+summary: Compact desktop Bitmessage client
+description: |
+  ynotbit is a compact desktop client for Bitmessage, the decentralised,
+  encrypted messaging network. It is based on notbit.
+
+  Identity keys live in a password-protected vault and correspondence in a
+  separate encrypted mailbox. A keyless relay keeps collecting network objects
+  while the vault is locked.
+license: MIT
+contact: yshurik@gmail.com
+website: https://github.com/yshurik/ynotbit
+source-code: https://github.com/yshurik/ynotbit
+issues: https://github.com/yshurik/ynotbit/issues
+icon: snap/gui/ynotbit.png
+base: core24
+grade: stable
+confinement: strict
+platforms:
+  amd64:
+
+# Qt 6 comes from the KDE content snap, not from the archive (Ubuntu 24.04 has Qt 6.4).
+# The tray icon needs desktop-legacy: it holds the StatusNotifierItem D-Bus rules.
+apps:
+  ynotbit:
+    command: usr/bin/ynotbit
+    extensions: [kde-neon-6]
+    plugs:
+      - audio-playback
+      - desktop-legacy
+      - home
+      - network
+      - network-bind
+      - removable-media
+
+parts:
+  libsodium:
+    plugin: nil
+    source: https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz
+    source-checksum: sha256/ebb65ef6ca439333c2bb41a0c1990587288da07f6c7fd07cb3a18cc18d30ce19
+    build-packages:
+      - gcc
+      - make
+    override-build: |
+      # The extension puts its SDK's ld first on PATH, and that one cannot link plain C.
+      export PATH=/usr/bin:"$PATH"
+      ./configure --prefix=/usr --disable-shared --with-pic
+      make -j"$CRAFT_PARALLEL_BUILD_COUNT"
+      make install DESTDIR="$CRAFT_PART_INSTALL"
+      sed -i "s|^prefix=.*|prefix=$CRAFT_STAGE/usr|" "$CRAFT_PART_INSTALL"/usr/lib/pkgconfig/*.pc
+    prime: ['-*'] # linked into the binary: nothing of it ships
+
+  sqlcipher:
+    plugin: nil
+    source: https://github.com/sqlcipher/sqlcipher.git
+    source-commit: c5bd336ece77922433aaf6d6fe8cf203b0c299d5 # v4.6.1
+    build-packages:
+      - gcc
+      - make
+      - libssl-dev
+      - tcl # runs the SQLCipher amalgamation
+    override-build: |
+      export PATH=/usr/bin:"$PATH"
+      ./configure --prefix=/usr --disable-shared --with-pic --enable-tempstore=yes \
+        CFLAGS=-DSQLITE_HAS_CODEC LDFLAGS=-lcrypto
+      make -j"$CRAFT_PARALLEL_BUILD_COUNT"
+      make install DESTDIR="$CRAFT_PART_INSTALL"
+      sed -i "s|^prefix=.*|prefix=$CRAFT_STAGE/usr|" "$CRAFT_PART_INSTALL"/usr/lib/pkgconfig/*.pc
+    prime: ['-*']
+
+  ynotbit:
+    after: [libsodium, sqlcipher]
+    plugin: nil
+    source: .
+    build-packages:
+      - g++
+      - cmake
+      - ninja-build
+      - pkg-config
+      - libssl-dev
+    stage-packages:
+      - libssl3t64
+    build-environment:
+      - PKG_CONFIG_PATH: $CRAFT_STAGE/usr/lib/pkgconfig
+    override-pull: |
+      craftctl default
+      craftctl set version="$(sed -n 's/^project(ynotbit VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
+    override-build: |
+      # The Qt app only: the node is inside it. Out of tree, so a build/ in the source is left alone.
+      # The SDK's Qt libraries lean on libraries (b2, pulse, xkbcommon, proxy) that sit in the SDK
+      # snaps; ld ignores the RUNPATH of a library when it looks for what that one needs.
+      link=""
+      for dir in kde-qt6-core24-sdk kf6-core24-sdk kf6-core24; do
+        for sub in "" /pulseaudio; do
+          link="$link -Wl,-rpath-link,/snap/$dir/current/usr/lib/x86_64-linux-gnu$sub"
+        done
+      done
+      cmake -S "$CRAFT_PART_SRC" -B "$CRAFT_PART_BUILD/out" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_EXE_LINKER_FLAGS="$link"
+      cmake --build "$CRAFT_PART_BUILD/out" --target ynotbit --parallel "$CRAFT_PARALLEL_BUILD_COUNT"
+      install -Dm755 "$CRAFT_PART_BUILD/out/ynotbit" "$CRAFT_PART_INSTALL/usr/bin/ynotbit"
+      install -Dm644 licenses/* -t "$CRAFT_PART_INSTALL/usr/share/doc/ynotbit/licenses"
+      install -Dm644 third_party/notbit/COPYING "$CRAFT_PART_INSTALL/usr/share/doc/ynotbit/licenses/notbit.txt"
+      install -Dm644 LICENSE THIRD_PARTY.md -t "$CRAFT_PART_INSTALL/usr/share/doc/ynotbit"

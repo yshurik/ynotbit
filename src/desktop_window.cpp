@@ -2233,8 +2233,8 @@ DesktopWindow::DesktopWindow(Session &session, QString soundThemesDir) : session
     brand->setObjectName("brand");
     top->addWidget(brand);
     top->addStretch();
-    // The Flatpak build carries no sponsor banner.
-    if (!qEnvironmentVariableIsSet("FLATPAK_ID")) {
+    // The Flatpak and snap builds carry no sponsor banner.
+    if (!qEnvironmentVariableIsSet("FLATPAK_ID") && !qEnvironmentVariableIsSet("SNAP")) {
         auto adBanner = new QPushButton("🌙  NightTrader Exchange — your keys, your coins");
         adBanner->setObjectName("adBanner");
         adBanner->setCursor(Qt::PointingHandCursor);

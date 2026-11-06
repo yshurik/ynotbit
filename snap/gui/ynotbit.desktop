@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ynotbit
+GenericName=Bitmessage client
+Comment=Compact desktop Bitmessage client
+Exec=ynotbit
+Icon=${SNAP}/meta/gui/ynotbit.png
+Terminal=false
+Categories=Network;Chat;Email;
+Keywords=bitmessage;mail;chat;encrypted;
+StartupWMClass=ynotbit
