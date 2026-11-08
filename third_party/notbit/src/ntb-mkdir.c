@@ -39,7 +39,26 @@ bool
 ntb_mkdir(const char *name,
           struct ntb_error **error)
 {
+#ifdef _WIN32
+        struct stat st;
+
+        /* A bare drive spec like "D:" is not creatable; mkdir fails with
+         * EACCES. Treat it as existing.
+         */
+        if (name[0] && name[1] == ':' && name[2] == '\0')
+                return true;
+#endif
+
         if (mkdir(name, S_IRWXU | S_IRWXG | S_IRWXO) == -1 && errno != EEXIST) {
+#ifdef _WIN32
+                /* Windows reports EACCES for existing dirs in some cases
+                 * (drive roots, protected folders).
+                 */
+                if (errno == EACCES &&
+                    stat(name, &st) == 0 &&
+                    (st.st_mode & S_IFDIR))
+                        return true;
+#endif
                 ntb_file_error_set(error,
                                    errno,
                                    "Error creating directory %s: %s",
