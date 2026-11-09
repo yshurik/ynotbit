@@ -3195,6 +3195,11 @@ void DesktopWindow::updateTheme() {
     chats_->setDark(dark);
     if (feed_)
         feed_->setDark(dark);
+    // The error line under the header: an amber ground, so a refused action is not missed.
+    error_->setStyleSheet(dark ? "background:#5a3d00;color:#ffd98a;font-weight:600;"
+                                 "border-bottom:1px solid #8a5f00;"
+                               : "background:#ffe8b3;color:#5c3b00;font-weight:600;"
+                                 "border-bottom:1px solid #e0b24a;");
     setStyleSheet(
         QString(
             "QWidget{font-size:13px;} QMainWindow,QDialog{background:%1;} "
