@@ -2047,6 +2047,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
         <translation>Поштова скринька вже використовується</translation>
     </message>
     <message>
+        <source>This location does not support the file locking a mailbox needs. Choose a folder on a local drive.</source>
+        <translation>Це місце не підтримує блокування файлів, потрібне поштовій скриньці. Виберіть теку на локальному диску.</translation>
+    </message>
+    <message>
         <source>Mailbox is open in another instance</source>
         <translation>Поштову скриньку відкрито в іншому екземплярі застосунку</translation>
     </message>

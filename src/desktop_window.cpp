@@ -4437,8 +4437,12 @@ void DesktopWindow::chatWithContact(const QString &peer) {
 void DesktopWindow::newVault() {
     // Nothing to ask: an open vault holds nothing unsaved, and stays open
     // until the new one takes its place.
-    const auto documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    NewVaultDialog dialog(session_, documents.isEmpty() ? QDir::homePath() : documents,
+    // Where the last vault is, if there is one: the user keeps the files together.
+    auto folder = session_.vaultPath().isEmpty() ? QString()
+                                                  : QFileInfo(session_.vaultPath()).absolutePath();
+    if (folder.isEmpty())
+        folder = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    NewVaultDialog dialog(session_, folder.isEmpty() ? QDir::homePath() : folder,
                           appearance_.dark(), this);
     if (dialog.exec() == QDialog::Accepted)
         targetVaultPath_ = session_.vaultPath(); // locked again, the lock screen offers it

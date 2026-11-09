@@ -74,13 +74,32 @@ static Password password(const QString &title, bool confirm = false) {
     }
     return p;
 }
-static QString chooseSave(const QString &title, const QString &filter, const QString &suffix) {
+static QString chooseSave(const QString &title, const QString &filter, const QString &suffix,
+                          const QString &initialPath = {}) {
     auto p = QFileDialog::getSaveFileName(
-        nullptr, title, QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        nullptr, title,
+        initialPath.isEmpty()
+            ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+            : initialPath,
         filter);
     if (!p.isEmpty() && !p.endsWith(suffix))
         p += suffix;
     return p;
+}
+// Where the dialog for a new mailbox starts: the folder of the vault, with a name made from the
+// vault's own (itself a nickname-like name), that no file has yet.
+static QString suggestedMailboxPath(const QString &vaultPath, const QString &suffix) {
+    if (vaultPath.isEmpty())
+        return {};
+    const QFileInfo vault(vaultPath);
+    const auto dir = vault.absolutePath();
+    auto base = vault.completeBaseName();
+    if (base.isEmpty())
+        base = "mailbox";
+    auto path = QDir(dir).filePath(base + suffix);
+    for (int n = 2; QFileInfo::exists(path); ++n)
+        path = QDir(dir).filePath(QString("%1-%2%3").arg(base).arg(n).arg(suffix));
+    return path;
 }
 static QString documentsPath() {
     const auto path = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
@@ -419,7 +438,8 @@ void Session::createMailbox() {
     attempt([&] {
         check(unlocked(), tr("Unlock a vault first"));
 
-        auto p = chooseSave(tr("Create mailbox"), tr("Bitmessage mailbox (*.bmmail)"), ".bmmail");
+        auto p = chooseSave(tr("Create mailbox"), tr("Bitmessage mailbox (*.bmmail)"), ".bmmail",
+                            suggestedMailboxPath(vaultPath_, ".bmmail"));
         if (p.isEmpty())
             return;
         check(!QFile::exists(p),
@@ -432,7 +452,18 @@ void Session::createMailbox() {
         check(mailLock_->tryLock(), tr("Mailbox is in use"));
         try {
             auto id = vault_.addMailboxKey();
-            mailbox_.create(p, id, vault_.mailboxKey(id));
+            try {
+                mailbox_.create(p, id, vault_.mailboxKey(id));
+            } catch (const std::exception &e) {
+                // SQLite needs file locks; some drives (a network share, a VM's shared folder)
+                // do not give them.
+                if (QByteArray(e.what()).contains("locked"))
+                    throw std::runtime_error(
+                        tr("This location does not support the file locking a mailbox needs. "
+                           "Choose a folder on a local drive.")
+                            .toStdString());
+                throw;
+            }
             mailbox_.setSetting(kSentRecipientsSetting, "1"); // nothing was sent yet to add
             mailbox_.setSetting(kInboxSendersSetting, "1");   // nor received
             mailbox_.setSetting(kPendingSubscriptionsSetting, "1"); // nobody dealt with yet
