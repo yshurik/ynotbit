@@ -1,9 +1,15 @@
 cmake_minimum_required(VERSION 3.22)
-project(ynotbit VERSION 0.8.2 LANGUAGES C CXX) # the one place the version is set
+project(ynotbit VERSION 0.8.3 LANGUAGES C CXX) # the one place the version is set
 set(CMAKE_CXX_STANDARD 20)
 # Off builds only what has no Qt: the node, bmclient and their tests (servers, containers).
 option(YNOTBIT_QT "Build the Qt app, its tools and its tests" ON)
 option(YNOTBIT_NICKBOT "Build and test nickbot, the nicknames service in Go (needs Go)" OFF)
+# For a package: only the app and what it links, no tools, tests or bots, and nothing but it installed.
+option(YNOTBIT_APP_ONLY "Build and install only the Qt app" OFF)
+set(not_in_all "")
+if(YNOTBIT_APP_ONLY)
+ set(not_in_all EXCLUDE_FROM_ALL)
+endif()
 enable_testing()
 # The static libraries below go into libbmbot, a shared library: their code has to be position
 # independent (macOS makes it so; Linux does not, and the link fails).
@@ -51,8 +57,12 @@ if(MSVC)
 endif()
 # libsecp256k1, for the ECDH that decrypting tries on every incoming message
 # against every identity: 10-20x OpenSSL's generic curve code. Pinned and
-# checksummed; built static, nothing installed.
+# checksummed; built static, nothing installed. A checkout with its submodules builds from
+# third_party/secp256k1; one without them fetches the same release. Keep the two in step.
 include(FetchContent)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/secp256k1/CMakeLists.txt)
+ set(FETCHCONTENT_SOURCE_DIR_SECP256K1 ${CMAKE_CURRENT_SOURCE_DIR}/third_party/secp256k1)
+endif()
 # Its CMake declares BUILD_SHARED_LIBS (default ON) for the whole project,
 # which would turn our own libraries shared; they stay static.
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
@@ -136,19 +146,30 @@ if(NOT WIN32)
  # ABI. POSIX only for now: the node supervisor and the data directory lock are.
  add_library(chat_bot STATIC tools/chat_bot.cpp tools/rotating_log.cpp)
  target_include_directories(chat_bot PUBLIC tools)
- add_subdirectory(bmbot)
+ add_subdirectory(bmbot ${not_in_all})
  add_executable(chat_responder tools/chat_responder.cpp)
  target_link_libraries(chat_responder PRIVATE chat_bot bmbot_static)
- include(GNUInstallDirs)
- install(TARGETS chat_responder bmnode RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
- add_subdirectory(tests/bmbot)
+ if(NOT YNOTBIT_APP_ONLY)
+  include(GNUInstallDirs)
+  install(TARGETS chat_responder bmnode RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+ endif()
+ add_subdirectory(tests/bmbot ${not_in_all})
  # The vanity address search and its tests: OpenSSL and threads only.
- add_subdirectory(tools/vanity)
- add_subdirectory(tests/vanity)
+ add_subdirectory(tools/vanity ${not_in_all})
+ add_subdirectory(tests/vanity ${not_in_all})
  if(YNOTBIT_NICKBOT)
-  add_subdirectory(nickbot)
+  add_subdirectory(nickbot ${not_in_all})
  endif()
 endif()
 if(YNOTBIT_QT)
  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/qt-app.cmake)
+endif()
+if(YNOTBIT_APP_ONLY)
+ # What the app links is still built for it; only the rest stays out of "all".
+ get_directory_property(targets BUILDSYSTEM_TARGETS)
+ foreach(target ${targets})
+  if(NOT target STREQUAL "ynotbit")
+   set_target_properties(${target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+  endif()
+ endforeach()
 endif()

@@ -1,6 +1,10 @@
 # The Qt app, its tools and its tests: everything that needs Qt. CMakeLists.txt includes this file when YNOTBIT_QT is ON.
 # miniupnpc, to open the node's port on a home router (UPnP IGD). Pinned and
-# checksummed; built static, nothing installed.
+# checksummed; built static, nothing installed. Like secp256k1, it comes from the submodule
+# in third_party/miniupnp when there is one and is fetched when there is not.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniupnp/miniupnpc/CMakeLists.txt)
+ set(FETCHCONTENT_SOURCE_DIR_MINIUPNPC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniupnp)
+endif()
 set(UPNPC_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(UPNPC_BUILD_STATIC ON CACHE BOOL "" FORCE)
 set(UPNPC_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -77,12 +81,28 @@ target_compile_definitions(ynotbit PRIVATE YNOTBIT_VERSION="${PROJECT_VERSION}")
 install(TARGETS ynotbit BUNDLE DESTINATION . RUNTIME DESTINATION bin)
 if(UNIX AND NOT APPLE)
  include(GNUInstallDirs)
- install(FILES assets/ynotbit.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
- foreach(size 16 20 24 32 40 48 64 96 128 256 512 1024)
+ # The name the desktop entry, the icons and the metainfo are installed under. A Flatpak names
+ # them by its app ID (-DYNOTBIT_APP_ID=io.github.yshurik.ynotbit) and takes the files of
+ # packaging/flatpak, whose icons stop at 512x512.
+ set(YNOTBIT_APP_ID ynotbit CACHE STRING "Name the desktop entry, icons and metainfo install under")
+ if(YNOTBIT_APP_ID STREQUAL "ynotbit")
+  install(FILES assets/ynotbit.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+  set(icon_sizes 16 20 24 32 40 48 64 96 128 256 512 1024)
+ else()
+  install(FILES packaging/flatpak/${YNOTBIT_APP_ID}.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+  install(FILES packaging/flatpak/${YNOTBIT_APP_ID}.metainfo.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+  set(icon_sizes 16 20 24 32 40 48 64 96 128 256 512)
+ endif()
+ foreach(size ${icon_sizes})
   install(FILES assets/icons/application/${size}.png
-   DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps RENAME ynotbit.png)
+   DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps RENAME ${YNOTBIT_APP_ID}.png)
  endforeach()
- install(FILES assets/ynotbit.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+ install(FILES assets/ynotbit.svg
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps RENAME ${YNOTBIT_APP_ID}.svg)
+ set(license_dir ${CMAKE_INSTALL_DATADIR}/licenses/${YNOTBIT_APP_ID})
+ install(DIRECTORY licenses/ DESTINATION ${license_dir})
+ install(FILES third_party/notbit/COPYING DESTINATION ${license_dir} RENAME notbit.txt)
+ install(FILES LICENSE THIRD_PARTY.md DESTINATION ${license_dir})
 endif()
 add_executable(lifecycle_tests tests/lifecycle_tests.cpp)
 target_link_libraries(lifecycle_tests PRIVATE bmcore)
