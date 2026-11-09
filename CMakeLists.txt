@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(ynotbit VERSION 0.8.3 LANGUAGES C CXX) # the one place the version is set
+project(ynotbit VERSION 0.8.4 LANGUAGES C CXX) # the one place the version is set
 set(CMAKE_CXX_STANDARD 20)
 # Off builds only what has no Qt: the node, bmclient and their tests (servers, containers).
 option(YNOTBIT_QT "Build the Qt app, its tools and its tests" ON)
