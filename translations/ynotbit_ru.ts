@@ -2047,6 +2047,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
         <translation>Почтовый ящик уже используется</translation>
     </message>
     <message>
+        <source>This location does not support the file locking a mailbox needs. Choose a folder on a local drive.</source>
+        <translation>Это место не поддерживает блокировку файлов, нужную почтовому ящику. Выберите папку на локальном диске.</translation>
+    </message>
+    <message>
         <source>Mailbox is open in another instance</source>
         <translation>Почтовый ящик открыт в другом экземпляре приложения</translation>
     </message>

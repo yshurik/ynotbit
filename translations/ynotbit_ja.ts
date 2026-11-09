@@ -2047,6 +2047,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
         <translation>メールボックスは使用中です</translation>
     </message>
     <message>
+        <source>This location does not support the file locking a mailbox needs. Choose a folder on a local drive.</source>
+        <translation>この場所は、メールボックスに必要なファイルロックに対応していません。ローカルドライブのフォルダーを選んでください。</translation>
+    </message>
+    <message>
         <source>Mailbox is open in another instance</source>
         <translation>メールボックスは別のインスタンスで開かれています</translation>
     </message>

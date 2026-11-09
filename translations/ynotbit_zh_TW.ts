@@ -2047,6 +2047,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
         <translation>信箱正在使用中</translation>
     </message>
     <message>
+        <source>This location does not support the file locking a mailbox needs. Choose a folder on a local drive.</source>
+        <translation>此位置不支援信箱所需的檔案鎖定。請選擇本機磁碟機上的資料夾。</translation>
+    </message>
+    <message>
         <source>Mailbox is open in another instance</source>
         <translation>信箱已在另一個執行個體中開啟</translation>
     </message>

@@ -2047,6 +2047,10 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
         <translation>메일함이 사용 중입니다</translation>
     </message>
     <message>
+        <source>This location does not support the file locking a mailbox needs. Choose a folder on a local drive.</source>
+        <translation>이 위치는 메일함에 필요한 파일 잠금을 지원하지 않습니다. 로컬 드라이브의 폴더를 선택하세요.</translation>
+    </message>
+    <message>
         <source>Mailbox is open in another instance</source>
         <translation>다른 인스턴스에서 메일함이 열려 있습니다</translation>
     </message>

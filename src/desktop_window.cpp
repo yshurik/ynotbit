@@ -3195,6 +3195,11 @@ void DesktopWindow::updateTheme() {
     chats_->setDark(dark);
     if (feed_)
         feed_->setDark(dark);
+    // The error line under the header: an amber ground, so a refused action is not missed.
+    error_->setStyleSheet(dark ? "background:#5a3d00;color:#ffd98a;font-weight:600;"
+                                 "border-bottom:1px solid #8a5f00;"
+                               : "background:#ffe8b3;color:#5c3b00;font-weight:600;"
+                                 "border-bottom:1px solid #e0b24a;");
     setStyleSheet(
         QString(
             "QWidget{font-size:13px;} QMainWindow,QDialog{background:%1;} "
@@ -4437,8 +4442,12 @@ void DesktopWindow::chatWithContact(const QString &peer) {
 void DesktopWindow::newVault() {
     // Nothing to ask: an open vault holds nothing unsaved, and stays open
     // until the new one takes its place.
-    const auto documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    NewVaultDialog dialog(session_, documents.isEmpty() ? QDir::homePath() : documents,
+    // Where the last vault is, if there is one: the user keeps the files together.
+    auto folder = session_.vaultPath().isEmpty() ? QString()
+                                                  : QFileInfo(session_.vaultPath()).absolutePath();
+    if (folder.isEmpty())
+        folder = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    NewVaultDialog dialog(session_, folder.isEmpty() ? QDir::homePath() : folder,
                           appearance_.dark(), this);
     if (dialog.exec() == QDialog::Accepted)
         targetVaultPath_ = session_.vaultPath(); // locked again, the lock screen offers it
