@@ -17,6 +17,10 @@ if(WIN32)
  add_dependencies(bmclient_tests node_child)
  target_compile_definitions(bmclient_tests PRIVATE BMC_TEST_CHILD="$<TARGET_FILE:node_child>")
 endif()
+if(MSVC)
+ # The legacy preprocessor reads \u and \/ inside raw strings passed to CHECK macros as escapes.
+ target_compile_options(bmclient_tests PRIVATE /Zc:preprocessor)
+endif()
 add_test(NAME bmclient COMMAND bmclient_tests)
 # The Qt-free half of scripts/compat-check.sh: it writes a vault and a mailbox for the previous
 # release to open, and prints a report of what it reads for the two to be compared.

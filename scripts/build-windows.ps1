@@ -31,6 +31,8 @@ if (-not $QtPrefix -or -not (Test-Path "$QtPrefix\bin\qmake.exe")) {
 if (-not $VcpkgRoot -or -not (Test-Path "$VcpkgRoot\scripts\buildsystems\vcpkg.cmake")) {
     throw "Set -VcpkgRoot to your vcpkg checkout, e.g. C:\vcpkg"
 }
+# Qt-linked tests load Qt6*.dll from PATH; vcpkg copies only its own DLLs next to the binaries.
+$env:Path = "$QtPrefix\bin;$env:Path"
 
 # Submodules (secp256k1, miniupnp) are needed.
 git submodule update --init --recursive
