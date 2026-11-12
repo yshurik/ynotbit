@@ -40,10 +40,61 @@ class LyingSolver : public bmc::PowSolver {
 };
 } // namespace
 
+TEST(the_expected_work_follows_the_size_the_life_and_the_requirements_of_the_object) {
+    using bmc::ProofOfWork;
+    // The network's own formula: trials x (length + length x life / 65536), the length being the
+    // size and the extra bytes.
+    CHECK(ProofOfWork::expectedTrials(0, 0, 1000, 1000) == 1e6);
+    CHECK(ProofOfWork::expectedTrials(1000, 0, 1000, 1000) == 2e6);
+    CHECK(ProofOfWork::expectedTrials(1000, 65536, 1000, 1000) ==
+          4e6); // a life of 65536 s doubles it
+    CHECK(ProofOfWork::expectedTrials(1000, 0, 3000, 1000) == 6e6);
+    CHECK(ProofOfWork::expectedTrials(1000, 0, 1000, 3000) == 4e6);
+    // A life that is over counts as none, and a requirement below the minimum is the minimum.
+    CHECK(ProofOfWork::expectedTrials(1000, -60, 1000, 1000) == 2e6);
+    CHECK(ProofOfWork::expectedTrials(1000, 0, 1, 1) == 2e6);
+    // The defaults are the minimum of the network.
+    CHECK(ProofOfWork::expectedTrials(1000, 0) == 2e6);
+    // A page of 70 KB that lives a day against a short reply: the gap the order of mining is about.
+    CHECK(ProofOfWork::expectedTrials(70000, 86400) >
+          30 * ProofOfWork::expectedTrials(1000, 86400));
+}
+
+TEST(workers_are_every_core_but_one_or_the_cpu_quota_a_container_has) {
+    using bmc::ProofOfWork;
+    CHECK_EQ(ProofOfWork::workerCountFor(56, 0), 55u); // no limit: one core stays free
+    CHECK_EQ(ProofOfWork::workerCountFor(4, 0), 3u);
+    CHECK_EQ(ProofOfWork::workerCountFor(1, 0), 1u);
+    CHECK_EQ(ProofOfWork::workerCountFor(2, 0), 1u);
+    // A container allowed 2 cores of a big host (56 here): a thread per core of the host would only
+    // take its turn in bursts of the quota (and keep the cores slow), so it is the quota, rounded
+    // down, and all of it: a bot has nothing else to keep responsive.
+    CHECK_EQ(ProofOfWork::workerCountFor(56, 2.0), 2u);
+    CHECK_EQ(ProofOfWork::workerCountFor(56, 2.5), 2u);
+    CHECK_EQ(ProofOfWork::workerCountFor(56, 8.0), 8u);
+    CHECK_EQ(ProofOfWork::workerCountFor(56, 0.5), 1u); // never none
+    // A quota that is the whole machine, or more, is no limit.
+    CHECK_EQ(ProofOfWork::workerCountFor(4, 4.0), 3u);
+    CHECK_EQ(ProofOfWork::workerCountFor(4, 8.0), 3u);
+}
+
+TEST(a_cgroups_cpu_quota_is_read_in_cores) {
+    using bmc::ProofOfWork;
+    CHECK_EQ(ProofOfWork::parseCpuMax("200000 100000\n"), 2.0);
+    CHECK_EQ(ProofOfWork::parseCpuMax("50000 100000"), 0.5);
+    CHECK_EQ(ProofOfWork::parseCpuMax("800000 100000"), 8.0);
+    CHECK_EQ(ProofOfWork::parseCpuMax("max 100000\n"), 0.0); // no limit
+    CHECK_EQ(ProofOfWork::parseCpuMax(""), 0.0);
+    CHECK_EQ(ProofOfWork::parseCpuMax("garbage"), 0.0);
+    CHECK_EQ(ProofOfWork::parseCpuMax("0 100000"), 0.0);
+    CHECK_EQ(ProofOfWork::parseCpuMax("100000 0"), 0.0);
+    CHECK_EQ(ProofOfWork::parseCpuMax("-1 100000"), 0.0);
+}
+
 TEST(proof_of_work_finds_a_valid_nonce_and_changes_only_the_nonce) {
     const unsigned cores = std::max(1u, std::thread::hardware_concurrency());
-    const unsigned expected = std::max(1u, cores - 1);
-    CHECK_EQ(bmc::ProofOfWork::workerCount(), expected); // one core stays free
+    CHECK_EQ(bmc::ProofOfWork::workerCount(),
+             bmc::ProofOfWork::workerCountFor(cores, bmc::ProofOfWork::cpuLimit()));
     const auto object = work();
     bmc::ProofOfWork pow;
     pow.start(object);

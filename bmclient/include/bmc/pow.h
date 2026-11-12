@@ -7,6 +7,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -45,8 +46,26 @@ class ProofOfWork {
     }
     // The solved object, once; empty if there is none.
     Bytes take();
-    // Every core but one, so the window stays responsive while a letter is prepared.
+    // Every core but one, so the window stays responsive while a letter is prepared. In a container
+    // that has a CPU quota (a cgroup limit) it is the quota, rounded down: a bot has nothing else
+    // to keep responsive, and more threads than the quota would only take their turns in bursts of
+    // it (a thread per core of a big host, on a quota of 2 cores, solved at a fifth of the speed).
     static unsigned workerCount();
+    // The same, for a count of cores and a CPU limit in cores (0: none).
+    static unsigned workerCountFor(unsigned cores, double cpuLimit);
+    // The CPU limit of this process's cgroup in cores (cgroup v2's cpu.max, or v1's cfs quota); 0
+    // for none, or when it cannot be read.
+    static double cpuLimit();
+    // What cpu.max says ("200000 100000": 2 cores; "max 100000": none) as a number of cores, 0 for
+    // none.
+    static double parseCpuMax(std::string_view text);
+    // How many nonces the search is expected to try for an object of `size` bytes that lives `ttl`
+    // seconds under the recipient's requirements: what start() divides 2^64 by, as a number to
+    // compare jobs with (it does not throw). The search has no memory, so the work still to do is
+    // the same whenever it is asked, and a job may be set aside for a cheaper one and started again
+    // for nothing.
+    static double expectedTrials(size_t size, int64_t ttl, uint64_t trials = 1000,
+                                 uint64_t extra = 1000);
     // The solver searches alongside the CPU workers (null: CPU only).
     static void setSolver(std::shared_ptr<PowSolver> solver);
     static void setSolverEnabled(bool on);

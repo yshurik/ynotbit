@@ -286,6 +286,8 @@ void Delivery::plan(Mailbox &m, const Vault &v, int64_t time) {
 
 void Delivery::processJobs(Mailbox &m, bool online, int64_t time) {
     std::error_code ignored;
+    std::optional<NetworkJob> next; // the queued job with the least work, once the loop is through
+    double nextCost = 0;
     auto jobs = m.jobs();
     if (!mining_.empty()) {
         auto it =
@@ -322,10 +324,12 @@ void Delivery::processJobs(Mailbox &m, bool online, int64_t time) {
             }
         }
         if (j.state == "queued" || j.state == "mining") {
-            if (mining_.empty()) {
-                pow_.start(j.payload, j.nonceTrials, j.extraBytes);
-                mining_ = j.id;
-                m.updateJob(j.id, "mining");
+            // Which of them is mined is decided below, when all of them are known.
+            const auto cost = ProofOfWork::expectedTrials(j.payload.size(), j.expires - time,
+                                                          j.nonceTrials, j.extraBytes);
+            if (!next || cost < nextCost || (cost == nextCost && j.id == mining_)) {
+                nextCost = cost;
+                next = std::move(j);
             }
             continue;
         }
@@ -390,6 +394,21 @@ void Delivery::processJobs(Mailbox &m, bool online, int64_t time) {
                 m.setDelivery(j.owner, "publishing",
                               "Waiting for the relay to offer this object to connected peers");
         }
+    }
+    // What is mined is the job with the least work, and a job is set aside for a cheaper one that
+    // comes. The search has no memory (a nonce is as likely as the next whatever was tried), so the
+    // work still to do is the same when it is started again: a job set aside loses nothing, and a
+    // short reply does not wait the minutes that a page of a block's transactions needs. A tie
+    // keeps the job being mined, and then the order of jobs() (an acknowledgment, a public key, the
+    // rest by age) decides. One that has just found its nonce is left to be taken at the next tick.
+    if (next && next->id != mining_ && (mining_.empty() || !pow_.done())) {
+        if (!mining_.empty()) {
+            m.updateJob(mining_, "queued");
+            mining_.clear();
+        }
+        pow_.start(next->payload, next->nonceTrials, next->extraBytes);
+        mining_ = next->id;
+        m.updateJob(next->id, "mining");
     }
 }
 

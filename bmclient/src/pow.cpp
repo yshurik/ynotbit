@@ -4,6 +4,8 @@
 #include <bmc/pow.h>
 #include <bmc/random.h>
 #include <bmc/wire.h>
+#include <cstdlib>
+#include <fstream>
 #include <limits>
 #include <openssl/sha.h>
 #include <stdexcept>
@@ -144,9 +146,55 @@ uint64_t ProofOfWork::trialValue(uint64_t nonce, const unsigned char initial[64]
     storeBE64(nonce, nonceBytes);
     return value(nonceBytes, initial);
 }
-unsigned ProofOfWork::workerCount() {
-    const unsigned cores = std::thread::hardware_concurrency();
+double ProofOfWork::expectedTrials(size_t size, int64_t ttl, uint64_t trials, uint64_t extra) {
+    // target()'s divisor, with the same floors, in a double: 2^64 / it is the threshold.
+    const double length = double(size) + double(std::max<uint64_t>(extra, 1000));
+    return double(std::max<uint64_t>(trials, 1000)) *
+           (length + length * double(std::max<int64_t>(ttl, 0)) / 65536.0);
+}
+unsigned ProofOfWork::workerCountFor(unsigned cores, double cpuLimit) {
+    if (cpuLimit > 0 && cpuLimit < cores)
+        return std::max(1u, unsigned(cpuLimit));
     return cores > 1 ? cores - 1 : 1;
+}
+unsigned ProofOfWork::workerCount() {
+    return workerCountFor(std::thread::hardware_concurrency(), cpuLimit());
+}
+double ProofOfWork::parseCpuMax(std::string_view text) {
+    const auto space = text.find(' ');
+    if (space == std::string_view::npos)
+        return 0;
+    const std::string quota(text.substr(0, space));
+    std::string period(text.substr(space + 1));
+    while (!period.empty() &&
+           (period.back() == '\n' || period.back() == '\r' || period.back() == ' '))
+        period.pop_back();
+    char *end = nullptr;
+    const double q = std::strtod(quota.c_str(), &end);
+    if (quota.empty() || *end != '\0')
+        return 0;
+    const double p = std::strtod(period.c_str(), &end);
+    if (period.empty() || *end != '\0' || q <= 0 || p <= 0)
+        return 0;
+    return q / p;
+}
+double ProofOfWork::cpuLimit() {
+    static const auto read = [](const char *path) {
+        std::ifstream in(path);
+        std::string text, line;
+        while (std::getline(in, line))
+            text += line + "\n";
+        return text;
+    };
+    // cgroup v2
+    if (const auto v2 = read("/sys/fs/cgroup/cpu.max"); !v2.empty())
+        return parseCpuMax(v2);
+    // cgroup v1
+    const auto quota = read("/sys/fs/cgroup/cpu/cpu.cfs_quota_us");
+    const auto period = read("/sys/fs/cgroup/cpu/cpu.cfs_period_us");
+    if (quota.empty() || period.empty())
+        return 0;
+    return parseCpuMax(quota.substr(0, quota.find('\n')) + " " + period);
 }
 void ProofOfWork::join() {
     for (auto &worker : workers_)

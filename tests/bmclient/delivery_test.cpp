@@ -2,6 +2,7 @@
 // and the scan that reads the node's store. The fixtures are the same as tests/delivery_tests.cpp,
 // which pins the same behaviour through the Qt veneer.
 #include "fake_node.h"
+#include <atomic>
 #include <bmc/cache.h>
 #include <bmc/chat_format.h>
 #include <bmc/clock.h>
@@ -18,6 +19,7 @@
 #include <map>
 #include <memory>
 #include <ntb-object-db.h>
+#include <optional>
 #include <thread>
 #include <vector>
 extern "C" {
@@ -130,6 +132,200 @@ TEST(a_broadcast_is_published_without_a_recipient_acknowledgment) {
     CHECK_EQ(a.mailbox.outgoing(id).state, std::string("published"));
     CHECK(!a.mailbox.outgoing(id).objectHash.empty());
     CHECK_EQ(a.mailbox.message(id).folder, std::string("Sent"));
+}
+
+// A broadcast of `bytes` bytes that lives `seconds`: the work it needs is about
+// 1000 x (bytes + 1000) x (1 + seconds / 65536) trials.
+static std::string queueBroadcast(Side &a, Side &b, const char *subject, size_t bytes,
+                                  int64_t seconds) {
+    const auto id =
+        a.mailbox.saveDraft({}, a.identity, b.identity, subject, std::string(bytes, 'x'));
+    a.mailbox.queueDraft(id, "broadcast", kNow() + seconds);
+    return id;
+}
+
+TEST(a_small_object_is_mined_while_a_big_one_waits) {
+    Side a("alice", "Alice"), b("bob", "Bob");
+    // 200 KB for 28 days is about 8e9 trials: minutes of work for every core of any machine that
+    // runs this, so the big one is still being mined when the test ends.
+    const auto big = queueBroadcast(a, b, "Big", 200000, 28 * 86400);
+    a.delivery->tick(a.mailbox, a.vault, true, kNow());
+    CHECK(a.delivery->working());
+    // The small one (about 1.4e6 trials) comes after it and must not wait for it: a bot's short
+    // reply to a chat is such an object, and a page of a block's transactions is the big one.
+    const auto small = queueBroadcast(a, b, "Small", 100, 3600);
+    a.delivery->tick(a.mailbox, a.vault, true, kNow());
+    // The job that was set aside says "queued", the one being mined says "mining".
+    const auto jobState = [&](const std::string &owner) {
+        for (const auto &j : a.mailbox.jobs())
+            if (j.owner == owner)
+                return j.state;
+        return std::string("none");
+    };
+    CHECK_EQ(jobState(small), std::string("mining"));
+    CHECK_EQ(jobState(big), std::string("queued"));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    while (a.mailbox.outgoing(small).state != "published" &&
+           std::chrono::steady_clock::now() < deadline) {
+        a.delivery->tick(a.mailbox, a.vault, true, kNow());
+        fake::deliver(a.root, b.root, kNow());
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    CHECK_EQ(a.mailbox.outgoing(small).state, std::string("published"));
+    // The big one is set aside, not given up: it is mined again as soon as nothing smaller is left.
+    CHECK_EQ(a.mailbox.outgoing(big).state, std::string("calculating_message"));
+    CHECK(a.delivery->working());
+    a.delivery->stop();
+}
+
+TEST(a_job_set_aside_for_a_smaller_one_is_mined_again_and_finishes) {
+    Side a("alice", "Alice"), b("bob", "Bob");
+    // 20 KB for an hour is about 2e7 trials: a second or two on the slowest machines that run this.
+    const auto medium = queueBroadcast(a, b, "Medium", 20000, 3600);
+    a.delivery->tick(a.mailbox, a.vault, true, kNow());
+    CHECK(a.delivery->working());
+    const auto small = queueBroadcast(a, b, "Small", 100, 3600);
+    const auto published = [&](const std::string &id) {
+        return a.mailbox.outgoing(id).state == "published";
+    };
+    std::string first;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (!(published(small) && published(medium)) &&
+           std::chrono::steady_clock::now() < deadline) {
+        a.delivery->tick(a.mailbox, a.vault, true, kNow());
+        fake::deliver(a.root, b.root, kNow());
+        if (first.empty())
+            first = published(small) ? small : published(medium) ? medium : "";
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    CHECK(published(small));
+    CHECK(published(medium));
+    CHECK_EQ(first, small); // the smaller one went first, though the other was being mined
+    a.delivery->stop();
+}
+
+TEST(the_work_of_a_job_counts_the_life_of_its_object_and_not_only_its_size) {
+    Side a("alice", "Alice"), b("bob", "Bob");
+    // 100 bytes for 28 days is about 4e7 trials; 20 KB for an hour is about 2e7: the bigger object
+    // is the cheaper job, and it goes first though the other was being mined.
+    const auto longLived = queueBroadcast(a, b, "Long", 100, 28 * 86400);
+    a.delivery->tick(a.mailbox, a.vault, true, kNow());
+    CHECK(a.delivery->working());
+    const auto bigger = queueBroadcast(a, b, "Bigger", 20000, 3600);
+    const auto published = [&](const std::string &id) {
+        return a.mailbox.outgoing(id).state == "published";
+    };
+    std::string first;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(90);
+    while (!(published(longLived) && published(bigger)) &&
+           std::chrono::steady_clock::now() < deadline) {
+        a.delivery->tick(a.mailbox, a.vault, true, kNow());
+        fake::deliver(a.root, b.root, kNow());
+        if (first.empty())
+            first = published(bigger) ? bigger : published(longLived) ? longLived : "";
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    CHECK(published(longLived));
+    CHECK(published(bigger));
+    CHECK_EQ(first, bigger);
+    a.delivery->stop();
+}
+
+namespace {
+// A solver that only counts the searches it is given (one for each start() of the proof of work)
+// and waits to be cancelled.
+class CountingSolver : public bmc::PowSolver {
+  public:
+    std::atomic<int> searched{0};
+    std::optional<uint64_t> search(const unsigned char *, uint64_t, uint64_t,
+                                   const std::atomic_bool &cancel) override {
+        ++searched;
+        while (!cancel)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return std::nullopt;
+    }
+    void disable(const std::string &) override {}
+};
+// The solver is the proof of work's for as long as this lives.
+struct SolverInstalled {
+    explicit SolverInstalled(std::shared_ptr<bmc::PowSolver> solver) {
+        bmc::ProofOfWork::setSolverEnabled(true);
+        bmc::ProofOfWork::setSolver(std::move(solver));
+    }
+    ~SolverInstalled() {
+        bmc::ProofOfWork::setSolver(nullptr);
+    }
+};
+} // namespace
+
+TEST(a_job_being_mined_is_neither_restarted_nor_given_up_for_one_of_the_same_work) {
+    const auto solver = std::make_shared<CountingSolver>();
+    SolverInstalled installed(solver);
+    Side a("alice", "Alice"), b("bob", "Bob");
+    const auto expires = kNow() + 3600;
+    // 1000 times the work per byte, so nothing here is ever solved.
+    const auto add = [&](const char *kind, const char *address) {
+        bmc::NetworkJob job;
+        job.kind = kind;
+        job.address = address;
+        job.state = "queued";
+        job.payload = bmc::Wire::acknowledgment(bmc::Bytes(32, 'p'), expires);
+        job.expires = expires;
+        job.nonceTrials = 1000000;
+        job.extraBytes = 1000000;
+        a.mailbox.addJob(job);
+    };
+    const auto turns = [&](int n) {
+        for (int i = 0; i < n; ++i) {
+            a.delivery->tick(a.mailbox, a.vault, true, kNow());
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+    };
+    add("message", "first");
+    turns(40);
+    CHECK_EQ(solver->searched.load(), 1); // started once, not again at every turn
+    // A second job of the same work, which the order of jobs() lists first (a public key goes
+    // before a message): the one that is being mined keeps its place.
+    add("pubkey", "second");
+    turns(40);
+    CHECK_EQ(solver->searched.load(), 1);
+    a.delivery->stop();
+}
+
+TEST(the_work_a_recipient_asks_for_counts_in_the_order_of_mining) {
+    Side a("alice", "Alice"), b("bob", "Bob");
+    // Two objects of the same size and life. The first is for a recipient that asks for 1000 times
+    // the work per byte (the most the protocol lets a recipient ask for), which is minutes of work
+    // for any machine that runs this; the second asks for the least.
+    const auto expires = kNow() + 3600;
+    const auto add = [&](const char *address, uint64_t trials, uint64_t extra) {
+        bmc::NetworkJob job;
+        job.kind = "pubkey";
+        job.address = address;
+        job.state = "queued";
+        job.payload = bmc::Wire::acknowledgment(bmc::Bytes(32, 'p'), expires);
+        job.expires = expires;
+        job.nonceTrials = trials;
+        job.extraBytes = extra;
+        a.mailbox.addJob(job);
+    };
+    add("hard", 1000000, 1000000);
+    a.delivery->tick(a.mailbox, a.vault, true, kNow());
+    CHECK(a.delivery->working());
+    add("easy", 1000, 1000);
+    const auto done = [&] {
+        return a.mailbox.setting("pubkey:easy", "") == std::to_string(expires);
+    };
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    while (!done() && std::chrono::steady_clock::now() < deadline) {
+        a.delivery->tick(a.mailbox, a.vault, true, kNow());
+        fake::deliver(a.root, b.root, kNow());
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    CHECK(done());
+    CHECK_EQ(a.mailbox.setting("pubkey:hard", ""), std::string());
+    CHECK(a.delivery->working()); // the hard one is mined again
+    a.delivery->stop();
 }
 
 TEST(a_letter_reaches_the_other_side_and_its_acknowledgment_comes_back) {
