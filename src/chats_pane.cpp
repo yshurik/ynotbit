@@ -2,6 +2,9 @@
 #include "letter_render.h"
 #include <QtWidgets>
 #include <QTextDocument>
+#include <QTextFrame>
+#include <QTextTable>
+#include <bmc/bot_trailer.h>
 
 namespace bm {
 namespace {
@@ -141,16 +144,40 @@ class HeaderAddress : public QLabel {
         return {0, QLabel::minimumSizeHint().height()};
     }
 };
+// A message's Markdown as GitHub reads it (tables, strikethrough, bare links), with no HTML. The
+// importer's tables have no lines and no room in their cells: a hairline and some padding are
+// given here, to the table of the label and to that of its height alike.
+void loadMarkdown(QTextDocument &document, const QString &markdown) {
+    QTextDocument::MarkdownFeatures features = QTextDocument::MarkdownDialectGitHub;
+    features |= QTextDocument::MarkdownNoHTML;
+    document.setMarkdown(markdown, features);
+    for (QTextFrame *frame : document.rootFrame()->childFrames())
+        if (auto table = qobject_cast<QTextTable *>(frame)) {
+            auto format = table->format();
+            format.setCellPadding(5);
+            format.setCellSpacing(0);
+            format.setBorder(1);
+            format.setBorderStyle(QTextFrameFormat::BorderStyle_Solid);
+            format.setBorderBrush(QColor(128, 128, 128, 110));
+            table->setFormat(format);
+        }
+}
 // A message's text. QLabel sizes rich text by laying it out again and again (for its hint, its
 // minimum, and its height at a width), several times what one layout takes, and a window of
 // bubbles is that many times over. This label answers its size from one layout of the same
-// text in a QTextDocument; QLabel itself lays the text out only when it is painted.
+// text in a QTextDocument; QLabel itself lays the text out only when it is painted. The
+// document is made of the label's own HTML, as QLabel makes its own: the tables of the HTML
+// are not the importer's (a cell spacing, a border, are read from their attributes), and a
+// height from the importer's tables would be a few pixels short for each row.
 class BodyLabel : public QLabel {
   public:
-    BodyLabel(const QString &markdown, QWidget *parent) : QLabel(parent), markdown_(markdown) {
+    BodyLabel(const QString &markdown, QWidget *parent) : QLabel(parent) {
+        QTextDocument source;
+        loadMarkdown(source, markdown);
+        html_ = source.toHtml();
+        setText(html_);
         QTextDocument document;
-        document.setMarkdown(markdown_, QTextDocument::MarkdownNoHTML);
-        setText(document.toHtml());
+        document.setHtml(html_);
         setObjectName("chatBody");
         setTextFormat(Qt::RichText);
         setWordWrap(true);
@@ -180,7 +207,7 @@ class BodyLabel : public QLabel {
             QTextOption option = document.defaultTextOption();
             option.setWrapMode(QTextOption::WordWrap);
             document.setDefaultTextOption(option);
-            document.setMarkdown(markdown_, QTextDocument::MarkdownNoHTML);
+            document.setHtml(html_);
             document.setTextWidth(width);
             width_ = width;
             height_ = qCeil(document.size().height());
@@ -195,7 +222,7 @@ class BodyLabel : public QLabel {
     }
 
   private:
-    QString markdown_;
+    QString html_;
     int ideal_ = 0, fits_ = 0, flat_ = 0;
     mutable int width_ = -1, height_ = 0;
 };
@@ -661,6 +688,24 @@ ChatsPane::Row ChatsPane::makeRow(const QVariantMap &item) {
     row.footer->setContentsMargins(0, 0, 0, 0);
     row.footer->setSpacing(4);
     row.footer->addStretch(1);
+    // A bot's reply carries its JSON: one click copies it, with indents.
+    if (const auto json = item.value("json").toString(); !json.isEmpty()) {
+        auto copy = new QToolButton(bubble);
+        copy->setObjectName("chatJsonButton");
+        copy->setText("{ }");
+        copy->setToolTip(tr("Copy JSON"));
+        copy->setAccessibleName(tr("Copy JSON"));
+        copy->setAutoRaise(true);
+        copy->setCursor(Qt::PointingHandCursor);
+        connect(copy, &QToolButton::clicked, copy, [copy, json] {
+            QApplication::clipboard()->setText(
+                QString::fromStdString(bmc::indentJson(json.toStdString())));
+            copy->setToolTip(tr("Copied"));
+            QToolTip::showText(copy->mapToGlobal(QPoint(0, copy->height())), tr("Copied"), copy);
+            QTimer::singleShot(1500, copy, [copy] { copy->setToolTip(tr("Copy JSON")); });
+        });
+        row.footer->addWidget(copy);
+    }
     auto details = new QLabel(messageTime(item.value("received").toLongLong()), bubble);
     details->setObjectName("chatDetails");
     row.footer->addWidget(details);
@@ -730,7 +775,8 @@ void ChatsPane::setMessages(const QVariantList &messages, bool hasOlder) {
             const auto &was = rows_[i].data;
             if (item.value("id") != was.value("id") || item.value("body") != was.value("body") ||
                 item.value("outgoing") != was.value("outgoing") ||
-                item.value("received") != was.value("received"))
+                item.value("received") != was.value("received") ||
+                item.value("json") != was.value("json"))
                 start = -1;
         }
     }
@@ -821,7 +867,10 @@ void ChatsPane::applyTheme() {
                 "border-radius:13px;} "
                 "QWidget#outgoingChatBubble{background:%5;border-radius:10px;} "
                 "QWidget#incomingChatBubble{background:%6;border-radius:10px;} "
-                "QLabel#chatDetails{color:palette(placeholder-text);font-size:11px;}")
+                "QLabel#chatDetails{color:palette(placeholder-text);font-size:11px;} "
+                "QToolButton#chatJsonButton{color:palette(placeholder-text);font-size:11px;"
+                "border:0;padding:0 4px;} "
+                "QToolButton#chatJsonButton:hover{color:%3;}")
             .arg(t.surface, t.border, t.accent, t.accentHover, dark_ ? "#174944" : "#def4ef",
                  dark_ ? "#30343c" : "#f2f3f5");
     if (styleSheet() != sheet)

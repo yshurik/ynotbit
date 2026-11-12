@@ -4,7 +4,8 @@ add_executable(bmclient_tests main.cpp foundation_test.cpp text_test.cpp json_te
     qtstream_test.cpp vault_test.cpp vault_edit_test.cpp vault_import_test.cpp mailbox_test.cpp mailbox_query_test.cpp
     mailbox_delivery_test.cpp mailbox_import_test.cpp mailbox_chat_test.cpp pybitmessage_test.cpp pybm_import_test.cpp sqlite_test.cpp path_test.cpp cache_test.cpp
     delivery_test.cpp client_test.cpp scenario_test.cpp golden_test.cpp
-    node_config_test.cpp node_status_test.cpp node_supervisor_test.cpp node_watch_test.cpp nickbot_test.cpp)
+    node_config_test.cpp node_status_test.cpp node_supervisor_test.cpp node_watch_test.cpp nickbot_test.cpp
+    bot_trailer_test.cpp)
 target_link_libraries(bmclient_tests PRIVATE bmclient ntb_object_db)
 target_compile_definitions(bmclient_tests PRIVATE BMC_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/golden"
     BMC_NICKBOT_TESTDATA="${CMAKE_SOURCE_DIR}/nickbot/testdata")

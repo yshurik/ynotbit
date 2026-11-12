@@ -2,7 +2,6 @@
 #include <QString>
 namespace bm {
 constexpr qint64 kChatTtlSeconds = 86400;
-constexpr int kMaxChatBodyBytes = 8192;
 struct ChatPayload {
     qint64 seqno = 0;
     QString body;

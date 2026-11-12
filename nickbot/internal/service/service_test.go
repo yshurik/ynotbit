@@ -740,8 +740,10 @@ func TestEveryReplyEndsWithOneLineOfJSON(t *testing.T) {
 				t.Errorf("%q: a trailer before the end: %q", text, line)
 			}
 		}
+		// nickbot's answers are short lists, a few KB at most: a chat itself may be 260 KB, so this is nickbot's own
+		// habit (it was the chat's limit, 8192, until 2026-11-12), kept as a check that no answer grows by accident.
 		if len(r.Text) > 8000 {
-			t.Errorf("%q: the reply is %d bytes; a chat holds 8192", text, len(r.Text))
+			t.Errorf("%q: the reply is %d bytes; nickbot's answers are short", text, len(r.Text))
 		}
 	}
 }

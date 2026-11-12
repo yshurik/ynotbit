@@ -173,7 +173,8 @@ std::vector<std::string> answers(const std::string &text) {
             each.push_back("Message " + std::to_string(i) + " of " + std::to_string(n));
         return each;
     }
-    // The chat itself is 8192 bytes at most; the quote leaves room for the words around it.
+    // The echo quotes 4000 bytes at most: a choice of this bot, to keep its answers cheap to send
+    // (the proof of work grows with the size), not a limit of chats, which have none of their own.
     std::string quoted = text.substr(0, 4000);
     while (!quoted.empty() && (static_cast<unsigned char>(quoted.back()) & 0xC0) == 0x80 &&
            quoted.size() < text.size())

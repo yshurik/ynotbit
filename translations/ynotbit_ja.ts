@@ -44,6 +44,14 @@
         <translation>未配信</translation>
     </message>
     <message>
+        <source>Copy JSON</source>
+        <translation>JSON をコピー</translation>
+    </message>
+    <message>
+        <source>Copied</source>
+        <translation>コピーしました</translation>
+    </message>
+    <message>
         <source>Enter sends, Shift+Enter starts a new line</source>
         <translation>Enter で送信、Shift+Enter で改行</translation>
     </message>
@@ -2237,10 +2245,6 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
     <message>
         <source>Cannot write %1</source>
         <translation>%1 に書き込めません</translation>
-    </message>
-    <message>
-        <source>Chat message must be between 1 and 8192 bytes</source>
-        <translation>チャットメッセージは1～8192バイトにしてください</translation>
     </message>
     <message>
         <source>crashed</source>

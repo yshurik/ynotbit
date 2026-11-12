@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <bmc/chat_format.h>
 #include <bmc/error.h>
+#include <bmc/identity.h>
 #include <bmc/json.h>
 #include <bmc/nickbot.h>
 #include <bmc/wire.h>
@@ -202,7 +203,7 @@ bool nickList(const Value &v, std::vector<std::string> *out, size_t most) {
 } // namespace
 
 std::optional<Reply> parseTrailer(std::string_view text) {
-    if (text.size() > size_t(kMaxChatBodyBytes))
+    if (text.size() > size_t(kMaxLetterText))
         return {};
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r' || text.back() == ' ' ||
                              text.back() == '\t'))

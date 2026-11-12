@@ -27,6 +27,7 @@
 #include <QStandardPaths>
 #include <QUuid>
 #include <algorithm>
+#include <bmc/bot_trailer.h>
 #include <bmc/clock.h>
 #include <bmc/path.h>
 #include <bmc/pybitmessage.h>
@@ -41,6 +42,19 @@ static QString addressInput(const QString &title, const QString &label, bool *ac
         field->setFont(addressFont());
     *accepted = dialog.exec() == QDialog::Accepted;
     return dialog.textValue();
+}
+// A chat as the pane shows it. One we received that ends in a bot's line for programs ("id:
+// {json}", bmc/bot_trailer.h) is shown without that line, from any peer: a bot is not always in
+// the address book under a name, and the line is not lost, the JSON goes with the message. What
+// we sent is never changed.
+struct ShownChat {
+    QString body, json;
+};
+static ShownChat shownChat(const QString &body, bool outgoing) {
+    if (!outgoing)
+        if (const auto trailer = bmc::splitBotTrailer(bridge::toStd(body)))
+            return {bridge::fromStd(trailer->words), bridge::fromStd(trailer->json)};
+    return {body, {}};
 }
 // Messages arrive already translated (tr() at each call site).
 static void check(bool b, const QString &m) {
@@ -897,18 +911,21 @@ QVariantList Session::chatMessages(QString local, QString peer, int limit, bool 
         *more = false;
     if (!mailboxOpen() || local.isEmpty() || peer.isEmpty())
         return result;
-    // A nickbot's chat ends with a line for programs: the pane shows what a person reads.
-    const bool fromNickbot = nicks_->botIndex(peer) >= 0;
-    for (const auto &message : mailbox_.chatMessages(local, peer, limit, more))
-        result << QVariantMap{{"id", message.id},
-                              {"body", fromNickbot && !message.outgoing
-                                           ? NickClient::withoutTrailer(message.body)
-                                           : message.body},
-                              {"outgoing", message.outgoing},
-                              {"seqno", message.seqno},
-                              {"received", message.received},
-                              {"expires", message.expires},
-                              {"state", message.state}};
+    for (const auto &message : mailbox_.chatMessages(local, peer, limit, more)) {
+        // A bot's reply ends with a line for programs: the pane shows what a person reads, and
+        // keeps the line as "json" for the button that copies it.
+        const auto shown = shownChat(message.body, message.outgoing);
+        QVariantMap item{{"id", message.id},
+                         {"body", shown.body},
+                         {"outgoing", message.outgoing},
+                         {"seqno", message.seqno},
+                         {"received", message.received},
+                         {"expires", message.expires},
+                         {"state", message.state}};
+        if (!shown.json.isEmpty())
+            item["json"] = shown.json;
+        result << item;
+    }
     return result;
 }
 // Not through attempt(): this runs from the window's refresh, and attempt() would
@@ -976,9 +993,7 @@ QVariantList Session::chatConversations() const {
                               {"label", shown.empty() ? summary.peer : shown.plain()},
                               {"local", summary.local},
                               {"localLabel", labels.value(summary.local, summary.local)},
-                              {"body", nicks_->botIndex(summary.peer) >= 0 && !summary.outgoing
-                                           ? NickClient::withoutTrailer(summary.body)
-                                           : summary.body},
+                              {"body", shownChat(summary.body, summary.outgoing).body},
                               {"received", summary.received},
                               {"outgoing", summary.outgoing},
                               {"state", summary.state},

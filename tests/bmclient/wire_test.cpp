@@ -1,6 +1,7 @@
 #include "wire_fixtures.h"
 #include <algorithm>
 #include <bmc/bytes.h>
+#include <bmc/chat_format.h>
 #include <bmc/protocol.h>
 #include <bmc/test.h>
 #include <bmc/wire.h>
@@ -71,6 +72,25 @@ TEST(wire_largest_letter_fits_one_object) {
     CHECK(back && back->message.body.size() > 200000);
     const auto cast = Wire::encodeBroadcast(sender, subject, body, 1700000000);
     CHECK(cast.size() <= size_t(bmc::kMaxObjectBytes));
+}
+
+TEST(wire_largest_chat_fits_one_object) {
+    // The largest chat chatFits() lets through, with the longest sequence number, still fits one
+    // object.
+    const auto sender = fixed(1, 2, 3), recipient = fixed(3, 4, 4);
+    const auto publicRecipient = Wire::publicIdentity(recipient);
+    const auto most = size_t(bmc::kMaxLetterText) -
+                      size_t(bmc::letterTextBytes("", bmc::chatMessageBody(INT64_MAX, "")));
+    const auto json = bmc::chatMessageBody(INT64_MAX, std::string(most, 'x'));
+    CHECK(bmc::chatFits(std::string(most, 'x')));
+    CHECK_EQ(bmc::letterTextBytes("", json), bmc::kMaxLetterText);
+    const auto full =
+        Wire::encodeMessage(sender, publicRecipient, "", json, 1700000000, ackObject());
+    CHECK(full.size() <= size_t(bmc::kMaxObjectBytes));
+    CHECK(full.size() >
+          size_t(bmc::kMaxObjectBytes) - 1500); // and the limit is the object's, not a lower one
+    const auto back = Wire::decodeMessage(full, recipient);
+    CHECK(back && back->message.body.size() == json.size());
 }
 
 // The scan tells a broadcast's address from its tag, as the thousands of addresses a mailbox may

@@ -44,6 +44,14 @@
         <translation>Не доставлено</translation>
     </message>
     <message>
+        <source>Copy JSON</source>
+        <translation>Копировать JSON</translation>
+    </message>
+    <message>
+        <source>Copied</source>
+        <translation>Скопировано</translation>
+    </message>
+    <message>
         <source>Enter sends, Shift+Enter starts a new line</source>
         <translation>Enter отправляет, Shift+Enter — новая строка</translation>
     </message>
@@ -2237,10 +2245,6 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
     <message>
         <source>Cannot write %1</source>
         <translation>Не удаётся записать %1</translation>
-    </message>
-    <message>
-        <source>Chat message must be between 1 and 8192 bytes</source>
-        <translation>Сообщение чата должно содержать от 1 до 8192 байт</translation>
     </message>
     <message>
         <source>crashed</source>

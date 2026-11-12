@@ -1,7 +1,9 @@
 #include <bmc/chat_format.h>
 #include <bmc/error.h>
+#include <bmc/identity.h>
 #include <bmc/json.h>
 #include <bmc/text.h>
+#include <limits>
 
 namespace bmc {
 std::string chatMessageBody(int64_t seqno, std::string_view body) {
@@ -10,6 +12,11 @@ std::string chatMessageBody(int64_t seqno, std::string_view body) {
     return std::string(R"({"app":"ynotbit","body":)") + json::quote(body) +
            R"(,"format":"markdown","seqno":)" + std::to_string(seqno) +
            R"(,"type":"chat","version":1})";
+}
+
+bool chatFits(std::string_view body) {
+    return letterTextBytes("", chatMessageBody(std::numeric_limits<int64_t>::max(), body)) <=
+           kMaxLetterText;
 }
 
 ChatParseResult parseChatMessage(std::string_view subject, std::string_view text,
@@ -24,8 +31,7 @@ ChatParseResult parseChatMessage(std::string_view subject, std::string_view text
     const auto seq = doc->at("seqno").toInteger();
     const auto body = doc->at("body").toString();
     if (!doc->at("version").equalsNumber(1) || !doc->at("format").equalsString("markdown") ||
-        seq <= 0 || text::isBlank(body) || body.size() > size_t(kMaxChatBodyBytes) ||
-        !doc->at("body").isString())
+        seq <= 0 || text::isBlank(body) || !doc->at("body").isString())
         return ChatParseResult::InvalidChat;
     if (out)
         *out = {seq, body};

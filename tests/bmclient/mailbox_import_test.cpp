@@ -499,16 +499,13 @@ TEST(a_bad_chat_in_a_batch_leaves_the_whole_batch_out) {
     CHECK_THROWS(m.importChats(spoiled([](ImportedChat &c) { c.peer.clear(); })));
     CHECK_THROWS(m.importChats(spoiled([](ImportedChat &c) { c.seqno = 0; })));
     CHECK_THROWS(m.importChats(spoiled([](ImportedChat &c) { c.body = "  \n"; })));
-    CHECK_THROWS(m.importChats(spoiled(
-        [](ImportedChat &c) { c.body = std::string(size_t(bmc::kMaxChatBodyBytes) + 1, 'x'); })));
     CHECK_EQ(m.chatSummaries().size(), size_t(0)); // not even the good one
     CHECK_EQ(m.importChats({}).added, 0);
-    // The largest body a chat may have is one.
-    CHECK_EQ(
-        m.importChats({chat("c-3", "BM-me", "BM-a", 3000,
-                            std::string(size_t(bmc::kMaxChatBodyBytes), 'x'), 1700000100, true)})
-            .added,
-        1);
+    // A chat has no size of its own to keep: what an object carried is imported whole.
+    CHECK_EQ(m.importChats(
+                  {chat("c-3", "BM-me", "BM-a", 3000, std::string(200000, 'x'), 1700000100, true)})
+                 .added,
+             1);
 }
 
 TEST(a_chat_the_scan_stored_stops_the_import_from_adding_it_again) {

@@ -92,9 +92,8 @@ void Mailbox::storeRouted(const std::string &id, const std::string &sender,
 std::string Mailbox::queueChat(const std::string &local, const std::string &peer,
                                const std::string &body, int64_t expires) {
     const auto time = now();
-    require(!(local.empty() || peer.empty() || text::trim(body).empty() ||
-              body.size() > size_t(kMaxChatBodyBytes) || expires <= time ||
-              expires > time + kChatTtlSeconds),
+    require(!(local.empty() || peer.empty() || text::trim(body).empty() || !chatFits(body) ||
+              expires <= time || expires > time + kChatTtlSeconds),
             "Invalid chat message or expiry");
     Transaction t(db_);
     // The sender's clock in milliseconds, kept increasing within a conversation. Not a
@@ -143,8 +142,7 @@ void Mailbox::storeChat(const std::string &id, const std::string &sender,
                         int64_t expires, bool outgoing) {
     const auto time = now();
     if (id.empty() || sender.empty() || recipient.empty() || seqno <= 0 ||
-        text::trim(body).empty() || body.size() > size_t(kMaxChatBodyBytes) || expires <= time ||
-        expires > time + kChatTtlSeconds + 300)
+        text::trim(body).empty() || expires <= time || expires > time + kChatTtlSeconds + 300)
         return;
     Statement s(db_, "INSERT OR IGNORE INTO "
                      "chat_messages(id,local_address,peer_address,direction,seqno,body,received,"
@@ -170,7 +168,7 @@ ImportCounts Mailbox::importChats(const std::vector<ImportedChat> &chats) {
     ImportCounts counts;
     for (const auto &c : chats)
         if (c.id.empty() || c.local.empty() || c.peer.empty() || c.seqno <= 0 ||
-            text::isBlank(c.body) || c.body.size() > size_t(kMaxChatBodyBytes))
+            text::isBlank(c.body))
             throw Error(Code::Argument,
                         "A chat message to import needs an id, both addresses, a number and text");
     if (chats.empty())

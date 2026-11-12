@@ -162,13 +162,19 @@ TEST(a_chat_needs_an_own_sender_and_a_real_recipient) {
     CHECK_EQ(badRecipient, std::string("Enter a valid Bitmessage recipient address"));
     const auto self = threwMessage([&] { f.client->sendChat(f.me, f.me, "hi", now); });
     CHECK_EQ(self, std::string("Enter a valid Bitmessage recipient address"));
-    // A body that is only white space, or too long.
+    // A body that is only white space, or longer than a message can hold: a chat has no limit of
+    // its own, it may be as long as a letter's text.
     const auto blank = threwMessage([&] { f.client->sendChat(f.me, f.peer, "  \n ", now); });
-    CHECK_EQ(blank, std::string("Chat message must be between 1 and 8192 bytes"));
-    const auto huge = threwMessage([&] {
-        f.client->sendChat(f.me, f.peer, std::string(size_t(bmc::kMaxChatBodyBytes) + 1, 'x'), now);
-    });
-    CHECK_EQ(huge, std::string("Chat message must be between 1 and 8192 bytes"));
+    CHECK_EQ(blank, std::string("Write a message before sending"));
+    const auto most = size_t(bmc::kMaxLetterText) -
+                      size_t(bmc::letterTextBytes("", bmc::chatMessageBody(INT64_MAX, "")));
+    const auto huge =
+        threwMessage([&] { f.client->sendChat(f.me, f.peer, std::string(most + 1, 'x'), now); });
+    CHECK_EQ(huge, std::string("Message is too large"));
+    const auto longest = f.client->sendChat(f.me, f.peer, std::string(most, 'x'), now);
+    CHECK_EQ(f.client->chatState(longest), std::string("queued"));
+    const auto longChat = f.client->sendChat(f.me, f.peer, std::string(100000, 'y'), now);
+    CHECK_EQ(f.client->chatState(longChat), std::string("queued"));
 
     const auto id = f.client->sendChat(f.me, f.peer, "hello", now);
     CHECK(!id.empty());
@@ -210,8 +216,7 @@ TEST(a_service_may_chat_from_a_chan_and_for_less_than_a_day) {
              std::string("Enter a valid Bitmessage recipient address"));
     CHECK_EQ(refused(f.chan, f.chan, "hi", 60),
              std::string("Enter a valid Bitmessage recipient address"));
-    CHECK_EQ(refused(f.chan, f.peer, "  ", 60),
-             std::string("Chat message must be between 1 and 8192 bytes"));
+    CHECK_EQ(refused(f.chan, f.peer, "  ", 60), std::string("Write a message before sending"));
     CHECK_EQ(refused(f.chan, f.peer, "hi", 0), std::string("Invalid chat message or expiry"));
     CHECK_EQ(refused(f.chan, f.peer, "hi", -5), std::string("Invalid chat message or expiry"));
     CHECK_EQ(refused(f.chan, f.peer, "hi", bmc::kChatTtlSeconds + 1),

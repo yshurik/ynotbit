@@ -49,8 +49,8 @@ std::string queueChatChecked(Mailbox &mailbox, const Vault &vault, const std::st
             own = true;
     require(own, "Choose a sender from this vault");
     require(Wire::validAddress(peer) && peer != from, "Enter a valid Bitmessage recipient address");
-    require(!text::trim(body).empty() && body.size() <= size_t(kMaxChatBodyBytes),
-            "Chat message must be between 1 and 8192 bytes");
+    require(!text::trim(body).empty(), "Write a message before sending");
+    require(chatFits(body), "Message is too large");
     const auto id = mailbox.queueChat(from, peer, body, expires);
     Delivery::rereadKept(mailbox); // the peer's key may already be kept
     return id;

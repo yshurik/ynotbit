@@ -44,6 +44,14 @@
         <translation>未送達</translation>
     </message>
     <message>
+        <source>Copy JSON</source>
+        <translation>複製 JSON</translation>
+    </message>
+    <message>
+        <source>Copied</source>
+        <translation>已複製</translation>
+    </message>
+    <message>
         <source>Enter sends, Shift+Enter starts a new line</source>
         <translation>按 Enter 傳送，按 Shift+Enter 換行</translation>
     </message>
@@ -2237,10 +2245,6 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
     <message>
         <source>Cannot write %1</source>
         <translation>無法寫入 %1</translation>
-    </message>
-    <message>
-        <source>Chat message must be between 1 and 8192 bytes</source>
-        <translation>聊天訊息須為 1 至 8192 位元組</translation>
     </message>
     <message>
         <source>crashed</source>

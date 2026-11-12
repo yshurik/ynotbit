@@ -3,8 +3,7 @@
 #include <bmc/chat_format.h>
 
 namespace bm {
-static_assert(kChatTtlSeconds == bmc::kChatTtlSeconds &&
-              kMaxChatBodyBytes == bmc::kMaxChatBodyBytes);
+static_assert(kChatTtlSeconds == bmc::kChatTtlSeconds);
 
 QString chatMessageBody(qint64 seqno, const QString &body) {
     return bridge::fromStd(bmc::chatMessageBody(seqno, bridge::toStd(body)));

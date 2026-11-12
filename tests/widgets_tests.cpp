@@ -38,6 +38,7 @@ extern "C" {
 #include <QTest>
 #include <QtWidgets>
 #include "bmclient/pybm_fixtures.h"
+#include <bmc/bot_trailer.h>
 #include <bmc/chat_format.h>
 #include <bmc/wire.h>
 #include <bmc/clock.h>
@@ -2160,20 +2161,34 @@ static void testNickbots(const QTemporaryDir &temp) {
             if (c.toMap()["address"].toString() == ben)
                 chatLabel = c.toMap()["label"].toString();
         require(chatLabel == "@Ben · Ben", "a chat is titled by the nickname and the name");
-        // A nickbot's chat is shown without its line for programs; anyone else's, as it is.
+        // A chat that ends in a bot's line for programs ("id: {json}") is shown without it, from
+        // anyone (a bot is not always in the address book, under a name); the line is kept as
+        // "json" for the copy button. What we sent is never changed.
         const auto words =
             std::string("Registered @x for you.\nnickbot: {\"v\":1,\"cmd\":\"help\",\"ok\":true}");
         s.coreMailbox().storeChat("shown-bot", bot.toStdString(), me.toStdString(), 7, words,
                                   bmc::now() + 3600);
         s.coreMailbox().storeChat("shown-ben", ben.toStdString(), me.toStdString(), 8, words,
                                   bmc::now() + 3600);
-        const auto lastBody = [&](const QString &peer) {
-            const auto list = s.chatMessages(me, peer);
-            return list.isEmpty() ? QString() : list.last().toMap()["body"].toString();
+        s.coreMailbox().storeChat("said-dee", me.toStdString(), dee.toStdString(), 9, words,
+                                  bmc::now() + 3600, true);
+        const auto lastMessage = [&](const QString &peer, bool outgoing) {
+            QVariantMap found;
+            for (const auto &m : s.chatMessages(me, peer))
+                if (m.toMap()["outgoing"].toBool() == outgoing)
+                    found = m.toMap();
+            return found;
         };
-        require(lastBody(bot) == "Registered @x for you." && lastBody(ben).contains("nickbot: {"),
-                "a nickbot's chat is shown without its line for programs, and nobody else's is "
-                "changed");
+        const auto botChat = lastMessage(bot, false), benChat = lastMessage(ben, false),
+                   deeChat = lastMessage(dee, true);
+        require(botChat["body"] == "Registered @x for you." &&
+                    benChat["body"] == "Registered @x for you.",
+                "a bot's line for programs is not shown, from a nickbot or from anyone");
+        require(botChat["json"] == "{\"v\":1,\"cmd\":\"help\",\"ok\":true}" &&
+                    benChat["json"] == botChat["json"],
+                "and it is kept for the copy button");
+        require(deeChat["body"].toString().contains("nickbot: {") && !deeChat.contains("json"),
+                "what we sent is never changed");
         QString botPreview, benPreview;
         for (const auto &c : s.chatConversations()) {
             if (c.toMap()["address"].toString() == bot)
@@ -2181,7 +2196,7 @@ static void testNickbots(const QTemporaryDir &temp) {
             if (c.toMap()["address"].toString() == ben)
                 benPreview = c.toMap()["body"].toString();
         }
-        require(botPreview == "Registered @x for you." && benPreview.contains("nickbot: {"),
+        require(botPreview == "Registered @x for you." && benPreview == "Registered @x for you.",
                 "so is the line of the chat list");
         require(
             bm::NickClient::withoutTrailer("Hello.\nnickbot: garbage") ==
@@ -5620,6 +5635,95 @@ int main(int argc, char **argv) {
             expect(asked.size() == 2,
                    "a window whose newest end is already near its top asks for older ones at once");
         }
+        // A bot's reply carries its JSON (the Session keeps it as "json"): a small button in
+        // the bubble copies it, written with indents; a message with no JSON has no button.
+        {
+            bm::ChatsPane pane;
+            pane.resize(640, 420);
+            pane.show();
+            pane.setConversation(personal, "Personal", chatAddress, "A bot", false);
+            const QString json = "{\"v\":1,\"cmd\":\"getblockcount\",\"ok\":true,\"params\":{},"
+                                 "\"result\":975560,\"fee\":1e-05,\"list\":[1,2],\"empty\":{}}";
+            const auto line = [](const QString &id, const QString &body, bool mine,
+                                 const QString &json = {}) {
+                QVariantMap m{{"id", id},
+                              {"body", body},
+                              {"outgoing", mine},
+                              {"seqno", 1},
+                              {"received", 1700000001},
+                              {"expires", 1700086401},
+                              {"state", mine ? "acknowledged" : "received"}};
+                if (!json.isEmpty())
+                    m["json"] = json;
+                return m;
+            };
+            pane.setMessages({line("jb-1", "Block height: 975,560", false, json),
+                              line("jb-2", "a plain reply", false),
+                              line("jb-3", "/getblockcount", true)},
+                             false);
+            const auto buttons = [&] { return pane.findChildren<QToolButton *>("chatJsonButton"); };
+            expect(buttons().size() == 1,
+                   "a bubble with JSON has a button for it, and one with none has not");
+            auto button = buttons().isEmpty() ? nullptr : buttons().first();
+            expect(button && button->toolTip() == "Copy JSON" && button->text() == "{ }" &&
+                       button->parentWidget()->objectName() == "incomingChatBubble",
+                   "the button is in the footer of the bubble that has the JSON");
+            QApplication::clipboard()->setText("before");
+            if (button)
+                button->click();
+            const QString indented = QString::fromStdString(bmc::indentJson(json.toStdString()));
+            expect(QApplication::clipboard()->text() == indented &&
+                       indented.contains("\n  \"result\": 975560,\n") &&
+                       indented.contains("1e-05") && indented.contains("\"empty\": {}"),
+                   "it copies the JSON with its indents, every number as the bot wrote it");
+            expect(button && button->toolTip() == "Copied", "and says it did");
+            // The same message with other JSON is another message: it is drawn again.
+            const QString other = "{\"v\":1,\"cmd\":\"uptime\",\"ok\":true,\"result\":42}";
+            pane.setMessages({line("jb-1", "Block height: 975,560", false, other),
+                              line("jb-2", "a plain reply", false),
+                              line("jb-3", "/getblockcount", true)},
+                             false);
+            QApplication::clipboard()->setText("before");
+            if (!buttons().isEmpty())
+                buttons().first()->click();
+            expect(buttons().size() == 1 &&
+                       QApplication::clipboard()->text() ==
+                           QString::fromStdString(bmc::indentJson(other.toStdString())),
+                   "a change of the JSON alone redraws the bubble");
+        }
+        // A table in a message is a table, with room in its cells.
+        {
+            bm::ChatsPane pane;
+            pane.resize(640, 420);
+            pane.show();
+            pane.setConversation(personal, "Personal", chatAddress, "A bot", false);
+            // As a bot writes it: each row ends in a hard break (two spaces and a newline).
+            const QString botTable =
+                "Fees\n\n| Field | Value |  \n|---|---|  \n| size | 1.5 MB |  \n"
+                "| fee | 12 sat/vB |";
+            pane.setMessages({QVariantMap{{"id", "tb-1"},
+                                          {"body", botTable},
+                                          {"outgoing", false},
+                                          {"seqno", 1},
+                                          {"received", 1700000001},
+                                          {"expires", 1700086401},
+                                          {"state", "received"}}},
+                             false);
+            auto body = pane.findChild<QLabel *>("chatBody");
+            expect(body && body->text().contains("<table") && body->text().contains("1.5 MB") &&
+                       !body->text().contains("| size |"),
+                   "a table of pipes is shown as a table");
+            expect(body && body->text().contains("cellpadding=\"5\""),
+                   "and its cells have room around their text");
+            // A released ynotbit reads Markdown as CommonMark alone, which has no tables: there
+            // the same text is a line to a row, not one run-on paragraph.
+            QTextDocument released;
+            released.setMarkdown(botTable, QTextDocument::MarkdownNoHTML);
+            const auto lines = released.toPlainText().split('\n');
+            expect(lines.contains("| size | 1.5 MB |") && lines.contains("| fee | 12 sat/vB |") &&
+                       lines.contains("| Field | Value |"),
+                   "and an older client shows each of its rows on a line of its own");
+        }
         // A message's label is as tall as a plain QLabel makes it, whatever the text and the
         // width: a line, a paragraph that wraps, a list with code and a link, other scripts, a
         // word longer than the bubble. Any other height clips the text or leaves a gap.
@@ -5629,8 +5733,7 @@ int main(int argc, char **argv) {
             pane.show();
             pane.setConversation(personal, "Personal", chatAddress, "Label contact", false);
             const QStringList texts = {
-                "ok",
-                "A line of some length, as wide as its text and no more.",
+                "ok", "A line of some length, as wide as its text and no more.",
                 "Just checking in about the **release**: the build for macOS is green, Windows is "
                 "still waiting on the signing certificate. I will push the notes once CI finishes.",
                 "Notes:\n\n1. Bump the version in `CMakeLists.txt`\n2. Dispatch CI\n3. Check "
@@ -5639,7 +5742,15 @@ int main(int argc, char **argv) {
                 "Ünïcödé, 日本語のメッセージ, и русский текст, 😀 emoji",
                 "a_very_long_word_without_any_spaces_to_force_wrapping_anywhere_in_the_bubble_and_"
                 "beyond_the_limit_of_its_width_so_that_it_cannot_fit_on_one_line_at_all",
-                "> a quote\n\nand a reply under it"};
+                "> a quote\n\nand a reply under it",
+                // A bot's reply: a table (its rows have room, a pixel or two each, that the
+                // importer's own table would not give), and a command with a hash in a code
+                // span, longer than the line.
+                "Fees\n\n| Field | Value |  \n|---|---|  \n| size | 1.5 MB |  \n| fee | 12 sat/vB "
+                "|  \n"
+                "| time | 2026-11-12 02:27 UTC |\n\nafter",
+                "Next page: `/getblock "
+                "000000000000000000006724a7529e086eeed0a7397d12f501c3ce743002311d 1 page=2`"};
             QVariantList thread;
             for (int n = 0; n < texts.size(); ++n)
                 thread << QVariantMap{{"id", "label-" + QString::number(n)},

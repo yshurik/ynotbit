@@ -1,6 +1,7 @@
 // The app's side of the nickbot protocol (docs/nickbot.md), against the files the Go service is
 // tested with: the table of nicknames and the trailers a scripted conversation gets.
 #include <bmc/error.h>
+#include <bmc/identity.h>
 #include <bmc/nickbot.h>
 #include <bmc/protocol.h>
 #include <bmc/test.h>
@@ -261,8 +262,9 @@ TEST(an_answer_with_anything_wrong_in_it_is_not_believed) {
     for (int i = 0; i < 9; ++i)
         nine += std::string(i ? "," : "") + R"({"address":")" + A + R"(","nicks":[]})";
     CHECK(bad(nine + "]}"));
-    // Too much text is not read at all.
-    CHECK(!parseTrailer(std::string(20000, 'x') + "\n" + line(R"({"v":1,"cmd":"help","ok":true})"))
+    // Too much text is not read at all: more than a message can hold is no chat.
+    CHECK(!parseTrailer(std::string(size_t(bmc::kMaxLetterText) + 1, 'x') + "\n" +
+                        line(R"({"v":1,"cmd":"help","ok":true})"))
                .has_value());
 }
 

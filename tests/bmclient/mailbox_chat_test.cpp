@@ -1,6 +1,7 @@
 #include "storage_fixtures.h"
 #include <bmc/chat_format.h>
 #include <bmc/clock.h>
+#include <bmc/identity.h>
 #include <bmc/mailbox.h>
 #include <bmc/test.h>
 
@@ -61,16 +62,19 @@ TEST(chats_that_break_the_rules_are_refused_or_dropped) {
     CHECK_THROWS(m.queueChat("", "BM-peer", "hi", soon()));                 // no sender
     CHECK_THROWS(m.queueChat("BM-local", "", "hi", soon()));                // no peer
     CHECK_THROWS(m.queueChat("BM-local", "BM-peer", "   ", soon()));        // empty body
-    CHECK_THROWS(m.queueChat("BM-local", "BM-peer", std::string(8193, 'x'), // too long
+    // A chat has no limit of its own: it may be as long as a message can hold (chatFits).
+    const auto most = size_t(bmc::kMaxLetterText) -
+                      size_t(bmc::letterTextBytes("", bmc::chatMessageBody(INT64_MAX, "")));
+    CHECK_THROWS(m.queueChat("BM-local", "BM-peer", std::string(most + 1, 'x'), // too long
                              soon()));
     CHECK_THROWS(m.queueChat("BM-local", "BM-peer", "hi", bmc::now() - 1)); // expiry in the past
     CHECK_THROWS(m.queueChat("BM-local", "BM-peer", "hi",                   // expiry too far
                              bmc::now() + bmc::kChatTtlSeconds + 1));
     CHECK_EQ(m.chatMessages("BM-local", "BM-peer").size(), size_t(0));
 
-    // storeChat drops the same cases silently, and stores what passes.
+    // storeChat drops the same cases silently, and stores what passes. What it is given arrived in
+    // an object, which is the only bound of its size.
     m.storeChat("chat-a", "BM-peer", "BM-local", 1, "   ", soon());
-    m.storeChat("chat-b", "BM-peer", "BM-local", 1, std::string(8193, 'x'), soon());
     m.storeChat("chat-c", "BM-peer", "BM-local", 0, "hi", soon()); // seqno 0
     m.storeChat("chat-d", "BM-peer", "BM-local", 1, "hi", bmc::now() - 1);
     CHECK_EQ(m.chatMessages("BM-local", "BM-peer").size(), size_t(0));
@@ -79,6 +83,11 @@ TEST(chats_that_break_the_rules_are_refused_or_dropped) {
     // A replay of the same sender sequence is ignored.
     m.storeChat("chat-f", "BM-peer", "BM-local", 5, "replay", soon());
     CHECK_EQ(m.chatMessages("BM-local", "BM-peer").size(), size_t(1));
+    // A chat that came in a big object is kept whole.
+    m.storeChat("chat-big", "BM-peer", "BM-local", 6, std::string(250000, 'z'), soon());
+    CHECK_EQ(m.chatMessages("BM-local", "BM-peer").back().body.size(), size_t(250000));
+    // The longest a chat may be sent is queued.
+    CHECK(!m.queueChat("BM-local", "BM-peer", std::string(most, 'x'), soon()).empty());
     m.close();
 }
 

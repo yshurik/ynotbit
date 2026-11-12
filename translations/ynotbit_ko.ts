@@ -44,6 +44,14 @@
         <translation>전달되지 않음</translation>
     </message>
     <message>
+        <source>Copy JSON</source>
+        <translation>JSON 복사</translation>
+    </message>
+    <message>
+        <source>Copied</source>
+        <translation>복사됨</translation>
+    </message>
+    <message>
         <source>Enter sends, Shift+Enter starts a new line</source>
         <translation>Enter로 보내기, Shift+Enter로 줄 바꿈</translation>
     </message>
@@ -2237,10 +2245,6 @@ Make one with the person-plus button in the toolbar above, or join a chan with t
     <message>
         <source>Cannot write %1</source>
         <translation>%1에 쓸 수 없습니다</translation>
-    </message>
-    <message>
-        <source>Chat message must be between 1 and 8192 bytes</source>
-        <translation>채팅 메시지는 1~8192바이트여야 합니다</translation>
     </message>
     <message>
         <source>crashed</source>
