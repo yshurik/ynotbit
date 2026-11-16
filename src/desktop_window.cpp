@@ -4445,9 +4445,9 @@ void DesktopWindow::newVault() {
     // Where the last vault is, if there is one: the user keeps the files together.
     auto folder = session_.vaultPath().isEmpty() ? QString()
                                                   : QFileInfo(session_.vaultPath()).absolutePath();
-    if (folder.isEmpty())
-        folder = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    NewVaultDialog dialog(session_, folder.isEmpty() ? QDir::homePath() : folder,
+    if (folder.isEmpty() || !QFileInfo(folder).isDir())
+        folder = Session::defaultFolder();
+    NewVaultDialog dialog(session_, folder,
                           appearance_.dark(), this);
     if (dialog.exec() == QDialog::Accepted)
         targetVaultPath_ = session_.vaultPath(); // locked again, the lock screen offers it

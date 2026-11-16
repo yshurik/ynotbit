@@ -130,6 +130,10 @@ class Session : public QObject {
     Q_INVOKABLE void restartNode();
     QStringList nodeArguments() const;
     // An empty string or IP:port, as the node accepts for -P and -r.
+    // Where file dialogs start and new vaults go: the Documents folder if it can be used (made if
+    // missing), else the home folder, else a folder in the app's own data. Always an existing,
+    // writable folder.
+    static QString defaultFolder();
     static bool validEndpoint(const QString &text);
     QString peer() const;
     QString proxy() const;
