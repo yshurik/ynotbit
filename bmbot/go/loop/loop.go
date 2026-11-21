@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/yshurik/ynotbit/bmbot/go/limit"
 )
@@ -59,13 +61,32 @@ type Config struct {
 func defaultRateNotice(req Request) Reply {
 	r := Reply{Text: "Slow down: you are sending too many commands. Try again in a minute.", Code: "rate_limited"}
 	if req.Transport == Letter {
-		subject := strings.TrimSpace(req.Subject)
+		subject := cleanSubject(req.Subject)
 		if subject == "" {
 			subject = "your letter"
 		}
 		r.Subject = "Re: " + subject
 	}
 	return r
+}
+
+// cleanSubject is a sender's subject made fit for a reply: one line of at most 100 characters, with no control, format or
+// line-separator character in it (the library refuses a subject of more than one line, and a notice that cannot be sent is
+// silence). Nothing visible left is "".
+func cleanSubject(subject string) string {
+	var b strings.Builder
+	count := 0
+	for _, r := range subject {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029' || r == utf8.RuneError {
+			continue
+		}
+		if count >= 100 {
+			break
+		}
+		b.WriteRune(r)
+		count++
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // Stats counts what the loop has done.

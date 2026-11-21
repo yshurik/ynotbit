@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/yshurik/ynotbit/bmbot/go/limit"
 	"github.com/yshurik/ynotbit/bmbot/go/loop"
@@ -445,5 +447,48 @@ func TestTheDefaultRateNoticeIsNeutralAndNeverSilent(t *testing.T) {
 	}
 	if bare.subject != "Re: your letter" {
 		t.Errorf("a letter with no subject got the subject %q", bare.subject)
+	}
+}
+
+// A letter's subject is the sender's, and a sender may put anything in it: a line break, which the library refuses (the notice
+// would never be sent and the event would be done with no answer), or a megabyte. The notice's subject is one short line.
+func TestTheDefaultRateNoticeToALetterHasOneShortLineForASubject(t *testing.T) {
+	r := newRig(t, func(c *loop.Config) { c.PerSender = limit.Config{Burst: 1, Every: time.Hour} })
+	subjects := map[string]string{
+		"BM-sender-lines":     "first line\r\nsecond line",
+		"BM-sender-long":      strings.Repeat("long ", 20000),
+		"BM-sender-invisible": "\r\n\u2028\u200b",
+		"BM-sender-control":   "tab\there \x00 nul",
+	}
+	for to, subject := range subjects {
+		r.letter(to+"-1", to, subject, "/help")
+		r.letter(to+"-2", to, subject, "/help")
+	}
+	r.drain(t)
+	byTo := map[string]sent{}
+	for _, s := range r.bot.sent {
+		byTo[s.to] = s // the last reply to an address is its notice
+	}
+	for to := range subjects {
+		notice := byTo[to]
+		if notice.kind != "letter" || !strings.HasPrefix(notice.subject, "Re: ") || strings.TrimSpace(notice.text) == "" {
+			t.Errorf("%s: the notice is %+v", to, notice)
+			continue
+		}
+		for _, c := range notice.subject {
+			if unicode.IsControl(c) || unicode.Is(unicode.Cf, c) || c == '\u2028' || c == '\u2029' || c == utf8.RuneError {
+				t.Errorf("%s: the subject %q holds the character %U", to, notice.subject, c)
+				break
+			}
+		}
+		if n := utf8.RuneCountInString(strings.TrimPrefix(notice.subject, "Re: ")); n == 0 || n > 100 {
+			t.Errorf("%s: the subject has %d characters after \"Re: \", want 1 to 100", to, n)
+		}
+	}
+	if got := byTo["BM-sender-invisible"].subject; got != "Re: your letter" {
+		t.Errorf("a subject of nothing visible got %q, want %q", got, "Re: your letter")
+	}
+	if got := byTo["BM-sender-lines"].subject; !strings.Contains(got, "first line") {
+		t.Errorf("the words of the subject are lost: %q", got)
 	}
 }
