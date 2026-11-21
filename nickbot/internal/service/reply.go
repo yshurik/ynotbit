@@ -6,35 +6,9 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/yshurik/ynotbit/nickbot/internal/loop"
 )
-
-// Transport is how a request came, and so how its answer goes.
-type Transport int
-
-const (
-	Chat   Transport = iota // a ynotbit chat: the answer has a trailer for programs
-	Letter                  // a letter from any client: the answer is plain words
-)
-
-// ProtocolVersion is the "v" of the trailer.
-const ProtocolVersion = 1
-
-// Request is a chat or a letter the bot was sent.
-type Request struct {
-	EventID   string
-	Transport Transport
-	From      string // the address that sent it; the library has checked its signature
-	Subject   string // letters only
-	Text      string // the chat's text, or the letter's body
-}
-
-// Reply is what to send back.
-type Reply struct {
-	Text    string // for a chat, the words and, as the last line, the trailer; for a letter, the words
-	Subject string // for a letter
-	Cmd     string // the command that was understood, or "" if none
-	Code    string // the error code, or "" when the command was carried out
-}
 
 // payload is the JSON of the trailer. The order of the fields is part of the protocol.
 type payload struct {
@@ -77,7 +51,7 @@ type outcome struct {
 func boolPtr(b bool) *bool { return &b }
 
 func trailerLine(p payload) string {
-	p.V = ProtocolVersion
+	p.V = loop.ProtocolVersion
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -95,17 +69,17 @@ const hardBreak = "  \n"
 
 // reply puts an outcome into words for the way the request came. Nothing a sender wrote goes into
 // it unless the command has checked it first.
-func (o outcome) reply(req Request) Reply {
-	r := Reply{Cmd: o.p.Cmd, Code: o.p.Error}
+func (o outcome) reply(req loop.Request) loop.Reply {
+	r := loop.Reply{Cmd: o.p.Cmd, Code: o.p.Error}
 	switch {
 	case o.ready != "":
 		r.Text = o.ready
-	case req.Transport == Chat:
+	case req.Transport == loop.Chat:
 		r.Text = strings.Join(o.lines, hardBreak) + "\n" + trailerLine(o.p)
 	default:
 		r.Text = strings.Join(o.lines, "\n")
 	}
-	if req.Transport == Letter {
+	if req.Transport == loop.Letter {
 		r.Subject = replySubject(req.Subject)
 	}
 	return r
@@ -134,6 +108,6 @@ func replySubject(subject string) string {
 
 // RateLimited is the one answer a sender over its rate is given, once a minute; the caller keeps the
 // count.
-func RateLimited(req Request) Reply {
+func RateLimited(req loop.Request) loop.Reply {
 	return failure("", codeLimited, "Slow down: you are sending too many commands. Try again in a minute.", "").reply(req)
 }

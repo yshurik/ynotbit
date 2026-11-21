@@ -195,7 +195,7 @@ func serve(ctx context.Context, o *options, logger *log.Logger) error {
 		MaxNicks:      o.maxNicks,
 		Log:           logger.Printf,
 	})
-	lp := loop.New(bot, svc, loop.Config{Log: logger.Printf})
+	lp := loop.New(bot, svc, newLoopConfig(logger.Printf))
 
 	started := time.Now()
 	var wg sync.WaitGroup
@@ -216,6 +216,12 @@ func serve(ctx context.Context, o *options, logger *log.Logger) error {
 }
 
 // writeStatusEvery writes the status file at once and then every interval, until the context ends.
+// newLoopConfig is the loop's configuration: the defaults of the shared loop, and nickbot's own voice
+// for the answer to a sender over its rate (words and the nickbot trailer).
+func newLoopConfig(logf func(string, ...any)) loop.Config {
+	return loop.Config{Log: logf, RateNotice: service.RateLimited}
+}
+
 func writeStatusEvery(ctx context.Context, interval time.Duration, path string, bot *bmbot.Bot, lp *loop.Loop,
 	st *store.Store, anonymous string, started time.Time, logger *log.Logger) {
 	write := func() {

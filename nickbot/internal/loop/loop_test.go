@@ -1,24 +1,23 @@
-package loop
+package loop_test
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/yshurik/ynotbit/nickbot/internal/limit"
-	"github.com/yshurik/ynotbit/nickbot/internal/service"
-	"github.com/yshurik/ynotbit/nickbot/internal/store"
+	"github.com/yshurik/ynotbit/nickbot/internal/loop"
 )
 
 const (
-	botAddr  = "BM-87echoAkzstiHuPGSN8PH88m4WPm4attre8"
-	addrA    = "BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN"
-	addrB    = "BM-NC3eQa6kLxUsWNGFCqAbAJd733dhXkH6"
-	addrAnon = "BM-2cW67GEKkHGonXKZLCzouLLxnLym3azS8r"
+	botAddr  = "BM-bot"
+	addrA    = "BM-sender-a"
+	addrB    = "BM-sender-b"
+	addrAnon = "BM-shared"
 )
 
 type clock struct{ t time.Time }
@@ -32,7 +31,7 @@ type sent struct {
 
 // fakeBot is the library, with its events in a list.
 type fakeBot struct {
-	events     []Event
+	events     []loop.Event
 	sent       []sent
 	done       []string
 	calls      []string // "send" and "done:<id>", in order
@@ -42,13 +41,13 @@ type fakeBot struct {
 	nextCalled int
 }
 
-func (b *fakeBot) Next(timeout time.Duration) (Event, bool, error) {
+func (b *fakeBot) Next(timeout time.Duration) (loop.Event, bool, error) {
 	b.nextCalled++
 	if b.nextErr != nil {
-		return Event{}, false, b.nextErr
+		return loop.Event{}, false, b.nextErr
 	}
 	if len(b.events) == 0 {
-		return Event{}, false, nil
+		return loop.Event{}, false, nil
 	}
 	e := b.events[0]
 	b.events = b.events[1:]
@@ -87,46 +86,56 @@ type permanentError struct{}
 func (permanentError) Error() string   { return "bad address" }
 func (permanentError) Permanent() bool { return true }
 
-type rig struct {
-	bot   *fakeBot
-	loop  *Loop
-	svc   *service.Service
-	store *store.Store
-	clock *clock
-	logs  []string
+// fakeHandler is a service with one kind of command (a line that starts with /), a trailer of its
+// own on chat answers, and an "unknown_command" code for any other text.
+type fakeHandler struct {
+	anonymous string
+	calls     []loop.Request
 }
 
-func newRig(t *testing.T, mutate ...func(*Config)) *rig {
+func (h *fakeHandler) IsAnonymous(address string) bool { return address == h.anonymous }
+
+func (h *fakeHandler) Handle(req loop.Request) loop.Reply {
+	h.calls = append(h.calls, req)
+	if !strings.HasPrefix(req.Text, "/") {
+		return loop.Reply{Text: "That is no command.", Subject: "Re: " + req.Subject, Code: "unknown_command"}
+	}
+	r := loop.Reply{Text: "ok " + req.Text, Subject: "Re: " + req.Subject, Cmd: strings.TrimPrefix(req.Text, "/")}
+	if req.Transport == loop.Chat {
+		r.Text += "\nfake: {\"v\":1}"
+	}
+	return r
+}
+
+type rig struct {
+	bot     *fakeBot
+	handler *fakeHandler
+	loop    *loop.Loop
+	clock   *clock
+	logs    []string
+}
+
+func newRig(t *testing.T, mutate ...func(*loop.Config)) *rig {
 	t.Helper()
 	c := &clock{t: time.Unix(1_800_000_000, 0)}
-	st, err := store.Open(filepath.Join(t.TempDir(), "n.sqlite"), store.WithClock(c.now))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	svc := service.New(st, service.Options{
-		Anonymous:   addrAnon,
-		Now:         c.now,
-		ChanAddress: func(p string) (string, error) { return "BM-chan-of-" + p, nil },
-	})
-	r := &rig{bot: &fakeBot{}, svc: svc, store: st, clock: c}
-	cfg := Config{
+	r := &rig{bot: &fakeBot{}, handler: &fakeHandler{anonymous: addrAnon}, clock: c}
+	cfg := loop.Config{
 		Now: c.now,
 		Log: func(format string, args ...any) { r.logs = append(r.logs, fmt.Sprintf(format, args...)) },
 	}
 	for _, m := range mutate {
 		m(&cfg)
 	}
-	r.loop = New(r.bot, svc, cfg)
+	r.loop = loop.New(r.bot, r.handler, cfg)
 	return r
 }
 
 func (r *rig) chat(id, from, text string) {
-	r.bot.events = append(r.bot.events, Event{ID: id, Kind: "chat", To: botAddr, From: from, Text: text})
+	r.bot.events = append(r.bot.events, loop.Event{ID: id, Kind: "chat", To: botAddr, From: from, Text: text})
 }
 
 func (r *rig) letter(id, from, subject, body string) {
-	r.bot.events = append(r.bot.events, Event{ID: id, Kind: "letter", To: botAddr, From: from, Subject: subject, Text: body})
+	r.bot.events = append(r.bot.events, loop.Event{ID: id, Kind: "letter", To: botAddr, From: from, Subject: subject, Text: body})
 }
 
 // drain handles every event that is waiting.
@@ -147,7 +156,7 @@ func TestAChatIsAnsweredFromTheAddressItCameToAndDone(t *testing.T) {
 		t.Fatalf("%d replies", len(r.bot.sent))
 	}
 	got := r.bot.sent[0]
-	if got.kind != "chat" || got.from != botAddr || got.to != addrA || !strings.HasPrefix(got.text, "Registered @ben") || !strings.Contains(got.text, "\nnickbot: {") {
+	if got.kind != "chat" || got.from != botAddr || got.to != addrA || !strings.HasPrefix(got.text, "ok /register @ben") || !strings.Contains(got.text, "\nfake: {") {
 		t.Errorf("reply = %+v", got)
 	}
 	if fmt.Sprint(r.bot.calls) != "[send done:c1]" {
@@ -160,7 +169,7 @@ func TestALetterIsAnsweredWithALetter(t *testing.T) {
 	r.letter("l1", addrA, "hello", "/help")
 	r.drain(t)
 	got := r.bot.sent[0]
-	if got.kind != "letter" || got.subject != "Re: hello" || got.to != addrA || got.from != botAddr || strings.Contains(got.text, "nickbot: {") {
+	if got.kind != "letter" || got.subject != "Re: hello" || got.to != addrA || got.from != botAddr || strings.Contains(got.text, "fake: {") {
 		t.Errorf("reply = %+v", got)
 	}
 }
@@ -177,9 +186,8 @@ func TestAnEventTheLibraryHandsOutTwiceIsDoneTwiceAndNotDoneTwice(t *testing.T) 
 	if len(r.bot.sent) != 2 || r.bot.sent[0].text != r.bot.sent[1].text {
 		t.Fatalf("the answer to a repeated event must be the first one again: %+v", r.bot.sent)
 	}
-	rows, _ := r.store.History(addrA, 10)
-	if len(rows) != 1 {
-		t.Errorf("%d history rows for one event", len(rows))
+	if len(r.handler.calls) != 2 {
+		t.Errorf("the handler saw %d requests; the loop does not keep track of events", len(r.handler.calls))
 	}
 	if len(r.bot.done) != 1 || r.bot.done[0] != "c1" {
 		t.Errorf("done = %v", r.bot.done)
@@ -187,7 +195,7 @@ func TestAnEventTheLibraryHandsOutTwiceIsDoneTwiceAndNotDoneTwice(t *testing.T) 
 }
 
 func TestASenderOverTheRateGetsOneNoticeAndThenSilence(t *testing.T) {
-	r := newRig(t, func(c *Config) { c.PerSender = limit.Config{Burst: 3, Every: time.Hour} })
+	r := newRig(t, func(c *loop.Config) { c.PerSender = limit.Config{Burst: 3, Every: time.Hour} })
 	for i := 0; i < 10; i++ {
 		r.chat(fmt.Sprintf("c%d", i), addrA, "/help")
 	}
@@ -195,8 +203,7 @@ func TestASenderOverTheRateGetsOneNoticeAndThenSilence(t *testing.T) {
 	if len(r.bot.sent) != 4 {
 		t.Fatalf("%d replies: three answers and one notice", len(r.bot.sent))
 	}
-	notice := r.bot.sent[3]
-	if !strings.Contains(notice.text, `"error":"rate_limited"`) || !strings.Contains(notice.text, "Slow down") {
+	if notice := r.bot.sent[3]; !strings.Contains(notice.text, "Slow down") {
 		t.Errorf("the fourth reply is %q", notice.text)
 	}
 	if len(r.bot.done) != 10 {
@@ -208,13 +215,13 @@ func TestASenderOverTheRateGetsOneNoticeAndThenSilence(t *testing.T) {
 		r.chat(fmt.Sprintf("d%d", i), addrA, "/help")
 	}
 	r.drain(t)
-	if len(r.bot.sent) != 5 || !strings.Contains(r.bot.sent[4].text, "rate_limited") {
+	if len(r.bot.sent) != 5 || !strings.Contains(r.bot.sent[4].text, "Slow down") {
 		t.Errorf("%d replies after the minute", len(r.bot.sent))
 	}
 }
 
 func TestOneSendersExcessDoesNotCostAnotherItsAnswers(t *testing.T) {
-	r := newRig(t, func(c *Config) { c.PerSender = limit.Config{Burst: 1, Every: time.Hour} })
+	r := newRig(t, func(c *loop.Config) { c.PerSender = limit.Config{Burst: 1, Every: time.Hour} })
 	r.chat("a1", addrA, "/help")
 	r.chat("a2", addrA, "/help")
 	r.chat("b1", addrB, "/help")
@@ -229,7 +236,7 @@ func TestOneSendersExcessDoesNotCostAnotherItsAnswers(t *testing.T) {
 }
 
 func TestTheSharedAddressHasABucketOfItsOwn(t *testing.T) {
-	r := newRig(t, func(c *Config) {
+	r := newRig(t, func(c *loop.Config) {
 		c.PerSender = limit.Config{Burst: 1, Every: time.Hour}
 		c.Anonymous = limit.Config{Burst: 5, Every: time.Hour}
 	})
@@ -242,7 +249,7 @@ func TestTheSharedAddressHasABucketOfItsOwn(t *testing.T) {
 	var answers, notices int
 	for _, s := range r.bot.sent {
 		if s.to == addrAnon {
-			if strings.Contains(s.text, "rate_limited") {
+			if strings.Contains(s.text, "Slow down") {
 				notices++
 			} else {
 				answers++
@@ -275,7 +282,7 @@ func TestAnUnknownCommandIsAnsweredTwiceAndThenIgnored(t *testing.T) {
 }
 
 func TestTheGlobalBudgetStopsAllAnswers(t *testing.T) {
-	r := newRig(t, func(c *Config) { c.ReplyBudget = limit.Config{Burst: 4, Every: time.Hour} })
+	r := newRig(t, func(c *loop.Config) { c.ReplyBudget = limit.Config{Burst: 4, Every: time.Hour} })
 	for i := 0; i < 10; i++ {
 		r.chat(fmt.Sprintf("c%d", i), fmt.Sprintf("BM-sender%d", i), "/help")
 	}
@@ -293,7 +300,7 @@ func TestTheGlobalBudgetStopsAllAnswers(t *testing.T) {
 
 func TestNotesAreLoggedAndHaveNothingToDo(t *testing.T) {
 	r := newRig(t)
-	r.bot.events = append(r.bot.events, Event{Kind: "note", Text: "the node was restarted"})
+	r.bot.events = append(r.bot.events, loop.Event{Kind: "note", Text: "the node was restarted"})
 	r.drain(t)
 	if len(r.bot.done) != 0 || len(r.bot.sent) != 0 {
 		t.Errorf("a note was answered or done: %+v %v", r.bot.sent, r.bot.done)
@@ -379,7 +386,7 @@ func TestRunReturnsAnErrorOfTheLibrary(t *testing.T) {
 }
 
 func TestStats(t *testing.T) {
-	r := newRig(t, func(c *Config) { c.PerSender = limit.Config{Burst: 2, Every: time.Hour} })
+	r := newRig(t, func(c *loop.Config) { c.PerSender = limit.Config{Burst: 2, Every: time.Hour} })
 	r.chat("c1", addrA, "/help")
 	r.letter("l1", addrA, "x", "/help")
 	r.chat("c2", addrA, "/help")
@@ -388,5 +395,55 @@ func TestStats(t *testing.T) {
 	st := r.loop.Stats()
 	if st.Received != 4 || st.Chats != 3 || st.Letters != 1 || st.Answered != 2 || st.Limited != 2 || st.Notices != 1 {
 		t.Errorf("stats = %+v", st)
+	}
+}
+
+// A service with a voice of its own says "slow down" in it: the loop asks the config for the notice.
+func TestAnInjectedRateNoticeIsWhatTheSenderIsGiven(t *testing.T) {
+	r := newRig(t, func(c *loop.Config) {
+		c.PerSender = limit.Config{Burst: 1, Every: time.Hour}
+		c.RateNotice = func(req loop.Request) loop.Reply {
+			return loop.Reply{Text: "custom notice to " + req.From, Code: "rate_limited"}
+		}
+	})
+	r.chat("a1", addrA, "/help")
+	r.chat("a2", addrA, "/help")
+	r.drain(t)
+	if len(r.bot.sent) != 2 || r.bot.sent[1].text != "custom notice to "+addrA {
+		t.Fatalf("sent %+v", r.bot.sent)
+	}
+	if strings.Contains(r.bot.sent[1].text, "Slow down") {
+		t.Error("the default notice was used")
+	}
+}
+
+// With no notice of its own a loop still answers a sender over its rate, in words that belong to no
+// bot, to a chat and to a letter. Silence is not an option.
+func TestTheDefaultRateNoticeIsNeutralAndNeverSilent(t *testing.T) {
+	r := newRig(t, func(c *loop.Config) { c.PerSender = limit.Config{Burst: 1, Every: time.Hour} })
+	r.chat("a1", addrA, "/help")
+	r.chat("a2", addrA, "/help")
+	r.letter("b1", addrB, "hello", "/help")
+	r.letter("b2", addrB, "hello", "/help")
+	r.letter("c1", "BM-sender-c", "", "/help")
+	r.letter("c2", "BM-sender-c", "", "/help")
+	r.drain(t)
+	if len(r.bot.sent) != 6 {
+		t.Fatalf("%d replies, want 3 answers and 3 notices: %+v", len(r.bot.sent), r.bot.sent)
+	}
+	trailer := regexp.MustCompile(`(?m)^[a-z][a-z0-9_]{1,31}: \{`)
+	byTo := map[string]sent{}
+	for _, s := range r.bot.sent {
+		byTo[s.to] = s // the last reply to an address is its notice
+	}
+	chat, letter, bare := byTo[addrA], byTo[addrB], byTo["BM-sender-c"]
+	if chat.kind != "chat" || strings.TrimSpace(chat.text) == "" || trailer.MatchString(chat.text) {
+		t.Errorf("the chat notice is %+v", chat)
+	}
+	if letter.kind != "letter" || letter.subject != "Re: hello" || strings.TrimSpace(letter.text) == "" {
+		t.Errorf("the letter notice is %+v", letter)
+	}
+	if bare.subject != "Re: your letter" {
+		t.Errorf("a letter with no subject got the subject %q", bare.subject)
 	}
 }

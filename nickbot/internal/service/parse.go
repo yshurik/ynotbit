@@ -1,6 +1,10 @@
 package service
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/yshurik/ynotbit/nickbot/internal/loop"
+)
 
 const (
 	maxLine = 1024 // a command longer than this is refused unread
@@ -17,9 +21,9 @@ type command struct {
 // commandOf finds the command a request holds. A chat is one command: its first line that has
 // anything on it. A letter's command is the first line of its body, or, when that is not a command,
 // its subject (PyBitmessage users type into the subject). ok is false when there is none.
-func commandOf(req Request) (cmd command, ok bool) {
+func commandOf(req loop.Request) (cmd command, ok bool) {
 	candidates := []string{firstContentLine(req.Text)}
-	if req.Transport == Letter {
+	if req.Transport == loop.Letter {
 		candidates = append(candidates, strings.TrimSpace(req.Subject))
 	}
 	for _, line := range candidates {

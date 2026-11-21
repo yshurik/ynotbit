@@ -12,6 +12,8 @@ import (
 	"github.com/yshurik/ynotbit/nickbot/internal/bmaddr"
 	"github.com/yshurik/ynotbit/nickbot/internal/nick"
 	"github.com/yshurik/ynotbit/nickbot/internal/store"
+
+	"github.com/yshurik/ynotbit/nickbot/internal/loop"
 )
 
 const (
@@ -90,7 +92,7 @@ var (
 )
 
 // Handle answers one request. It never fails: whatever goes wrong becomes an error reply.
-func (s *Service) Handle(req Request) (reply Reply) {
+func (s *Service) Handle(req loop.Request) (reply loop.Reply) {
 	defer func() {
 		if r := recover(); r != nil {
 			s.o.Log("panic handling an event: %v", r)
@@ -134,7 +136,7 @@ func knownCommand(word string) bool {
 }
 
 type call struct {
-	req  Request
+	req  loop.Request
 	args []string
 	anon bool
 }

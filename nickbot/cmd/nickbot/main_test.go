@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yshurik/ynotbit/nickbot/internal/loop"
 	"github.com/yshurik/ynotbit/nickbot/internal/nick"
 	"github.com/yshurik/ynotbit/nickbot/internal/store"
 )
@@ -187,5 +188,18 @@ func TestTheImagesNickbotStageUsesFlagsTheServiceTakes(t *testing.T) {
 	o, _ := parseFlags(commands[0][1:], io.Discard)
 	if o == nil || o.check != "/data/status.json" || o.maxAge <= 0 || o.minPeers < 1 {
 		t.Errorf("the health check is %+v", o)
+	}
+}
+
+// The loop's own "slow down" has no trailer; nickbot says it in its own voice, words and trailer.
+func TestNickbotUsesItsOwnRateNotice(t *testing.T) {
+	cfg := newLoopConfig(nil)
+	if cfg.RateNotice == nil {
+		t.Fatal("no rate notice: the loop would use its neutral default")
+	}
+	reply := cfg.RateNotice(loop.Request{Transport: loop.Chat, From: "BM-2cVdr5sKJWPUGP9MtqdVAn4NHM3TScMMzN", Text: "/help"})
+	lines := strings.Split(strings.TrimRight(reply.Text, "\n"), "\n")
+	if last := lines[len(lines)-1]; !strings.HasPrefix(last, "nickbot: {") {
+		t.Errorf("the last line of the notice is %q", last)
 	}
 }

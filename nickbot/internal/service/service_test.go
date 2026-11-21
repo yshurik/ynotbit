@@ -11,6 +11,8 @@ import (
 
 	"github.com/yshurik/ynotbit/nickbot/internal/bmaddr"
 	"github.com/yshurik/ynotbit/nickbot/internal/store"
+
+	"github.com/yshurik/ynotbit/nickbot/internal/loop"
 )
 
 const (
@@ -59,18 +61,18 @@ func newFixture(t *testing.T, mutate ...func(*Options)) *fixture {
 }
 
 // chat sends a chat from the address and returns the reply.
-func (f *fixture) chat(from, text string) Reply {
+func (f *fixture) chat(from, text string) loop.Reply {
 	f.n++
-	return f.svc.Handle(Request{EventID: fmt.Sprintf("e%d", f.n), Transport: Chat, From: from, Text: text})
+	return f.svc.Handle(loop.Request{EventID: fmt.Sprintf("e%d", f.n), Transport: loop.Chat, From: from, Text: text})
 }
 
-func (f *fixture) letter(from, subject, body string) Reply {
+func (f *fixture) letter(from, subject, body string) loop.Reply {
 	f.n++
-	return f.svc.Handle(Request{EventID: fmt.Sprintf("e%d", f.n), Transport: Letter, From: from, Subject: subject, Text: body})
+	return f.svc.Handle(loop.Request{EventID: fmt.Sprintf("e%d", f.n), Transport: loop.Letter, From: from, Subject: subject, Text: body})
 }
 
 // trailer returns the fields of the line a chat reply ends with.
-func trailer(t *testing.T, r Reply) map[string]any {
+func trailer(t *testing.T, r loop.Reply) map[string]any {
 	t.Helper()
 	lines := strings.Split(r.Text, "\n")
 	last := lines[len(lines)-1]
@@ -88,7 +90,7 @@ func trailer(t *testing.T, r Reply) map[string]any {
 }
 
 // firstLine is what a person reads on the first line: the two spaces of a hard line break are not shown.
-func firstLine(r Reply) string {
+func firstLine(r loop.Reply) string {
 	return strings.TrimSuffix(strings.SplitN(r.Text, "\n", 2)[0], "  ")
 }
 
@@ -110,7 +112,7 @@ func TestHelpListsTheCommands(t *testing.T) {
 
 func TestHelpIsAListWithAnItemForEachCommand(t *testing.T) {
 	f := newFixture(t)
-	for name, r := range map[string]Reply{"chat": f.chat(addrA, "/help"), "letter": f.letter(addrA, "help", "/help")} {
+	for name, r := range map[string]loop.Reply{"chat": f.chat(addrA, "/help"), "letter": f.letter(addrA, "help", "/help")} {
 		for _, want := range []string{"/register", "/unregister", "/address", "/nickname", "/search", "/whoami"} {
 			if !strings.Contains(r.Text, "\n- "+want) {
 				t.Errorf("%s: no list item starts with %s:\n%s", name, want, r.Text)
@@ -236,7 +238,7 @@ func TestRegisterReplacesTheNameWhateverItsSigil(t *testing.T) {
 
 func TestTheSameEventIsAnsweredTheSameAndDoneOnce(t *testing.T) {
 	f := newFixture(t)
-	req := Request{EventID: "same", Transport: Chat, From: addrA, Text: "/register @ben"}
+	req := loop.Request{EventID: "same", Transport: loop.Chat, From: addrA, Text: "/register @ben"}
 	first := f.svc.Handle(req)
 	second := f.svc.Handle(req)
 	if first.Text != second.Text || first.Code != "" || second.Code != "" {

@@ -1,16 +1,16 @@
-// Package loop is nickbot's heart: it takes each chat and letter the library hands out, keeps
+// Package loop is the heart of a bot: it takes each chat and letter the library hands out, keeps
 // senders to their rates, has the service answer, sends the answer, and only then says the event
-// is done.
+// is done. It knows no service: nickbot and btcbot both run on it.
 package loop
 
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/yshurik/ynotbit/nickbot/internal/limit"
-	"github.com/yshurik/ynotbit/nickbot/internal/service"
 )
 
 // Event is what the library hands out (bmbot.h): a chat, a letter, or a note about a problem.
@@ -36,21 +36,36 @@ type Bot interface {
 
 // Handler is the service.
 type Handler interface {
-	Handle(service.Request) service.Reply
+	Handle(Request) Reply
 	IsAnonymous(address string) bool
 }
 
 // Config sets the limits; zero values take the defaults.
 type Config struct {
-	PerSender   limit.Config // commands from one address: 10 at once, then one every 6 seconds
-	Anonymous   limit.Config // from the shared address, which is everybody: 60, then two a second
-	Notice      limit.Config // "slow down" to one sender: once a minute
-	Unknown     limit.Config // answers to what is no command, per sender: 2, then one every 10 minutes
-	ReplyBudget limit.Config // all answers together: 600, then one every 6 seconds
-	MaxSenders  int          // how many senders' buckets are remembered
+	PerSender   limit.Config        // commands from one address: 10 at once, then one every 6 seconds
+	Anonymous   limit.Config        // from the shared address, which is everybody: 60, then two a second
+	Notice      limit.Config        // "slow down" to one sender: once a minute
+	Unknown     limit.Config        // answers to what is no command, per sender: 2, then one every 10 minutes
+	ReplyBudget limit.Config        // all answers together: 600, then one every 6 seconds
+	RateNotice  func(Request) Reply // what a sender over its rate is told; nil is a plain reply with no trailer
+	MaxSenders  int                 // how many senders' buckets are remembered
 	Timeout     time.Duration
 	Now         func() time.Time
 	Log         func(format string, args ...any)
+}
+
+// defaultRateNotice is what a loop with no voice of its own says to a sender over its rate: plain words,
+// no trailer, a subject for a letter.
+func defaultRateNotice(req Request) Reply {
+	r := Reply{Text: "Slow down: you are sending too many commands. Try again in a minute.", Code: "rate_limited"}
+	if req.Transport == Letter {
+		subject := strings.TrimSpace(req.Subject)
+		if subject == "" {
+			subject = "your letter"
+		}
+		r.Subject = "Re: " + subject
+	}
+	return r
 }
 
 // Stats counts what the loop has done.
@@ -95,6 +110,9 @@ func New(bot Bot, h Handler, cfg Config) *Loop {
 	}
 	if cfg.ReplyBudget == (limit.Config{}) {
 		cfg.ReplyBudget = limit.Config{Burst: 600, Every: 6 * time.Second}
+	}
+	if cfg.RateNotice == nil {
+		cfg.RateNotice = defaultRateNotice
 	}
 	if cfg.MaxSenders == 0 {
 		cfg.MaxSenders = 10000
@@ -156,14 +174,14 @@ func (l *Loop) Step(timeout time.Duration) (handled bool, err error) {
 
 func (l *Loop) handle(ev Event) {
 	l.received.Add(1)
-	transport := service.Chat
+	transport := Chat
 	if ev.Kind == "letter" {
-		transport = service.Letter
+		transport = Letter
 		l.letters.Add(1)
 	} else {
 		l.chats.Add(1)
 	}
-	req := service.Request{EventID: ev.ID, Transport: transport, From: ev.From, Subject: ev.Subject, Text: ev.Text}
+	req := Request{EventID: ev.ID, Transport: transport, From: ev.From, Subject: ev.Subject, Text: ev.Text}
 	switch {
 	case ev.From == "" || ev.From == ev.To:
 		l.finish(ev) // nothing to answer
@@ -172,7 +190,7 @@ func (l *Loop) handle(ev Event) {
 		l.limited.Add(1)
 		if l.notice.Allow(ev.From) {
 			l.notices.Add(1)
-			l.send(ev, service.RateLimited(req), false)
+			l.send(ev, l.cfg.RateNotice(req), false)
 			return
 		}
 		l.finish(ev)
@@ -200,7 +218,7 @@ func (l *Loop) allowed(from string) bool {
 
 // send queues the reply and, if that worked, finishes the event. A reply that can never be sent (the
 // library says the address or text is wrong) finishes it too: it would come back at every start.
-func (l *Loop) send(ev Event, r service.Reply, counted bool) {
+func (l *Loop) send(ev Event, r Reply, counted bool) {
 	var err error
 	if ev.Kind == "letter" {
 		_, err = l.bot.SendLetter(ev.To, ev.From, r.Subject, r.Text)
