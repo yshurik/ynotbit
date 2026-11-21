@@ -68,6 +68,10 @@ const (
 	CodeInternal = -6
 )
 
+// CodeABI is the wrapper's own code, outside the library's range: the library that is linked has
+// another ABI than the bmbot.h this program was built against.
+const CodeABI = -100
+
 // Error is a failure the library reported, with its code and its English reason.
 type Error struct {
 	Code int
@@ -77,7 +81,7 @@ type Error struct {
 func (e *Error) Error() string { return fmt.Sprintf("bmbot: %s (code %d)", e.Text, e.Code) }
 
 // Permanent says that trying again with the same arguments cannot work.
-func (e *Error) Permanent() bool { return e.Code == CodeArgument }
+func (e *Error) Permanent() bool { return e.Code == CodeArgument || e.Code == CodeABI }
 
 // ErrNotBuilt is what Open returns in a build without the libbmbot tag.
-var ErrNotBuilt = errors.New("nickbot was built without libbmbot (use -tags libbmbot)")
+var ErrNotBuilt = errors.New("this program was built without libbmbot (use -tags libbmbot)")

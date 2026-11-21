@@ -11,12 +11,20 @@ import "C"
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 	"unsafe"
 
 	"github.com/yshurik/ynotbit/bmbot/go/loop"
 )
+
+// headerABI is the ABI version of the bmbot.h this wrapper was compiled against.
+var headerABI = int(C.BMBOT_ABI_VERSION)
+
+// abiVersion is the ABI version of the library that is linked. It is a variable so that a test can
+// stand in for a library of another one.
+var abiVersion = func() int { return int(C.bmbot_abi_version()) }
 
 // Bot is an open library handle. Its methods may be used from any goroutine; Close waits for the
 // calls in flight (a Next, at most its timeout) and then frees the handle.
@@ -49,8 +57,12 @@ func take(p *C.char) string {
 	return s
 }
 
-// Open opens the bot: its vault and mailbox from the phrase, its node as a child process.
+// Open opens the bot: its vault and mailbox from the phrase, its node as a child process. It refuses a
+// library of another ABI than the header this program was built with (CodeABI, a permanent error).
 func Open(cfg Config) (*Bot, error) {
+	if got := abiVersion(); got != headerABI {
+		return nil, &Error{Code: CodeABI, Text: fmt.Sprintf("libbmbot has ABI version %d but this program was built for %d", got, headerABI)}
+	}
 	js, err := json.Marshal(cfg)
 	if err != nil {
 		return nil, err
