@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/yshurik/ynotbit/nickbot/internal/loop"
+	"github.com/yshurik/ynotbit/bmbot/go/loop"
 )
 
 // payload is the JSON of the trailer. The order of the fields is part of the protocol.

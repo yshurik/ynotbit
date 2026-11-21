@@ -21,8 +21,9 @@ cd nickbot && go vet ./... && go test -race ./...
 | `internal/nick` | the syntax of a nickname and of a search term |
 | `internal/bmaddr` | what a Bitmessage address is, the way the C++ core reads it |
 | `internal/store` | the registry in SQLite: every rule of a name, in one transaction each |
-| `internal/limit` | token buckets in bounded memory |
 | `internal/service` | the commands and their answers, with the trailer for programs |
-| `internal/loop` | the events of the library, the limits, the replies, and "done" only after the reply |
-| `internal/bmbot` | the cgo layer over `bmbot.h` (build tag `libbmbot`) |
 | `cmd/nickbot` | the process: flags, the status file, backups, the `admin` commands |
+
+The plumbing every bot shares lives in the Go module [`bmbot/go`](../bmbot/go) (nickbot requires it with a `replace`): `bmbot`, the
+cgo layer over `bmbot.h` (build tag `libbmbot`); `loop`, the events of the library, the limits, the replies, and "done" only after the
+reply; `limit`, token buckets in bounded memory.

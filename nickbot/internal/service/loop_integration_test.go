@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yshurik/ynotbit/nickbot/internal/limit"
-	"github.com/yshurik/ynotbit/nickbot/internal/loop"
+	"github.com/yshurik/ynotbit/bmbot/go/limit"
+	"github.com/yshurik/ynotbit/bmbot/go/loop"
 	"github.com/yshurik/ynotbit/nickbot/internal/service"
 	"github.com/yshurik/ynotbit/nickbot/internal/store"
 )

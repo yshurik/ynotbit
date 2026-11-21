@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/yshurik/ynotbit/nickbot/internal/limit"
+	"github.com/yshurik/ynotbit/bmbot/go/limit"
 )
 
 // Event is what the library hands out (bmbot.h): a chat, a letter, or a note about a problem.

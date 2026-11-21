@@ -13,7 +13,7 @@ import (
 	"github.com/yshurik/ynotbit/nickbot/internal/nick"
 	"github.com/yshurik/ynotbit/nickbot/internal/store"
 
-	"github.com/yshurik/ynotbit/nickbot/internal/loop"
+	"github.com/yshurik/ynotbit/bmbot/go/loop"
 )
 
 const (

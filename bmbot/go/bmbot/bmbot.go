@@ -16,7 +16,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/yshurik/ynotbit/nickbot/internal/loop"
+	"github.com/yshurik/ynotbit/bmbot/go/loop"
 )
 
 // Bot is an open library handle. Its methods may be used from any goroutine; Close waits for the

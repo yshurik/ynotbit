@@ -3,7 +3,7 @@ package service
 import (
 	"strings"
 
-	"github.com/yshurik/ynotbit/nickbot/internal/loop"
+	"github.com/yshurik/ynotbit/bmbot/go/loop"
 )
 
 const (

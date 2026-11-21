@@ -5,7 +5,7 @@ package bmbot
 import (
 	"time"
 
-	"github.com/yshurik/ynotbit/nickbot/internal/loop"
+	"github.com/yshurik/ynotbit/bmbot/go/loop"
 )
 
 // Bot is not available in this build.

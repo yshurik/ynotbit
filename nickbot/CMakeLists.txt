@@ -1,7 +1,8 @@
 # nickbot: the nicknames service, in Go on libbmbot (the C ABI of bmbot/bmbot.h, through cgo).
-# Opt-in (-DYNOTBIT_NICKBOT=ON): the app's own builds need no Go. Three things exist when it is on:
+# Opt-in (-DYNOTBIT_NICKBOT=ON): the app's own builds need no Go. Four things exist when it is on:
 # the target nickbot_go (the binary, nickbot/nickbot in the build tree), the test nickbot-go (the Go
-# tests, with the library) and the test nickbot-e2e (the binary over a real bmnode).
+# tests, with the library), the test bmbot-go (the tests of the shared Go module bmbot/go, which
+# nickbot requires) and the test nickbot-e2e (the binary over a real bmnode).
 find_program(GO_EXECUTABLE go)
 if(NOT GO_EXECUTABLE)
  message(FATAL_ERROR "YNOTBIT_NICKBOT is ON but Go was not found")
@@ -20,6 +21,11 @@ add_test(NAME nickbot-go
  COMMAND ${CMAKE_COMMAND} -E env ${NICKBOT_ENV} ${GO_EXECUTABLE} test -tags libbmbot -count=1 ./...
  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(nickbot-go PROPERTIES TIMEOUT 600)
+# The Go module bmbot/go (the cgo layer, the loop, the limiter) that nickbot requires: its own tests, with the library.
+add_test(NAME bmbot-go
+ COMMAND ${CMAKE_COMMAND} -E env ${NICKBOT_ENV} ${GO_EXECUTABLE} test -tags libbmbot -count=1 ./...
+ WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/bmbot/go)
+set_tests_properties(bmbot-go PROPERTIES TIMEOUT 600)
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
  add_test(NAME nickbot-e2e

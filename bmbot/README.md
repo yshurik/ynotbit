@@ -45,8 +45,8 @@ for (;;) {
 
 Examples: `bmbot/examples/echo.py` (a complete echo bot on ctypes, the library of `tests/bmbot/ctypes_test.py`),
 `tools/chat_responder.cpp` (C++, the reference) and [`nickbot/`](../nickbot/README.md) (Go, a nicknames service: its cgo layer is
-`nickbot/internal/bmbot`, about 200 lines, `import "C"` with `#cgo LDFLAGS: -lbmbot` and `#include <bmbot.h>`; the ABI has nothing a
-cgo caller has to wrap).
+`bmbot/go/bmbot` in the Go module `bmbot/go`, about 300 lines, `import "C"` with `#cgo LDFLAGS: -lbmbot` and `#include <bmbot.h>`; the
+ABI has nothing a cgo caller has to wrap).
 
 `bmbot_chan_address(phrase)` is the one call that needs no handle: the address of the chan a phrase makes. A service that registers
 chan names uses it to check that a name comes from the chan's own address.

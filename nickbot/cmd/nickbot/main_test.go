@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yshurik/ynotbit/nickbot/internal/loop"
+	"github.com/yshurik/ynotbit/bmbot/go/loop"
 	"github.com/yshurik/ynotbit/nickbot/internal/nick"
 	"github.com/yshurik/ynotbit/nickbot/internal/store"
 )
