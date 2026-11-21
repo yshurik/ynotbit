@@ -5,6 +5,12 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      sdk_tag:
+        description: "Push the SDK image to GHCR under this tag (leave empty to build it and push nothing)"
+        required: false
+        default: ""
+        type: string
 
 env:
   QT_VERSION: "6.8.3"
@@ -298,3 +304,44 @@ jobs:
           body_path: docs/releases/${{ github.ref_name }}.md
           draft: true
           generate_release_notes: true
+
+  sdk-image:
+    # The image a bot in another repository builds on: libbmbot, its header, bmnode, SQLCipher and a Python
+    # client (docker/Dockerfile, target sdk). Pushed to GHCR on a version tag, and by hand under the tag typed in
+    # the dispatch; a dispatch with no tag builds it and pushes nothing. It does not wait for the release job.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tags
+        id: t
+        env:
+          REF_NAME: ${{ github.ref_type == 'tag' && github.ref_name || '-' }}
+          SDK_TAG: ${{ inputs.sdk_tag || '-' }}
+        run: python3 scripts/sdk_tags.py --ref-name "$REF_NAME" --sdk-tag "$SDK_TAG" --abi-header bmbot/bmbot.h >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        if: steps.t.outputs.push == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: sdk
+          platforms: linux/amd64
+          push: ${{ steps.t.outputs.push == 'true' }}
+          tags: ${{ steps.t.outputs.tags }}
+          build-args: |
+            BMBOT_ABI=${{ steps.t.outputs.abi }}
+            YNOTBIT_VERSION=${{ steps.t.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

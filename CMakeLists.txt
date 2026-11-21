@@ -140,6 +140,9 @@ if(Python3_Interpreter_FOUND)
  add_test(NAME peer-connectivity-bmnode COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/peer_connectivity_test.py $<TARGET_FILE:bmnode>)
  set_tests_properties(relay-bmnode relay-verack-first-bmnode relay-download-bmnode listen-fallback-bmnode PROPERTIES TIMEOUT 60)
  set_tests_properties(peer-connectivity-bmnode PROPERTIES TIMEOUT 180)
+ # Which tags the release workflow pushes the SDK image under (scripts/sdk_tags.py).
+ add_test(NAME sdk-tags COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/sdk_tags_test.py)
+ set_tests_properties(sdk-tags PROPERTIES TIMEOUT 60)
 endif()
 if(NOT WIN32)
  # The bot library, the chat bot's engine and chat_responder, the reference bot on the library's C
