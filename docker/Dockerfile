@@ -55,6 +55,22 @@ COPY --from=build /build/bmnode /usr/local/bin/
 COPY bmbot/bmbot.h /usr/local/include/bmbot.h
 RUN ldconfig
 
+# The SDK image: what a bot in another repository builds on and runs on, from this tree's own libbmbot. The base
+# above (libbmbot, bmnode, SQLCipher, the header, tini, the bot user) plus bmbot.pc, python3 and the ctypes client of
+# bmbot/examples, which the end-to-end tests of the bots use. No Go toolchain and no C compiler: a bot takes Go from
+# the golang image, which is Debian bookworm too. The labels say which ABI (BMBOT_ABI_VERSION of bmbot/bmbot.h) and
+# which ynotbit version the image holds; scripts/build-image.sh and the release workflow pass them, and
+# scripts/check-sdk-image.sh compares the ABI label with the header.
+FROM base AS sdk
+ARG BMBOT_ABI=0
+ARG YNOTBIT_VERSION=dev
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends python3 \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=build /build/bmbot/bmbot.pc /usr/local/lib/pkgconfig/bmbot.pc
+COPY bmbot/examples/echo.py /usr/local/share/bmbot/examples/echo.py
+LABEL io.ynotbit.bmbot.abi="${BMBOT_ABI}" org.opencontainers.image.version="${YNOTBIT_VERSION}"
+
 # nickbot: nicknames for Bitmessage addresses (docs/nickbot.md). It keeps its registry, its backups and
 # its status in /data. The shared lookup chan and the node's port are published as for the responder;
 # a seed file, if there is one, is mounted and named with --seed.
