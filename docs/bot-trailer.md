@@ -1,7 +1,8 @@
 # The bot trailer
 
 A bot that answers in a Bitmessage chat can end its reply with one line for programs: the trailer. A client shows the words above
-the line and keeps the JSON for whoever wants it. nickbot does this (`docs/nickbot.md`), and any other bot may.
+the line and keeps the JSON for whoever wants it. nickbot does this (`docs/nickbot.md`), so does [btcbot](https://github.com/yshurik/btcbot), a bot of its own repository, and any
+other bot may.
 
 ## The rule
 

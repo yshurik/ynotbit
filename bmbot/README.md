@@ -48,6 +48,17 @@ Examples: `bmbot/examples/echo.py` (a complete echo bot on ctypes, the library o
 `bmbot/go/bmbot` in the Go module `bmbot/go`, about 300 lines, `import "C"` with `#cgo LDFLAGS: -lbmbot` and `#include <bmbot.h>`; the
 ABI has nothing a cgo caller has to wrap).
 
+**Go bots, the SDK image and btcbot.**
+
+- The Go module `github.com/yshurik/ynotbit/bmbot/go` (directory [`bmbot/go`](go/README.md), tags `bmbot/go/vX.Y.Z`, 0.x for now) is
+  the cgo layer and the request loop that nickbot and btcbot share: `go get github.com/yshurik/ynotbit/bmbot/go@v0.1.0`.
+- The SDK image `ghcr.io/yshurik/ynotbit-sdk` (target `sdk` of `docker/Dockerfile`, pushed by the release workflow) is the base of a
+  bot's own image: libbmbot, `bmbot.h`, `bmbot.pc`, `bmnode`, SQLCipher, python3, `echo.py`, tini and the `bot` user. A release
+  `vX.Y.Z` pushes `X.Y.Z` and `abiN`, the moving tag of the newest build of C ABI N (the label `io.ynotbit.bmbot.abi` says it too); a
+  prerelease pushes its own tag only. Pin an exact tag. `scripts/check-sdk-image.sh [ssh-host] IMAGE` checks an image.
+- btcbot, Bitcoin Core commands over chat, lives in its own repository, [yshurik/btcbot](https://github.com/yshurik/btcbot), on the
+  module and the image above. Its README has the table of which btcbot needs which SDK image and module version.
+
 `bmbot_chan_address(phrase)` is the one call that needs no handle: the address of the chan a phrase makes. A service that registers
 chan names uses it to check that a name comes from the chan's own address.
 

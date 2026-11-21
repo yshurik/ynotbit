@@ -2,5 +2,5 @@
 # no subject whose text is the JSON of the chat, and a message's text may be kMaxLetterText (261000, what an object of
 # 2^18 bytes holds less its header, keys, acknowledgment, signature and encryption) less the 115 bytes of "Subject:",
 # "\nBody:" and the JSON around the body, with the longest sequence number. Both sides check themselves against this file:
-# bmc::chatFits (tests/bmclient/chat_format_test.cpp) and btc.MaxChatReply (nickbot/internal/btc).
+# bmc::chatFits (tests/bmclient/chat_format_test.cpp) and btc.MaxChatReply (internal/btc of the btcbot repository, which keeps a copy of this file).
 260885
