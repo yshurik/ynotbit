@@ -7,8 +7,10 @@ find_program(GO_EXECUTABLE go)
 if(NOT GO_EXECUTABLE)
  message(FATAL_ERROR "YNOTBIT_NICKBOT is ON but Go was not found")
 endif()
-# The library is found by -L at build time and by rpath at run time, from where this tree built it.
+# The library is found by -L at build time and by rpath at run time, from where this tree built it; its header
+# (the Go code includes <bmbot.h>, as a program of another repository does from an installed library) by -I.
 set(NICKBOT_ENV CGO_ENABLED=1
+ "CGO_CFLAGS=-I${CMAKE_SOURCE_DIR}/bmbot"
  "CGO_LDFLAGS=-L$<TARGET_FILE_DIR:bmbot> -Wl,-rpath,$<TARGET_FILE_DIR:bmbot>")
 add_custom_target(nickbot_go ALL
  COMMAND ${CMAKE_COMMAND} -E env ${NICKBOT_ENV} ${GO_EXECUTABLE} build -tags libbmbot -trimpath

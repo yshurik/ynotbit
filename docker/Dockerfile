@@ -35,7 +35,7 @@ RUN cmake -S /src -B /build -G Ninja -DYNOTBIT_QT=OFF -DCMAKE_BUILD_TYPE=Release
 # here, in the stage that has the library, its header and everything it links.
 FROM build AS gobuild
 COPY --from=golang:1.24-bookworm /usr/local/go /usr/local/go
-ENV PATH=/usr/local/go/bin:$PATH GOTOOLCHAIN=local CGO_ENABLED=1 CGO_LDFLAGS=-L/build/bmbot
+ENV PATH=/usr/local/go/bin:$PATH GOTOOLCHAIN=local CGO_ENABLED=1 CGO_CFLAGS=-I/src/bmbot CGO_LDFLAGS=-L/build/bmbot
 RUN cd /src/nickbot \
  && go vet -tags libbmbot ./... \
  && go build -tags libbmbot -trimpath -ldflags "-s -w" -o /build/nickbot ./cmd/nickbot

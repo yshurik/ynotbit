@@ -3,10 +3,9 @@
 package bmbot
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../../bmbot
 #cgo LDFLAGS: -lbmbot
 #include <stdlib.h>
-#include "bmbot.h"
+#include <bmbot.h>
 */
 import "C"
 
