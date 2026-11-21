@@ -1,4 +1,4 @@
-// The last line of a bot's chat reply, for programs: "<id>: {json}" (docs/btcbot.md). Any bot may
+// The last line of a bot's chat reply, for programs: "<id>: {json}" (docs/bot-trailer.md). Any bot may
 // end its reply so, and nickbot does ("nickbot: {...}"). A client shows the words above the line,
 // and keeps the JSON for whoever wants it (a button that copies it).
 #pragma once

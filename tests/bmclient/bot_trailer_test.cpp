@@ -1,5 +1,5 @@
 // The last line of a bot's chat reply, for programs: "<id>: {json}". Any bot may end its reply so
-// (docs/btcbot.md); nickbot does too.
+// (docs/bot-trailer.md); nickbot does too.
 #include <bmc/bot_trailer.h>
 #include <bmc/identity.h>
 #include <bmc/test.h>
