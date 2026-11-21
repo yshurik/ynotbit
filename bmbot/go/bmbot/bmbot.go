@@ -6,6 +6,13 @@ package bmbot
 #cgo LDFLAGS: -lbmbot
 #include <stdlib.h>
 #include <bmbot.h>
+
+// The ABI of libbmbot this module is written for. A bmbot.h of another one is a build error here, not a program that
+// builds and then drops the events it cannot read.
+#define BMBOT_GO_ABI 1
+#if BMBOT_ABI_VERSION != BMBOT_GO_ABI
+#error "bmbot/go is written for another libbmbot ABI than this bmbot.h has (BMBOT_GO_ABI in bmbot.go): use the version of the module that matches it"
+#endif
 */
 import "C"
 
@@ -19,8 +26,9 @@ import (
 	"github.com/yshurik/ynotbit/bmbot/go/loop"
 )
 
-// headerABI is the ABI version of the bmbot.h this wrapper was compiled against.
-var headerABI = int(C.BMBOT_ABI_VERSION)
+// wrapperABI is the ABI of libbmbot this wrapper is written for (BMBOT_GO_ABI above). The bot's go.mod pins this module and its
+// Dockerfile pins the SDK image, so Open checks the library that is linked against it, not against the header.
+const wrapperABI = int(C.BMBOT_GO_ABI)
 
 // abiVersion is the ABI version of the library that is linked. It is a variable so that a test can
 // stand in for a library of another one.
@@ -58,10 +66,10 @@ func take(p *C.char) string {
 }
 
 // Open opens the bot: its vault and mailbox from the phrase, its node as a child process. It refuses a
-// library of another ABI than the header this program was built with (CodeABI, a permanent error).
+// library of another ABI than the one this wrapper is written for (CodeABI, a permanent error).
 func Open(cfg Config) (*Bot, error) {
-	if got := abiVersion(); got != headerABI {
-		return nil, &Error{Code: CodeABI, Text: fmt.Sprintf("libbmbot has ABI version %d but this program was built for %d", got, headerABI)}
+	if err := checkABI(); err != nil {
+		return nil, err
 	}
 	js, err := json.Marshal(cfg)
 	if err != nil {
@@ -77,8 +85,19 @@ func Open(cfg Config) (*Bot, error) {
 	return &Bot{h: h}, nil
 }
 
-// ChanAddress is the address of the chan the phrase makes.
+// checkABI refuses a library that is not of the ABI this wrapper is written for (CodeABI, a permanent error).
+func checkABI() error {
+	if got := abiVersion(); got != wrapperABI {
+		return &Error{Code: CodeABI, Text: fmt.Sprintf("libbmbot has ABI version %d but this program was built for %d", got, wrapperABI)}
+	}
+	return nil
+}
+
+// ChanAddress is the address of the chan the phrase makes. It refuses a library of another ABI, as Open does.
 func ChanAddress(phrase string) (string, error) {
+	if err := checkABI(); err != nil {
+		return "", err
+	}
 	c, free := cstr(phrase)
 	defer free()
 	var address, message *C.char
