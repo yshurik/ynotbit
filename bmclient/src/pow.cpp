@@ -4,6 +4,7 @@
 #include <bmc/pow.h>
 #include <bmc/random.h>
 #include <bmc/wire.h>
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <limits>
@@ -13,6 +14,7 @@
 namespace bmc {
 namespace {
 std::atomic_bool solverOn{true};
+std::atomic_bool held{false};
 std::mutex solverLock;
 std::shared_ptr<PowSolver> &solverSlot() {
     static std::shared_ptr<PowSolver> solver;
@@ -107,6 +109,8 @@ void ProofOfWork::start(Bytes object, uint64_t trials, uint64_t extra) {
                                first = firstNonce + i, count]() mutable {
             unsigned char nonceBytes[8];
             for (uint64_t nonce = first; !cancel_; nonce += count) {
+                while (held.load(std::memory_order_relaxed) && !cancel_)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 storeBE64(nonce, nonceBytes);
                 if (value(nonceBytes, initial.data()) <= threshold)
                     return win(object, nonceBytes);
@@ -131,6 +135,9 @@ void ProofOfWork::start(Bytes object, uint64_t trials, uint64_t extra) {
     });
 }
 
+void ProofOfWork::holdForTesting(bool on) {
+    held = on;
+}
 void ProofOfWork::setSolver(std::shared_ptr<PowSolver> solver) {
     std::lock_guard guard(solverLock);
     solverSlot() = std::move(solver);

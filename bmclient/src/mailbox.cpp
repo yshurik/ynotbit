@@ -75,6 +75,7 @@ void Mailbox::connect(const std::string &path, const Secret &key, bool create) {
         throw Error(Code::Argument, "Invalid mailbox key");
     incomingLetters_ = incomingChats_ = 0;
     arrivalSenders_.clear();
+    quietCipherLog();
     const auto file = bmc::path(path);
     if (create)
         reserveFile(file);

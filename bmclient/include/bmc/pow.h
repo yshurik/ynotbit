@@ -66,6 +66,10 @@ class ProofOfWork {
     // for nothing.
     static double expectedTrials(size_t size, int64_t ttl, uint64_t trials = 1000,
                                  uint64_t extra = 1000);
+    // While held, the CPU workers keep their place and try no nonce. A search can find its nonce at
+    // any moment, so a test that needs a job to be still unsolved when something else happens holds
+    // the search until then, and lets go after it.
+    static void holdForTesting(bool on);
     // The solver searches alongside the CPU workers (null: CPU only).
     static void setSolver(std::shared_ptr<PowSolver> solver);
     static void setSolverEnabled(bool on);

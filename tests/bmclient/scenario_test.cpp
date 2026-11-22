@@ -67,8 +67,10 @@ void round(End &a, End &b) {
 
 // Rounds until `done` or the deadline: the proof of work runs on its own threads, so the wall
 // clock is what a round can do for it. Bounded, with the caller checking the end state: a
-// regression fails instead of spinning.
-bool pump(End &a, End &b, const std::function<bool()> &done, int ms = 90000) {
+// regression fails instead of spinning. A letter's way is a few searches in a row, each as long as
+// it happens to be (the public key of a person lives 28 days, and that one takes 20 s on average on
+// the Windows runner), so the deadline is far past any mean.
+bool pump(End &a, End &b, const std::function<bool()> &done, int ms = 240000) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
     while (!done() && std::chrono::steady_clock::now() < deadline) {
         round(a, b);

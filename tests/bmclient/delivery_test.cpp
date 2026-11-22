@@ -8,6 +8,7 @@
 #include <bmc/clock.h>
 #include <bmc/delivery.h>
 #include <bmc/mailbox.h>
+#include <bmc/pow.h>
 #include <bmc/secret.h>
 #include <bmc/test.h>
 #include <bmc/updates.h>
@@ -80,9 +81,22 @@ std::string anAddress(uint32_t n) {
     return text;
 }
 
+// Holds the searches of the proof of work where they are, until it goes out of scope, however that
+// happens.
+struct PowHeld {
+    PowHeld() {
+        bmc::ProofOfWork::holdForTesting(true);
+    }
+    ~PowHeld() {
+        bmc::ProofOfWork::holdForTesting(false);
+    }
+};
+
 // Turns both ends until `done`; the proof of work runs on its own threads, so the wall clock is the
-// only deadline.
-bool pump(Side &a, Side &b, const std::function<bool()> &done, int ms = 60000) {
+// only deadline. A letter's way is a few searches in a row, each as long as it happens to be (the
+// public key of a person lives 28 days, and that one is the longest: on the Windows runner the
+// way took 5 to 39 s, and one run in several took over 60), so the deadline is far past any mean.
+bool pump(Side &a, Side &b, const std::function<bool()> &done, int ms = 240000) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
     while (!done() && std::chrono::steady_clock::now() < deadline) {
         // A reads the receipts the relay wrote and spools what is ready.
@@ -180,16 +194,33 @@ TEST(a_small_object_is_mined_while_a_big_one_waits) {
 
 TEST(a_job_set_aside_for_a_smaller_one_is_mined_again_and_finishes) {
     Side a("alice", "Alice"), b("bob", "Bob");
-    // 20 KB for an hour is about 2e7 trials: a second or two on the slowest machines that run this.
+    // A search can find its nonce at any moment, so the medium job could be done before the tick
+    // that sets it aside (it was, one run in twenty on the Windows runner, where that tick comes
+    // 150 to 300 ms after it started): the search is held until the small job is queued and that
+    // tick has come, and let go after it.
+    std::optional<PowHeld> held{std::in_place};
+    // 20 KB for an hour is about 2e7 trials: seconds on the slowest machines that run this.
     const auto medium = queueBroadcast(a, b, "Medium", 20000, 3600);
     a.delivery->tick(a.mailbox, a.vault, true, kNow());
     CHECK(a.delivery->working());
     const auto small = queueBroadcast(a, b, "Small", 100, 3600);
+    a.delivery->tick(a.mailbox, a.vault, true, kNow());
+    const auto jobState = [&](const std::string &owner) {
+        for (const auto &j : a.mailbox.jobs())
+            if (j.owner == owner)
+                return j.state;
+        return std::string("none");
+    };
+    CHECK_EQ(jobState(small), std::string("mining"));
+    CHECK_EQ(jobState(medium), std::string("queued"));
+    held.reset();
     const auto published = [&](const std::string &id) {
         return a.mailbox.outgoing(id).state == "published";
     };
     std::string first;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    // Both searches are random: the medium one takes its turn when the small one is done, and
+    // takes as long as it takes, a few times its mean at worst.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(240);
     while (!(published(small) && published(medium)) &&
            std::chrono::steady_clock::now() < deadline) {
         a.delivery->tick(a.mailbox, a.vault, true, kNow());
@@ -207,16 +238,22 @@ TEST(a_job_set_aside_for_a_smaller_one_is_mined_again_and_finishes) {
 TEST(the_work_of_a_job_counts_the_life_of_its_object_and_not_only_its_size) {
     Side a("alice", "Alice"), b("bob", "Bob");
     // 100 bytes for 28 days is about 4e7 trials; 20 KB for an hour is about 2e7: the bigger object
-    // is the cheaper job, and it goes first though the other was being mined.
+    // is the cheaper job, and it goes first though the other was being mined. The search is held
+    // until the tick that sets the long one aside has come, as in the test of the job set aside.
+    std::optional<PowHeld> held{std::in_place};
     const auto longLived = queueBroadcast(a, b, "Long", 100, 28 * 86400);
     a.delivery->tick(a.mailbox, a.vault, true, kNow());
     CHECK(a.delivery->working());
     const auto bigger = queueBroadcast(a, b, "Bigger", 20000, 3600);
+    a.delivery->tick(a.mailbox, a.vault, true, kNow());
+    held.reset();
     const auto published = [&](const std::string &id) {
         return a.mailbox.outgoing(id).state == "published";
     };
     std::string first;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(90);
+    // The long one is mined when the bigger one is done, and takes as long as it takes: a few times
+    // its mean at worst, and the mean is 20 s on the Windows runner.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(240);
     while (!(published(longLived) && published(bigger)) &&
            std::chrono::steady_clock::now() < deadline) {
         a.delivery->tick(a.mailbox, a.vault, true, kNow());
