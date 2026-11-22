@@ -5,7 +5,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "ntb-log.h"
 #include "ntb-tls.h"
+#include "ntb-tls-setup.h"
 #include "ntb-util.h"
 
 struct ntb_tls {
@@ -19,28 +21,38 @@ struct ntb_tls {
 static SSL_CTX *context;
 static bool context_tried;
 
+/* Without TLS the node still works, in plain Bitmessage, so the only trace of
+ * the failure would be a peer that never gets encryption: say why in the log. */
+static void
+log_unavailable(const char *call)
+{
+        char why[512];
+
+        ntb_tls_describe_failure(call, why, sizeof why);
+        ntb_log("TLS is off, this node talks plain Bitmessage to every peer, "
+                "PyBitmessage ones too: %s",
+                why);
+}
+
 static SSL_CTX *
 get_context(void)
 {
         SSL_CTX *ctx;
+        const char *refused;
 
         if (context_tried)
                 return context;
         context_tried = true;
 
         ctx = SSL_CTX_new(TLS_method());
-        if (ctx == NULL)
+        if (ctx == NULL) {
+                log_unavailable("SSL_CTX_new");
                 return NULL;
+        }
 
-        /* Anonymous ciphers only exist up to TLS 1.2, and OpenSSL 1.1+
-         * accepts them only at security level 0. PyBitmessage asks for
-         * exactly this suite and the secp256k1 curve; the other groups
-         * are for peers that offer something else. */
-        if (!SSL_CTX_set_max_proto_version(ctx, TLS1_2_VERSION) ||
-            !SSL_CTX_set_min_proto_version(ctx, TLS1_VERSION) ||
-            !SSL_CTX_set_cipher_list(ctx, "AECDH-AES256-SHA@SECLEVEL=0") ||
-            !SSL_CTX_set1_groups_list(ctx, "secp256k1:X25519:P-256:P-384")) {
-                ERR_clear_error();
+        refused = ntb_tls_setup_context(ctx, NTB_TLS_GROUPS);
+        if (refused != NULL) {
+                log_unavailable(refused);
                 SSL_CTX_free(ctx);
                 return NULL;
         }
