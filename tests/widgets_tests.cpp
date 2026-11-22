@@ -5184,9 +5184,16 @@ int main(int argc, char **argv) {
         auto key = vault.addMailboxKey();
         bm::Mailbox mailbox;
         mailbox.create(temp.filePath("mailbox"), key, vault.mailboxKey(key));
-        for (int i = 0; i < 1500; ++i)
-            mailbox.store(QString::number(i), "sender", "recipient",
-                          "Subject " + QString::number(i), QString(10000, 'x'), i, "Channels");
+        {
+            // One commit for the 1500 letters, not one disk sync each: on the Windows runner those
+            // syncs were 40 s of the test.
+            bm::Mailbox::Batch batch(mailbox);
+            for (int i = 0; i < 1500; ++i)
+                mailbox.store(QString::number(i), "sender", "recipient",
+                              "Subject " + QString::number(i), QString(10000, 'x'), i,
+                              "Channels");
+            batch.commit();
+        }
         mailbox.store("other-channel", "sender", "second-recipient", "Only channel two",
                       "Separate discussion", 1600, "Channels");
         // Sender == recipient mirrors delivery.cpp's chanBroadcast handling: a chan post
