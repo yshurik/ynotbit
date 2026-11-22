@@ -113,7 +113,12 @@ jobs:
           path: ynotbit-x86_64.AppImage
 
   build-macos:
-    runs-on: macos-14
+    # arm64 (the zip is Apple Silicon only). macos-14 images were retired on
+    # 2026-11-02: a job on that label is cancelled at once ("The configuration
+    # 'macos-14-arm64-us-default' is not supported") and the release job, which
+    # needs all three builds, makes no draft. Pinned like the Ubuntu jobs, so an
+    # image roll does not change a release build unnoticed.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
