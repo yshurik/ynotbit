@@ -9,6 +9,13 @@
 #include <string_view>
 
 namespace bmc {
+// Tells SQLCipher to write no lines of its own on stderr, for the whole process. It writes one for
+// each wrong key and, on Windows, for nearly every allocation of a connection with memory security
+// (the process cannot lock that much memory): a program whose stderr is a pipe then waits for
+// whoever reads it, and so does the thread that holds the connection's lock. Errors reach the
+// caller as return codes all the same. The mailbox calls this before it opens a file.
+void quietCipherLog();
+
 class Statement {
     sqlite3_stmt *s_ = nullptr;
     void check(int result) const;

@@ -4,6 +4,15 @@
 #include <cstring>
 
 namespace bmc {
+void quietCipherLog() {
+    // The setting is the library's, not a connection's: any connection can take it, and one that
+    // holds nothing is enough. A library with no such pragma ignores it.
+    sqlite3 *db = nullptr;
+    if (sqlite3_open(":memory:", &db) == SQLITE_OK)
+        sqlite3_exec(db, "PRAGMA cipher_log_level = NONE", nullptr, nullptr, nullptr);
+    sqlite3_close(db);
+}
+
 void Statement::check(int result) const {
     if (result != SQLITE_OK)
         throw Error(Code::Io, sqlite3_errmsg(sqlite3_db_handle(s_)));

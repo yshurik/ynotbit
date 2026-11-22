@@ -3,9 +3,17 @@
 #include <bmc/mailbox.h>
 #include <bmc/random.h>
 #include <bmc/test.h>
+#include <cstdio>
+#include <exception>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <sqlcipher/sqlite3.h>
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 using bmc::Mailbox;
 
@@ -51,6 +59,51 @@ std::string queryPlan(const std::string &path, const bmc::Secret &key, const cha
     }
     sqlite3_close(db);
     return plan;
+}
+// What `run` writes on stderr, the stream and the file descriptor under it, as text.
+std::string stderrOf(const std::function<void()> &run) {
+    const auto file = bmc::test::tempDir() + "/stderr.txt";
+    std::fflush(stderr);
+    FILE *out = std::fopen(file.c_str(), "wb");
+    if (!out)
+        bmc::test::fail(__FILE__, __LINE__, "cannot open a file for stderr");
+#ifdef _WIN32
+    const int saved = _dup(_fileno(stderr));
+    _dup2(_fileno(out), _fileno(stderr));
+#else
+    const int saved = dup(fileno(stderr));
+    dup2(fileno(out), fileno(stderr));
+#endif
+    std::exception_ptr failure;
+    try {
+        run();
+    } catch (...) {
+        failure = std::current_exception();
+    }
+    std::fflush(stderr);
+#ifdef _WIN32
+    _dup2(saved, _fileno(stderr));
+    _close(saved);
+#else
+    dup2(saved, fileno(stderr));
+    close(saved);
+#endif
+    std::fclose(out);
+    if (failure)
+        std::rethrow_exception(failure);
+    std::ifstream in(file, std::ios::binary);
+    std::ostringstream text;
+    text << in.rdbuf();
+    return text.str();
+}
+// SQLCipher as the Windows build has it by default: a wrong key, and each memory lock that fails,
+// is a line on stderr. Whatever the build's own default, this puts it so.
+void cipherLogsOnStderr() {
+    sqlite3 *db = nullptr;
+    if (sqlite3_open(":memory:", &db) == SQLITE_OK)
+        sqlite3_exec(db, "PRAGMA cipher_log = stderr; PRAGMA cipher_log_level = ERROR", nullptr,
+                     nullptr, nullptr);
+    sqlite3_close(db);
 }
 } // namespace
 
@@ -663,6 +716,26 @@ TEST(a_wrong_mailbox_key_is_refused) {
     Mailbox other;
     CHECK_THROWS(other.open(path, key32(0x02)));
     CHECK(!other.isOpen());
+}
+
+TEST(opening_a_mailbox_leaves_stderr_alone_even_when_the_key_is_wrong) {
+    // SQLCipher writes a line on stderr for each wrong key, and on Windows for nearly every
+    // allocation of a connection with memory security (the process cannot lock that much memory).
+    // A program whose stderr is a pipe waits there for whoever reads it: under ctest the desktop
+    // test's window stood still for a second at a time, and its search took 20 s instead of one.
+    const auto path = aNewMailbox();
+    Mailbox m;
+    m.create(path, "key-1", key32(0x01));
+    m.close();
+    cipherLogsOnStderr();
+    const auto text = stderrOf([&] {
+        Mailbox other;
+        CHECK_THROWS(other.open(path, key32(0x02)));
+        Mailbox same;
+        same.open(path, key32(0x01));
+        CHECK(same.isOpen());
+    });
+    CHECK_EQ(text, std::string());
 }
 
 TEST(a_mailbox_of_another_format_or_with_no_metadata_is_refused) {
