@@ -14,6 +14,13 @@ import tempfile
 import time
 
 
+# What both bridges write to status.json (src/relay_bridge.cpp for the app, bmclient/src/relay_bridge.cpp for
+# bmnode), all from the engine's own counts. peer_connectivity_test.py reads six of them, on bmnode only.
+STATUS_KEYS=["attempts","eligible_addresses","established_incoming","established_outgoing","known_addresses",
+             "listen_port","object_bytes","objects","peers","pending","pending_outgoing","rejections",
+             "setup_timeouts","time"]
+
+
 def sha(data):
     return hashlib.sha512(data).digest()
 
@@ -201,7 +208,10 @@ with tempfile.TemporaryDirectory() as temporary:
         assert not (root/"receipts"/(link.stem+".json")).exists(),\
             "a symlinked spool entry is not followed, whatever it points at"
         assert bad_name.exists() and link.is_symlink(),"refused entries are left where they are"
-        assert read_json(root/"status.json")["peers"]==1
+        status=read_json(root/"status.json")
+        assert status["peers"]==1
+        assert sorted(status)==STATUS_KEYS and all(type(value) is int for value in status.values()),status
+        assert status["established_outgoing"]==1 and status["established_incoming"]==0 and status["attempts"]>=1,status
         assert not list(root.rglob("keys.dat"))
         assert not list(root.rglob("maildir"))
         print("PASS: real loopback handshake, proof-of-work validation, keyless object storage, publication, peer fetch, rejected malformed job, refused spool names and symlinks, pending-download status, active getaddr")
