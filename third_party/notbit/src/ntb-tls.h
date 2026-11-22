@@ -20,7 +20,7 @@
 struct ntb_tls;
 
 /* False when the linked OpenSSL lacks the cipher or the curve; the node
- * then does not advertise NODE_SSL. */
+ * then does not advertise NODE_SSL, and says why in its log (once). */
 bool
 ntb_tls_available(void);
 
