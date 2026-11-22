@@ -1,9 +1,11 @@
+// The Qt face of the chat core (src/chat_format.cpp and src/chat_store.cpp): each function once, with
+// the QString and Qt structs it takes and gives, through one thread of chats. What a chat is, how it is
+// numbered, windowed and routed is tests/bmclient/chat_format_test.cpp's and mailbox_chat_test.cpp's.
 #include "chat_format.h"
 #include "storage.h"
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QTemporaryDir>
-#include <QThread>
 #include <stdexcept>
 #include <iostream>
 using namespace bm;
@@ -60,33 +62,6 @@ int main(int argc, char **argv) {
         mailbox.storeChat("hash-a", "BM-peer", "BM-local", 1, "incoming", expiry, false);
         require(mailbox.chatMessages("BM-local", "BM-peer").size() == 3,
                 "incoming chat stored beside outgoing");
-        mailbox.storeChat("hash-b", "BM-peer", "BM-local", 1, "replay", expiry, false);
-        require(mailbox.chatMessages("BM-local", "BM-peer").size() == 3,
-                "duplicate sender sequence ignored");
-        // Sent in a burst, the numbers still only grow: the clock may not have moved.
-        const auto burstFrom = QDateTime::currentMSecsSinceEpoch();
-        for (int i = 0; i < 40; ++i)
-            mailbox.queueChat("BM-local", "BM-burst", "n" + QString::number(i), expiry);
-        const auto burst = mailbox.chatMessages("BM-local", "BM-burst");
-        bool growing = burst.size() == 40;
-        for (int i = 1; i < burst.size(); ++i)
-            growing = growing && burst[i].seqno > burst[i - 1].seqno;
-        require(growing && burst.first().seqno >= burstFrom,
-                "sequence numbers sent in one millisecond still increase");
-        // A long thread is read a window at a time: its newest messages, oldest first, and
-        // whether older ones are left.
-        bool older = false;
-        const auto newest = mailbox.chatMessages("BM-local", "BM-burst", 10, &older);
-        require(newest.size() == 10 && older && newest.first().id == burst[30].id &&
-                    newest.last().id == burst[39].id,
-                "a window is the newest messages of a thread, oldest first, with older ones left");
-        const auto whole = mailbox.chatMessages("BM-local", "BM-burst", 40, &older);
-        require(whole.size() == 40 && !older && whole.first().id == burst.first().id,
-                "a window as long as the thread is all of it, with nothing older");
-        require(mailbox.chatMessages("BM-local", "BM-burst", 100, &older).size() == 40 && !older,
-                "a window longer than the thread is the thread");
-        require(mailbox.chatMessages("BM-local", "BM-nobody", 10, &older).isEmpty() && !older,
-                "a thread with no messages has a window of none, and nothing older");
         // What the peer sent and nobody has looked at is unread; our own never is.
         const auto thread = [&](const QString &peer) {
             for (const auto &summary : mailbox.chatSummaries())
@@ -138,17 +113,11 @@ int main(int argc, char **argv) {
                     "and the last one");
         }
         // A chat lives on the network until its expiry, and in its owner's mailbox until its
-        // owner deletes it: the expiry ends a chat's delivery, never the chat.
+        // owner deletes it: the expiry ends a chat's delivery, never the chat. The time is the
+        // call's argument, so nothing waits for the clock.
         const auto brief = QDateTime::currentSecsSinceEpoch() + 2;
         const auto briefId = mailbox.queueChat("BM-local", "BM-brief", "sent shortly", brief);
         mailbox.storeChat("hash-e", "BM-brief", "BM-local", 1, "heard shortly", brief, false);
-        QThread::msleep(2200);
-        require(QDateTime::currentSecsSinceEpoch() >= brief, "the clock passed the chats' expiry");
-        require(mailbox.chatMessages("BM-local", "BM-brief").size() == 2,
-                "chats past their expiry stay in their thread");
-        require(thread("BM-brief").body == "heard shortly" && thread("BM-brief").unread == 1 &&
-                    mailbox.chatUnread() == 3,
-                "chats past their expiry stay in the list, and unread ones stay unread");
         NetworkJob expiredJob, liveJob;
         expiredJob.owner = briefId;
         liveJob.owner = id;
@@ -159,10 +128,13 @@ int main(int argc, char **argv) {
             job->expires = brief;
             mailbox.addJob(*job);
         }
-        mailbox.endChatDeliveries(QDateTime::currentSecsSinceEpoch());
+        mailbox.endChatDeliveries(brief + 1);
         require(mailbox.chatMessages("BM-local", "BM-brief").size() == 2 &&
                     mailbox.chatMessages("BM-local", "BM-peer").size() == 5,
                 "ending the delivery of expired chats keeps every chat");
+        require(thread("BM-brief").body == "heard shortly" && thread("BM-brief").unread == 1 &&
+                    mailbox.chatUnread() == 3,
+                "chats past their expiry stay in the list, and unread ones stay unread");
         require(mailbox.jobs().size() == 1 && mailbox.jobs().first().owner == id,
                 "it ends the network work of the expired chats, and of no other");
         // A finished delivery is not work to plan or to scan for: the outbox lists the
@@ -183,7 +155,7 @@ int main(int argc, char **argv) {
         restored.open(backup, vault.mailboxKey(key));
         require(restored.chatMessages("BM-local", "BM-peer").size() == 5 &&
                     restored.chatMessages("BM-local", "BM-brief").size() == 2 &&
-                    restored.chatSummaries().size() == 4 && restored.outbox().size() == going - 2,
+                    restored.chatSummaries().size() == 3 && restored.outbox().size() == going - 2,
                 "a backup holds the chats, the expired ones too, and their deliveries going");
         // What a restored mailbox sends next must not repeat a sequence number a peer
         // already holds.
@@ -191,7 +163,6 @@ int main(int argc, char **argv) {
         for (const auto &message : mailbox.chatMessages("BM-local", "BM-peer"))
             if (message.outgoing)
                 highest = std::max(highest, message.seqno);
-        QThread::msleep(5);
         restored.queueChat("BM-local", "BM-peer", "after the restore", expiry);
         const auto afterRestore = restored.chatMessages("BM-local", "BM-peer");
         require(afterRestore.size() == 6 && afterRestore.last().seqno > highest,

@@ -148,26 +148,10 @@ int main(int argc, char **argv) {
         bd.retry(bm, reply);
         require(bm.outgoing(reply).state == "queued", "manual retry");
         bd.cancel(bm, reply);
-        auto broadcast =
-            Wire::encodeBroadcast(av.identities()[0], "Announcement", "Subscriber only", expires);
         bm.subscribe(alice, "Alice's announcements");
-        // A peer's object larger than the protocol allows: skipped, and the
-        // broadcast stored after it is still read.
+        // A peer's object larger than the protocol allows sits in the cache: every scan below passes
+        // it and goes on. (A subscribed broadcast read after one is tests/bmclient/delivery_test.cpp's.)
         cacheObject(b, QByteArray(NTB_OBJECT_DB_MAX_OBJECT_SIZE + 1, 'z'));
-        cacheObject(b, broadcast);
-        // discover() is a bounded, incremental scan (like Session::tick() calls it in
-        // production): one call isn't guaranteed to finish, especially under slow I/O.
-        bool found = false;
-        const auto broadcastDeadline = QDateTime::currentMSecsSinceEpoch() + 5000;
-        while (!found && QDateTime::currentMSecsSinceEpoch() < broadcastDeadline) {
-            bd.scan(bc, bm, bv, 100);
-            for (const auto &m : bm.messages())
-                if (m.folder == "Broadcasts" && m.subject == "Announcement")
-                    found = true;
-            if (!found)
-                QThread::msleep(5);
-        }
-        require(found, "subscribed broadcast decoded");
         // Chan members shouldn't need a separate manual subscribe to hear their own
         // chan's "Anonymous"/broadcast-mode posts -- joining the chan is already that.
         auto alicesChan = av.addChannel("delivery test chan phrase", "Test Chan", {});
@@ -280,7 +264,7 @@ int main(int argc, char **argv) {
         ad.stop();
         bd.stop();
         std::cout << "PASS: key lookup, real PoW, lock/reopen, encrypted handoff, receive, ACK, "
-                     "rescan, reply, cancel/retry, broadcasts, chan broadcasts, release announcements\n";
+                     "rescan, reply, cancel/retry, chan broadcasts, release announcements, upgrade\n";
     } catch (const std::exception &e) {
         std::cerr << "FAIL: " << e.what() << '\n';
         return 1;
