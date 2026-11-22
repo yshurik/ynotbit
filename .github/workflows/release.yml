@@ -123,7 +123,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install build tools
-        run: brew install ninja pkg-config
+        # Homebrew's default openssl is 4.x on the macos-15 image, and OpenSSL 4 has
+        # no secp256k1 TLS group: the node builds against it but then offers no TLS
+        # to PyBitmessage peers (third_party/notbit/src/ntb-tls.c) and
+        # tests/tls_interop.py fails. Build against openssl@3 (3.5, supported to
+        # 2030), here and in the pinned dependencies below.
+        run: |
+          brew install ninja pkg-config openssl@3
+          echo "OPENSSL_PREFIX=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -147,18 +154,21 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/deps-prefix
-          key: macos-deps-${{ hashFiles('scripts/build-dependencies.sh') }}
+          key: macos-deps-openssl3-${{ hashFiles('scripts/build-dependencies.sh') }}
 
       - name: Build pinned libsodium/SQLCipher
         if: steps.deps-cache.outputs.cache-hit != 'true'
+        env:
+          PKG_CONFIG_PATH: ${{ env.OPENSSL_PREFIX }}/lib/pkgconfig
         run: scripts/build-dependencies.sh ${{ runner.temp }}/deps-work ${{ runner.temp }}/deps-prefix
 
       - name: Configure
         env:
-          PKG_CONFIG_PATH: ${{ runner.temp }}/deps-prefix/lib/pkgconfig
+          PKG_CONFIG_PATH: ${{ runner.temp }}/deps-prefix/lib/pkgconfig:${{ env.OPENSSL_PREFIX }}/lib/pkgconfig
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_PREFIX_PATH=${{ steps.qt.outputs.prefix }} \
+            -DOPENSSL_ROOT_DIR=${{ env.OPENSSL_PREFIX }} \
             -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
