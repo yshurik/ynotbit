@@ -103,6 +103,26 @@ TEST(a_chat_delivery_is_acknowledged_too) {
     m.close();
 }
 
+TEST(an_expired_chat_delivery_leaves_the_outbox_and_its_chat_says_so) {
+    const auto path = aNewMailbox("expired.bmmail");
+    auto key = key32();
+    Mailbox m;
+    m.create(path, "key-1", key);
+    const auto chat = m.queueChat("BM-local", "BM-peer", "sent shortly", soon());
+    const auto kept = m.queueChat("BM-local", "BM-other", "still going", soon());
+    CHECK_EQ(m.outbox().size(), size_t(2));
+    // A finished delivery is not work to plan or to scan for: the outbox lists the deliveries
+    // still going, and the chat itself stays in its thread with the state.
+    m.setDelivery(chat, "expired", "Chat expired after 24 hours.");
+    CHECK_EQ(m.outbox().size(), size_t(1));
+    CHECK_EQ(m.outbox().front().id, kept);
+    CHECK_EQ(m.chatMessages("BM-local", "BM-peer").front().state, std::string("expired"));
+    CHECK_EQ(m.outgoing(chat).error, std::string("Chat expired after 24 hours.")); // why, kept
+    m.setDelivery(kept, "acknowledged", "Recipient acknowledgment received");
+    CHECK_EQ(m.outgoing(kept).error, std::string()); // a good end has nothing to explain
+    m.close();
+}
+
 TEST(a_delivery_state_that_is_not_one_is_refused) {
     const auto path = aNewMailbox("states.bmmail");
     auto key = key32();
