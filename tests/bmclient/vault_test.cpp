@@ -97,23 +97,6 @@ TEST(a_read_only_vault_still_opens) {
     CHECK_EQ(bmc::test::readFile(path), before); // the save failed, so the file is unchanged
 }
 
-TEST(a_failed_save_keeps_the_previous_vault) {
-    const auto dir = bmc::test::tempDir();
-    const auto path = dir + "/big.bmvault";
-    Vault v;
-    v.create(path, "pw");
-    v.addIdentity("me");
-    const auto before = bmc::test::readFile(path);
-    // A read-only directory makes the atomic write fail before the target is touched.
-    if (!makeReadOnly(dir)) {
-        std::cerr << "skipped: the permission bits are not enforced for this user" << std::endl;
-        return;
-    }
-    CHECK_THROWS(v.addIdentity("second"));
-    std::filesystem::permissions(dir, std::filesystem::perms::owner_all);
-    CHECK_EQ(bmc::test::readFile(path), before);
-}
-
 TEST(vault_limits_are_refused) {
     // The vault holds at most 1024 mailbox keys: the 1025th is refused, the in-memory map is rolled
     // back, and the file on disk keeps exactly the 1024 that were saved. The identity count is

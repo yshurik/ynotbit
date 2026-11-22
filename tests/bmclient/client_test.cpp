@@ -321,30 +321,9 @@ TEST(the_scan_stores_a_letter_and_a_chat_as_arrivals_from_their_sender) {
 }
 
 // A chan's post is no arrival from a person; a note to oneself is one from oneself, which the
-// desktop leaves out of the address book as it does the vault's own addresses.
-TEST(a_post_to_a_chan_is_no_arrival_and_a_note_to_oneself_is_one_from_oneself) {
-    Fixture f;
-    const auto expires = bmc::now() + 3600;
-    const bmc::Identity *chan = nullptr;
-    for (const auto &i : f.vault->identities())
-        if (i.address == f.chan)
-            chan = &i;
-    CHECK(chan != nullptr);
-    const auto &me = f.vault->identities()[0];
-    fake::cacheObject(f.root,
-                      bmc::Wire::encodeMessage(bmc::IdentityRef(f.peerVault.identities()[0]),
-                                               bmc::Wire::publicIdentity(bmc::IdentityRef(*chan)),
-                                               "To the chan", "Everybody", expires));
-    fake::cacheObject(f.root,
-                      bmc::Wire::encodeMessage(bmc::IdentityRef(me),
-                                               bmc::Wire::publicIdentity(bmc::IdentityRef(me)),
-                                               "Note", "To myself", expires));
-    f.client->step(bmc::now(), false);
-    CHECK_EQ(f.mailbox->messages().size(), size_t(2)); // both were read
-    CHECK_EQ(f.mailbox->takeArrivalSenders(), std::vector<std::string>{f.me});
-}
-
-TEST(a_post_to_a_chan_and_a_letter_to_oneself_make_no_pending_subscription) {
+// desktop leaves out of the address book as it does the vault's own addresses. Neither makes a
+// pending subscription.
+TEST(a_chan_post_is_no_arrival_a_note_to_oneself_is_one_and_neither_makes_a_pending_subscription) {
     Fixture f;
     const auto expires = bmc::now() + 3600;
     const bmc::Identity *chan = nullptr;
@@ -364,6 +343,7 @@ TEST(a_post_to_a_chan_and_a_letter_to_oneself_make_no_pending_subscription) {
                                                "Note", "To myself", expires));
     f.client->step(bmc::now(), false);
     CHECK_EQ(f.mailbox->messages().size(), size_t(2)); // both were read
+    CHECK_EQ(f.mailbox->takeArrivalSenders(), std::vector<std::string>{f.me});
     CHECK(f.mailbox->watched().empty());
 }
 
