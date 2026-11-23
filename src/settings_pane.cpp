@@ -340,7 +340,7 @@ void SettingsPane::refreshSoundThemes() {
 void SettingsPane::addSoundTheme() {
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Add a sound theme"),
-        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        Session::defaultFolder(),
         tr("Sound themes (*.zip)"));
     if (path.isEmpty())
         return;

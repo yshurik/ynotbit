@@ -92,9 +92,7 @@ static QString chooseSave(const QString &title, const QString &filter, const QSt
                           const QString &initialPath = {}) {
     auto p = QFileDialog::getSaveFileName(
         nullptr, title,
-        initialPath.isEmpty()
-            ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
-            : initialPath,
+        initialPath.isEmpty() ? Session::defaultFolder() : initialPath,
         filter);
     if (!p.isEmpty() && !p.endsWith(suffix))
         p += suffix;
@@ -115,10 +113,24 @@ static QString suggestedMailboxPath(const QString &vaultPath, const QString &suf
         path = QDir(dir).filePath(QString("%1-%2%3").arg(base).arg(n).arg(suffix));
     return path;
 }
-static QString documentsPath() {
-    const auto path = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    return path.isEmpty() ? QDir::homePath() : path;
+QString Session::defaultFolder() {
+    const auto usable = [](const QString &dir) {
+        if (dir.isEmpty())
+            return false;
+        QDir().mkpath(dir);
+        return QFileInfo(dir).isDir() && QFileInfo(dir).isWritable();
+    };
+    for (const auto &dir : {QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+                            QDir::homePath()})
+        if (usable(dir))
+            return dir;
+    // A sandbox may allow neither: the app's own data folder is always there.
+    const auto own = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+                     "/vaults";
+    QDir().mkpath(own);
+    return own;
 }
+static QString documentsPath() { return Session::defaultFolder(); }
 // The mailbox setting that says the Sent folder is in the address book (addSentRecipients).
 static const QString kSentRecipientsSetting = "migrated:sent-recipients";
 // The same for the senders of the Inbox (addInboxSenders).
@@ -269,6 +281,8 @@ void Session::acquireVault(const QString &p) {
     vaultLock_ = lockVaultFile(p);
 }
 std::unique_ptr<QLockFile> Session::lockVaultFile(const QString &p) {
+    // The folder may not exist yet (a sandbox without Documents): made before the file.
+    QDir().mkpath(QFileInfo(p).absolutePath());
     auto lock = std::make_unique<QLockFile>(p + ".lock");
     if (!lock->tryLock()) {
         // Only a lock held elsewhere is another instance; else the place is the problem.

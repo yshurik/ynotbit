@@ -9527,9 +9527,26 @@ int main(int argc, char **argv) {
                     "another identity joins the open vault");
             require(!bm::Session(temp.filePath("no-vault-node"), true).addIdentity(made),
                     "without an open vault no identity is added");
-            require(!fresh.createVault(temp.filePath("nowhere/second.bmvault"), "pw", "pw", made) &&
+            {
+                // Its folder cannot be made: a file stands where the folder would be.
+                QFile blocker(temp.filePath("a-file-not-a-folder"));
+                require(blocker.open(QIODevice::WriteOnly), "make the file that blocks a folder");
+            }
+            require(!fresh.createVault(temp.filePath("a-file-not-a-folder/second.bmvault"), "pw",
+                                       "pw", made) &&
                         fresh.unlocked() && fresh.vaultPath() == path,
                     "a vault that cannot be made leaves the open one open");
+            {
+                // A folder that is missing is made before the vault file (a sandbox may have no
+                // Documents folder), and the default folder always exists.
+                bm::Session inNewFolder(temp.filePath("new-folder-node"), true);
+                const auto deep = temp.filePath("not/there/yet/third.bmvault");
+                require(inNewFolder.createVault(deep, "pw", "pw", made) && QFile::exists(deep),
+                        "a vault in folders that do not exist yet is made, with its folders");
+                const auto folder = bm::Session::defaultFolder();
+                require(QFileInfo(folder).isDir() && QFileInfo(folder).isWritable(),
+                        "the default folder exists and can be written");
+            }
             const auto second = temp.filePath("second.bmvault");
             require(fresh.createVault(second, "pw", "pw", made) && fresh.unlocked() &&
                         fresh.vaultPath() == second,
