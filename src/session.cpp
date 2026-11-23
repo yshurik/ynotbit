@@ -281,8 +281,6 @@ void Session::acquireVault(const QString &p) {
     vaultLock_ = lockVaultFile(p);
 }
 std::unique_ptr<QLockFile> Session::lockVaultFile(const QString &p) {
-    // The folder may not exist yet (a sandbox without Documents): made before the file.
-    QDir().mkpath(QFileInfo(p).absolutePath());
     auto lock = std::make_unique<QLockFile>(p + ".lock");
     if (!lock->tryLock()) {
         // Only a lock held elsewhere is another instance; else the place is the problem.
@@ -328,6 +326,9 @@ bool Session::createVault(const QString &path, QString password, QString repeate
         Password secret{password.toUtf8()};
         password.fill(QChar(0));
         repeated.fill(QChar(0));
+        // The folder may not exist yet (a sandbox without Documents): made before the file, here
+        // and not in lockVaultFile, which unlocking uses too and which must not make folders.
+        QDir().mkpath(QFileInfo(path).absolutePath());
         // The new file reserved first: until then the open vault stays open.
         auto reserved = lockVaultFile(path);
         if (unlocked())
