@@ -761,6 +761,42 @@ TEST(a_mailbox_of_another_format_or_with_no_metadata_is_refused) {
     CHECK(std::filesystem::exists(path));
 }
 
+// The earliest v1 mailbox: a meta table of an id and a checkpoint only, and letters with none of the
+// columns added since. A draft the user had in it comes through, and is still theirs to edit.
+TEST(the_earliest_v1_mailbox_with_a_draft_migrates_and_the_draft_stays_editable) {
+    const auto path = aNewMailbox("earliest-v1.bmmail");
+    const auto key = key32();
+    sqlite3 *db = nullptr;
+    CHECK(sqlite3_open_v2(path.c_str(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) ==
+          SQLITE_OK);
+    CHECK(sqlite3_key(db, key.data(), 32) == SQLITE_OK);
+    const bool made = sqlite3_exec(
+                          db,
+                          "CREATE TABLE meta(id TEXT NOT NULL,checkpoint INTEGER NOT NULL);"
+                          "INSERT INTO meta VALUES('legacy',17);"
+                          "CREATE TABLE messages(hash TEXT PRIMARY KEY,sender TEXT NOT NULL,"
+                          "recipient TEXT NOT NULL,subject TEXT NOT NULL,body TEXT NOT NULL,"
+                          "folder TEXT NOT NULL,received INTEGER NOT NULL);"
+                          "INSERT INTO messages VALUES('draft-old','','BM-to','My existing draft',"
+                          "'Keep this text','Drafts',123);PRAGMA user_version=1;",
+                          nullptr, nullptr, nullptr) == SQLITE_OK;
+    sqlite3_close(db);
+    CHECK(made);
+    Mailbox m;
+    m.open(path, key);
+    CHECK_EQ(m.message("draft-old").body, std::string("Keep this text"));
+    CHECK_EQ(m.checkpoint(), int64_t(17));
+    // The columns the later versions added are there to be written, and are read back.
+    m.bindCache("cache-1");
+    m.bindIdentities("fingerprint-1", true);
+    m.saveDraft("draft-old", "new sender", "BM-to", "My existing draft", "Edited safely");
+    m.close();
+    m.open(path, key);
+    CHECK_EQ(m.message("draft-old").body, std::string("Edited safely"));
+    CHECK_EQ(m.boundIdentities(), std::string("fingerprint-1"));
+    m.close();
+}
+
 TEST(a_scan_batch_commits_what_it_stored_or_leaves_it_out) {
     const auto path = aNewMailbox("batch.bmmail");
     auto key = key32();
