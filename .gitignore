@@ -18,3 +18,8 @@ ynotbit-data/
 *.obj
 *.o
 *.snap
+
+# Python caches and logs
+__pycache__/
+*.pyc
+*.log
