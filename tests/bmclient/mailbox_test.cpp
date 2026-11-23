@@ -708,16 +708,6 @@ TEST(the_golden_v2_mailbox_of_the_previous_release_opens) {
     m.close();
 }
 
-TEST(a_wrong_mailbox_key_is_refused) {
-    const auto path = aNewMailbox();
-    Mailbox m;
-    m.create(path, "key-1", key32(0x01));
-    m.close();
-    Mailbox other;
-    CHECK_THROWS(other.open(path, key32(0x02)));
-    CHECK(!other.isOpen());
-}
-
 TEST(opening_a_mailbox_leaves_stderr_alone_even_when_the_key_is_wrong) {
     // SQLCipher writes a line on stderr for each wrong key, and on Windows for nearly every
     // allocation of a connection with memory security (the process cannot lock that much memory).
@@ -731,6 +721,7 @@ TEST(opening_a_mailbox_leaves_stderr_alone_even_when_the_key_is_wrong) {
     const auto text = stderrOf([&] {
         Mailbox other;
         CHECK_THROWS(other.open(path, key32(0x02)));
+        CHECK(!other.isOpen());
         Mailbox same;
         same.open(path, key32(0x01));
         CHECK(same.isOpen());
