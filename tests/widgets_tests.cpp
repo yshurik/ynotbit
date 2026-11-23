@@ -9508,6 +9508,10 @@ int main(int argc, char **argv) {
             require(!fresh.createVault(path, "one password", "another one", made) &&
                         fresh.error().contains("match") && !QFile::exists(path),
                     "mismatched passwords make no vault");
+            require(!fresh.createVault(temp.filePath("never/made.bmvault"), "one password",
+                                       "another one", made) &&
+                        !QFileInfo(temp.filePath("never")).exists(),
+                    "a vault refused for its passwords makes no folders either");
             require(!fresh.createVault(path, "", "", made) && !QFile::exists(path),
                     "an empty password makes no vault");
             require(fresh.createVault(path, "long test password", "long test password", made) &&
@@ -9543,6 +9547,16 @@ int main(int argc, char **argv) {
                 const auto deep = temp.filePath("not/there/yet/third.bmvault");
                 require(inNewFolder.createVault(deep, "pw", "pw", made) && QFile::exists(deep),
                         "a vault in folders that do not exist yet is made, with its folders");
+                // Unlocking makes no folders: with the folders of the vault gone it is not found,
+                // says so, and they stay gone.
+                inNewFolder.lock();
+                require(QDir(temp.filePath("not")).removeRecursively() && !QFileInfo(deep).exists(),
+                        "remove the folders of the vault");
+                inNewFolder.choosePendingVault(deep);
+                inNewFolder.submitVaultPassword("pw");
+                require(!inNewFolder.unlocked() && !inNewFolder.error().isEmpty() &&
+                            !QFileInfo(temp.filePath("not")).exists(),
+                        "unlocking a vault whose folders are gone makes no folders");
                 const auto folder = bm::Session::defaultFolder();
                 require(QFileInfo(folder).isDir() && QFileInfo(folder).isWritable(),
                         "the default folder exists and can be written");
